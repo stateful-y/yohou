@@ -50,10 +50,10 @@ class FourierFeatureTransformer(BaseTransformer):
 
     See Also
     --------
-    `CalendarFeatureTransformer` : Calendar features (month, day of week, etc.).
-    `HolidayFeatureTransformer` : Binary holiday indicator.
-    `TimeIndexTransformer` : Numeric time index for trend features.
-    `FourierSeasonalityForecaster` : Forecaster-level Fourier seasonality.
+    - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
+    - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator.
+    - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
+    - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Forecaster-level Fourier seasonality.
 
     Examples
     --------
@@ -212,9 +212,9 @@ class TimeIndexTransformer(BaseTransformer):
 
     See Also
     --------
-    `CalendarFeatureTransformer` : Calendar features (month, day of week, etc.).
-    `FourierFeatureTransformer` : Sin/cos harmonics for cyclical encoding.
-    `PolynomialTrendForecaster` : Forecaster-level polynomial trend estimation.
+    - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
+    - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
+    - [`PolynomialTrendForecaster`][yohou.stationarity.trend.PolynomialTrendForecaster] : Forecaster-level polynomial trend estimation.
 
     Examples
     --------

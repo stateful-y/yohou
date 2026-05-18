@@ -113,9 +113,9 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
     See Also
     --------
-    `VotingPointForecaster` : Ensemble for point forecasters.
-    `VotingIntervalForecaster` : Ensemble for interval forecasters.
-    `BaseClassProbaForecaster` : Base class for class-probability forecasters.
+    - [`VotingPointForecaster`][yohou.ensemble.voting_point.VotingPointForecaster] : Ensemble for point forecasters.
+    - [`VotingIntervalForecaster`][yohou.ensemble.voting_interval.VotingIntervalForecaster] : Ensemble for interval forecasters.
+    - [`BaseClassProbaForecaster`][yohou.class_proba.base.BaseClassProbaForecaster] : Base class for class-probability forecasters.
 
     Notes
     -----

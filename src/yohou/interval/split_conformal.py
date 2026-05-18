@@ -57,9 +57,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
     See Also
     --------
-    `BaseSimilarity` : Similarity weighting for adaptive intervals.
-    `Residual` : Default conformity scorer.
-    `IntervalReductionForecaster` : Alternative interval forecaster.
+    - [`BaseSimilarity`][yohou.interval.base.BaseSimilarity] : Similarity weighting for adaptive intervals.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Default conformity scorer.
+    - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : Alternative interval forecaster.
 
     """
 
@@ -163,7 +163,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self._pre_fit(y, X_actual, forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
         # Validate interval-specific parameters (coverage rates)
-        _, self.fit_coverage_rates_ = self._validate_fit_params(self.fit_forecasting_horizon_, coverage_rates)
+        _, self.fit_coverage_rates_ = self._validate_interval_fit_params(self.fit_forecasting_horizon_, coverage_rates)
 
         # Handle splitting with optional X
         if X_actual is None:

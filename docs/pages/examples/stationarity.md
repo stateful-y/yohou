@@ -1,3 +1,0 @@
-# Stationarity
-
-<!-- GALLERY:stationarity -->

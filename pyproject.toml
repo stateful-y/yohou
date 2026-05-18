@@ -54,6 +54,7 @@ tests = [
     "hypothesis>=6.100",
 ]
 lint = [
+    "pytest>=8.3",
     "ruff>=0.8.0",
     "ty>=0.0.29",
 ]
@@ -80,6 +81,9 @@ Documentation = "https://yohou.readthedocs.io"
 Repository = "https://github.com/stateful-y/yohou"
 "Bug Tracker" = "https://github.com/stateful-y/yohou/issues"
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
@@ -93,9 +97,6 @@ fallback-version = "0.0.0"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/yohou/_version.py"
-
-[tool.ty.rules]
-unused-ignore-comment = "ignore"
 
 [tool.ruff]
 line-length = 120
@@ -238,7 +239,7 @@ disable = [
     "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
     "MD051",  # Link fragments (cross-doc references resolved at MkDocs build time)
 ]
-exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
+exclude = ["CHANGELOG.md", "docs/pages/reference/changelog.md", "site", "htmlcov", ".nox", ".venv"]
 
 [tool.rumdl.per-file-ignores]
 # MD057 (relative links) suppressed for pages with links to build-time generated files.
@@ -247,7 +248,7 @@ exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv"]
 "docs/pages/getting-started/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
 "README.md" = ["MD041"]  # README starts with logo, not heading
-"docs/index.md" = ["MD041"]  # Landing page starts with logo, not heading
+"docs/index.md" = ["MD041", "MD057"]  # Landing page starts with logo; links to generated API files resolved at build time
 "CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 [tool.commitizen]

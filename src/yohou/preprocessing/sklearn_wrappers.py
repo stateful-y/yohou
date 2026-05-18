@@ -108,8 +108,8 @@ class StandardScaler(SklearnScaler):
 
     See Also
     --------
-    `MinMaxScaler` : Scale features to a given range.
-    `RobustScaler` : Scale using statistics robust to outliers.
+    - [`MinMaxScaler`][yohou.preprocessing.sklearn_wrappers.MinMaxScaler] : Scale features to a given range.
+    - [`RobustScaler`][yohou.preprocessing.sklearn_wrappers.RobustScaler] : Scale using statistics robust to outliers.
 
     """
 
@@ -211,8 +211,8 @@ class MinMaxScaler(SklearnScaler):
 
     See Also
     --------
-    `StandardScaler` : Standardize features by removing mean and scaling to unit variance.
-    `MaxAbsScaler` : Scale each feature by its maximum absolute value.
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Standardize features by removing mean and scaling to unit variance.
+    - [`MaxAbsScaler`][yohou.preprocessing.sklearn_wrappers.MaxAbsScaler] : Scale each feature by its maximum absolute value.
 
     """
 
@@ -320,7 +320,7 @@ class RobustScaler(SklearnScaler):
 
     See Also
     --------
-    `StandardScaler` : Scale using mean and standard deviation (sensitive to outliers).
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Scale using mean and standard deviation (sensitive to outliers).
 
     """
 
@@ -407,8 +407,8 @@ class MaxAbsScaler(SklearnScaler):
 
     See Also
     --------
-    `MinMaxScaler` : Scale features to a given range.
-    `StandardScaler` : Standardize features by removing mean and scaling to unit variance.
+    - [`MinMaxScaler`][yohou.preprocessing.sklearn_wrappers.MinMaxScaler] : Scale features to a given range.
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Standardize features by removing mean and scaling to unit variance.
 
     """
 
@@ -476,7 +476,7 @@ class Normalizer(SklearnTransformer):
 
     See Also
     --------
-    `StandardScaler` : Standardize features by removing mean and scaling to unit variance.
+    - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Standardize features by removing mean and scaling to unit variance.
 
     """
 
@@ -549,7 +549,7 @@ class PolynomialFeatures(SklearnTransformer):
 
     See Also
     --------
-    `SplineTransformer` : Generate spline basis features.
+    - [`SplineTransformer`][yohou.preprocessing.sklearn_wrappers.SplineTransformer] : Generate spline basis features.
 
     """
 
@@ -634,7 +634,7 @@ class PowerTransformer(SklearnTransformer):
 
     See Also
     --------
-    `QuantileTransformer` : Transform features using quantiles information.
+    - [`QuantileTransformer`][yohou.preprocessing.sklearn_wrappers.QuantileTransformer] : Transform features using quantiles information.
 
     """
 
@@ -725,7 +725,7 @@ class QuantileTransformer(SklearnTransformer):
 
     See Also
     --------
-    `PowerTransformer` : Apply a power transform to make data more Gaussian-like.
+    - [`PowerTransformer`][yohou.preprocessing.sklearn_wrappers.PowerTransformer] : Apply a power transform to make data more Gaussian-like.
 
     """
 
@@ -843,7 +843,7 @@ class SplineTransformer(SklearnTransformer):
 
     See Also
     --------
-    `PolynomialFeatures` : Generate polynomial and interaction features.
+    - [`PolynomialFeatures`][yohou.preprocessing.sklearn_wrappers.PolynomialFeatures] : Generate polynomial and interaction features.
 
     """
 

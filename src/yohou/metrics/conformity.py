@@ -36,9 +36,9 @@ class Residual(BaseConformityScorer):
 
     See Also
     --------
-    `AbsoluteResidual` : Symmetric variant using absolute residuals.
-    `GammaResidual` : Scale-dependent variant using relative errors.
-    `SplitConformalForecaster` :
+    - [`AbsoluteResidual`][yohou.metrics.conformity.AbsoluteResidual] : Symmetric variant using absolute residuals.
+    - [`GammaResidual`][yohou.metrics.conformity.GammaResidual] : Scale-dependent variant using relative errors.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] :
         Conformal prediction forecaster that uses conformity scorers.
 
     Examples
@@ -148,8 +148,8 @@ class AbsoluteResidual(Residual):
 
     See Also
     --------
-    `Residual` : Asymmetric variant using signed residuals.
-    `AbsoluteGammaResidual` : Scale-dependent symmetric variant.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Asymmetric variant using signed residuals.
+    - [`AbsoluteGammaResidual`][yohou.metrics.conformity.AbsoluteGammaResidual] : Scale-dependent symmetric variant.
 
     Examples
     --------
@@ -272,8 +272,8 @@ class GammaResidual(BaseConformityScorer):
 
     See Also
     --------
-    `AbsoluteGammaResidual` : Symmetric variant using absolute relative errors.
-    `Residual` : Scale-independent signed residual scorer.
+    - [`AbsoluteGammaResidual`][yohou.metrics.conformity.AbsoluteGammaResidual] : Symmetric variant using absolute relative errors.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Scale-independent signed residual scorer.
 
     Examples
     --------
@@ -411,8 +411,8 @@ class AbsoluteGammaResidual(GammaResidual):
 
     See Also
     --------
-    `GammaResidual` : Asymmetric variant using signed relative errors.
-    `AbsoluteResidual` : Scale-independent symmetric variant.
+    - [`GammaResidual`][yohou.metrics.conformity.GammaResidual] : Asymmetric variant using signed relative errors.
+    - [`AbsoluteResidual`][yohou.metrics.conformity.AbsoluteResidual] : Scale-independent symmetric variant.
 
     Examples
     --------
@@ -483,8 +483,8 @@ class QuantileResidual(BaseConformityScorer):
 
     See Also
     --------
-    `AbsoluteQuantileResidual` : Absolute variant of quantile residuals.
-    `Residual` : Point-prediction conformity scorer.
+    - [`AbsoluteQuantileResidual`][yohou.metrics.conformity.AbsoluteQuantileResidual] : Absolute variant of quantile residuals.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Point-prediction conformity scorer.
 
     """
 
@@ -515,8 +515,8 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
 
     See Also
     --------
-    `QuantileResidual` : Signed variant of quantile residuals.
-    `AbsoluteResidual` : Point-prediction absolute conformity scorer.
+    - [`QuantileResidual`][yohou.metrics.conformity.QuantileResidual] : Signed variant of quantile residuals.
+    - [`AbsoluteResidual`][yohou.metrics.conformity.AbsoluteResidual] : Point-prediction absolute conformity scorer.
 
     """
 

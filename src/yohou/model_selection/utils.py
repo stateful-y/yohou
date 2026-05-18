@@ -149,21 +149,6 @@ class _MultimetricScorer:
         self._scorers = scorers
         self._raise_exc = raise_exc
 
-        # Validate all scorers produce scalar output
-        for name, scorer in scorers.items():
-            agg = getattr(scorer, "aggregation_method", "all")
-            # Interval scorers expand "all" to the full list at init time
-            is_all = agg == "all" or (
-                isinstance(agg, list) and set(agg) >= {"stepwise", "vintagewise", "componentwise"}
-            )
-            if not is_all:
-                raise ValueError(
-                    f"Scorer '{name}' has aggregation_method={agg!r}, but "
-                    f"cross-validation requires aggregation_method='all' "
-                    f"(scalar output). Use scorer.score() directly for "
-                    f"partial aggregation."
-                )
-
     def fit(self, y: pl.DataFrame, *, forecaster=None) -> _MultimetricScorer:
         """Fit all scorers that have a fit method.
 
@@ -172,8 +157,8 @@ class _MultimetricScorer:
         y : pl.DataFrame
             Target time series used for fitting stateful scorers.
         forecaster : BaseForecaster or None, default=None
-            If provided, forwarded to each scorer's ``fit`` method so
-            that metadata can be extracted from the fitted forecaster.
+            The fitted forecaster instance, forwarded to scorers that
+            need it (e.g. for residual computation).
 
         Returns
         -------
@@ -503,6 +488,17 @@ def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
     return max(methods, key=lambda m: _RESPONSE_METHOD_PRIORITY[m])
 
 
+# Backward-compat shims for yohou-optuna <= 0.1.0a1
+def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
+    """Check if any scorer requires interval predictions."""
+    return "predict_interval" in _get_response_methods(scorer)
+
+
+def _needs_point_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
+    """Check if any scorer requires point predictions."""
+    return "predict" in _get_response_methods(scorer)
+
+
 def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[float] | None:
     """Collect coverage rates from interval scorers.
 
@@ -513,8 +509,7 @@ def _collect_coverage_rates(scorer: BaseScorer | _MultimetricScorer) -> list[flo
     all_rates: set[float] = set()
     for s in scorers:
         if isinstance(s, BaseIntervalScorer) and s.coverage_rates is not None:
-            rates = list(s.coverage_rates.keys()) if isinstance(s.coverage_rates, dict) else s.coverage_rates
-            all_rates.update(rates)
+            all_rates.update(s.coverage_rates)
     return sorted(all_rates) if all_rates else None
 
 
@@ -642,10 +637,12 @@ def _score(
                 **predict_func_params,
             )
 
-        # Sort predictions by time for scorer validation.
-        # Multi-vintage predictions from observe_predict are concatenated
-        # and may not be in time order.
-        y_pred = y_pred.sort("time")
+        # observe_predict produces overlapping prediction windows when the last
+        # observation chunk is smaller than stride. Deduplicate (keeping the most
+        # recently informed prediction) and sort so downstream scorers receive a
+        # clean, monotonically increasing time column.
+        # TODO: Address this formally in scorers
+        y_pred = y_pred.unique(subset=["time"], keep="last").sort("time")
 
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):

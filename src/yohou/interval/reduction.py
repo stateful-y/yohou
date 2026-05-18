@@ -124,8 +124,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     See Also
     --------
-    `SplitConformalForecaster` : Conformal prediction intervals.
-    `PointReductionForecaster` : Point forecasts without intervals.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal prediction intervals.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : Point forecasts without intervals.
 
     """
 
@@ -286,10 +286,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             The fitted forecaster instance.
 
         """
-        forecasting_horizon, self.fit_coverage_rates_ = self._validate_fit_params(forecasting_horizon, coverage_rates)
+        forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
+            forecasting_horizon, coverage_rates
+        )
 
-        y_t, X_t = BaseIntervalForecaster._pre_fit(
-            self,
+        y_t, X_t = self._pre_fit(
             y=y,
             X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,

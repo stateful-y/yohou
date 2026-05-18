@@ -24,6 +24,12 @@ build:
       # instead of downloading and parsing large TSF archives during the build.
       # Use timeout to avoid build cancellation if Zenodo is slow.
       - timeout 120 bash -c 'UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv run python docs/precache_datasets.py' || echo "[rtd] Dataset precache timed out or failed; notebooks will download on demand"
+    pre_build:
+      # Restore pre-built notebook HTML from GitHub Release cache.
+      # The hooks.py content-hash check will skip notebooks that match the
+      # cached version and only re-export notebooks that changed on this branch.
+      - mkdir -p docs/examples
+      - curl -sfL https://github.com/stateful-y/yohou/releases/download/notebook-cache/notebook-exports.tar.gz | tar xz -C docs/examples || echo "[rtd] No notebook cache found, will export all from scratch"
     post_build:
       # Check for broken links
       - uvx linkchecker "${READTHEDOCS_OUTPUT}html/index.html" --no-status --no-warnings --ignore-url material/overrides

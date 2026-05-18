@@ -73,7 +73,7 @@ class Downsampler(BaseTransformer):
 
     See Also
     --------
-    `Upsampler` : Upsample time series to higher frequency.
+    - [`Upsampler`][yohou.preprocessing.resampling.Upsampler] : Upsample time series to higher frequency.
 
     """
 
@@ -247,7 +247,7 @@ class Upsampler(BaseTransformer):
 
     See Also
     --------
-    `Downsampler` : Downsample time series to lower frequency.
+    - [`Downsampler`][yohou.preprocessing.resampling.Downsampler] : Downsample time series to lower frequency.
 
     """
 

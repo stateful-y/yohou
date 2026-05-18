@@ -1,3 +1,0 @@
-# Point Forecasting
-
-<!-- GALLERY:point -->

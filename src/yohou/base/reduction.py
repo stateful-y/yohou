@@ -89,8 +89,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `PointReductionForecaster` : Point forecaster using reduction.
-    `IntervalReductionForecaster` : Interval forecaster using reduction.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : Point forecaster using reduction.
+    - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : Interval forecaster using reduction.
     """
 
     _parameter_constraints: dict = {

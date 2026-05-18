@@ -29,9 +29,9 @@ class BaseStandardForecaster:
 
     See Also
     --------
-    `BaseForecaster` : Main forecaster base combining standard and panel operations.
-    `BasePanelForecaster` : Panel (multi-series) forecaster mixin.
-    `BaseReductionForecaster` : Reduction-based forecaster using sklearn regressors.
+    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Main forecaster base combining standard and panel operations.
+    - [`BasePanelForecaster`][yohou.base.panel.BasePanelForecaster] : Panel (multi-series) forecaster mixin.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction-based forecaster using sklearn regressors.
 
     """
 

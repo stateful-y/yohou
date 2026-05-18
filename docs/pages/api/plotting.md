@@ -6,7 +6,7 @@ template: api-submodule.html
 
 Interactive time series visualization functions using Plotly. All plotting functions support panel data via the `groups` parameter.
 
-**User guide**: See the [Visualization](../user-guide/visualization.md) section for further details.
+**User guide**: See the [Visualization](../explanation/visualization.md) section for further details.
 
 ## Exploration
 

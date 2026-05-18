@@ -1,3 +1,0 @@
-# Composition
-
-<!-- GALLERY:compose -->

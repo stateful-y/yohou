@@ -151,9 +151,9 @@ class EmpiricalCoverage(BaseIntervalScorer):
 
     See Also
     --------
-    `MeanIntervalWidth` : Evaluates interval sharpness
-    `IntervalScore` : Combined coverage and sharpness metric
-    `CalibrationError` : Aggregate miscalibration metric
+    - [`MeanIntervalWidth`][yohou.metrics.interval.MeanIntervalWidth] : Evaluates interval sharpness
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Combined coverage and sharpness metric
+    - [`CalibrationError`][yohou.metrics.interval.CalibrationError] : Aggregate miscalibration metric
 
     """
 
@@ -258,8 +258,8 @@ class MeanIntervalWidth(BaseIntervalScorer):
 
     See Also
     --------
-    `EmpiricalCoverage` : Evaluates interval calibration
-    `IntervalScore` : Combined coverage and sharpness metric
+    - [`EmpiricalCoverage`][yohou.metrics.interval.EmpiricalCoverage] : Evaluates interval calibration
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Combined coverage and sharpness metric
 
     """
 
@@ -365,9 +365,9 @@ class IntervalScore(BaseIntervalScorer):
 
     See Also
     --------
-    `EmpiricalCoverage` : Coverage-only metric
-    `MeanIntervalWidth` : Width-only metric
-    `PinballLoss` : Asymmetric quantile-based metric
+    - [`EmpiricalCoverage`][yohou.metrics.interval.EmpiricalCoverage] : Coverage-only metric
+    - [`MeanIntervalWidth`][yohou.metrics.interval.MeanIntervalWidth] : Width-only metric
+    - [`PinballLoss`][yohou.metrics.interval.PinballLoss] : Asymmetric quantile-based metric
 
     """
 
@@ -502,8 +502,8 @@ class PinballLoss(BaseIntervalScorer):
 
     See Also
     --------
-    `IntervalScore` : Symmetric penalty for coverage violations
-    `EmpiricalCoverage` : Coverage-only metric
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Symmetric penalty for coverage violations
+    - [`EmpiricalCoverage`][yohou.metrics.interval.EmpiricalCoverage] : Coverage-only metric
 
     """
 
@@ -620,8 +620,8 @@ class CalibrationError(BaseIntervalScorer):
 
     See Also
     --------
-    `EmpiricalCoverage` : Per-rate coverage metric
-    `IntervalScore` : Combined coverage and sharpness metric
+    - [`EmpiricalCoverage`][yohou.metrics.interval.EmpiricalCoverage] : Per-rate coverage metric
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Combined coverage and sharpness metric
 
     """
 
@@ -778,8 +778,8 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
 
     See Also
     --------
-    `PinballLoss` : Per-quantile loss with optional per-rate results
-    `IntervalScore` : Combined coverage and sharpness metric
+    - [`PinballLoss`][yohou.metrics.interval.PinballLoss] : Per-quantile loss with optional per-rate results
+    - [`IntervalScore`][yohou.metrics.interval.IntervalScore] : Combined coverage and sharpness metric
 
     """
 

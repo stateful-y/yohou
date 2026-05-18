@@ -92,8 +92,8 @@ class NumericalFilter(BaseTransformer):
 
     See Also
     --------
-    `NumericalIntegrator` : Numerical integration.
-    `NumericalDifferentiator` : Numerical differentiation.
+    - [`NumericalIntegrator`][yohou.preprocessing.signal.NumericalIntegrator] : Numerical integration.
+    - [`NumericalDifferentiator`][yohou.preprocessing.signal.NumericalDifferentiator] : Numerical differentiation.
     `scipy.signal.butter` : Butterworth filter design.
 
     """
@@ -298,7 +298,7 @@ class NumericalIntegrator(BaseTransformer):
 
     See Also
     --------
-    `NumericalDifferentiator` : Numerical differentiation transformer.
+    - [`NumericalDifferentiator`][yohou.preprocessing.signal.NumericalDifferentiator] : Numerical differentiation transformer.
     `scipy.integrate.cumulative_trapezoid` : Trapezoidal integration.
     `scipy.integrate.cumulative_simpson` : Simpson's rule integration.
 
@@ -564,7 +564,7 @@ class NumericalDifferentiator(BaseTransformer):
 
     See Also
     --------
-    `NumericalIntegrator` : Numerical integration transformer.
+    - [`NumericalIntegrator`][yohou.preprocessing.signal.NumericalIntegrator] : Numerical integration transformer.
     `numpy.gradient` : NumPy gradient function.
 
     """

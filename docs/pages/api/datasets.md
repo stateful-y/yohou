@@ -6,7 +6,7 @@ template: api-submodule.html
 
 Remote time series dataset fetchers and related utilities.
 
-**User guide**: See the [Core Concepts](../user-guide/core-concepts.md) section for data format details.
+**User guide**: See the [Core Concepts](../explanation/core-concepts.md) section for data format details.
 
 ### Loaders
 
@@ -22,6 +22,8 @@ Each function downloads data from [Monash/Zenodo](https://forecastingdata.org) (
 | [`fetch_sunspot`](generated/yohou.datasets._fetchers.fetch_sunspot.md) | Fetch the Sunspot dataset (without missing values) from Monash/Zenodo. |
 | [`fetch_tourism_monthly`](generated/yohou.datasets._fetchers.fetch_tourism_monthly.md) | Fetch the Tourism Monthly dataset from Monash/Zenodo. |
 | [`fetch_tourism_quarterly`](generated/yohou.datasets._fetchers.fetch_tourism_quarterly.md) | Fetch the Tourism Quarterly dataset from Monash/Zenodo. |
+| [`fetch_air_quality_classification`](generated/yohou.datasets._fetchers.fetch_air_quality_classification.md) | Fetch a categorical air quality dataset derived from KDD Cup 2018. |
+| [`fetch_demand_classification`](generated/yohou.datasets._fetchers.fetch_demand_classification.md) | Fetch a categorical electricity demand dataset from Monash/Zenodo. |
 
 ### Utilities
 

@@ -1,0 +1,243 @@
+# How to Use Exogenous Features
+
+This guide shows you how to pass external data (`X_actual`, `X_future`,
+`X_forecast`) to forecasters and composition pipelines in production
+scenarios.
+
+## Prerequisites
+
+- Yohou installed
+- Familiarity with the fit/predict lifecycle
+  ([Exogenous Features Tutorial](../tutorials/exogenous-features.md))
+
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
+
+## Classify Your Features
+
+Before calling `fit()`, decide which parameter each feature belongs in.
+See [About Exogenous Features](../explanation/exogenous-features.md) for
+the full conceptual model.
+
+| Question | Yes | No |
+|---|---|---|
+| Is it a measurement that can only be known after it happens? | `X_actual` | Continue |
+| Is it deterministic and known for any future date? | `X_future` | Continue |
+| Does it come from an external model with an issuance time? | `X_forecast` | N/A |
+
+If a feature is uncertain but has no vintage (a single "best guess"),
+treat it as `X_future`. If you need multiple versions of that guess at
+predict time, wrap it with a `vintage_time` column and use `X_forecast`.
+
+## Pass Exogenous Features to a Forecaster
+
+Supply any combination of the three parameters to `fit()`. At predict time,
+only `X_future` and `X_forecast` are accepted because `X_actual` comes from
+the forecaster's stored observation window.
+
+```python
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+from yohou.point import PointReductionForecaster
+from yohou.preprocessing import LagTransformer
+
+forecaster = PointReductionForecaster(
+    estimator=HistGradientBoostingRegressor(),
+    feature_transformer=LagTransformer([1, 2, 3]),
+    reduction_strategy="direct",
+)
+
+forecaster.fit(
+    y=y_train,
+    X_actual=temperature,       # observation features (lagged internally)
+    forecasting_horizon=24,
+    X_future=holidays,          # deterministic, known ahead
+    X_forecast=weather_forecast, # vintage-indexed external predictions
+)
+
+pred = forecaster.predict(X_future=holidays, X_forecast=weather_forecast)
+```
+
+## Choose a Step Feature Alignment
+
+When using the `"direct"` reduction strategy, `step_feature_alignment`
+controls which step columns each horizon's estimator sees:
+
+- `"all"` (default): every estimator sees all step columns
+- `"matched"`: each estimator sees only the step column for its horizon
+- `"cumulative"`: estimator for step $h$ sees step columns $1$ through $h$
+
+```python
+forecaster = PointReductionForecaster(
+    estimator=HistGradientBoostingRegressor(),
+    feature_transformer=LagTransformer([1, 2, 3]),
+    reduction_strategy="direct",
+    step_feature_alignment="matched",
+)
+```
+
+If your `X_future` or `X_forecast` columns evolve meaningfully across steps
+(e.g., temperature forecasts degrade with horizon), `"matched"` or
+`"cumulative"` can reduce noise from distant step columns.
+
+## Use Composition Forecasters
+
+### ColumnForecaster
+
+Each child forecaster receives all three exogenous parameters. Children that
+don't use exogenous features ignore them:
+
+```python
+from yohou.compose import ColumnForecaster
+
+forecaster = ColumnForecaster(
+    forecasters=[
+        ("demand", demand_forecaster),
+        ("supply", supply_forecaster),
+    ],
+)
+
+forecaster.fit(
+    y=y_panel,
+    X_actual=actuals,
+    forecasting_horizon=24,
+    X_future=holidays,
+    X_forecast=weather,
+)
+```
+
+### DecompositionPipeline
+
+All three parameters pass through to the residual forecaster after trend
+and seasonality removal:
+
+```python
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+from yohou.compose import DecompositionPipeline
+from yohou.point import PointReductionForecaster
+from yohou.preprocessing import LagTransformer
+from yohou.stationarity import PolynomialTrendForecaster
+
+pipeline = DecompositionPipeline(
+    forecasters=[
+        ("trend", PolynomialTrendForecaster(degree=1)),
+        ("residual", PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(),
+            feature_transformer=LagTransformer([1, 2, 3]),
+            reduction_strategy="direct",
+        )),
+    ],
+)
+
+pipeline.fit(
+    y=y_train,
+    X_actual=X_actual_train,
+    forecasting_horizon=H,
+    X_future=holidays,
+    X_forecast=weather,
+)
+```
+
+### ForecastedFeatureForecaster
+
+Use `ForecastedFeatureForecaster` when you want Yohou to forecast the
+exogenous feature itself. `X_actual` trains both the feature forecaster
+(as its target) and provides lag features for the target forecaster.
+`X_future` and `X_forecast` pass through to the target forecaster directly.
+
+The `strategy` parameter controls what `X_actual` the target forecaster
+trains on: `"actual"` uses real values, `"predicted"` and `"rewind"` use
+the feature forecaster's predictions so the target learns from inputs
+similar to what it sees at predict time.
+
+```python
+from yohou.compose import ForecastedFeatureForecaster
+
+fff = ForecastedFeatureForecaster(
+    target_forecaster=price_forecaster,
+    feature_forecaster=temperature_forecaster,
+    strategy="rewind",
+)
+
+fff.fit(
+    y=y_train,
+    X_actual=X_actual_train,
+    forecasting_horizon=H,
+    X_future=holidays,
+)
+
+pred = fff.predict(X_future=holidays)
+```
+
+At predict time only the target forecaster runs: it uses its stored
+observation window for X_actual lag features, so the feature forecaster
+is not called again. See [About Exogenous Features](../explanation/exogenous-features.md)
+for how the observation window and predict-time override work internally.
+
+## Update Observations with Exogenous Data
+
+In a walk-forward loop, `observe_predict()` atomically observes new data
+and produces the next forecast. Pass `X_actual` so the forecaster's
+observation window stays current:
+
+```python
+results = forecaster.observe_predict(
+    y=y_test,
+    X_actual=X_actual_test,
+    X_future=holidays_test,
+    X_forecast=weather_test,
+    stride=1,  # one forecast per time step
+)
+```
+
+If you need finer control, call `observe()` and `predict()` separately:
+
+```python
+forecaster.observe(y=y_new, X_actual=X_actual_new)
+pred = forecaster.predict(X_future=holidays_new, X_forecast=weather_new)
+```
+
+## Pickle and Restore
+
+The three-parameter state (step column names, observation window) survives
+pickle round-trips:
+
+```python
+import pickle
+
+with open("forecaster.pkl", "wb") as f:
+    pickle.dump(forecaster, f)
+
+with open("forecaster.pkl", "rb") as f:
+    restored = pickle.load(f)
+
+# Multi-vintage predictions still work
+pred = restored.predict(X_forecast=new_vintage)
+```
+
+## Troubleshooting
+
+**Problem: `ValueError` about column name collisions**
+: `X_future` and `X_forecast` produce step columns with the same name. Rename
+  your source columns so they don't collide after `_step_` suffixing.
+
+**Problem: `X_actual` passed to `predict()`**
+: `predict()` does not accept `X_actual`. The forecaster uses its stored
+  observation window instead. Call `observe()` to update it with new actuals
+  before predicting.
+
+**Problem: step columns missing at predict time**
+: All `X_future` and `X_forecast` columns seen during `fit()` must also be
+  present at `predict()` time with the same names.
+
+## See Also
+
+- [Work with Forecast Vintages](forecast-vintages.md): X_forecast preparation,
+  multi-vintage prediction, and walk-forward evaluation
+- [About Exogenous Features](../explanation/exogenous-features.md): design
+  rationale and internal mechanics
+- [Exogenous Features Tutorial](../tutorials/exogenous-features.md): hands-on
+  introduction
+- [`pivot_forecasts` API Reference](../api/utils.md): utility for manual
+  forecast pivoting

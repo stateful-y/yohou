@@ -104,9 +104,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     See Also
     --------
     `sklearn.pipeline.FeatureUnion` : Underlying scikit-learn feature union class.
-    `FeaturePipeline` : Sequential transformer chaining.
-    `BaseTransformer` : Base class for transformers.
-    `LagTransformer` : Common transformer for lag features.
+    - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformer chaining.
+    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Common transformer for lag features.
 
     Notes
     -----

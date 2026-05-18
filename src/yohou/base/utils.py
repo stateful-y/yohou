@@ -65,7 +65,7 @@ def _fit_transform_transformers_one(
 
     See Also
     --------
-    `BaseTransformer` : Base class for transformers
+    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers
 
     """
     y_t = y

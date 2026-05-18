@@ -1,9 +1,8 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "plotly",
 #     "scikit-learn",
-#     "yohou",
+#     "yohou[plotting]",
 # ]
 # ///
 
@@ -12,7 +11,10 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "Quickstart",
-    "description": "End-to-end tour of yohou covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
+    "description": "Comprehensive end-to-end tour of yohou beyond the Getting Started tutorials, covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
+    "category": "tutorial",
+    "section": "getting-started",
+    "api_references": ["DecompositionPipeline", "FeaturePipeline", "FourierSeasonalityForecaster", "GridSearchCV", "LocalPanelForecaster", "LogTransformer", "MeanSquaredError", "PointReductionForecaster", "PolynomialTrendForecaster", "RandomizedSearchCV", "SeasonalDifferencing", "SeasonalNaive", "SplitConformalForecaster", "compose_weights", "inspect_panel", "plot_calibration", "plot_cv_results_scatter", "plot_score_per_vintage", "plot_score_time_series", "plot_splits", "plot_time_weight"],
 }
 app = marimo.App(width="medium")
 
@@ -30,21 +32,6 @@ def _(mo):
     # Yohou Quickstart: Time Series Forecasting with a Scikit-Learn API
 
     Welcome to **Yohou**, a scikit-learn-compatible time series forecasting framework built on **Polars**.
-
-    ## What You'll Learn
-
-    This tour covers some of the major capabilities of the framework in a single notebook:
-
-    1. **Data & visualisation**: load data, plot time series
-    2. **Baseline forecasting**: SeasonalNaive
-    3. **Preprocessing pipelines**: FeaturePipeline with LogTransformer, SeasonalDifferencing, LagTransformer
-    4. **Decomposition**: DecompositionPipeline with trend + seasonality components
-    5. **Incremental learning**: observe, predict, observe_predict streaming workflow
-    6. **Cross-validation & search**: ExpandingWindowSplitter, GridSearchCV, RandomizedSearchCV
-    7. **Scoring**: point scorers, aggregation modes
-    8. **Interval forecasting**: SplitConformalForecaster for prediction intervals
-    9. **Time-weighted training**: exponential_decay_weight, compose_weights
-    10. **Panel data**: forecasting multiple series with the `__` separator convention
 
     ## Prerequisites
 
@@ -1193,31 +1180,19 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Key Takeaways
-
-    - **Scikit-learn API**: `fit(y, X_actual, forecasting_horizon)` → `predict(forecasting_horizon)` → `score(y_truth, y_pred)`
-    - **Preprocessing**: [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains invertible transforms (log, differencing, lags)
-    - **Decomposition**: [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) models trend + seasonality + residual
-    - **Cross-validation**: [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) / [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) respect temporal order
-    - **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (exhaustive) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) (efficient)
-    - **Time weighting**: [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/), [`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/) for recency emphasis
-    - **Streaming**: `observe_predict` updates memory without retraining
-    - **Intervals**: [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) + `predict_interval(coverage_rates=[0.9])`
-    - **Panel data**: `__` separator convention; `panel_strategy="global"` pools groups; [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) fits per-group models
-
     ## Next Steps
 
     | Topic | Notebook |
     |-------|----------|
-    | Feature engineering | [`point/feature_forecasting.py`](/examples/point/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/preprocessing/window_transformers/) |
-    | Point forecasters | [`point/naive_forecasters.py`](/examples/point/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/point/reduction_forecaster/) |
-    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/metrics/class_proba_metrics/) |
-    | Interval forecasting | [`interval/interval_reduction.py`](/examples/interval/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/metrics/conformity_scorers/) |
-    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/stationarity/decomposition/) |
-    | Metrics guide | [`metrics/point_metrics.py`](/examples/metrics/point_metrics/), [`metrics/interval_metrics.py`](/examples/metrics/interval_metrics/) |
-    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/model_selection/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/model_selection/hyperparameter_search/) |
+    | Feature engineering | [`point/feature_forecasting.py`](/examples/forecasting-models/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/data-features/window_transformers/) |
+    | Point forecasters | [`point/naive_forecasters.py`](/examples/getting-started/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) |
+    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/evaluation-search/class_proba_metrics/) |
+    | Interval forecasting | [`interval/interval_reduction.py`](/examples/forecasting-models/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/evaluation-search/conformity_scorers/) |
+    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/getting-started/decomposition/) |
+    | Metrics guide | [`metrics/point_metrics.py`](/examples/evaluation-search/point_metrics/), [`metrics/interval_metrics.py`](/examples/evaluation-search/interval_metrics/) |
+    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/getting-started/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/evaluation-search/hyperparameter_search/) |
     | Dataset explorers | [`datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/), [`datasets/store_sales.py`](/examples/datasets/store_sales/), … |
-    | Plotting gallery | [`plotting/exploration.py`](/examples/plotting/exploration/), [`plotting/forecasting_visualization.py`](/examples/plotting/forecasting_visualization/), … |
+    | Plotting gallery | [`plotting/exploration.py`](/examples/visualization/exploration/), [`plotting/forecasting_visualization.py`](/examples/visualization/forecasting_visualization/), … |
     """)
 
 

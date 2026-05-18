@@ -7,7 +7,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval
 
 from ..utils.tags import Tags
 from .base import BasePointForecaster
@@ -61,8 +61,8 @@ class SeasonalNaive(BasePointForecaster):
 
     See Also
     --------
-    `MeanSeasonalNaive` : Averages multiple past seasonal cycles.
-    `PointReductionForecaster` : ML-based point forecaster.
+    - [`MeanSeasonalNaive`][yohou.point.naive.MeanSeasonalNaive] : Averages multiple past seasonal cycles.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
 
     """
 
@@ -101,57 +101,10 @@ class SeasonalNaive(BasePointForecaster):
         tags.forecaster_tags.stateful = True
         return tags
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
-        self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-        **params,
-    ) -> "BasePointForecaster":
-        """Fit the forecaster to historical data.
-
-        Stores the last ``seasonality`` observations for naive repetition.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series with a ``"time"`` column (datetime) and one
-            or more numeric value columns.
-        X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Not used by naive forecasters but accepted for API
-            consistency. If ``None``, no exogenous features are used.
-        forecasting_horizon : int, default=1
-            Number of time steps to forecast into the future.
-        X_future : pl.DataFrame or None, default=None
-            Known future features.
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted forecaster instance.
-
-        """
-        self._observation_horizon = self.seasonality
-
-        BasePointForecaster.fit(
-            self,
-            y=y,
-            X_actual=X_actual,
-            forecasting_horizon=forecasting_horizon,
-            X_future=X_future,
-            X_forecast=X_forecast,
-            **params,
-        )
-
-        return self
+    @property
+    def _observation_horizon(self) -> int:
+        """Return seasonality as the observation horizon."""
+        return self.seasonality
 
     def _predict_one(
         self,
@@ -271,8 +224,8 @@ class MeanSeasonalNaive(BasePointForecaster):
 
     See Also
     --------
-    `SeasonalNaive` : Repeats the last seasonal cycle without averaging.
-    `PointReductionForecaster` : ML-based point forecaster.
+    - [`SeasonalNaive`][yohou.point.naive.SeasonalNaive] : Repeats the last seasonal cycle without averaging.
+    - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : ML-based point forecaster.
 
     """
 
@@ -314,63 +267,10 @@ class MeanSeasonalNaive(BasePointForecaster):
         tags.forecaster_tags.stateful = True
         return tags
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
-        self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-        **params,
-    ) -> "BasePointForecaster":
-        """Fit the forecaster to historical data.
-
-        Stores the last ``seasonality * n_seasons`` observations for
-        averaging across seasonal cycles.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Target time series with a ``"time"`` column (datetime) and one
-            or more numeric value columns.
-        X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Not used by naive forecasters but accepted for API
-            consistency. If ``None``, no exogenous features are used.
-        forecasting_horizon : int, default=1
-            Number of time steps to forecast into the future.
-        X_future : pl.DataFrame or None, default=None
-            Known future features.
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted forecaster instance.
-
-        Raises
-        ------
-        ValueError
-            If ``y`` has fewer rows than ``seasonality * n_seasons``.
-
-        """
-        self._observation_horizon = self.seasonality * self.n_seasons
-
-        BasePointForecaster.fit(
-            self,
-            y=y,
-            X_actual=X_actual,
-            forecasting_horizon=forecasting_horizon,
-            X_future=X_future,
-            X_forecast=X_forecast,
-            **params,
-        )
-
-        return self
+    @property
+    def _observation_horizon(self) -> int:
+        """Return seasonality * n_seasons as the observation horizon."""
+        return self.seasonality * self.n_seasons
 
     def _compute_mean_pattern(self, y_values: pl.DataFrame) -> pl.DataFrame:
         """Compute the mean seasonal pattern from observed values.

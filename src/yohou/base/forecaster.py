@@ -83,9 +83,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     See Also
     --------
-    `BasePointForecaster` : Base class for point forecasters.
-    `BaseIntervalForecaster` : Base class for interval forecasters.
-    `BaseReductionForecaster` : Forecasting via sklearn regressors.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
+    - [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster] : Base class for interval forecasters.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Forecasting via sklearn regressors.
 
     """
 
@@ -110,6 +110,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         self.target_transformer = target_transformer
         self.target_as_feature = target_as_feature
         self.panel_strategy = panel_strategy
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        # Walk in reverse so the most-derived class wins on key conflicts.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -148,30 +160,69 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # forecaster_type is set by subclasses in their __sklearn_tags__() method
         # as a frozenset (e.g., POINT, INTERVAL, POINT_INTERVAL, CLASS_PROBA)
 
+        # Merge class-level _tags dict (flat keys) into tag dataclasses.
+        # Walk MRO in reverse so most-derived class wins.
+        merged_tags: dict[str, Any] = {}
+        for klass in reversed(type(self).__mro__):
+            class_tags = klass.__dict__.get("_tags")
+            if class_tags and isinstance(class_tags, dict):
+                merged_tags.update(class_tags)
+
+        if merged_tags:
+            for key, value in merged_tags.items():
+                # Map flat key to the correct tag dataclass field
+                if tags.forecaster_tags is not None and hasattr(tags.forecaster_tags, key):
+                    setattr(tags.forecaster_tags, key, value)
+                elif tags.transformer_tags is not None and hasattr(tags.transformer_tags, key):  # pragma: no cover
+                    setattr(tags.transformer_tags, key, value)
+                elif tags.input_tags is not None and hasattr(tags.input_tags, key):
+                    setattr(tags.input_tags, key, value)
+                elif tags.target_tags is not None and hasattr(tags.target_tags, key):
+                    setattr(tags.target_tags, key, value)
+                elif hasattr(tags, key):
+                    setattr(tags, key, value)
+
         return tags
+
+    @property
+    def _observation_horizon(self) -> int:
+        """Internal observation horizon set by the forecaster.
+
+        Subclasses can override this as a ``@property`` to compute from
+        constructor params (e.g., ``return self.seasonality``), or set it
+        directly via ``self._observation_horizon = value``.
+
+        Returns
+        -------
+        int
+            Forecaster-specific observation horizon (default 0).
+
+        """
+        return getattr(self, "_oh_value", 0)
+
+    @_observation_horizon.setter
+    def _observation_horizon(self, value: int) -> None:
+        """Set the internal observation horizon value."""
+        self._oh_value = value
 
     @property
     def observation_horizon(self) -> int:
         """Get the number of time steps needed for stateful operations.
 
         The observation horizon defines how many recent observations the forecaster
-        needs to maintain in its memory.
+        needs to maintain in its memory.  Subclasses can override this as a
+        ``@property`` to compute from constructor params (e.g., ``return
+        self.seasonality``).
 
         Returns
         -------
         int
             Number of time steps to retain.
 
-        Raises
-        ------
-        NotFittedError
-            If the forecaster has not been fitted yet.
-
         """
-        check_is_fitted(self, ["target_transformer_"])
-
+        # Compute transformer observation horizons (only available after fit)
         target_observation_horizon = 0
-        if self.target_transformer is not None:
+        if self.target_transformer is not None and hasattr(self, "target_transformer_"):
             if isinstance(self.target_transformer_, dict):
                 # In panel data, all local transformers share the same horizon
                 first_transformer = next(iter(self.target_transformer_.values()))
@@ -182,7 +233,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # Compute feature transformer observation horizon
         feature_observation_horizon = 0
-        if self.feature_transformer is not None:
+        if self.feature_transformer is not None and hasattr(self, "feature_transformer_"):
             if isinstance(self.feature_transformer_, dict):
                 first_transformer = next(iter(self.feature_transformer_.values()))
                 if first_transformer is not None:
@@ -190,7 +241,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             elif isinstance(self.feature_transformer_, BaseTransformer):
                 feature_observation_horizon = self.feature_transformer_.observation_horizon
 
-        self_observation_horizon = getattr(self, "_observation_horizon", 0)
+        self_observation_horizon = self._observation_horizon
         return max(self_observation_horizon, target_observation_horizon, feature_observation_horizon)
 
     def _validate_pre_fit(
@@ -410,6 +461,79 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             have mismatched panel group names, or if
             ``target_as_feature=None`` without exogenous features when the
             forecaster requires them.
+
+        """
+
+    def _validate_fit_params(self, forecasting_horizon: StrictInt) -> StrictInt:
+        """Validate fit parameters.
+
+        Subclasses can override to add type-specific validation.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            Forecasting horizon to validate.
+
+        Returns
+        -------
+        int
+            Validated forecasting horizon.
+
+        Raises
+        ------
+        ValueError
+            If forecasting_horizon < 1.
+
+        """
+        if forecasting_horizon < 1:
+            raise ValueError(f"forecasting_horizon must be >= 1, got {forecasting_horizon}")
+        return forecasting_horizon
+
+    def _fit(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+    ) -> None:
+        """Model-specific fitting logic (Tier 1 hook).
+
+        Called by ``fit()`` after validation and ``_pre_fit()`` have run.
+        Override this in simple subclasses instead of overriding ``fit()``
+        directly.
+
+        The default implementation does nothing, so forecasters with no
+        custom fitting logic (e.g. ``SeasonalNaive``) do not need to
+        override it.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series. A single DataFrame for
+            standard data, or a dict keyed by group name for panel data
+            with ``panel_strategy="global"``.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed features. Same structure as ``y_t``. ``None``
+            when no exogenous features are provided.
+        forecasting_horizon : int
+            Number of time steps to forecast.
+
+        Notes
+        -----
+        The following ``self`` attributes are available after ``_pre_fit()``:
+
+        - ``fit_forecasting_horizon_`` : int
+        - ``interval_`` : str (detected time interval)
+        - ``groups_`` : dict or None (panel groups)
+        - ``local_y_schema_`` : dict (target column schema)
+        - ``local_y_t_schema_`` : dict (transformed target schema)
+        - ``local_X_actual_schema_`` : dict or None (feature schema)
+        - ``local_X_t_schema_`` : dict or None (transformed feature schema)
+        - ``shared_X_actual_schema_`` : dict or None
+        - ``n_features_in_`` : int
+        - ``feature_names_in_`` : list[str]
+        - ``observed_time_`` : dict or pl.Series (observation timestamps)
+        - ``target_transformer_`` : fitted transformer or None
+        - ``feature_transformer_`` : fitted transformer or None
 
         """
 

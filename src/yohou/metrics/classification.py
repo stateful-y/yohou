@@ -70,8 +70,8 @@ class Precision(BaseHardLabelScorer):
 
     See Also
     --------
-    `Recall` : Recall (sensitivity).
-    `FBetaScore` : Weighted harmonic mean of precision and recall.
+    - [`Recall`][yohou.metrics.classification.Recall] : Recall (sensitivity).
+    - [`FBetaScore`][yohou.metrics.classification.FBetaScore] : Weighted harmonic mean of precision and recall.
 
     """
 
@@ -140,8 +140,8 @@ class Recall(BaseHardLabelScorer):
 
     See Also
     --------
-    `Precision` : Precision (positive predictive value).
-    `FBetaScore` : Weighted harmonic mean of precision and recall.
+    - [`Precision`][yohou.metrics.classification.Precision] : Precision (positive predictive value).
+    - [`FBetaScore`][yohou.metrics.classification.FBetaScore] : Weighted harmonic mean of precision and recall.
 
     """
 
@@ -213,8 +213,8 @@ class FBetaScore(BaseHardLabelScorer):
 
     See Also
     --------
-    `Precision` : Precision (positive predictive value).
-    `Recall` : Recall (sensitivity).
+    - [`Precision`][yohou.metrics.classification.Precision] : Precision (positive predictive value).
+    - [`Recall`][yohou.metrics.classification.Recall] : Recall (sensitivity).
 
     """
 
@@ -318,9 +318,9 @@ class Accuracy(BaseHardLabelScorer):
 
     See Also
     --------
-    `LogLoss` : Logarithmic loss (cross-entropy).
-    `BrierScore` : Multi-class Brier score.
-    `Precision` : Precision (positive predictive value).
+    - [`LogLoss`][yohou.metrics.class_proba.LogLoss] : Logarithmic loss (cross-entropy).
+    - [`BrierScore`][yohou.metrics.class_proba.BrierScore] : Multi-class Brier score.
+    - [`Precision`][yohou.metrics.classification.Precision] : Precision (positive predictive value).
 
     """
 
@@ -404,7 +404,7 @@ class ROCAuC(BaseRankingScorer):
 
     See Also
     --------
-    `PRAuC` : Precision-Recall AUC.
+    - [`PRAuC`][yohou.metrics.classification.PRAuC] : Precision-Recall AUC.
 
     """
 
@@ -468,7 +468,7 @@ class PRAuC(BaseRankingScorer):
 
     See Also
     --------
-    `ROCAuC` : ROC AUC.
+    - [`ROCAuC`][yohou.metrics.classification.ROCAuC] : ROC AUC.
 
     """
 

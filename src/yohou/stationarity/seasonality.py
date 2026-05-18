@@ -12,7 +12,7 @@ from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-from yohou.utils._compat import Interval, StrOptions, _fit_context
+from yohou.utils._compat import Interval, StrOptions
 
 from .base import _BaseSeasonalityForecaster
 
@@ -70,9 +70,9 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     See Also
     --------
-    `FourierSeasonalityForecaster` : Fourier-based seasonality for smooth curves.
-    `PolynomialTrendForecaster` : Polynomial trend estimation.
-    `DecompositionPipeline` : Combines trend + seasonality + residual forecasters.
+    - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Fourier-based seasonality for smooth curves.
+    - [`PolynomialTrendForecaster`][yohou.stationarity.trend.PolynomialTrendForecaster] : Polynomial trend estimation.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Combines trend + seasonality + residual forecasters.
 
     Notes
     -----
@@ -97,42 +97,22 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         super().__init__(seasonality=seasonality, target_transformer=target_transformer, panel_strategy=panel_strategy)
         self.method = method
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
+    def _fit(
         self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-        **params,
-    ) -> "PatternSeasonalityForecaster":
-        """Fit seasonal pattern from historical data.
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+    ) -> None:
+        """Extract seasonal pattern from transformed data.
 
         Parameters
         ----------
-        y : pl.DataFrame
-            Target time series with "time" column.
-        X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Not used by this forecaster but accepted for API
-            consistency.
-        forecasting_horizon : int, default=1
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed features (unused).
+        forecasting_horizon : int
             Number of steps ahead to forecast.
-        X_future : pl.DataFrame or None, default=None
-            Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            Fitted forecaster.
 
         Raises
         ------
@@ -140,20 +120,11 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
             If insufficient data for specified method.
 
         """
-        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
-
-        # Pre-fit: validate inputs, apply target transformer, set attributes
-        y_t, X_t = self._pre_fit(
-            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
-        )
-
         # Validate sufficient data for seasonality
         self._validate_method_requirements(y_t)
 
         # Extract seasonal pattern
         self.seasonal_pattern_ = self._extract_pattern(y_t)
-
-        return self
 
     def _validate_method_requirements(self, y_t: pl.DataFrame | dict[str, pl.DataFrame]) -> None:
         """Validate sufficient data for the specified method.
@@ -398,9 +369,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     See Also
     --------
-    `PatternSeasonalityForecaster` : Pattern-based seasonality for discrete cycles.
-    `PolynomialTrendForecaster` : Polynomial trend estimation.
-    `DecompositionPipeline` : Combines trend + seasonality + residual forecasters.
+    - [`PatternSeasonalityForecaster`][yohou.stationarity.seasonality.PatternSeasonalityForecaster] : Pattern-based seasonality for discrete cycles.
+    - [`PolynomialTrendForecaster`][yohou.stationarity.trend.PolynomialTrendForecaster] : Polynomial trend estimation.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Combines trend + seasonality + residual forecasters.
 
     Notes
     -----
@@ -413,7 +384,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     _parameter_constraints: dict = {
         **_BaseSeasonalityForecaster._parameter_constraints,
-        "harmonics": [list],
+        "harmonics": [list, None],
         "alpha": [Interval(numbers.Real, 0, None, closed="left")],
         "l1_ratio": [Interval(numbers.Real, 0, 1, closed="both")],
     }
@@ -457,46 +428,30 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
             features.append(np.cos(2 * np.pi * k * X_time_indices / self.seasonality))
         return np.column_stack(features)
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
+    def _fit(
         self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-        **params,
-    ) -> "FourierSeasonalityForecaster":
-        """Fit Fourier series model to historical data.
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+    ) -> None:
+        """Fit Fourier series model to transformed data.
 
         Parameters
         ----------
-        y : pl.DataFrame
-            Target time series with "time" column.
-        X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Not used by this forecaster but accepted for API
-            consistency.
-        forecasting_horizon : int, default=1
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed features (unused).
+        forecasting_horizon : int
             Number of steps ahead to forecast.
-        X_future : pl.DataFrame or None, default=None
-            Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
-        **params : dict
-            Metadata to route to nested estimators.
 
-        Returns
-        -------
-        self
-            Fitted forecaster.
+        Raises
+        ------
+        ValueError
+            If harmonics list is empty, contains non-positive integers,
+            or exceeds the Nyquist limit.
 
         """
-        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
-
         # Domain-specific validation: harmonics must be positive and not exceed
         # seasonality/2 (Nyquist limit)
 
@@ -514,11 +469,6 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
                 f"({self.seasonality / 2:.1f}) due to Nyquist sampling theorem."
             )
 
-        # Pre-fit: validate inputs, apply target transformer, set attributes
-        y_t, X_t = self._pre_fit(
-            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
-        )
-
         # Validate sufficient data (at least one cycle)
         self._validate_sufficient_data(y_t)
 
@@ -528,5 +478,3 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         ])
 
         self._fit_estimator(estimator, y_t)
-
-        return self

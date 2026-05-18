@@ -1,3 +1,0 @@
-# Preprocessing
-
-<!-- GALLERY:preprocessing -->

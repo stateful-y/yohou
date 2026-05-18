@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 from sklearn.base import clone
-from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks
 from yohou.compose import DecompositionPipeline
@@ -248,8 +247,8 @@ class TestUpdateReset:
             ("seasonality", SeasonalNaive(seasonality=7)),
         ])
 
-        with pytest.raises(NotFittedError, match="fitted"):
-            _ = forecaster.observation_horizon
+        # Before fitting, observation_horizon returns 0 (no fitted transformers)
+        assert forecaster.observation_horizon == 0
 
         forecaster.fit(daily_data[:30], forecasting_horizon=5)
         horizon = forecaster.observation_horizon

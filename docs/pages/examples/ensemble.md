@@ -1,3 +1,0 @@
-# Ensemble
-
-<!-- GALLERY:ensemble -->

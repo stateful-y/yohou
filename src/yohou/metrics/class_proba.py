@@ -37,12 +37,10 @@ class LogLoss(BaseClassProbaScorer):
     ----------
     aggregation_method : list of str or str, default="all"
         Dimensions to aggregate over. See `BaseClassProbaScorer`.
-    groups : list of str or None, default=None
-        Panel groups to include. See `BaseClassProbaScorer`.
-    component_names : list of str or None, default=None
-        Components to include. See `BaseClassProbaScorer`.
-    group_weight : dict or None, default=None
-        Panel group weights. See `BaseClassProbaScorer`.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
 
     Attributes
     ----------
@@ -80,8 +78,8 @@ class LogLoss(BaseClassProbaScorer):
 
     See Also
     --------
-    `BrierScore` : Multi-class Brier score.
-    `Accuracy` : Classification accuracy from argmax.
+    - [`BrierScore`][yohou.metrics.class_proba.BrierScore] : Multi-class Brier score.
+    - [`Accuracy`][yohou.metrics.classification.Accuracy] : Classification accuracy from argmax.
 
     """
 
@@ -147,12 +145,10 @@ class BrierScore(BaseClassProbaScorer):
     ----------
     aggregation_method : list of str or str, default="all"
         Dimensions to aggregate over. See `BaseClassProbaScorer`.
-    groups : list of str or None, default=None
-        Panel groups to include. See `BaseClassProbaScorer`.
-    component_names : list of str or None, default=None
-        Components to include. See `BaseClassProbaScorer`.
-    group_weight : dict or None, default=None
-        Panel group weights. See `BaseClassProbaScorer`.
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
 
     Attributes
     ----------
@@ -188,8 +184,8 @@ class BrierScore(BaseClassProbaScorer):
 
     See Also
     --------
-    `LogLoss` : Logarithmic loss (cross-entropy).
-    `Accuracy` : Classification accuracy from argmax.
+    - [`LogLoss`][yohou.metrics.class_proba.LogLoss] : Logarithmic loss (cross-entropy).
+    - [`Accuracy`][yohou.metrics.classification.Accuracy] : Classification accuracy from argmax.
 
     """
 
@@ -303,8 +299,8 @@ class RankedProbabilityScore(BaseClassProbaScorer):
 
     See Also
     --------
-    `BrierScore` : Brier score (unordered multi-class).
-    `LogLoss` : Logarithmic loss (cross-entropy).
+    - [`BrierScore`][yohou.metrics.class_proba.BrierScore] : Brier score (unordered multi-class).
+    - [`LogLoss`][yohou.metrics.class_proba.LogLoss] : Logarithmic loss (cross-entropy).
 
     """
 

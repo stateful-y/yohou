@@ -1,3 +1,0 @@
-# Plotting
-
-<!-- GALLERY:plotting -->

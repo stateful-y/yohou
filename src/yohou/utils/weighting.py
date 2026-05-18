@@ -61,11 +61,11 @@ def exponential_decay_weight(
 
     See Also
     --------
-    `linear_decay_weight` : Linear decay weights for recent times.
-    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
-    `compose_weights` : Compose multiple weight functions by multiplication.
-    `validate_callable_signature` : Validate callable signature for time weighting.
-    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+    - [`linear_decay_weight`][yohou.utils.weighting.linear_decay_weight] : Linear decay weights for recent times.
+    - [`seasonal_emphasis_weight`][yohou.utils.weighting.seasonal_emphasis_weight] : Weights emphasizing seasonal positions.
+    - [`compose_weights`][yohou.utils.weighting.compose_weights] : Compose multiple weight functions by multiplication.
+    - [`validate_callable_signature`][yohou.utils.weighting.validate_callable_signature] : Validate callable signature for time weighting.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction forecaster supporting time_weight.
 
     Examples
     --------
@@ -154,11 +154,11 @@ def linear_decay_weight(
 
     See Also
     --------
-    `exponential_decay_weight` : Exponential decay weights for recent times.
-    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
-    `compose_weights` : Compose multiple weight functions by multiplication.
-    `validate_callable_signature` : Validate callable signature for time weighting.
-    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+    - [`exponential_decay_weight`][yohou.utils.weighting.exponential_decay_weight] : Exponential decay weights for recent times.
+    - [`seasonal_emphasis_weight`][yohou.utils.weighting.seasonal_emphasis_weight] : Weights emphasizing seasonal positions.
+    - [`compose_weights`][yohou.utils.weighting.compose_weights] : Compose multiple weight functions by multiplication.
+    - [`validate_callable_signature`][yohou.utils.weighting.validate_callable_signature] : Validate callable signature for time weighting.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction forecaster supporting time_weight.
 
     Examples
     --------
@@ -258,11 +258,11 @@ def seasonal_emphasis_weight(
 
     See Also
     --------
-    `exponential_decay_weight` : Exponential decay weights for recent times.
-    `linear_decay_weight` : Linear decay weights for recent times.
-    `compose_weights` : Compose multiple weight functions by multiplication.
-    `validate_callable_signature` : Validate callable signature for time weighting.
-    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+    - [`exponential_decay_weight`][yohou.utils.weighting.exponential_decay_weight] : Exponential decay weights for recent times.
+    - [`linear_decay_weight`][yohou.utils.weighting.linear_decay_weight] : Linear decay weights for recent times.
+    - [`compose_weights`][yohou.utils.weighting.compose_weights] : Compose multiple weight functions by multiplication.
+    - [`validate_callable_signature`][yohou.utils.weighting.validate_callable_signature] : Validate callable signature for time weighting.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction forecaster supporting time_weight.
 
     Examples
     --------
@@ -359,11 +359,11 @@ def compose_weights(
 
     See Also
     --------
-    `exponential_decay_weight` : Exponential decay weights for recent times.
-    `linear_decay_weight` : Linear decay weights for recent times.
-    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
-    `validate_callable_signature` : Validate callable signature for time weighting.
-    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+    - [`exponential_decay_weight`][yohou.utils.weighting.exponential_decay_weight] : Exponential decay weights for recent times.
+    - [`linear_decay_weight`][yohou.utils.weighting.linear_decay_weight] : Linear decay weights for recent times.
+    - [`seasonal_emphasis_weight`][yohou.utils.weighting.seasonal_emphasis_weight] : Weights emphasizing seasonal positions.
+    - [`validate_callable_signature`][yohou.utils.weighting.validate_callable_signature] : Validate callable signature for time weighting.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction forecaster supporting time_weight.
 
     Examples
     --------
@@ -440,11 +440,11 @@ def validate_callable_signature(
 
     See Also
     --------
-    `exponential_decay_weight` : Exponential decay weights for recent times.
-    `linear_decay_weight` : Linear decay weights for recent times.
-    `seasonal_emphasis_weight` : Weights emphasizing seasonal positions.
-    `compose_weights` : Compose multiple weight functions by multiplication.
-    `BaseReductionForecaster` : Reduction forecaster supporting time_weight.
+    - [`exponential_decay_weight`][yohou.utils.weighting.exponential_decay_weight] : Exponential decay weights for recent times.
+    - [`linear_decay_weight`][yohou.utils.weighting.linear_decay_weight] : Linear decay weights for recent times.
+    - [`seasonal_emphasis_weight`][yohou.utils.weighting.seasonal_emphasis_weight] : Weights emphasizing seasonal positions.
+    - [`compose_weights`][yohou.utils.weighting.compose_weights] : Compose multiple weight functions by multiplication.
+    - [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster] : Reduction forecaster supporting time_weight.
 
     Examples
     --------

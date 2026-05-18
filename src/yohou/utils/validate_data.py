@@ -103,9 +103,9 @@ def validate_plotting_data(
 
     See Also
     --------
-    `validate_plotting_params` : Validate common plotting parameters.
-    `get_numeric_columns` : Resolve numeric columns from a DataFrame.
-    `inspect_panel` : Detect panel group structure.
+    - [`validate_plotting_params`][yohou.utils.validate_data.validate_plotting_params] : Validate common plotting parameters.
+    - [`get_numeric_columns`][yohou.utils.polars.get_numeric_columns] : Resolve numeric columns from a DataFrame.
+    - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel group structure.
 
     """
     if not isinstance(df, pl.DataFrame):
@@ -208,7 +208,7 @@ def validate_plotting_params(
 
     See Also
     --------
-    `validate_plotting_data` : Validate DataFrame structure for plotting.
+    - [`validate_plotting_data`][yohou.utils.validate_data.validate_plotting_data] : Validate DataFrame structure for plotting.
 
     """
     if kind is not None and valid_kinds is not None and kind not in valid_kinds:
@@ -258,8 +258,8 @@ def validate_time_weight(
 
     See Also
     --------
-    `validate_forecaster_data` : Validate forecaster input data.
-    `validate_scorer_data` : Validate scorer input data.
+    - [`validate_forecaster_data`][yohou.utils.validate_data.validate_forecaster_data] : Validate forecaster input data.
+    - [`validate_scorer_data`][yohou.utils.validate_data.validate_scorer_data] : Validate scorer input data.
 
     """
     if time_weight is None:
@@ -530,8 +530,8 @@ def validate_scorer_data(
 
     See Also
     --------
-    `BaseScorer` : Base class for all scorers.
-    `validate_time_weight` : Validate time weighting parameters.
+    - [`BaseScorer`][yohou.metrics.base.BaseScorer] : Base class for all scorers.
+    - [`validate_time_weight`][yohou.utils.validate_data.validate_time_weight] : Validate time weighting parameters.
 
     """
     # Runtime validation: enforce parameter requirements for each context
@@ -807,8 +807,8 @@ def validate_splitter_data(
 
     See Also
     --------
-    `BaseSplitter` : Base class for time series CV splitters.
-    `check_inputs` : Low-level input validation helper.
+    - [`BaseSplitter`][yohou.model_selection.split.BaseSplitter] : Base class for time series CV splitters.
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """
     if y is not None:
@@ -971,9 +971,9 @@ def validate_forecaster_data(
 
     See Also
     --------
-    `BaseForecaster` : Base class for all forecasters.
-    `validate_time_weight` : Validate time weighting parameters.
-    `check_inputs` : Low-level input validation helper.
+    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Base class for all forecasters.
+    - [`validate_time_weight`][yohou.utils.validate_data.validate_time_weight] : Validate time weighting parameters.
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """
     # Validate X_future structure
@@ -1170,8 +1170,8 @@ def validate_transformer_data(
 
     See Also
     --------
-    `BaseTransformer` : Base class for all transformers.
-    `check_inputs` : Low-level input validation helper.
+    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for all transformers.
+    - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """
     if reset:

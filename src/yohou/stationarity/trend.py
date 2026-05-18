@@ -9,7 +9,7 @@ from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import PolynomialFeatures
 
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval
 
 from .base import _BaseTrendForecaster
 
@@ -64,9 +64,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     See Also
     --------
-    `PatternSeasonalityForecaster` : Seasonal pattern extraction for periodic components.
-    `FourierSeasonalityForecaster` : Fourier-based seasonality estimation.
-    `DecompositionPipeline` : Combines trend + seasonality + residual forecasters.
+    - [`PatternSeasonalityForecaster`][yohou.stationarity.seasonality.PatternSeasonalityForecaster] : Seasonal pattern extraction for periodic components.
+    - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Fourier-based seasonality estimation.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Combines trend + seasonality + residual forecasters.
 
     Notes
     -----
@@ -99,56 +99,27 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         self.degree = degree
         self.estimator = estimator
 
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(
+    def _fit(
         self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None = None,
-        forecasting_horizon: StrictInt = 1,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-        **params,
-    ) -> "PolynomialTrendForecaster":
-        """Fit polynomial trend model to historical data.
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: StrictInt,
+    ) -> None:
+        """Fit polynomial trend model to transformed data.
 
         Parameters
         ----------
-        y : pl.DataFrame
-            Target time series with "time" column.
-        X_actual : pl.DataFrame or None, default=None
-            Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Not used by this forecaster but accepted for API
-            consistency.
-        forecasting_horizon : int, default=1
+        y_t : pl.DataFrame or dict[str, pl.DataFrame]
+            Transformed target time series.
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
+            Transformed features (unused).
+        forecasting_horizon : int
             Number of steps ahead to forecast.
-        X_future : pl.DataFrame or None, default=None
-            Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            Fitted forecaster.
 
         """
-        forecasting_horizon = self._validate_fit_params(forecasting_horizon)
-
-        # Pre-fit: validate inputs, apply target transformer, set attributes
-        y_t, X_t = self._pre_fit(
-            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
-        )
-
         estimator = Pipeline([
             ("poly_features", PolynomialFeatures(degree=self.degree, include_bias=True)),
             ("regressor", clone(self.estimator)),
         ])
 
         self._fit_estimator(estimator, y_t)
-
-        return self

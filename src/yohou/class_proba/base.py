@@ -8,6 +8,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster
 from yohou.utils import CLASS_PROBA, Tags, validate_forecaster_data
+from yohou.utils._compat import _fit_context
 
 __all__ = ["BaseClassProbaForecaster"]
 
@@ -40,8 +41,8 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `ClassProbaReductionForecaster` : ML-based class-probability forecaster.
-    `BasePointForecaster` : Base class for point forecasters.
+    - [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster] : ML-based class-probability forecaster.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
 
     """
 
@@ -63,6 +64,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         tags.forecaster_tags.forecaster_type = CLASS_PROBA
         return tags
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
@@ -110,8 +112,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
 
-        BaseForecaster._pre_fit(
-            self,
+        y_t, X_t = self._pre_fit(
             y=y,
             X_actual=X_actual,
             forecasting_horizon=forecasting_horizon,
@@ -119,30 +120,9 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_forecast=X_forecast,
         )
 
+        self._fit(y_t, X_t, forecasting_horizon)
+
         return self
-
-    def _validate_fit_params(self, forecasting_horizon: StrictInt) -> StrictInt:
-        """Validate fit parameters.
-
-        Parameters
-        ----------
-        forecasting_horizon : int
-            Forecasting horizon to validate.
-
-        Returns
-        -------
-        int
-            Validated forecasting horizon.
-
-        Raises
-        ------
-        ValueError
-            If forecasting_horizon < 1.
-
-        """
-        if forecasting_horizon < 1:
-            raise ValueError(f"forecasting_horizon must be >= 1, got {forecasting_horizon}")
-        return forecasting_horizon
 
     def _validate_predict_params(self, forecasting_horizon: StrictInt | None) -> StrictInt:
         """Validate and return predict parameters.

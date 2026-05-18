@@ -92,6 +92,8 @@ def test(session: nox.Session) -> None:
         "--no-cov",
         "--doctest-modules",
         "--doctest-continue-on-failure",
+        "-m",
+        "not example",
         *_plotting_ignores(session),
         "-n",
         "auto",
@@ -220,14 +222,17 @@ def test_examples(session: nox.Session) -> None:
         env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
     )
 
-    # Run example tests in parallel using pytest with pytest-xdist with no coverage
+    # Run example tests in parallel using pytest with pytest-xdist with no coverage.
+    # Use 4 workers: tests are subprocess-bound and CI runners have 7GB RAM.
+    # Peak memory per notebook is ~350MB (max outlier: 1.7GB), so 4 concurrent
+    # subprocesses stay well within the 7GB limit.
     session.run(
         "pytest",
         "tests",
         "-m",
         "example",
         "-n",
-        "auto",
+        "4",
         "-v",
         "--no-cov",
         *session.posargs,
@@ -277,6 +282,9 @@ def lint(session: nox.Session) -> None:
 
     # Run ruff check
     session.run("ruff", "check", "src", "tests", external=True)
+
+    # Run PEP 723 dependency audit for notebook examples
+    session.run("pytest", "tests/test_notebook_pep723.py", "-v", "--no-header", "-o", "addopts=")
 
     # Run rumdl markdown linter
     session.run("uvx", "rumdl", "check", ".", external=True)

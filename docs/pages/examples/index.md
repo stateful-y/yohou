@@ -1,49 +1,10 @@
 # Examples
 
-Learn Yohou through focused, interactive examples. Each notebook demonstrates one core concept and is runnable in the browser or editable online via the [marimo playground](https://marimo.io). Examples are organized from introductory walkthroughs to advanced topics.
+Learn Yohou through focused, interactive examples. Each notebook demonstrates one core concept and is runnable in the browser or editable online via the [marimo playground](https://marimo.io).
 
-## Quickstart
-
-<!-- GALLERY:quickstart -->
-
-## Point Forecasting
-
-<!-- GALLERY:point -->
-
-## Interval Forecasting
-
-<!-- GALLERY:interval -->
-
-## Composition
-
-<!-- GALLERY:compose -->
-
-## Preprocessing
-
-<!-- GALLERY:preprocessing -->
-
-## Stationarity
-
-<!-- GALLERY:stationarity -->
-
-## Metrics
-
-<!-- GALLERY:metrics -->
-
-## Model Selection
-
-<!-- GALLERY:model_selection -->
-
-## Datasets
-
-<!-- GALLERY:datasets -->
-
-## Plotting
-
-<!-- GALLERY:plotting -->
-
-## Next Steps
-
-- **[User Guide](../user-guide/index.md)**: Deep dive into core concepts and architecture
-- **[API Reference](../api/index.md)**: Complete class and function documentation
-- **[Development](../development/index.md)**: Contributing and developing new estimators
+- [Getting Started](getting-started.md): core workflow tutorials, from a first forecast to walk-forward evaluation
+- [Forecasting Models](forecasting-models.md): point, interval, class-probability, and ensemble how-tos
+- [Data & Features](data-features.md): transformers, feature engineering, stationarity, and pipeline composition
+- [Panel Data](panel-data.md): multi-series forecasting, preprocessing, and cross-validation
+- [Evaluation & Search](evaluation-search.md): scoring, aggregation modes, and hyperparameter search
+- [Visualization](visualization.md): exploratory analysis, forecast plots, and diagnostics

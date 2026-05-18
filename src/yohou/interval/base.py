@@ -12,6 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseForecaster, BaseTransformer
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
+from yohou.utils._compat import _fit_context
 
 __all__ = ["BaseIntervalForecaster", "BaseSimilarity"]
 
@@ -30,8 +31,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `DistanceSimilarity` : Distance-based similarity measure.
-    `SplitConformalForecaster` : Conformal forecaster that uses similarities.
+    - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Distance-based similarity measure.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal forecaster that uses similarities.
 
     """
 
@@ -78,6 +79,17 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         tags.similarity_tags.produces_weights = True
 
         return tags
+
+    @property
+    def discarded_time_stamps(self) -> None:
+        """Get discarded timestamps (placeholder property).
+
+        Returns
+        -------
+        None
+
+        """
+        return None
 
     @abc.abstractmethod
     def fit(
@@ -212,29 +224,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `SplitConformalForecaster` : Conformal interval forecaster.
-    `IntervalReductionForecaster` : ML-based interval forecaster.
-    `BasePointForecaster` : Base class for point forecasters.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] : Conformal interval forecaster.
+    - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : ML-based interval forecaster.
+    - [`BasePointForecaster`][yohou.point.base.BasePointForecaster] : Base class for point forecasters.
 
     """
 
-    _parameter_constraints: dict = {
-        **BaseForecaster._parameter_constraints,
-    }
+    _tags: dict = {"forecaster_type": INTERVAL}
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.forecaster_tags is not None
-        tags.forecaster_tags.forecaster_type = INTERVAL
-        return tags
+    _parameter_constraints: dict = {}
 
     def __init__(
         self,
@@ -249,12 +247,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             panel_strategy=panel_strategy,
         )
 
-    @abc.abstractmethod
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
+        *,
         coverage_rates: list[float] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -269,9 +268,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
-            lags, rolling statistics, and other derived features. If
-            ``None``, only target-derived features are used.
+            with ``y``.  If ``None``, no exogenous features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         coverage_rates : list of float or None, default=None
@@ -280,11 +277,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             ``[0.95]``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
+            values available for past and future dates.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -296,12 +292,26 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in [0, 1],
+            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in (0, 1],
             or if ``y`` / ``X_actual`` have invalid structure.
 
         """
+        forecasting_horizon, coverage_rates = self._validate_interval_fit_params(forecasting_horizon, coverage_rates)
+        self.fit_coverage_rates_ = coverage_rates
 
-    def _validate_fit_params(
+        y_t, X_t = self._pre_fit(
+            y=y,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+
+        self._fit(y_t, X_t, forecasting_horizon)
+
+        return self
+
+    def _validate_interval_fit_params(
         self,
         forecasting_horizon: StrictInt,
         coverage_rates: list[StrictFloat] | None = None,
@@ -361,15 +371,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If forecasting_horizon < 1 or coverage_rates not in (0, 1].
+            If forecasting_horizon < 1 or coverage_rates not in [0, 1].
 
         """
         if forecasting_horizon is None:
             forecasting_horizon = self.fit_forecasting_horizon_
         if coverage_rates is None:
             # fit_coverage_rates_ is set by concrete subclasses during fit().
-            coverage_rates = self.fit_coverage_rates_  # ty: ignore[unresolved-attribute]
-        return self._validate_fit_params(forecasting_horizon, coverage_rates)
+            coverage_rates = self.fit_coverage_rates_
+        return self._validate_interval_fit_params(forecasting_horizon, coverage_rates)
 
     def predict_interval(
         self,

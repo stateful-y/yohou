@@ -51,7 +51,7 @@ def cast(
 
     See Also
     --------
-    `get_numeric_columns` : List numeric column names from a DataFrame.
+    - [`get_numeric_columns`][yohou.utils.polars.get_numeric_columns] : List numeric column names from a DataFrame.
 
     """
     exprs = []
@@ -100,7 +100,7 @@ def get_numeric_columns(df: pl.DataFrame, exclude: list[str] | None = None) -> l
 
     See Also
     --------
-    `cast` : Cast DataFrame columns according to a schema.
+    - [`cast`][yohou.utils.polars.cast] : Cast DataFrame columns according to a schema.
 
     """
     exclude = exclude or []
@@ -177,8 +177,8 @@ def get_categorical_columns(df: pl.DataFrame, exclude: list[str] | None = None) 
 
     See Also
     --------
-    `get_numeric_columns` : List numeric column names from a DataFrame.
-    `is_categorical_dtype` : Check if a dtype is categorical.
+    - [`get_numeric_columns`][yohou.utils.polars.get_numeric_columns] : List numeric column names from a DataFrame.
+    - [`is_categorical_dtype`][yohou.utils.polars.is_categorical_dtype] : Check if a dtype is categorical.
 
     """
     exclude = exclude or []

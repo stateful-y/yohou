@@ -16,6 +16,8 @@ from yohou.model_selection.utils import (
     _check_scoring,
     _fit_and_score,
     _MultimetricScorer,
+    _needs_interval_predictions,
+    _needs_point_predictions,
     _score,
 )
 from yohou.point.naive import SeasonalNaive
@@ -890,3 +892,29 @@ class TestScoreMultimetricStringError:
         assert result["a"] == 0.0
         assert len(w) == 1
         assert "Scoring failed" in str(w[0].message)
+
+
+class TestBackwardCompatShims:
+    """Tests for _needs_interval_predictions and _needs_point_predictions."""
+
+    def test_point_scorer_needs_point(self):
+        scorer = MeanAbsoluteError()
+        assert _needs_point_predictions(scorer) is True
+        assert _needs_interval_predictions(scorer) is False
+
+    def test_interval_scorer_needs_interval(self):
+        from yohou.metrics.interval import IntervalScore
+
+        scorer = IntervalScore()
+        assert _needs_interval_predictions(scorer) is True
+        assert _needs_point_predictions(scorer) is False
+
+    def test_multimetric_mixed(self):
+        from yohou.metrics.interval import IntervalScore
+
+        ms = _MultimetricScorer(
+            scorers={"mae": MeanAbsoluteError(), "is": IntervalScore()},
+            raise_exc=True,
+        )
+        assert _needs_point_predictions(ms) is True
+        assert _needs_interval_predictions(ms) is True

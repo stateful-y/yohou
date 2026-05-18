@@ -4,7 +4,7 @@ import numbers
 import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import polars as pl
@@ -44,15 +44,27 @@ class BaseSplitter(BaseEstimator, ABC):
 
     See Also
     --------
-    `ExpandingWindowSplitter` : Expanding-window cross-validation.
-    `SlidingWindowSplitter` : Sliding-window cross-validation.
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Expanding-window cross-validation.
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Sliding-window cross-validation.
 
     """
 
     _parameter_constraints: dict = {}
+    _tags: ClassVar[dict[str, Any]] = {}
 
     # Fitted attributes (set during split())
     interval_: str
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Merge parameter constraints from all classes in the MRO."""
+        super().__init_subclass__(**kwargs)
+        # Auto-merge _parameter_constraints from all classes in the MRO.
+        merged: dict = {}
+        for klass in reversed(cls.__mro__):
+            own = klass.__dict__.get("_parameter_constraints")
+            if own and isinstance(own, dict):
+                merged.update(own)
+        cls._parameter_constraints = merged
 
     @abstractmethod
     def split(
@@ -139,6 +151,24 @@ class BaseSplitter(BaseEstimator, ABC):
         tags = Tags(estimator_type="splitter")
         if tags.splitter_tags is not None:
             tags.splitter_tags.supports_panel_data = True
+
+        # Merge class-level _tags dict (flat keys) into tag dataclasses.
+        # Walk MRO in reverse so most-derived class wins.
+        merged_tags: dict[str, Any] = {}
+        for klass in reversed(type(self).__mro__):
+            class_tags = klass.__dict__.get("_tags")
+            if class_tags and isinstance(class_tags, dict):
+                merged_tags.update(class_tags)
+
+        if merged_tags:
+            for key, value in merged_tags.items():
+                if tags.splitter_tags is not None and hasattr(tags.splitter_tags, key):
+                    setattr(tags.splitter_tags, key, value)
+                elif tags.input_tags is not None and hasattr(tags.input_tags, key):
+                    setattr(tags.input_tags, key, value)
+                elif hasattr(tags, key):
+                    setattr(tags, key, value)
+
         return tags
 
 
@@ -203,16 +233,17 @@ class ExpandingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    `SlidingWindowSplitter` : Fixed-size rolling window splitter
+    - [`SlidingWindowSplitter`][yohou.model_selection.split.SlidingWindowSplitter] : Fixed-size rolling window splitter
 
     """
 
     _parameter_constraints: dict = {
-        **BaseSplitter._parameter_constraints,
         "n_splits": [Interval(numbers.Integral, 2, None, closed="left")],
         "max_train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
     }
+
+    _tags: ClassVar[dict[str, Any]] = {"splitter_type": "expanding"}
 
     def __init__(
         self,
@@ -331,19 +362,6 @@ class ExpandingWindowSplitter(BaseSplitter):
         """
         return self.n_splits
 
-    def __sklearn_tags__(self):
-        """Get metadata tags for this splitter.
-
-        Returns
-        -------
-        tags : Tags
-            Metadata tags describing splitter capabilities.
-
-        """
-        tags = super().__sklearn_tags__()
-        tags.splitter_tags.splitter_type = "expanding"
-        return tags
-
 
 class SlidingWindowSplitter(BaseSplitter):
     """Sliding window time series cross-validation splitter.
@@ -413,17 +431,18 @@ class SlidingWindowSplitter(BaseSplitter):
 
     See Also
     --------
-    `ExpandingWindowSplitter` : Growing training window splitter
+    - [`ExpandingWindowSplitter`][yohou.model_selection.split.ExpandingWindowSplitter] : Growing training window splitter
 
     """
 
     _parameter_constraints: dict = {
-        **BaseSplitter._parameter_constraints,
         "n_splits": [Interval(numbers.Integral, 2, None, closed="left")],
         "train_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "test_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "stride": [Interval(numbers.Integral, 1, None, closed="left"), None],
     }
+
+    _tags: ClassVar[dict[str, Any]] = {"splitter_type": "sliding"}
 
     def __init__(
         self,
@@ -506,6 +525,12 @@ class SlidingWindowSplitter(BaseSplitter):
         train_size = self._resolve_train_size(n_samples)
         test_size = self.test_size
         stride = self.stride if self.stride is not None else test_size
+
+        if train_size + test_size > n_samples:
+            raise ValueError(
+                f"train_size ({train_size}) + test_size ({test_size}) = "
+                f"{train_size + test_size} is greater than n_samples ({n_samples})."
+            )
 
         if test_size % stride != 0:
             warnings.warn(
@@ -602,19 +627,6 @@ class SlidingWindowSplitter(BaseSplitter):
 
         """
         return self.n_splits
-
-    def __sklearn_tags__(self):
-        """Get metadata tags for this splitter.
-
-        Returns
-        -------
-        tags : Tags
-            Metadata tags describing splitter capabilities.
-
-        """
-        tags = super().__sklearn_tags__()
-        tags.splitter_tags.splitter_type = "sliding"
-        return tags
 
 
 def check_cv(

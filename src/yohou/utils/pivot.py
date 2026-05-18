@@ -85,6 +85,14 @@ def pivot_forecasts(
         )
         raise ValueError(msg)
 
+    if X_forecast.is_empty():
+        return (
+            X_forecast
+            .drop(time_col)
+            .rename({vintage_col: "time"})
+            .select("time", *[c for c in X_forecast.columns if c not in {vintage_col, time_col}])
+        )
+
     # Assign ordinal step index within each vintage group (1-based).
     X_forecast_ranked = X_forecast.with_columns(
         pl.col(time_col).rank("ordinal").over(vintage_col).cast(pl.Int32).alias("_step")

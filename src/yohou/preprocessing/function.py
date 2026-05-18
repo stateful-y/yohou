@@ -112,8 +112,8 @@ class FunctionTransformer(BaseTransformer):
 
     See Also
     --------
-    `SlidingWindowFunctionTransformer` : Apply function over sliding windows.
-    `RollingStatisticsTransformer` : Compute rolling statistics.
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Apply function over sliding windows.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Compute rolling statistics.
 
     Notes
     -----

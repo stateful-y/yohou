@@ -136,8 +136,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
     See Also
     --------
-    `ColumnForecaster` : Apply different forecasters to different column subsets.
-    `DecompositionPipeline` : Sequential decomposition into trend + seasonality + residual.
+    - [`ColumnForecaster`][yohou.compose.column_forecaster.ColumnForecaster] : Apply different forecasters to different column subsets.
+    - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Sequential decomposition into trend + seasonality + residual.
 
     """
 

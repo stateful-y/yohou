@@ -62,8 +62,8 @@ class DistanceSimilarity(BaseSimilarity):
 
     See Also
     --------
-    `BaseSimilarity` : Abstract similarity base class.
-    `BaseIntervalForecaster` :
+    - [`BaseSimilarity`][yohou.interval.base.BaseSimilarity] : Abstract similarity base class.
+    - [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster] :
         Interval forecaster that can consume similarity weights.
 
     Examples
@@ -343,8 +343,8 @@ class TemporalSimilarity(BaseSimilarity):
 
     See Also
     --------
-    `DistanceSimilarity` : Value-based distance similarity.
-    `BaseSimilarity` : Abstract similarity base class.
+    - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Value-based distance similarity.
+    - [`BaseSimilarity`][yohou.interval.base.BaseSimilarity] : Abstract similarity base class.
 
     Examples
     --------
@@ -601,8 +601,8 @@ class CompositeSimilarity(BaseSimilarity):
 
     See Also
     --------
-    `DistanceSimilarity` : Value-based distance similarity.
-    `TemporalSimilarity` : Temporal Fourier feature similarity.
+    - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Value-based distance similarity.
+    - [`TemporalSimilarity`][yohou.interval.similarity.TemporalSimilarity] : Temporal Fourier feature similarity.
 
     Examples
     --------

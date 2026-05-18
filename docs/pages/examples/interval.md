@@ -1,3 +1,0 @@
-# Interval Forecasting
-
-<!-- GALLERY:interval -->

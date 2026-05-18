@@ -46,3 +46,11 @@ Scorers for evaluating point forecasts, prediction intervals, and conformal pred
 | [`AbsoluteResidual`](generated/yohou.metrics.conformity.AbsoluteResidual.md) | Absolute residual conformity scorer using unsigned prediction errors. |
 | [`GammaResidual`](generated/yohou.metrics.conformity.GammaResidual.md) | Gamma residual scorer using relative prediction errors. |
 | [`Residual`](generated/yohou.metrics.conformity.Residual.md) | Residual-based conformity scorer using signed prediction errors. |
+
+### Classification Scorers
+
+| Name | Description |
+| --- | --- |
+| [`Accuracy`](generated/yohou.metrics.classification.Accuracy.md) | Categorical accuracy from class-probability forecasts. |
+| [`BrierScore`](generated/yohou.metrics.class_proba.BrierScore.md) | Multi-class Brier score for class-probability forecasts. |
+| [`LogLoss`](generated/yohou.metrics.class_proba.LogLoss.md) | Logarithmic loss (cross-entropy) for class-probability forecasts. |

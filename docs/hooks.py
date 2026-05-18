@@ -2,6 +2,7 @@
 
 import ast
 import fnmatch
+import hashlib
 import os
 import re
 import shutil
@@ -635,6 +636,7 @@ def _build_api_table_html(project_root):
 
 
 _GALLERY_CACHE = None
+_COMPANION_INDEX = None
 
 
 def _get_gallery_items(project_root):
@@ -689,17 +691,28 @@ def _get_gallery_items(project_root):
         else:
             open_path = f"/examples/{stem}/edit/"
 
+        section = gallery.get("section")
+        if section is None:
+            print(f"[gallery] {notebook.relative_to(project_root)}: missing 'section' field", file=sys.stderr)
+
         items.append({
             "title": gallery.get("title", stem.replace("_", " ").title()),
             "category": category,
+            "diataxis_category": gallery.get("category"),
+            "companion": gallery.get("companion"),
             "description": gallery.get("description", ""),
             "view_path": view_path,
             "open_path": open_path,
             "stem": stem,
+            "section": section,
+            "api_references": gallery.get("api_references", []),
         })
 
     _GALLERY_CACHE = items
     return _GALLERY_CACHE
+
+
+_DIATAXIS_CATEGORIES = {"tutorial", "how-to"}
 
 
 def _build_gallery_html(project_root, category=None):
@@ -707,7 +720,13 @@ def _build_gallery_html(project_root, category=None):
     items = _get_gallery_items(project_root)
 
     if category:
-        items = [i for i in items if i["category"] == category]
+        if category.startswith("section:"):
+            section_key = category.removeprefix("section:")
+            items = [i for i in items if i.get("section") == section_key]
+        elif category in _DIATAXIS_CATEGORIES:
+            items = [i for i in items if i["diataxis_category"] == category]
+        else:
+            items = [i for i in items if i["category"] == category]
 
     if not items:
         return "<!-- no gallery items found -->\n"
@@ -732,71 +751,93 @@ def _build_gallery_html(project_root, category=None):
 _NOTEBOOK_API_USAGE_CACHE = None
 
 
+def _normalize_companion_path(path: str) -> str:
+    """Normalize a companion path for comparison.
+
+    Strips leading/trailing slashes and .md suffix so that
+    ``"pages/how-to/create-a-scorer"`` in __gallery__ matches
+    ``"pages/how-to/create-a-scorer.md"`` as a src_uri.
+    """
+    return path.strip("/").removesuffix(".md")
+
+
+def _get_companion_index(project_root):
+    """Build reverse map: normalized doc path -> list of gallery items (cached)."""
+    global _COMPANION_INDEX
+    if _COMPANION_INDEX is not None:
+        return _COMPANION_INDEX
+
+    index: dict[str, list[dict]] = {}
+    for item in _get_gallery_items(project_root):
+        companion = item.get("companion")
+        if companion:
+            key = _normalize_companion_path(companion)
+            index.setdefault(key, []).append(item)
+    _COMPANION_INDEX = index
+    return _COMPANION_INDEX
+
+
+def _build_companion_cards_html(project_root, page_src_uri: str) -> str:
+    """Build HTML cards for notebooks whose companion matches this page."""
+    key = _normalize_companion_path(page_src_uri)
+    items = _get_companion_index(project_root).get(key, [])
+
+    if not items:
+        return ""
+
+    cards = []
+    for item in items:
+        desc = item["description"] or "No description."
+        cards.append(
+            f'<div class="companion-card">'
+            f"<strong>{item['title']}</strong>"
+            f"<p>{desc}</p>"
+            f'<span class="companion-card-links">'
+            f'<a href="{item["view_path"]}">View</a>'
+            f'<a href="{item["open_path"]}">Open in marimo</a>'
+            f"</span>"
+            f"</div>"
+        )
+
+    return '<div class="companion-cards">' + "".join(cards) + "</div>\n"
+
+
+_NOTEBOOK_API_USAGE_CACHE = None
+
+
 def _get_notebook_api_usage(project_root):
     """Build reverse map: qualified API name → list of gallery items that use it.
 
-    Scans example notebooks for ``from yohou.* import …``
-    statements and maps each imported name back to its fully-qualified
-    API identifier.
+    Reads the ``api_references`` list from each gallery item's ``__gallery__``
+    metadata and resolves each short name to its fully-qualified identifier via
+    ``_get_discovery_data()``.  Only notebooks that explicitly declare
+    ``api_references`` contribute to the map.
     """
     global _NOTEBOOK_API_USAGE_CACHE  # noqa: PLW0603
     if _NOTEBOOK_API_USAGE_CACHE is not None:
         return _NOTEBOOK_API_USAGE_CACHE
 
-    pkg_dir = project_root / "src" / "yohou"
-    modules = _get_submodules(project_root)
+    data = _get_discovery_data()
 
-    # Build short name → qualified lookup from discovered module members
+    # Build short name → qualified lookup using cls.__module__ (same path that
+    # _generate_api_pages uses for the <!-- EXAMPLES_FOR:... --> placeholder).
     name_to_qualified: dict[str, str] = {}
-    for mod in modules:
-        mod_file = pkg_dir / f"{mod['module_name']}.py"
-        if not mod_file.exists():
-            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
-        if not mod_file.exists():
-            continue
-        members = _get_module_members(mod_file)
-        for cls in members["classes"]:
-            name_to_qualified[cls["name"]] = f"yohou.{mod['module_name']}.{cls['name']}"
-        for func in members["functions"]:
-            name_to_qualified[func["name"]] = f"yohou.{mod['module_name']}.{func['name']}"
-
-    gallery_items = _get_gallery_items(project_root)
-    stem_to_item = {item["stem"]: item for item in gallery_items}
+    for name, cls in data["abstract_base_classes"] + data["estimators"] + data["displays"]:
+        name_to_qualified[name] = f"{cls.__module__}.{name}"
+    for name, func in data["functions"]:
+        name_to_qualified[name] = f"{func.__module__}.{name}"
 
     usage: dict[str, list[dict]] = {}
-    examples_dir = project_root / "examples"
-    if not examples_dir.exists():
-        _NOTEBOOK_API_USAGE_CACHE = {}
-        return _NOTEBOOK_API_USAGE_CACHE
-
-    for notebook in sorted(examples_dir.rglob("*.py")):
-        if "__marimo__" in notebook.parts or "bugs" in notebook.parts:
-            continue
-        if "__init__" in notebook.name:
-            continue
-
-        stem = notebook.stem
-        item = stem_to_item.get(stem)
-        if item is None:
-            continue
-
-        try:
-            source = notebook.read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (SyntaxError, UnicodeDecodeError):
-            continue
-
-        # Extract names imported from yohou.*
-        imported_names: set[str] = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("yohou"):
-                for alias in node.names:
-                    imported_names.add(alias.name)
-
-        for imp_name in imported_names:
-            qualified = name_to_qualified.get(imp_name)
-            if qualified is not None:
-                usage.setdefault(qualified, []).append(item)
+    for item in _get_gallery_items(project_root):
+        for short_name in item.get("api_references", []):
+            qualified = name_to_qualified.get(short_name)
+            if qualified is None:
+                print(
+                    f"[gallery] {item['stem']}: api_references contains unknown name {short_name!r}",
+                    file=sys.stderr,
+                )
+                continue
+            usage.setdefault(qualified, []).append(item)
 
     _NOTEBOOK_API_USAGE_CACHE = usage
     return _NOTEBOOK_API_USAGE_CACHE
@@ -1227,6 +1268,160 @@ def _process_api_page_content(html, page, config):
     return html
 
 
+# ---------------------------------------------------------------------------
+# Glossary auto-linking
+# ---------------------------------------------------------------------------
+
+# Explicit allowlist: display text (lowercase) → glossary anchor slug.
+# Only distinctive, multi-word terms are included to avoid false positives.
+_GLOSSARY_TERMS = {
+    "forecasting horizon": "forecasting-horizon",
+    "observation horizon": "observation-horizon",
+    "memory buffer": "memory-buffer",
+    "composite method": "composite-method",
+    "point forecast": "point-forecast",
+    "interval forecast": "interval-forecast",
+    "class-probability forecast": "class-probability-forecast",
+    "coverage rate": "coverage-rate",
+    "recursive prediction": "recursive-prediction",
+    "error accumulation": "error-accumulation",
+    "rolling evaluation": "rolling-evaluation",
+    "time column contract": "time-column-contract",
+    "panel data": "panel-data",
+    "group prefix": "group-prefix",
+    "panel strategy": "panel-strategy",
+    "exogenous features": "exogenous-features",
+    "known-future features": "known-future-features",
+    "step-indexed columns": "step-indexed-columns",
+    "tabularization": "tabularization",
+    "reduction strategy": "reduction-strategy",
+    "step feature alignment": "step-feature-alignment",
+    "target transformer": "target-transformer",
+    "feature transformer": "feature-transformer",
+    "stateful transformer": "stateful-transformer",
+    "stateless transformer": "stateless-transformer",
+    "forecaster composition": "forecaster-composition",
+    "variance stabilization": "variance-stabilization",
+    "stationarity": "stationarity",
+    "conformal prediction": "conformal-prediction",
+    "conformity score": "conformity-score",
+    "calibration set": "calibration-set",
+    "similarity measure": "similarity-measure",
+    "metadata routing": "metadata-routing",
+    "aggregation method": "aggregation-method",
+    "forecast error": "forecast-error",
+    "scale-dependent metric": "scale-dependent-metric",
+    "scale-independent metric": "scale-independent-metric",
+    "cross-validation": "cross-validation",
+    "temporal split": "temporal-split",
+    "expanding window splitter": "expanding-window-splitter",
+    "sliding window splitter": "sliding-window-splitter",
+    "concept drift": "concept-drift",
+    "time weighting": "time-weighting",
+    "proper scoring rule": "proper-scoring-rule",
+}
+
+# Tags whose text content should never be matched by the glossary linker.
+_GLOSSARY_SKIP_TAGS = frozenset({"code", "pre", "a", "h1", "h2", "h3", "h4", "h5", "h6", "script", "style"})
+
+_GLOSSARY_SRC_PATH = "pages/explanation/glossary.md"
+
+
+def _linkify_glossary_terms(html, page, files):
+    """Wrap the first occurrence of each glossary term in a link.
+
+    Operates on rendered HTML.  Skips text inside code, headings, and
+    existing links.  Only processes pages under ``pages/``.
+    """
+    src = page.file.src_path
+    if src == _GLOSSARY_SRC_PATH:
+        return html
+    if not src.startswith("pages/"):
+        return html
+
+    # Compute relative path from current page to the glossary page.
+    # Use dest_path (output path) since use_directory_urls puts pages in
+    # subdirectories: "pages/explanation/core-concepts.md" becomes
+    # "pages/explanation/core-concepts/index.html".
+    from posixpath import relpath as posix_relpath
+
+    dest_dir = "/".join(page.file.dest_path.split("/")[:-1])  # e.g. "pages/explanation/core-concepts"
+    glossary_dir = "pages/explanation/glossary"  # built output directory
+    rel_glossary = posix_relpath(glossary_dir, dest_dir)  # e.g. "../glossary"
+
+    # Build a single regex alternation sorted longest-first to prefer
+    # longer matches (e.g. "stateful transformer" before "transformer").
+    sorted_terms = sorted(_GLOSSARY_TERMS.keys(), key=len, reverse=True)
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(t) for t in sorted_terms) + r")\b",
+        re.IGNORECASE,
+    )
+
+    linked: set[str] = set()  # terms already linked (lowercase)
+
+    class _GlossaryLinker(HTMLParser):
+        """One-pass HTML rewriter that links glossary terms in text nodes."""
+
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.result: list[str] = []
+            self._skip_depth: int = 0  # >0 means inside a skip tag
+
+        def handle_starttag(self, tag, attrs):
+            tag_lower = tag.lower()
+            if tag_lower in _GLOSSARY_SKIP_TAGS:
+                self._skip_depth += 1
+            self.result.append(self.get_starttag_text())
+
+        def handle_endtag(self, tag):
+            tag_lower = tag.lower()
+            if tag_lower in _GLOSSARY_SKIP_TAGS:
+                self._skip_depth = max(0, self._skip_depth - 1)
+            self.result.append(f"</{tag}>")
+
+        def handle_data(self, data):
+            if self._skip_depth > 0:
+                self.result.append(data)
+                return
+            self.result.append(_replace_terms(data))
+
+        def handle_entityref(self, name):
+            self.result.append(f"&{name};")
+
+        def handle_charref(self, name):
+            self.result.append(f"&#{name};")
+
+        def handle_comment(self, data):
+            self.result.append(f"<!--{data}-->")
+
+        def handle_decl(self, decl):
+            self.result.append(f"<!{decl}>")
+
+        def handle_pi(self, data):
+            self.result.append(f"<?{data}>")
+
+        def unknown_decl(self, data):
+            self.result.append(f"<![{data}]>")
+
+    def _replace_terms(text):
+        """Replace first unlinked occurrence of each term in a text fragment."""
+
+        def _sub(m):
+            term_lower = m.group(0).lower()
+            if term_lower in linked:
+                return m.group(0)
+            linked.add(term_lower)
+            slug = _GLOSSARY_TERMS[term_lower]
+            href = f"{rel_glossary}/#{slug}"
+            return f'<a href="{href}" class="glossary-link">{m.group(0)}</a>'
+
+        return pattern.sub(_sub, text)
+
+    parser = _GlossaryLinker()
+    parser.feed(html)
+    return "".join(parser.result)
+
+
 def on_page_content(html, page, config, files):
     """Post-process HTML: API page TOC and content restructuring."""
     src = page.file.src_path
@@ -1248,6 +1443,9 @@ def on_page_content(html, page, config, files):
     ):
         # Submodule page: module list with active/children expansion
         page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
+
+    # Glossary auto-linking (first occurrence per page for allowlisted terms)
+    html = _linkify_glossary_terms(html, page, files)
 
     return html
 
@@ -1290,11 +1488,16 @@ def on_page_markdown(markdown, page, config, files):
         gallery_html = _build_gallery_html(project_root)
         markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
 
-    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:interval -->, etc.
-    for match in re.finditer(r"<!-- GALLERY:(\w+) -->", markdown):
+    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:section:panel-data -->, etc.
+    for match in re.finditer(r"<!-- GALLERY:(\w[\w:-]*) -->", markdown):
         cat = match.group(1)
         gallery_html = _build_gallery_html(project_root, category=cat)
         markdown = markdown.replace(match.group(0), gallery_html)
+
+    # COMPANION_NOTEBOOKS placeholder → companion notebook cards
+    if "<!-- COMPANION_NOTEBOOKS -->" in markdown:
+        companion_html = _build_companion_cards_html(project_root, page.file.src_path)
+        markdown = markdown.replace("<!-- COMPANION_NOTEBOOKS -->", companion_html)
 
     # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
     markdown = re.sub(
@@ -1307,6 +1510,36 @@ def on_page_markdown(markdown, page, config, files):
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
 
     return markdown
+
+
+def on_startup(**kwargs):
+    """Reset module-level caches at the start of each build."""
+    global _GALLERY_CACHE, _COMPANION_INDEX, _NOTEBOOK_API_USAGE_CACHE
+    global _DISCOVERY_CACHE, _SEE_ALSO_LOOKUP, _SUBMODULE_CACHE, _GIT_REF_CACHE
+    _GALLERY_CACHE = None
+    _COMPANION_INDEX = None
+    _NOTEBOOK_API_USAGE_CACHE = None
+    _DISCOVERY_CACHE = None
+    _SEE_ALSO_LOOKUP = None
+    _SUBMODULE_CACHE = None
+    _GIT_REF_CACHE = None
+
+
+def _notebook_content_hash(notebook: Path) -> str:
+    """Compute a SHA-256 hash of a notebook file's contents."""
+    return hashlib.sha256(notebook.read_bytes()).hexdigest()
+
+
+def _is_cached(output_dir: Path, expected_hash: str) -> bool:
+    """Check whether a notebook export is cached and up-to-date."""
+    hash_file = output_dir / ".source_hash"
+    html_file = output_dir / "index.html"
+    if not html_file.exists() or not hash_file.exists():
+        return False
+    try:
+        return hash_file.read_text().strip() == expected_hash
+    except OSError:
+        return False
 
 
 def on_pre_build(config):
@@ -1338,8 +1571,27 @@ def on_pre_build(config):
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    def _export_notebook(notebook):
+    # Filter to only notebooks that need re-exporting (content hash changed)
+    to_export: list[tuple[Path, str]] = []
+    cached_count = 0
+    for nb in notebooks:
+        content_hash = _notebook_content_hash(nb)
+        output_dir = docs_examples / nb.stem
+        if _is_cached(output_dir, content_hash):
+            cached_count += 1
+        else:
+            to_export.append((nb, content_hash))
+
+    if cached_count:
+        print(f"[hooks] {cached_count} notebook(s) unchanged, skipping", flush=True)
+
+    if not to_export:
+        print("[hooks] all notebooks cached, nothing to export", flush=True)
+        return
+
+    def _export_notebook(item):
         """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
+        notebook, content_hash = item
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
@@ -1367,21 +1619,33 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
+            # Write content hash so subsequent builds can skip this notebook
+            (output_dir / ".source_hash").write_text(content_hash)
             return str(rel_path), None
         except subprocess.CalledProcessError as e:
+            # Marimo exits 1 when "Export was successful, but some cells failed
+            # to execute". The HTML file is still produced and usable (cells show
+            # error indicators). Treat as a warning if the output file exists.
+            if static_file.exists() and static_file.stat().st_size > 0:
+                (output_dir / ".source_hash").write_text(content_hash)
+                return str(rel_path), ("warn", e)
             return str(rel_path), e
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min(os.cpu_count() or 2, 4)))
+    # RTD has a 7GB memory limit. Most notebook exports peak at ~350MB,
+    # heaviest (class_proba) at ~1.7GB. Use 4 workers on RTD: realistic
+    # concurrent peak is ~2.7GB (1 heavy + 3 light), well within 7GB.
+    _default_workers = 4 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
 
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     failed: list[str] = []
     done_count = 0
-    total = len(notebooks)
-    print(f"[hooks] exporting {total} notebooks with {max_workers} workers", flush=True)
+    total = len(to_export)
+    print(f"[hooks] exporting {total} notebook(s) with {max_workers} workers", flush=True)
 
     # Heartbeat thread to prevent RTD "inactivity" kills
     heartbeat_stop = threading.Event()
@@ -1394,12 +1658,17 @@ def on_pre_build(config):
     heartbeat.start()
 
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_export_notebook, nb): nb for nb in notebooks}
+        futures = {pool.submit(_export_notebook, item): item for item in to_export}
         for future in as_completed(futures):
             rel_path, error = future.result()
             done_count += 1
             if error is None:
                 print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
+            elif isinstance(error, tuple) and error[0] == "warn":
+                # Export produced HTML but some cells had execution errors
+                print(f"[hooks] [{done_count}/{total}] exported {rel_path} (with cell warnings)", flush=True)
+                if hasattr(error[1], "stderr") and error[1].stderr:
+                    print(f"[hooks]   {error[1].stderr.strip()}", file=sys.stderr, flush=True)
             elif isinstance(error, FileNotFoundError):
                 print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
                 pool.shutdown(wait=False, cancel_futures=True)

@@ -50,9 +50,9 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    `BaseForecaster` : Base class for forecasters.
-    `LagTransformer` : Creates lagged features from time series.
-    `SeasonalDifferencing` : Stateful seasonal differencing transformer.
+    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Base class for forecasters.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Creates lagged features from time series.
+    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Stateful seasonal differencing transformer.
 
     """
 
