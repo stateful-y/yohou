@@ -1621,6 +1621,12 @@ def on_pre_build(config):
             (output_dir / ".source_hash").write_text(content_hash)
             return str(rel_path), None
         except subprocess.CalledProcessError as e:
+            # Marimo exits 1 when "Export was successful, but some cells failed
+            # to execute". The HTML file is still produced and usable (cells show
+            # error indicators). Treat as a warning if the output file exists.
+            if static_file.exists() and static_file.stat().st_size > 0:
+                (output_dir / ".source_hash").write_text(content_hash)
+                return str(rel_path), ("warn", e)
             return str(rel_path), e
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
@@ -1656,6 +1662,11 @@ def on_pre_build(config):
             done_count += 1
             if error is None:
                 print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
+            elif isinstance(error, tuple) and error[0] == "warn":
+                # Export produced HTML but some cells had execution errors
+                print(f"[hooks] [{done_count}/{total}] exported {rel_path} (with cell warnings)", flush=True)
+                if hasattr(error[1], "stderr") and error[1].stderr:
+                    print(f"[hooks]   {error[1].stderr.strip()}", file=sys.stderr, flush=True)
             elif isinstance(error, FileNotFoundError):
                 print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
                 pool.shutdown(wait=False, cancel_futures=True)
