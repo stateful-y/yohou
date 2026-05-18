@@ -12,24 +12,28 @@ __version__ = version(__name__)
 # Enable metadata routing globally for all Yohou estimators
 set_config(enable_metadata_routing=True)
 
-# Patch numpydoc's See Also parser to tolerate backtick-wrapped names.
-# Yohou docstrings use `ClassName` in See Also sections so that
-# mkdocs-autorefs can generate hyperlinks in the rendered docs.  The
-# numpydoc parser bundled with sklearn only accepts bare names or
-# Sphinx :role:`name` syntax, so backtick-only references cause a
-# ValueError when sklearn tries to render the HTML repr.  This patch
-# strips the backticks from the content lines *before* parsing,
-# leaving the original __doc__ strings (and therefore mkdocs output)
-# untouched.
+# Patch numpydoc's See Also parser to tolerate MkDocs link syntax.
+# Yohou docstrings use `[`Name`][qualified.path]` in See Also sections
+# so that mkdocs-autorefs can generate hyperlinks in the rendered docs.
+# The numpydoc parser bundled with sklearn only accepts bare names or
+# Sphinx :role:`name` syntax, so MkDocs links, bullet markers, and
+# backtick-only references cause a ValueError when sklearn tries to
+# render the HTML repr.  This patch normalizes content lines *before*
+# parsing, leaving the original __doc__ strings (and therefore mkdocs
+# output) untouched.
 try:
     from sklearn.externals._numpydoc.docscrape import NumpyDocString
 
     _original_parse_see_also = NumpyDocString._parse_see_also
+    _MKDOCS_LINK_RE = re.compile(r"\[`?[^\]]*`?\]\[([A-Za-z_][A-Za-z0-9_.]*)\]")
+    _BULLET_PREFIX_RE = re.compile(r"^(\s*)-\s+")
     _BACKTICK_NAME_RE = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
 
     def _parse_see_also_strip_backticks(self, content):  # noqa: ANN001, ANN202
-        """Strip backtick-wrapped names before delegating to the original parser."""
-        cleaned = [_BACKTICK_NAME_RE.sub(r"\1", line) for line in content]
+        """Normalize MkDocs links and backticks before delegating to the original parser."""
+        cleaned = [_MKDOCS_LINK_RE.sub(r"\1", line) for line in content]
+        cleaned = [_BULLET_PREFIX_RE.sub(r"\1", line) for line in cleaned]
+        cleaned = [_BACKTICK_NAME_RE.sub(r"\1", line) for line in cleaned]
         return _original_parse_see_also(self, cleaned)
 
     NumpyDocString._parse_see_also = _parse_see_also_strip_backticks  # ty: ignore[invalid-assignment]
