@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import os
 import shutil
+import sys
 import zipfile
 from pathlib import Path
+from urllib.request import urlopen
 
 import polars as pl
 from sklearn.datasets import fetch_file
@@ -25,6 +28,47 @@ from yohou.datasets._registry import (
 from yohou.datasets._tsf_parser import parse_tsf
 
 _KDD_CUP_MEASUREMENTS = frozenset({"pm2.5", "pm10", "no2", "co", "o3", "so2"})
+
+_CDN_BASE_URL = "https://cdn.jsdelivr.net/gh/stateful-y/yohou@datasets"
+
+
+def _is_wasm() -> bool:
+    """Return True when running inside Pyodide/WASM."""
+    return sys.platform == "emscripten"
+
+
+def _fetch_dataset_wasm(dataset_name: str, metadata: RemoteFileMetadata) -> Bunch:
+    """Download a pre-processed parquet from jsDelivr and return a Bunch."""
+    url = f"{_CDN_BASE_URL}/{dataset_name}.parquet"
+    data = urlopen(url).read()  # noqa: S310
+    frame = pl.read_parquet(io.BytesIO(data))
+    feature_names = [c for c in frame.columns if c != "time"]
+    return Bunch(
+        frame=frame,
+        feature_names=feature_names,
+        DESCR=metadata.descr,
+        frequency=metadata.frequency,
+        n_series=len(feature_names),
+        filename=url,
+    )
+
+
+def _fetch_classification_wasm(dataset_name: str) -> Bunch:
+    """Download pre-computed classification parquets from jsDelivr."""
+    y_url = f"{_CDN_BASE_URL}/{dataset_name}_y.parquet"
+    x_url = f"{_CDN_BASE_URL}/{dataset_name}_X.parquet"
+    y = pl.read_parquet(io.BytesIO(urlopen(y_url).read()))  # noqa: S310
+    X_actual = pl.read_parquet(io.BytesIO(urlopen(x_url).read()))  # noqa: S310
+    target_col = [c for c in y.columns if c != "time"][0]
+    classes = sorted(y[target_col].unique().to_list())
+    return Bunch(
+        y=y,
+        X_actual=X_actual,
+        feature_names=[c for c in X_actual.columns if c != "time"],
+        target_names=[target_col],
+        classes=classes,
+        DESCR=f"Classification dataset ({dataset_name}) loaded from CDN.",
+    )
 
 
 def get_data_home(data_home: str | os.PathLike | None = None) -> str:
@@ -118,6 +162,9 @@ def _fetch_dataset(
         ``DESCR``, ``frequency``, ``n_series``, ``filename`` keys.
 
     """
+    if _is_wasm():
+        return _fetch_dataset_wasm(dataset_name, metadata)
+
     data_home_str = get_data_home(data_home)
     dataset_dir = os.path.join(data_home_str, dataset_name)
 
@@ -945,6 +992,9 @@ def fetch_air_quality_classification(
     ['good', 'hazardous', 'moderate', 'unhealthy']
 
     """
+    if _is_wasm():
+        return _fetch_classification_wasm("air_quality_classification")
+
     bunch = fetch_kdd_cup(
         n_groups=1,
         data_home=data_home,
@@ -1063,6 +1113,9 @@ def fetch_demand_classification(
     ['high', 'low', 'medium']
 
     """
+    if _is_wasm():
+        return _fetch_classification_wasm("demand_classification")
+
     bunch = fetch_electricity_demand(
         data_home=data_home,
         download_if_missing=download_if_missing,
