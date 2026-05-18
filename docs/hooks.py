@@ -1340,12 +1340,14 @@ def _linkify_glossary_terms(html, page, files):
         return html
 
     # Compute relative path from current page to the glossary page.
-    # Both src paths are relative to docs_dir (e.g. "pages/tutorials/foo.md").
+    # Use dest_path (output path) since use_directory_urls puts pages in
+    # subdirectories: "pages/explanation/core-concepts.md" becomes
+    # "pages/explanation/core-concepts/index.html".
     from posixpath import relpath as posix_relpath
 
-    src_dir = "/".join(src.split("/")[:-1])  # e.g. "pages/tutorials"
+    dest_dir = "/".join(page.file.dest_path.split("/")[:-1])  # e.g. "pages/explanation/core-concepts"
     glossary_dir = "pages/explanation/glossary"  # built output directory
-    rel_glossary = posix_relpath(glossary_dir, src_dir)  # e.g. "../explanation/glossary"
+    rel_glossary = posix_relpath(glossary_dir, dest_dir)  # e.g. "../glossary"
 
     # Build a single regex alternation sorted longest-first to prefer
     # longer matches (e.g. "stateful transformer" before "transformer").
