@@ -3,6 +3,7 @@
 import abc
 import inspect
 import numbers
+import warnings
 from collections.abc import Callable
 from typing import Any, Literal
 from typing import cast as typing_cast
@@ -56,6 +57,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
           columns. Cleanest signal, no cross-horizon leakage.
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
+    nan_handling : {"drop", "pass"}, default="pass"
+        How to handle NaN values in the tabularized training data.
+        ``"pass"`` leaves NaN in place (suitable for estimators that
+        handle NaN natively, such as tree-based models). ``"drop"``
+        removes any training instance where X or y contains NaN before
+        fitting the estimator, and emits a warning with the count of
+        dropped rows.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -98,6 +106,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
+        "nan_handling": [StrOptions({"drop", "pass"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
     }
 
@@ -110,6 +119,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         feature_transformer: BaseTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
+        nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
     ):
         BaseForecaster.__init__(
@@ -123,6 +133,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
         self.step_feature_alignment = step_feature_alignment
+        self.nan_handling = nan_handling
         self.n_jobs = n_jobs
 
     def __sklearn_tags__(self) -> Tags:
@@ -564,6 +575,90 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
 
+    def _apply_nan_handling(
+        self,
+        X_tab: pl.DataFrame,
+        y_tab: pl.DataFrame | pl.Series,
+        sample_weight: np.ndarray | None,
+        *,
+        context: str = "",
+    ) -> tuple[pl.DataFrame, pl.DataFrame | pl.Series, np.ndarray | None]:
+        """Remove rows containing NaN/null from tabularized training data.
+
+        When ``nan_handling="drop"``, removes any row where X_tab or y_tab
+        contains at least one null value. Filters sample_weight in lockstep.
+        Emits a warning reporting the number of dropped rows.
+
+        When ``nan_handling="pass"``, returns inputs unchanged.
+
+        Parameters
+        ----------
+        X_tab : pl.DataFrame
+            Feature matrix.
+        y_tab : pl.DataFrame or pl.Series
+            Target matrix or series.
+        sample_weight : np.ndarray or None
+            Sample weights (filtered in lockstep if rows are dropped).
+        context : str, default=""
+            Additional context for the warning message (e.g., " (step 3)").
+
+        Returns
+        -------
+        X_tab : pl.DataFrame
+            Filtered feature matrix.
+        y_tab : pl.DataFrame or pl.Series
+            Filtered target.
+        sample_weight : np.ndarray or None
+            Filtered sample weights.
+
+        """
+        if self.nan_handling == "pass":
+            return X_tab, y_tab, sample_weight
+
+        # For null: check all columns. For NaN: only float columns.
+        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+        float_cols = X_tab.select(cs.float())
+        if float_cols.width > 0:
+            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+            x_ok = null_free & nan_free
+        else:
+            x_ok = null_free
+
+        if isinstance(y_tab, pl.Series):
+            y_ok = y_tab.is_not_null()
+            if y_tab.dtype.is_float():
+                y_ok = y_ok & y_tab.is_not_nan()
+        else:
+            y_null_free = y_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+            y_float_cols = y_tab.select(cs.float())
+            if y_float_cols.width > 0:
+                y_nan_free = y_float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+                y_ok = y_null_free & y_nan_free
+            else:
+                y_ok = y_null_free
+
+        mask = x_ok & y_ok
+        n_total = len(mask)
+        n_dropped = n_total - mask.sum()
+
+        if n_dropped > 0:
+            if n_dropped == n_total:
+                raise ValueError(
+                    f"All {n_total} training instances contain NaN{context}. "
+                    f"Cannot fit with nan_handling='drop' and 0 samples remaining."
+                )
+            pct = 100 * n_dropped / n_total
+            warnings.warn(
+                f"NaN handling dropped {n_dropped} of {n_total} training instances ({pct:.1f}%){context}.",
+                stacklevel=3,
+            )
+            X_tab = X_tab.filter(mask)
+            y_tab = y_tab.filter(mask)
+            if sample_weight is not None:
+                sample_weight = sample_weight[mask.to_numpy()]
+
+        return X_tab, y_tab, sample_weight
+
     def _fit_single_estimator(
         self,
         X_tab: pl.DataFrame,
@@ -665,6 +760,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon,
             vintage_weight=vintage_weight,
         )
+        X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         return self._fit_single_estimator(
             X_tab,
             y_tab,
@@ -788,10 +884,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if y_step.shape[1] == 1:
                 y_step = y_step.to_series()
             X_tab_step = self._filter_step_features(X_tab, step + 1)
+            X_tab_step, y_step, sw_step = self._apply_nan_handling(
+                X_tab_step, y_step, sample_weight, context=f" (step {step + 1})"
+            )
             return self._fit_single_estimator(
                 X_tab_step,
                 y_step,
-                sample_weight,
+                sw_step,
                 estimator_params,
                 estimator_fit_params,
             )
@@ -857,6 +956,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon,
             vintage_weight=vintage_weight,
         )
+        X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
 
         self._dir_rec_n_original_features_ = X_tab.shape[1]
 

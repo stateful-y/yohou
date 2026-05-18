@@ -356,6 +356,62 @@ def _(
 def _(mo):
     mo.md(
         r"""
+        ## Alternative: Skip NaN Rows with `nan_handling`
+
+        Instead of imputing, you can let the reduction forecaster drop any
+        tabularized training row that contains NaN. This is useful when gaps
+        are sparse and you want to avoid imputation artifacts.
+
+        Tree-based estimators handle NaN natively (`nan_handling="pass"`),
+        while linear models need the rows removed (`nan_handling="drop"`).
+        """
+    )
+    return
+
+
+@app.cell
+def _(tourism_missing):
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.linear_model import Ridge
+
+    from yohou.point import PointReductionForecaster
+
+    # Tree-based: pass NaN through (default behavior)
+    tree_forecaster = PointReductionForecaster(
+        estimator=HistGradientBoostingRegressor(),
+        nan_handling="pass",
+    )
+    tree_forecaster.fit(y=tourism_missing, forecasting_horizon=3)
+    tree_pred = tree_forecaster.predict(forecasting_horizon=3)
+
+    # Linear: drop NaN rows before fitting
+    linear_forecaster = PointReductionForecaster(
+        estimator=Ridge(),
+        nan_handling="drop",
+    )
+    linear_forecaster.fit(y=tourism_missing, forecasting_horizon=3)
+    linear_pred = linear_forecaster.predict(forecasting_horizon=3)
+
+    return linear_pred, tree_pred
+
+
+@app.cell
+def _(linear_pred, tree_pred):
+    import polars as pl
+
+    comparison = pl.DataFrame({
+        "time": tree_pred["time"],
+        "tree_prediction": tree_pred["tourists"],
+        "linear_prediction": linear_pred["tourists"],
+    })
+    comparison
+    return (comparison,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
         ## Next Steps
 
         - [Handle Missing Data](/pages/how-to/handle-missing-data/) for the full guide

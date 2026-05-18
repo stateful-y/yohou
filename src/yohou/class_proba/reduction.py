@@ -48,6 +48,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         - ``"all"``: every estimator receives all step columns.
         - ``"matched"``: estimator for step h receives only ``*_step_h``.
         - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
+    nan_handling : {"drop", "pass"}, default="pass"
+        How to handle NaN values in the tabularized training data.
+        ``"pass"`` leaves NaN in place (suitable for estimators that
+        handle NaN natively, such as tree-based models). ``"drop"``
+        removes any training instance where X or y contains NaN before
+        fitting the estimator, and emits a warning with the count of
+        dropped rows.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     n_jobs : int or None, default=None
@@ -123,6 +130,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
+        nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
@@ -132,6 +140,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             step_feature_alignment=step_feature_alignment,
+            nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )

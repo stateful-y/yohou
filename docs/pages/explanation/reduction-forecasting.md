@@ -267,6 +267,41 @@ sum equals the number of samples. The combined weight vector is passed to the
 estimator as `sample_weight` during fitting, so the estimator must support that
 parameter (most sklearn regressors do).
 
+## NaN Handling
+
+After tabularization, the training matrix may contain NaN values. These can originate
+from several sources:
+
+1. **Target lags**: if `y` contains NaN at position $t$, the lag feature
+   `value_lag_k` will carry that NaN into every row whose window includes $t$.
+2. **X_future step columns**: if `X_future` has a gap at time $t$, the step column
+   `feature_step_h` will be NaN for any row whose horizon lands on $t$.
+3. **X_forecast step columns**: similarly, missing vintages in `X_forecast` propagate
+   as NaN into the pivoted step columns.
+4. **Target columns (y_tab)**: if `y` itself has NaN at the positions that become
+   the supervised target after tabularization.
+
+The `nan_handling` parameter on
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+(and all other reduction forecasters) controls what happens next:
+
+| Value | Behavior |
+|-------|----------|
+| `"pass"` (default) | NaN values are left in place. The estimator receives them as-is. Tree-based models (LightGBM, XGBoost, CatBoost, HistGradientBoosting) handle NaN natively, so this is the zero-effort path for those estimators. |
+| `"drop"` | Any tabularized row where X or y contains at least one NaN is removed before fitting. A warning is emitted with the count and percentage of dropped rows. `sample_weight` is filtered in lockstep. |
+
+For the **direct** strategy, NaN filtering happens per step: step 1's estimator may
+retain rows that step 3's estimator drops (because step 3's features reference
+different future positions). This maximizes the training data available to each
+individual model.
+
+For the **multi-output** and **dir-rec** strategies, a single unified mask is applied
+across all steps, since all steps share one model (multi-output) or the same initial
+feature matrix (dir-rec).
+
+If `nan_handling="drop"` removes all rows, a `ValueError` is raised indicating that
+no training samples remain.
+
 ## References
 
 - Bontempi, G., Ben Taieb, S., & Le Borgne, Y.-A. (2013). Machine learning strategies
