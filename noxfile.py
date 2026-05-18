@@ -223,15 +223,14 @@ def test_examples(session: nox.Session) -> None:
     )
 
     # Run example tests in parallel using pytest with pytest-xdist with no coverage.
-    # Use 4 workers (not 'auto') because tests are subprocess-bound and CI runners
-    # only expose 2 cores, but can handle more concurrent subprocess invocations.
+    # Use 2 workers to limit peak memory on CI shared runners (7GB RAM).
     session.run(
         "pytest",
         "tests",
         "-m",
         "example",
         "-n",
-        "4",
+        "2",
         "-v",
         "--no-cov",
         *session.posargs,

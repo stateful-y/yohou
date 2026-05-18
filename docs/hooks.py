@@ -1625,7 +1625,10 @@ def on_pre_build(config):
         except FileNotFoundError:
             return str(rel_path), FileNotFoundError("marimo")
 
-    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", min((os.cpu_count() or 2) * 2, 8)))
+    # RTD has a 7GB memory limit; use 1 worker to avoid OOM when exporting
+    # notebooks (each subprocess loads heavy plotting/ML libraries).
+    _default_workers = 1 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
+    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
 
     import threading
     from concurrent.futures import ThreadPoolExecutor, as_completed
