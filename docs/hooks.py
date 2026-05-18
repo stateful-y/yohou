@@ -1626,9 +1626,9 @@ def on_pre_build(config):
             return str(rel_path), FileNotFoundError("marimo")
 
     # RTD has a 7GB memory limit. Most notebook exports peak at ~350MB,
-    # heaviest (class_proba) at ~1.7GB. Use 2 workers on RTD for a safe
-    # concurrent peak of ~2.1GB while halving sequential export time.
-    _default_workers = 2 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
+    # heaviest (class_proba) at ~1.7GB. Use 4 workers on RTD: realistic
+    # concurrent peak is ~2.7GB (1 heavy + 3 light), well within 7GB.
+    _default_workers = 4 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
     max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
 
     import threading

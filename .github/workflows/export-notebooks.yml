@@ -6,6 +6,10 @@ on:
     paths:
       - "examples/**/*.py"
       - "src/yohou/**"
+  pull_request:
+    paths:
+      - "examples/**/*.py"
+      - "src/yohou/**"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +42,7 @@ jobs:
         run: tar czf notebook-exports.tar.gz -C docs/examples .
 
       - name: Upload to release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: notebook-cache
