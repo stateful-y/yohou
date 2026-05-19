@@ -134,6 +134,49 @@ def clamp_and_fill(df: pl.DataFrame) -> pl.DataFrame:
 imputer = FunctionTransformer(func=clamp_and_fill)
 ```
 
+## Skip NaN Instances During Training
+
+When your estimator cannot handle NaN natively (e.g. `LinearRegression`,
+`Ridge`, `SVR`), you can skip the imputation step entirely and let the
+reduction forecaster drop any training row that contains NaN:
+
+```python
+from sklearn.linear_model import Ridge
+from yohou.point import PointReductionForecaster
+
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    nan_handling="drop",
+)
+forecaster.fit(y=y_with_gaps, forecasting_horizon=3)
+```
+
+The forecaster emits a warning reporting how many rows were removed.
+If the gaps are sparse, this is often simpler than building an imputation
+pipeline and avoids introducing imputation artifacts into the training signal.
+
+For tree-based estimators that handle NaN natively (LightGBM, XGBoost,
+CatBoost, `HistGradientBoostingRegressor`), keep the default
+`nan_handling="pass"` and let the estimator learn split decisions around
+missing values directly:
+
+```python
+from sklearn.ensemble import HistGradientBoostingRegressor
+from yohou.point import PointReductionForecaster
+
+forecaster = PointReductionForecaster(
+    estimator=HistGradientBoostingRegressor(),
+    nan_handling="pass",  # default, tree handles NaN internally
+)
+forecaster.fit(y=y_with_gaps, forecasting_horizon=3)
+```
+
+!!! tip
+    Use `nan_handling="drop"` as a quick baseline when gaps are rare.
+    Switch to a proper imputation transformer (see sections above) when
+    you need to preserve every training sample or when the gap pattern
+    is systematic.
+
 ## See Also
 
 - [Handle Outliers](handle-outliers.md) for detecting and treating anomalous values

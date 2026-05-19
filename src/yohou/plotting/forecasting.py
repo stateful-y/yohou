@@ -1529,7 +1529,7 @@ def _plot_forecast_panel_typed(
             test_m = _extract_member_df(y_test, suffix)
             train_m = _extract_member_df(y_train, suffix) if y_train is not None else None
             for pred_df in model_preds.values():
-                pred_m = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                pred_m = _extract_member_df(pred_df, suffix)
                 for cc in pred_m.columns:
                     if cc in ("time", "vintage_time"):
                         continue
@@ -1558,7 +1558,7 @@ def _plot_forecast_panel_typed(
 
         if prediction_mode == "class_proba":
             for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
-                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                pred_member = _extract_member_df(pred_df, suffix)
                 proba_cols = [c for c in pred_member.columns if "_proba_" in c]
                 if not proba_cols:
                     continue
@@ -1588,7 +1588,7 @@ def _plot_forecast_panel_typed(
 
         elif prediction_mode == "categorical":
             first_pred_member = _extract_member_df(
-                next(iter(model_preds.values())),  # ty: ignore[invalid-argument-type]
+                next(iter(model_preds.values())),
                 suffix,
             )
             cat_cols = [
@@ -1598,7 +1598,7 @@ def _plot_forecast_panel_typed(
             ]
 
             for model_idx, (model_name, pred_df) in enumerate(model_preds.items()):
-                pred_member = _extract_member_df(pred_df, suffix)  # ty: ignore[invalid-argument-type]
+                pred_member = _extract_member_df(pred_df, suffix)
                 _render_categorical_traces(
                     fig,
                     pred_member,

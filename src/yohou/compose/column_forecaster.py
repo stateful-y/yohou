@@ -783,7 +783,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             X_forecast=X_forecast,
             groups=groups,
             stride=stride,
-            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            observe_fn=self.observe,
             forecasting_horizon=fh,
             predict_transformed=predict_transformed,
             **params,
@@ -945,7 +945,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             X_forecast=X_forecast,
             groups=groups,
             stride=stride,
-            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            observe_fn=self.observe,
             forecasting_horizon=fh,
             coverage_rates=coverage_rates,
             predict_transformed=predict_transformed,
@@ -1081,7 +1081,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             X_forecast=X_forecast,
             groups=groups,
             stride=stride,
-            observe_fn=self.observe,  # ty: ignore[invalid-argument-type]
+            observe_fn=self.observe,
             forecasting_horizon=fh,
             **params,
         )

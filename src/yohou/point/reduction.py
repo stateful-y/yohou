@@ -38,6 +38,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         a feature.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    nan_handling : {"drop", "pass"}, default="pass"
+        How to handle NaN values in the tabularized training data.
+        ``"pass"`` leaves NaN in place (suitable for estimators that
+        handle NaN natively, such as tree-based models). ``"drop"``
+        removes any training instance where X or y contains NaN before
+        fitting the estimator, and emits a warning with the count of
+        dropped rows.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -128,6 +135,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         feature_transformer: BaseTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
+        nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
@@ -137,6 +145,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             step_feature_alignment=step_feature_alignment,
+            nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
         )
