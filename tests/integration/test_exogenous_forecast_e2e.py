@@ -795,3 +795,94 @@ class TestEdgeCasesExtended:
         # Step columns should still be non-empty (auto-rederived)
         assert len(f._step_column_names_) > 0
         assert f._step_column_names_ == step_cols_before
+
+
+@pytest.mark.integration
+class TestMismatchedVintageOverride:
+    """Tests for X_forecast overrides whose vintage_time differs from observed_time_.
+
+    The existing TestFitPredictWithExogenous.test_multi_vintage_predictions_differ
+    uses vintage_time == observed_time_ (last training timestamp). These tests
+    advance observed_time_ via observe() so that the override vintage_time no
+    longer matches, exercising the remap path in _predict_with_step_override.
+    """
+
+    def _fit_and_observe(self, electricity_data):
+        """Fit a forecaster and observe a few test rows to shift observed_time_."""
+        d = electricity_data
+        f, fh = _build_forecaster()
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+            X_forecast=d["X_forecast_train"],
+        )
+
+        # Advance observed_time_ past the last training timestamp
+        n_obs = 3
+        f.observe(
+            y=d["y_test"][:n_obs],
+            X_actual=d["X_actual_test"][:n_obs],
+        )
+        return f, fh, d
+
+    def _make_mismatched_vintages(self, d, fh):
+        """Build two single-vintage X_forecast overrides whose vintage_time
+        differs from the forecaster's observed_time_ (uses the last training
+        timestamp as vintage_time, while observed_time_ has been advanced).
+        """
+        last_train = d["y_train"]["time"].max()
+        test_times = d["all_times"][N_TRAIN : N_TRAIN + fh]
+
+        X_a = _make_weather_forecast(
+            pl.Series("vintage_time", [last_train]),
+            test_times,
+            bias=0.1,
+            rng=np.random.default_rng(500),
+        )
+        X_b = _make_weather_forecast(
+            pl.Series("vintage_time", [last_train]),
+            test_times,
+            bias=5.0,
+            rng=np.random.default_rng(600),
+        )
+        return X_a, X_b
+
+    def test_predict_with_mismatched_vintage_time_produces_different_results(self, electricity_data):
+        """Two X_forecast overrides with different weather values but
+        vintage_time != observed_time_ must produce different predictions."""
+        f, fh, d = self._fit_and_observe(electricity_data)
+        X_a, X_b = self._make_mismatched_vintages(d, fh)
+
+        # Confirm vintage_time differs from observed_time_
+        assert X_a["vintage_time"][0] != f.observed_time_
+
+        pred_a = f.predict(X_forecast=X_a)
+        pred_b = f.predict(X_forecast=X_b)
+
+        assert not np.allclose(
+            pred_a["price"].to_numpy(),
+            pred_b["price"].to_numpy(),
+            atol=0.01,
+        ), "Predictions with different X_forecast overrides must differ even when vintage_time != observed_time_"
+
+    def test_predict_with_mismatched_vintage_restores_state(self, electricity_data):
+        """predict(X_forecast=X_v) with vintage_time != observed_time_ must
+        restore _X_t_observed step columns to their original values."""
+        f, fh, d = self._fit_and_observe(electricity_data)
+        X_a, _ = self._make_mismatched_vintages(d, fh)
+
+        step_cols = sorted(f._step_column_names_)
+
+        # Snapshot step columns before override predict
+        step_before = f._X_t_observed.select([c for c in step_cols if c in f._X_t_observed.columns])
+
+        _ = f.predict(X_forecast=X_a)
+
+        # Step columns must be identical after predict returns
+        step_after = f._X_t_observed.select([c for c in step_cols if c in f._X_t_observed.columns])
+
+        assert step_before.equals(step_after), (
+            "Step columns in _X_t_observed were not restored after predict(X_forecast=...) returned"
+        )
