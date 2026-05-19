@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.8] - 2026-05-19
+
+This **minor release** includes 3 commits.
+
+
+### Features
+- Add WASM/Pyodide support for dataset fetchers  ([#62](https://github.com/stateful-y/yohou/pull/62)) by @gtauzin
+- Add `nan_handling` parameter to reduction forecasters  ([#60](https://github.com/stateful-y/yohou/pull/60)) by @gtauzin
+
+### Bug Fixes
+- Extend See Also numpydoc patch to handle MkDocs link syntax  ([#61](https://github.com/stateful-y/yohou/pull/61)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.7] - 2026-05-18
 
 This **minor release** includes 1 commit.
