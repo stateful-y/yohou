@@ -38,10 +38,10 @@ def _is_wasm() -> bool:
 
 
 def _fetch_dataset_wasm(dataset_name: str, metadata: RemoteFileMetadata) -> Bunch:
-    """Download a pre-processed parquet from jsDelivr and return a Bunch."""
-    url = f"{_CDN_BASE_URL}/{dataset_name}.parquet"
+    """Download a pre-processed dataset from jsDelivr and return a Bunch."""
+    url = f"{_CDN_BASE_URL}/{dataset_name}.bin"
     data = urlopen(url).read()  # noqa: S310
-    frame = pl.read_parquet(io.BytesIO(data))
+    frame = pl.DataFrame.deserialize(io.BytesIO(data), format="binary")
     feature_names = [c for c in frame.columns if c != "time"]
     return Bunch(
         frame=frame,
@@ -54,11 +54,11 @@ def _fetch_dataset_wasm(dataset_name: str, metadata: RemoteFileMetadata) -> Bunc
 
 
 def _fetch_classification_wasm(dataset_name: str) -> Bunch:
-    """Download pre-computed classification parquets from jsDelivr."""
-    y_url = f"{_CDN_BASE_URL}/{dataset_name}_y.parquet"
-    x_url = f"{_CDN_BASE_URL}/{dataset_name}_X.parquet"
-    y = pl.read_parquet(io.BytesIO(urlopen(y_url).read()))  # noqa: S310
-    X_actual = pl.read_parquet(io.BytesIO(urlopen(x_url).read()))  # noqa: S310
+    """Download pre-computed classification datasets from jsDelivr."""
+    y_url = f"{_CDN_BASE_URL}/{dataset_name}_y.bin"
+    x_url = f"{_CDN_BASE_URL}/{dataset_name}_X.bin"
+    y = pl.DataFrame.deserialize(io.BytesIO(urlopen(y_url).read()), format="binary")  # noqa: S310
+    X_actual = pl.DataFrame.deserialize(io.BytesIO(urlopen(x_url).read()), format="binary")  # noqa: S310
     target_col = [c for c in y.columns if c != "time"][0]
     classes = sorted(y[target_col].unique().to_list())
     return Bunch(
