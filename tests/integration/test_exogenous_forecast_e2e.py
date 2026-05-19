@@ -849,9 +849,7 @@ class TestMismatchedVintageOverride:
         )
         return X_a, X_b
 
-    def test_predict_with_mismatched_vintage_time_produces_different_results(
-        self, electricity_data
-    ):
+    def test_predict_with_mismatched_vintage_time_produces_different_results(self, electricity_data):
         """Two X_forecast overrides with different weather values but
         vintage_time != observed_time_ must produce different predictions."""
         f, fh, d = self._fit_and_observe(electricity_data)
@@ -878,16 +876,12 @@ class TestMismatchedVintageOverride:
         step_cols = sorted(f._step_column_names_)
 
         # Snapshot step columns before override predict
-        step_before = f._X_t_observed.select(
-            [c for c in step_cols if c in f._X_t_observed.columns]
-        )
+        step_before = f._X_t_observed.select([c for c in step_cols if c in f._X_t_observed.columns])
 
         _ = f.predict(X_forecast=X_a)
 
         # Step columns must be identical after predict returns
-        step_after = f._X_t_observed.select(
-            [c for c in step_cols if c in f._X_t_observed.columns]
-        )
+        step_after = f._X_t_observed.select([c for c in step_cols if c in f._X_t_observed.columns])
 
         assert step_before.equals(step_after), (
             "Step columns in _X_t_observed were not restored after predict(X_forecast=...) returned"
