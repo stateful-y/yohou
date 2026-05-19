@@ -733,12 +733,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             else self.observed_time_
         )
 
-        # When the caller overrides X_forecast (e.g. a single NWP vintage
-        # whose vintage_time differs from observed_time_), remap
-        # vintage_time so pivot_forecasts output joins correctly against
-        # observation_times in _derive_step_columns.
+        # When the caller overrides X_forecast with a single vintage whose
+        # vintage_time differs from observed_time_, remap vintage_time so
+        # pivot_forecasts output joins correctly against observation_times
+        # in _derive_step_columns.  Multi-vintage overrides are left
+        # untouched (one of their vintages should already match obs_time).
         if X_forecast is not None and X_forecast_eff is not None:
-            X_forecast_eff = X_forecast_eff.with_columns(vintage_time=pl.lit(obs_time))
+            vintages = X_forecast_eff["vintage_time"].unique()
+            if len(vintages) == 1 and vintages[0] != obs_time:
+                X_forecast_eff = X_forecast_eff.with_columns(vintage_time=pl.lit(obs_time))
 
         X_step_new = _derive_step_columns(
             X_future_eff,
