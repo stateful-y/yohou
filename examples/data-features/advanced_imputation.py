@@ -361,9 +361,6 @@ def _(mo):
         Instead of imputing, you can let the reduction forecaster drop any
         tabularized training row that contains NaN. This is useful when gaps
         are sparse and you want to avoid imputation artifacts.
-
-        Tree-based estimators handle NaN natively (`nan_handling="pass"`),
-        while linear models need the rows removed (`nan_handling="drop"`).
         """
     )
     return
@@ -376,10 +373,11 @@ def _(tourism_missing):
 
     from yohou.point import PointReductionForecaster
 
-    # Tree-based: pass NaN through (default behavior)
+    # Tree-based: drop NaN rows before fitting
     tree_forecaster = PointReductionForecaster(
         estimator=HistGradientBoostingRegressor(),
-        nan_handling="pass",
+        nan_handling="drop",
+        reduction_strategy="direct",
     )
     tree_forecaster.fit(y=tourism_missing, forecasting_horizon=3)
     tree_pred = tree_forecaster.predict(forecasting_horizon=3)
@@ -388,6 +386,7 @@ def _(tourism_missing):
     linear_forecaster = PointReductionForecaster(
         estimator=Ridge(),
         nan_handling="drop",
+        reduction_strategy="direct",
     )
     linear_forecaster.fit(y=tourism_missing, forecasting_horizon=3)
     linear_pred = linear_forecaster.predict(forecasting_horizon=3)
@@ -396,9 +395,7 @@ def _(tourism_missing):
 
 
 @app.cell
-def _(linear_pred, tree_pred):
-    import polars as pl
-
+def _(linear_pred, pl, tree_pred):
     comparison = pl.DataFrame({
         "time": tree_pred["time"],
         "tree_prediction": tree_pred["tourists"],
