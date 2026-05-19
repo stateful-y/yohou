@@ -15,6 +15,8 @@ from yohou.datasets._fetchers import (
     _fetch_classification_wasm,
     _fetch_dataset_wasm,
     _is_wasm,
+    fetch_air_quality_classification,
+    fetch_demand_classification,
 )
 from yohou.datasets._registry import SUNSPOT
 
@@ -181,3 +183,31 @@ class TestFetchClassificationWasm:
         assert result.classes == sorted(result.classes)
         assert result.target_names == ["air_quality"]
         assert result.feature_names == ["pm10", "no2"]
+
+
+class TestClassificationWasmRouting:
+    def test_fetch_air_quality_routes_to_wasm(self):
+        mock_bunch = Bunch(y=pl.DataFrame(), X_actual=pl.DataFrame())
+        with (
+            patch("yohou.datasets._fetchers._is_wasm", return_value=True),
+            patch(
+                "yohou.datasets._fetchers._fetch_classification_wasm",
+                return_value=mock_bunch,
+            ) as mock_cls_wasm,
+        ):
+            result = fetch_air_quality_classification()
+            mock_cls_wasm.assert_called_once_with("air_quality_classification")
+            assert result is mock_bunch
+
+    def test_fetch_demand_classification_routes_to_wasm(self):
+        mock_bunch = Bunch(y=pl.DataFrame(), X_actual=pl.DataFrame())
+        with (
+            patch("yohou.datasets._fetchers._is_wasm", return_value=True),
+            patch(
+                "yohou.datasets._fetchers._fetch_classification_wasm",
+                return_value=mock_bunch,
+            ) as mock_cls_wasm,
+        ):
+            result = fetch_demand_classification()
+            mock_cls_wasm.assert_called_once_with("demand_classification")
+            assert result is mock_bunch
