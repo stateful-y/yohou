@@ -669,7 +669,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         if isinstance(vw_resolved, dict) and context.vintage_time is not None:
             # Panel-aware vintage_weight: all groups share the same vintage_time
             # axis, so use the first group's weights for cross-vintage weighting.
-            first_group_weights = next(iter(vw_resolved.values()))  # ty: ignore[invalid-assignment]
+            first_group_weights = next(iter(vw_resolved.values()))
             context = self._set_vintage_weight_on_context(context, first_group_weights)  # ty: ignore[invalid-argument-type]
             vw_resolved = None
         elif isinstance(vw_resolved, np.ndarray) and context.vintage_time is not None:

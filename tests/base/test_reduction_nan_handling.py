@@ -303,6 +303,52 @@ class TestNanHandlingDrop:
         assert not _has_nan(forecaster.estimator_.y_fit_)
 
 
+class TestNanHandlingEdgeBranches:
+    """Cover edge branches in _apply_nan_handling for non-float data."""
+
+    def test_x_tab_no_float_columns(self):
+        """X_tab with only integer columns uses null-only mask (no NaN check)."""
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        X_tab = pl.DataFrame({"a": [1, 2, None, 4], "b": [10, 20, 30, 40]})
+        y_tab = pl.Series("value", [1.0, 2.0, 3.0, 4.0])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            X_out, y_out, _ = forecaster._apply_nan_handling(X_tab, y_tab, None)
+        assert X_out.shape[0] == 3
+        assert len(y_out) == 3
+
+    def test_y_series_non_float_dtype(self):
+        """y_tab as integer Series skips is_not_nan check."""
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        X_tab = pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0]})
+        y_tab = pl.Series("value", [10, None, 30, 40])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            X_out, y_out, _ = forecaster._apply_nan_handling(X_tab, y_tab, None)
+        assert X_out.shape[0] == 3
+        assert len(y_out) == 3
+
+    def test_y_dataframe_no_float_columns(self):
+        """y_tab as DataFrame with only integer columns uses null-only mask."""
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        X_tab = pl.DataFrame({"a": [1.0, 2.0, 3.0, 4.0]})
+        y_tab = pl.DataFrame({"t1": [10, 20, None, 40], "t2": [1, 2, 3, 4]})
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            X_out, y_out, _ = forecaster._apply_nan_handling(X_tab, y_tab, None)
+        assert X_out.shape[0] == 3
+        assert y_out.shape[0] == 3
+
+
 class TestParameterValidation:
     def test_invalid_nan_handling_raises(self):
         """4.12: Invalid nan_handling value raises ValueError."""

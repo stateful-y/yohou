@@ -957,6 +957,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vintage_weight=vintage_weight,
         )
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
+        assert isinstance(y_tab, pl.DataFrame)
 
         self._dir_rec_n_original_features_ = X_tab.shape[1]
 
