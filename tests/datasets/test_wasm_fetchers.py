@@ -47,10 +47,10 @@ class TestFetchDatasetWasmRouting:
             mock_wasm.assert_called_once_with("sunspot", SUNSPOT)
 
     def test_wasm_url_is_correct(self):
-        expected_url = f"{_CDN_BASE_URL}/sunspot.parquet"
+        expected_url = f"{_CDN_BASE_URL}/sunspot.bin"
         assert "cdn.jsdelivr.net" in expected_url
         assert "stateful-y/yohou@datasets" in expected_url
-        assert expected_url.endswith("/sunspot.parquet")
+        assert expected_url.endswith("/sunspot.bin")
 
 
 class TestFetchDatasetWasmBunch:
@@ -67,9 +67,7 @@ class TestFetchDatasetWasmBunch:
             },
             schema={"time": pl.Datetime, "sunspot_number": pl.Float64},
         )
-        buf = io.BytesIO()
-        df.write_parquet(buf, compression="zstd")
-        return buf.getvalue()
+        return df.serialize(format="binary")
 
     def test_returns_bunch_with_correct_keys(self, sample_parquet_bytes):
         mock_response = io.BytesIO(sample_parquet_bytes)
@@ -144,17 +142,13 @@ class TestFetchClassificationWasm:
             },
             schema={"time": pl.Datetime, "pm10": pl.Float64, "no2": pl.Float64},
         )
-        y_buf = io.BytesIO()
-        y_df.write_parquet(y_buf, compression="zstd")
-        x_buf = io.BytesIO()
-        x_df.write_parquet(x_buf, compression="zstd")
-        return y_buf.getvalue(), x_buf.getvalue()
+        return y_df.serialize(format="binary"), x_df.serialize(format="binary")
 
     def test_returns_bunch_with_classification_keys(self, classification_parquet_bytes):
         y_bytes, x_bytes = classification_parquet_bytes
 
         def mock_urlopen(url):
-            data = y_bytes if "_y.parquet" in url else x_bytes
+            data = y_bytes if "_y.bin" in url else x_bytes
             response = io.BytesIO(data)
             return response
 
@@ -173,7 +167,7 @@ class TestFetchClassificationWasm:
         y_bytes, x_bytes = classification_parquet_bytes
 
         def mock_urlopen(url):
-            data = y_bytes if "_y.parquet" in url else x_bytes
+            data = y_bytes if "_y.bin" in url else x_bytes
             response = io.BytesIO(data)
             return response
 
