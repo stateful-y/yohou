@@ -18,6 +18,7 @@ from yohou.model_selection.utils import (
     _MultimetricScorer,
     _needs_interval_predictions,
     _needs_point_predictions,
+    _predict,
     _score,
 )
 from yohou.point.naive import SeasonalNaive
@@ -697,14 +698,16 @@ class TestScoreSingleScorerError:
         mock_tags.scorer_tags = None
         failing_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        # Create a dummy y_pred (mock scorer controls return value)
+        y_pred = y_test.clone()
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 failing_scorer,
                 None,
                 error_score=0.0,
@@ -728,13 +731,14 @@ class TestScoreDataFrameRejection:
         df_scorer.fit = MagicMock()
         df_scorer._response_method = "predict"
 
+        y_pred = y_test.clone()
+
         with pytest.raises(ValueError, match="aggregation_method"):
             _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 df_scorer,
                 None,
                 error_score="raise",
@@ -749,13 +753,14 @@ class TestScoreDataFrameRejection:
         ms.return_value = {"a": pl.DataFrame({"score": [1.0]})}
         ms.fit = MagicMock()
 
+        y_pred = y_test.clone()
+
         with pytest.raises(ValueError, match="aggregation_method"):
             _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 ms,
                 None,
                 error_score="raise",
@@ -777,12 +782,12 @@ class TestScoreNegation:
         mock_tags.scorer_tags.lower_is_better = True
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -801,12 +806,12 @@ class TestScoreNegation:
         mock_tags.scorer_tags.lower_is_better = False
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -829,12 +834,12 @@ class TestScoreNegation:
 
         ms = _MultimetricScorer(scorers={"mae": scorer})
 
+        y_pred = _predict(forecaster, y_test, None, ms)
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             ms,
             {},
             error_score="raise",
@@ -851,12 +856,12 @@ class TestScoreNegation:
         mock_scorer.fit = MagicMock()
         mock_scorer._response_method = "predict"
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -876,14 +881,15 @@ class TestScoreMultimetricStringError:
         ms.return_value = {"a": "Traceback (most recent call last):\n..."}
         ms.fit = MagicMock()
 
+        y_pred = y_test.clone()
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 ms,
                 None,
                 error_score=0.0,
