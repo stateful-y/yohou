@@ -58,8 +58,8 @@ def fit_and_score_data():
 class TestCrossValidateSingleMetric:
     """Tests for cross_validate with a single scorer."""
 
-    def test_returns_dict_with_expected_keys(self, cv_data):
-        """Result dict contains test_score, fit_time, score_time."""
+    def test_returns_dataframe_with_expected_columns(self, cv_data):
+        """Result DataFrame contains split, test_score, fit_time, score_time."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -68,12 +68,14 @@ class TestCrossValidateSingleMetric:
             scoring=MeanAbsoluteError(),
             cv=3,
         )
-        assert "test_score" in result
-        assert "fit_time" in result
-        assert "score_time" in result
+        assert isinstance(result, pl.DataFrame)
+        assert "split" in result.columns
+        assert "test_score" in result.columns
+        assert "fit_time" in result.columns
+        assert "score_time" in result.columns
 
-    def test_score_array_length_matches_splits(self, cv_data):
-        """test_score array has one element per fold."""
+    def test_row_count_matches_splits(self, cv_data):
+        """DataFrame has one row per fold."""
         y, fh = cv_data
         n_splits = 3
         result = cross_validate(
@@ -83,8 +85,9 @@ class TestCrossValidateSingleMetric:
             scoring=MeanAbsoluteError(),
             cv=n_splits,
         )
-        assert isinstance(result["test_score"], np.ndarray)
-        assert len(result["test_score"]) == n_splits
+        assert isinstance(result, pl.DataFrame)
+        assert len(result) == n_splits
+        assert result["split"].to_list() == list(range(n_splits))
 
     def test_scores_are_negated_for_lower_is_better(self, cv_data):
         """MAE (lower_is_better=True) scores are negated."""
@@ -97,14 +100,14 @@ class TestCrossValidateSingleMetric:
             cv=3,
         )
         # MAE is lower_is_better, so scores should be negated
-        assert all(s <= 0 for s in result["test_score"])
+        assert all(s <= 0 for s in result["test_score"].to_list())
 
 
 class TestCrossValidateMultiMetric:
     """Tests for cross_validate with multiple scorers."""
 
-    def test_multi_metric_keys(self, cv_data):
-        """Result dict contains test_{name} for each scorer."""
+    def test_multi_metric_columns(self, cv_data):
+        """Result DataFrame contains test_{name} columns for each scorer."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -113,12 +116,13 @@ class TestCrossValidateMultiMetric:
             scoring={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()},
             cv=3,
         )
-        assert "test_mae" in result
-        assert "test_mse" in result
-        assert "test_score" not in result
+        assert isinstance(result, pl.DataFrame)
+        assert "test_mae" in result.columns
+        assert "test_mse" in result.columns
+        assert "test_score" not in result.columns
 
-    def test_multi_metric_array_length(self, cv_data):
-        """Each metric array has one element per fold."""
+    def test_multi_metric_row_count(self, cv_data):
+        """Each metric column has one value per fold."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -127,15 +131,14 @@ class TestCrossValidateMultiMetric:
             scoring={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()},
             cv=3,
         )
-        assert len(result["test_mae"]) == 3
-        assert len(result["test_mse"]) == 3
+        assert len(result) == 3
 
 
 class TestCrossValidateReturnOptions:
     """Tests for cross_validate return_* flags."""
 
     def test_return_train_score(self, cv_data):
-        """return_train_score=True includes train_score."""
+        """return_train_score=True includes train_score column."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -145,12 +148,12 @@ class TestCrossValidateReturnOptions:
             cv=3,
             return_train_score=True,
         )
-        assert "train_score" in result
-        assert isinstance(result["train_score"], np.ndarray)
-        assert len(result["train_score"]) == 3
+        assert isinstance(result, pl.DataFrame)
+        assert "train_score" in result.columns
+        assert len(result) == 3
 
     def test_return_train_score_multi_metric(self, cv_data):
-        """return_train_score=True with multi-metric includes train_{name}."""
+        """return_train_score=True with multi-metric includes train_{name} columns."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -160,11 +163,12 @@ class TestCrossValidateReturnOptions:
             cv=3,
             return_train_score=True,
         )
-        assert "train_mae" in result
-        assert "train_mse" in result
+        assert isinstance(result, pl.DataFrame)
+        assert "train_mae" in result.columns
+        assert "train_mse" in result.columns
 
     def test_return_forecaster(self, cv_data):
-        """return_forecaster=True includes fitted forecasters."""
+        """return_forecaster=True returns dict with results DataFrame and forecaster list."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -174,12 +178,14 @@ class TestCrossValidateReturnOptions:
             cv=3,
             return_forecaster=True,
         )
+        assert isinstance(result, dict)
+        assert isinstance(result["results"], pl.DataFrame)
         assert "forecaster" in result
         assert len(result["forecaster"]) == 3
         assert all(isinstance(f, SeasonalNaive) for f in result["forecaster"])
 
     def test_return_indices(self, cv_data):
-        """return_indices=True includes train/test index arrays."""
+        """return_indices=True returns dict with results DataFrame and indices."""
         y, fh = cv_data
         result = cross_validate(
             SeasonalNaive(seasonality=1),
@@ -189,6 +195,8 @@ class TestCrossValidateReturnOptions:
             cv=3,
             return_indices=True,
         )
+        assert isinstance(result, dict)
+        assert isinstance(result["results"], pl.DataFrame)
         assert "indices" in result
         assert "train" in result["indices"]
         assert "test" in result["indices"]
@@ -199,15 +207,14 @@ class TestCrossValidateReturnOptions:
 class TestCrossValidateInputValidation:
     """Tests for cross_validate input validation."""
 
-    def test_scoring_none_raises(self, cv_data):
-        """scoring=None raises ValueError."""
+    def test_scoring_required(self, cv_data):
+        """Omitting scoring raises TypeError."""
         y, fh = cv_data
-        with pytest.raises(ValueError, match="scoring must not be None"):
+        with pytest.raises(TypeError):
             cross_validate(
                 SeasonalNaive(seasonality=1),
                 y,
                 forecasting_horizon=fh,
-                scoring=None,
                 cv=3,
             )
 
@@ -226,7 +233,7 @@ class TestCrossValidatePredictParams:
             cv=3,
             predict_forecasting_horizon=2,
         )
-        assert len(result["test_score"]) == 3
+        assert len(result) == 3
 
     def test_custom_predict_stride(self, cv_data):
         """Custom predict_stride does not error."""
@@ -239,7 +246,7 @@ class TestCrossValidatePredictParams:
             cv=3,
             predict_stride=1,
         )
-        assert len(result["test_score"]) == 3
+        assert len(result) == 3
 
 
 # =============================================================================
@@ -250,8 +257,8 @@ class TestCrossValidatePredictParams:
 class TestCrossValScore:
     """Tests for cross_val_score."""
 
-    def test_returns_array(self, cv_data):
-        """cross_val_score returns a 1D numpy array."""
+    def test_returns_dataframe(self, cv_data):
+        """cross_val_score returns a DataFrame with split and score columns."""
         y, fh = cv_data
         scores = cross_val_score(
             SeasonalNaive(seasonality=1),
@@ -260,9 +267,11 @@ class TestCrossValScore:
             scoring=MeanAbsoluteError(),
             cv=3,
         )
-        assert isinstance(scores, np.ndarray)
-        assert scores.ndim == 1
+        assert isinstance(scores, pl.DataFrame)
+        assert scores.columns == ["split", "score"]
         assert len(scores) == 3
+        assert scores["split"].to_list() == [0, 1, 2]
+        assert scores["score"].dtype == pl.Float64
 
     def test_multi_metric_rejected(self, cv_data):
         """Dict scoring raises ValueError."""
@@ -276,15 +285,14 @@ class TestCrossValScore:
                 cv=3,
             )
 
-    def test_scoring_none_raises(self, cv_data):
-        """scoring=None raises ValueError."""
+    def test_scoring_required(self, cv_data):
+        """Omitting scoring raises TypeError."""
         y, fh = cv_data
-        with pytest.raises(ValueError, match="scoring must not be None"):
+        with pytest.raises(TypeError):
             cross_val_score(
                 SeasonalNaive(seasonality=1),
                 y,
                 forecasting_horizon=fh,
-                scoring=None,
                 cv=3,
             )
 
@@ -298,7 +306,7 @@ class TestCrossValScore:
             scoring=MeanAbsoluteError(),
             cv=3,
         )
-        assert all(s <= 0 for s in scores)
+        assert all(s <= 0 for s in scores["score"].to_list())
 
 
 # =============================================================================

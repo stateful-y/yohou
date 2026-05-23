@@ -32,18 +32,18 @@ def cross_validate(
     *,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
-    scoring: BaseScorer | dict[str, BaseScorer] | None = None,
+    scoring: BaseScorer | dict[str, BaseScorer],
     cv: int | BaseSplitter | None = 5,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
     n_jobs: int | None = None,
     verbose: int = 0,
     pre_dispatch: str | int = "2*n_jobs",
     return_train_score: bool = False,
     return_forecaster: bool = False,
     return_indices: bool = False,
-    predict_forecasting_horizon: int | None = None,
-    predict_stride: int | None = None,
     error_score: float | str = np.nan,
-) -> dict[str, Any]:
+) -> pl.DataFrame | dict[str, Any]:
     """Evaluate a forecaster by cross-validation and return test scores and timings.
 
     Parameters
@@ -63,10 +63,15 @@ def cross_validate(
         columns.
     scoring : BaseScorer or dict of str to BaseScorer
         Scorer (single or multi-metric) used to evaluate predictions.
-        Required (``None`` raises ``ValueError``).
     cv : int, BaseSplitter, or None, default=5
         Cross-validation splitting strategy. ``None`` or int creates
         an ``ExpandingWindowSplitter``.
+    predict_forecasting_horizon : int or None, default=None
+        Override forecasting horizon for ``observe_predict``.
+        ``None`` uses the forecaster's fit-time default.
+    predict_stride : int or None, default=None
+        Override stride for ``observe_predict``.
+        ``None`` uses the forecaster's default.
     n_jobs : int or None, default=None
         Number of parallel jobs (``None`` means 1).
     verbose : int, default=0
@@ -80,36 +85,29 @@ def cross_validate(
         Whether to include fitted forecasters.
     return_indices : bool, default=False
         Whether to include train/test indices per fold.
-    predict_forecasting_horizon : int or None, default=None
-        Override forecasting horizon for ``observe_predict``.
-        ``None`` uses the forecaster's fit-time default.
-    predict_stride : int or None, default=None
-        Override stride for ``observe_predict``.
-        ``None`` uses the forecaster's default.
     error_score : float or "raise", default=np.nan
         Value to assign if an error occurs during fitting.
 
     Returns
     -------
-    dict
-        Keys always include ``"fit_time"`` and ``"score_time"``
-        (``np.ndarray`` of shape ``(n_splits,)``).
+    pl.DataFrame or dict
+        When ``return_forecaster`` and ``return_indices`` are both
+        ``False`` (the default), returns a ``pl.DataFrame`` with one
+        row per fold containing columns ``split`` (int), ``fit_time``
+        (float), ``score_time`` (float), and score columns.
 
-        Single scorer: ``"test_score"`` (and ``"train_score"`` if
+        Single scorer: ``test_score`` (and ``train_score`` if
         ``return_train_score=True``).
 
-        Multi-metric: ``"test_{name}"`` (and ``"train_{name}"``)
+        Multi-metric: ``test_{name}`` (and ``train_{name}``)
         for each scorer name.
 
-        ``"forecaster"``: list of fitted forecasters (if
-        ``return_forecaster=True``).
-
-        ``"indices"``: dict with ``"train"`` and ``"test"`` lists
-        of ``np.ndarray`` (if ``return_indices=True``).
+        When ``return_forecaster`` or ``return_indices`` is ``True``,
+        returns a dict with ``"results"`` (the DataFrame),
+        ``"forecaster"`` (list of fitted forecasters), and/or
+        ``"indices"`` (dict with ``"train"`` and ``"test"`` lists
+        of ``np.ndarray``).
     """
-    if scoring is None:
-        raise ValueError("scoring must not be None. Provide a BaseScorer or dict of scorers.")
-
     scorers: BaseScorer | _MultimetricScorer
     if isinstance(scoring, dict):
         # _check_scoring validates the dict keys/values, then we wrap
@@ -162,32 +160,37 @@ def cross_validate(
     results: dict[str, Any] = {}
 
     # Aggregate fit_time and score_time
-    results["fit_time"] = np.array([r["fit_time"] for r in out])
-    results["score_time"] = np.array([r["score_time"] for r in out])
+    results["split"] = list(range(n_splits))
+    results["fit_time"] = [r["fit_time"] for r in out]
+    results["score_time"] = [r["score_time"] for r in out]
 
     # Aggregate scores
     first_scores = out[0]["test_scores"]
     if isinstance(first_scores, dict):
         for name in first_scores:
-            results[f"test_{name}"] = np.array([r["test_scores"][name] for r in out])
+            results[f"test_{name}"] = [r["test_scores"][name] for r in out]
         if return_train_score:
             for name in first_scores:
-                results[f"train_{name}"] = np.array([r["train_scores"][name] for r in out])
+                results[f"train_{name}"] = [r["train_scores"][name] for r in out]
     else:
-        results["test_score"] = np.array([r["test_scores"] for r in out])
+        results["test_score"] = [r["test_scores"] for r in out]
         if return_train_score:
-            results["train_score"] = np.array([r["train_scores"] for r in out])
+            results["train_score"] = [r["train_scores"] for r in out]
 
-    if return_forecaster:
-        results["forecaster"] = [r["forecaster"] for r in out]
+    results_df = pl.DataFrame(results)
 
-    if return_indices:
-        results["indices"] = {
-            "train": [train for train, _ in splits],
-            "test": [test for _, test in splits],
-        }
+    if return_forecaster or return_indices:
+        ret: dict[str, Any] = {"results": results_df}
+        if return_forecaster:
+            ret["forecaster"] = [r["forecaster"] for r in out]
+        if return_indices:
+            ret["indices"] = {
+                "train": [train for train, _ in splits],
+                "test": [test for _, test in splits],
+            }
+        return ret
 
-    return results
+    return results_df
 
 
 def cross_val_score(
@@ -198,15 +201,15 @@ def cross_val_score(
     *,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
-    scoring: BaseScorer | dict[str, BaseScorer] | None = None,
+    scoring: BaseScorer,
     cv: int | BaseSplitter | None = 5,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
     n_jobs: int | None = None,
     verbose: int = 0,
     pre_dispatch: str | int = "2*n_jobs",
-    predict_forecasting_horizon: int | None = None,
-    predict_stride: int | None = None,
     error_score: float | str = np.nan,
-) -> np.ndarray:
+) -> pl.DataFrame:
     """Evaluate a forecaster by cross-validation and return test scores.
 
     Parameters
@@ -225,54 +228,55 @@ def cross_val_score(
         External forecasts with ``"vintage_time"`` and ``"time"``
         columns.
     scoring : BaseScorer
-        Single scorer used to evaluate predictions.  Required
-        (``None`` raises ``ValueError``).  Dicts of scorers are
-        rejected; use ``cross_validate`` for multi-metric evaluation.
+        Single scorer used to evaluate predictions.  Dicts of scorers
+        are rejected; use ``cross_validate`` for multi-metric
+        evaluation.
     cv : int, BaseSplitter, or None, default=5
         Cross-validation splitting strategy.
+    predict_forecasting_horizon : int or None, default=None
+        Override forecasting horizon for ``observe_predict``.
+    predict_stride : int or None, default=None
+        Override stride for ``observe_predict``.
     n_jobs : int or None, default=None
         Number of parallel jobs.
     verbose : int, default=0
         Verbosity level.
     pre_dispatch : str or int, default="2*n_jobs"
         Controls pre-dispatched jobs for parallel execution.
-    predict_forecasting_horizon : int or None, default=None
-        Override forecasting horizon for ``observe_predict``.
-    predict_stride : int or None, default=None
-        Override stride for ``observe_predict``.
     error_score : float or "raise", default=np.nan
         Value to assign if an error occurs during fitting.
 
     Returns
     -------
-    np.ndarray
-        Array of shape ``(n_splits,)`` with the test score per fold.
+    pl.DataFrame
+        DataFrame with columns ``split`` (int, 0-indexed fold
+        identifier) and ``score`` (float, test score per fold).
     """
-    if scoring is None:
-        raise ValueError("scoring must not be None. Provide a BaseScorer instance.")
-
     if isinstance(scoring, dict):
         raise ValueError(
             "cross_val_score does not accept dict scoring. Use cross_validate for multi-metric evaluation."
         )
 
-    cv_results = cross_validate(
-        forecaster,
-        y,
-        X_actual=X_actual,
-        forecasting_horizon=forecasting_horizon,
-        X_future=X_future,
-        X_forecast=X_forecast,
-        scoring=scoring,
-        cv=cv,
-        n_jobs=n_jobs,
-        verbose=verbose,
-        pre_dispatch=pre_dispatch,
-        predict_forecasting_horizon=predict_forecasting_horizon,
-        predict_stride=predict_stride,
-        error_score=error_score,
+    cv_results = cast(
+        pl.DataFrame,
+        cross_validate(
+            forecaster,
+            y,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            scoring=scoring,
+            cv=cv,
+            n_jobs=n_jobs,
+            verbose=verbose,
+            pre_dispatch=pre_dispatch,
+            predict_forecasting_horizon=predict_forecasting_horizon,
+            predict_stride=predict_stride,
+            error_score=error_score,
+        ),
     )
-    return cv_results["test_score"]
+    return cv_results.select("split", pl.col("test_score").alias("score"))
 
 
 def cross_val_predict(
@@ -284,13 +288,13 @@ def cross_val_predict(
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
     cv: int | BaseSplitter | None = 5,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
+    coverage_rates: list[float] | None = None,
     n_jobs: int | None = None,
     verbose: int = 0,
     pre_dispatch: str | int = "2*n_jobs",
     method: str = "predict",
-    coverage_rates: list[float] | None = None,
-    predict_forecasting_horizon: int | None = None,
-    predict_stride: int | None = None,
 ) -> pl.DataFrame:
     """Generate cross-validated predictions for each fold.
 
@@ -316,6 +320,13 @@ def cross_val_predict(
         columns.
     cv : int, BaseSplitter, or None, default=5
         Cross-validation splitting strategy.
+    predict_forecasting_horizon : int or None, default=None
+        Override forecasting horizon for ``observe_predict``.
+    predict_stride : int or None, default=None
+        Override stride for ``observe_predict``.
+    coverage_rates : list of float or None, default=None
+        Coverage rates for interval predictions.  Only used when
+        ``method="predict_interval"``.
     n_jobs : int or None, default=None
         Number of parallel jobs.
     verbose : int, default=0
@@ -325,13 +336,6 @@ def cross_val_predict(
     method : str, default="predict"
         Prediction method: ``"predict"``, ``"predict_interval"``,
         or ``"predict_class_proba"``.
-    coverage_rates : list of float or None, default=None
-        Coverage rates for interval predictions.  Only used when
-        ``method="predict_interval"``.
-    predict_forecasting_horizon : int or None, default=None
-        Override forecasting horizon for ``observe_predict``.
-    predict_stride : int or None, default=None
-        Override stride for ``observe_predict``.
 
     Returns
     -------
