@@ -190,3 +190,78 @@ class TestDeriveStepColumns:
         assert result.shape == (1, 4)
         assert result["wind_step_1"].to_list() == [5.0]
         assert result["wind_step_3"].to_list() == [7.0]
+
+    # --- Forecast horizon filtering ---
+
+    def test_forecast_timestamps_beyond_horizon_are_filtered(self):
+        """Vintage with more timestamps than fh keeps only those within the window."""
+        # 5 hourly forecasts but fh=3: only the first 3 hours after obs should survive
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 5,
+            "time": [datetime(2020, 1, 1, h) for h in range(1, 6)],
+            "temp": [10.0, 11.0, 12.0, 13.0, 14.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+        result = _derive_step_columns(None, X_forecast, obs, 3, "1h")
+
+        assert result is not None
+        step_cols = [c for c in result.columns if c != "time"]
+        assert step_cols == ["temp_step_1", "temp_step_2", "temp_step_3"]
+        assert result["temp_step_1"].to_list() == [10.0]
+        assert result["temp_step_3"].to_list() == [12.0]
+
+    def test_forecast_exactly_h_timestamps_unchanged(self):
+        """Vintage with exactly H timestamps within the window passes through."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 3,
+            "time": [datetime(2020, 1, 1, h) for h in range(1, 4)],
+            "temp": [10.0, 11.0, 12.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+        result = _derive_step_columns(None, X_forecast, obs, 3, "1h")
+
+        assert result is not None
+        step_cols = [c for c in result.columns if c != "time"]
+        assert step_cols == ["temp_step_1", "temp_step_2", "temp_step_3"]
+        assert result["temp_step_1"].to_list() == [10.0]
+        assert result["temp_step_3"].to_list() == [12.0]
+
+    def test_short_vintage_emits_warning(self):
+        """Vintage with fewer timestamps than fh emits UserWarning."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 2,
+            "time": [datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)],
+            "temp": [10.0, 11.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = _derive_step_columns(None, X_forecast, obs, 5, "1h")
+
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 1
+        msg = str(user_warnings[0].message)
+        assert "2" in msg
+        assert "5" in msg
+        assert result is not None
+
+    def test_no_warning_when_steps_cover_horizon(self):
+        """No warning emitted when vintages have >= H timestamps."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 3,
+            "time": [datetime(2020, 1, 1, h) for h in range(1, 4)],
+            "temp": [10.0, 11.0, 12.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _derive_step_columns(None, X_forecast, obs, 3, "1h")
+
+        user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
+        assert len(user_warnings) == 0

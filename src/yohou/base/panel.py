@@ -607,12 +607,24 @@ class BasePanelForecaster:
 
             # Hstack pre-computed step columns for this group
             if X_t_local is not None and X_step_precomputed is not None:
-                step_group = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                # Filter schema to columns available in the precomputed steps
+                # (test folds may have fewer forecast vintages than training).
+                available = set(X_step_precomputed.columns)
+                step_schema = {
+                    k: v for k, v in self._step_schema_per_group_.items()
+                    if k in available or f"{panel_group_name}__{k}" in available
+                }
+                step_group = get_group_df(X_step_precomputed, panel_group_name, step_schema).select(  # ty: ignore[invalid-argument-type]
                     ~cs.by_name("time")
                 )
                 X_t_local = pl.concat([X_t_local, step_group], how="horizontal")
             elif X_t_local is None and X_step_precomputed is not None:
-                X_t_local = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                available = set(X_step_precomputed.columns)
+                step_schema = {
+                    k: v for k, v in self._step_schema_per_group_.items()
+                    if k in available or f"{panel_group_name}__{k}" in available
+                }
+                X_t_local = get_group_df(X_step_precomputed, panel_group_name, step_schema).select(  # ty: ignore[invalid-argument-type]
                     ~cs.by_name("time")
                 )
 

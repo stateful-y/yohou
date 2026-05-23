@@ -350,6 +350,7 @@ def _derive_step_columns(
 
     """
     from yohou.utils.pivot import pivot_forecasts, window_futures  # noqa: PLC0415
+    from yohou.utils.validation import add_interval  # noqa: PLC0415
 
     if X_future is None and X_forecast is None:
         return None
@@ -365,7 +366,42 @@ def _derive_step_columns(
         parts.append(future_pivoted)
 
     if X_forecast is not None:
-        forecast_pivoted = pivot_forecasts(X_forecast)
+        # Filter each vintage to timestamps within its forecasting horizon
+        # window: (vintage_time, vintage_time + H * interval].
+        # The predict path remaps vintage_time to observed_time_ before
+        # calling, so this correctly clips to the model's prediction window.
+        unique_vintages = X_forecast["vintage_time"].unique().to_list()
+        cutoffs = {vt: add_interval(vt, interval, n=forecasting_horizon) for vt in unique_vintages}
+        cutoff_df = pl.DataFrame({
+            "vintage_time": list(cutoffs.keys()),
+            "_cutoff": list(cutoffs.values()),
+        })
+        X_forecast_filtered = (
+            X_forecast
+            .join(cutoff_df, on="vintage_time", how="left")
+            .filter((pl.col("time") > pl.col("vintage_time")) & (pl.col("time") <= pl.col("_cutoff")))
+            .drop("_cutoff")
+        )
+
+        forecast_pivoted = pivot_forecasts(X_forecast_filtered)
+
+        # Warn if any vintage has fewer steps than the forecasting horizon
+        step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time"]
+        if step_cols_forecast:
+            import re  # noqa: PLC0415
+
+            step_nums = [int(m.group(1)) for c in step_cols_forecast if (m := re.search(r"_step_(\d+)$", c))]
+            max_step = max(step_nums) if step_nums else 0
+            if max_step < forecasting_horizon:
+                import warnings  # noqa: PLC0415
+
+                warnings.warn(
+                    f"X_forecast covers {max_step} steps but forecasting_horizon is "
+                    f"{forecasting_horizon}. Some step features will be null.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
         # Filter to observation_times only (left join preserves order)
         obs_df = pl.DataFrame({"time": observation_times})
         forecast_pivoted = obs_df.join(forecast_pivoted, on="time", how="left")
