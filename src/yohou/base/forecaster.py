@@ -765,11 +765,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         if isinstance(self._X_t_observed, dict):
             # Panel: save per-group step columns (unprefixed)
-            saved_step_data = {}
-            for group_name, group_df in self._X_t_observed.items():
-                cols_present = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+            observed_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+            saved_step_data: dict[str, pl.DataFrame] = {}
+            for group_name, group_df in observed_dict.items():
+                cols_present = [c for c in local_step_cols if c in group_df.columns]
                 if cols_present:
-                    saved_step_data[group_name] = group_df.select(cols_present)  # ty: ignore[unresolved-attribute]
+                    saved_step_data[group_name] = group_df.select(cols_present)
         else:
             # Standard: save step columns from last row
             cols_present = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
@@ -812,13 +813,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             self._X_forecast_raw_ = saved_forecast_raw
 
             # Restore step columns
-            if isinstance(self._X_t_observed, dict):
-                for group_name, saved_df in saved_step_data.items():  # ty: ignore[unresolved-attribute]
-                    group_df = self._X_t_observed[group_name]
-                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+            if isinstance(self._X_t_observed, dict) and isinstance(saved_step_data, dict):
+                restore_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+                saved_dict = typing_cast(dict[str, pl.DataFrame], saved_step_data)
+                for group_name, saved_df in saved_dict.items():
+                    group_df = restore_dict[group_name]
+                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                     if cols_to_drop:
-                        restored = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                        self._X_t_observed[group_name] = pl.concat([restored, saved_df], how="horizontal")
+                        restored = group_df.drop(cols_to_drop)
+                        restore_dict[group_name] = pl.concat([restored, saved_df], how="horizontal")
             elif saved_step_data is not None:
                 cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
                 if cols_to_drop:

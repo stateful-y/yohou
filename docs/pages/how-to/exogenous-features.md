@@ -231,6 +231,15 @@ pred = restored.predict(X_forecast=new_vintage)
 : All `X_future` and `X_forecast` columns seen during `fit()` must also be
   present at `predict()` time with the same names.
 
+**Problem: `UserWarning` about X_forecast covering fewer steps than the horizon**
+: The forecast vintage covers fewer future timestamps than `forecasting_horizon`.
+  This is normal for short-range forecasts or when the observation point has
+  advanced past some forecast timestamps (e.g., after `observe()`). The missing
+  step columns are filled with null. Tree-based estimators (XGBoost, LightGBM,
+  HistGradientBoosting) handle null features natively. For estimators that do
+  not support nulls, set `nan_handling="drop"` so null rows are excluded from
+  training, or provide forecasts with full horizon coverage.
+
 ## See Also
 
 - [Work with Forecast Vintages](forecast-vintages.md): X_forecast preparation,
