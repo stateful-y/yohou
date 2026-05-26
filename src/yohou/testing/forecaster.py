@@ -26,6 +26,7 @@ __all__ = [
     "check_requires_exogenous_warns_on_X_future_X_forecast",
     "check_observe_auto_rederives_step_columns",
     "check_observe_extends_observations",
+    "check_observe_predict_interval_with_step_columns",
     "check_observe_predict_with_step_columns",
     "check_predict_time_columns",
     "check_predict_X_forecast_override",
@@ -1323,6 +1324,83 @@ def check_observe_predict_with_step_columns(
     assert "time" in y_pred.columns, "observe_predict() output must contain 'time' column"
     assert "vintage_time" in y_pred.columns, "observe_predict() output must contain 'vintage_time' column"
     assert len(y_pred) > 0, "observe_predict() must return non-empty DataFrame"
+
+
+def check_observe_predict_interval_with_step_columns(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    y_test: pl.DataFrame,
+    X_actual_test: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+    coverage_rates: list[float] | None = None,
+) -> None:
+    """Check observe_predict_interval works with step columns (lightweight).
+
+    Runs observe_predict_interval with stride=len(y_test)//2 (2 iterations)
+    and validates output structure and per-vintage time sorting.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted interval forecaster instance.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    y_test : pl.DataFrame
+        Test target data (at least 10 rows).
+    X_actual_test : pl.DataFrame or None
+        Test features.
+    X_future : pl.DataFrame or None
+        Known-future features.
+    X_forecast : pl.DataFrame or None
+        External forecasts.
+    forecasting_horizon : int, default=3
+        Number of steps ahead.
+    coverage_rates : list of float or None, default=None
+        Coverage rates for prediction intervals. Defaults to [0.9].
+
+    """
+    if coverage_rates is None:
+        coverage_rates = [0.9]
+
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage_rates,
+        X_future=X_future,
+        X_forecast=X_forecast,
+    )
+
+    stride = max(1, len(y_test) // 2)
+    y_pred = forecaster_clone.observe_predict_interval(
+        y_test,
+        X_actual=X_actual_test,
+        forecasting_horizon=forecasting_horizon,
+        coverage_rates=coverage_rates,
+        stride=stride,
+        X_future=X_future,
+        X_forecast=X_forecast,
+    )
+
+    assert isinstance(y_pred, pl.DataFrame), (
+        f"observe_predict_interval() must return pl.DataFrame, got {type(y_pred).__name__}"
+    )
+    assert "time" in y_pred.columns, "observe_predict_interval() output must contain 'time' column"
+    assert "vintage_time" in y_pred.columns, "observe_predict_interval() output must contain 'vintage_time' column"
+    assert len(y_pred) > 0, "observe_predict_interval() must return non-empty DataFrame"
+
+    # Validate per-vintage time sorting (catches stale observation state bugs)
+    for vt in y_pred["vintage_time"].unique():
+        vintage = y_pred.filter(pl.col("vintage_time") == vt)
+        assert vintage["time"].is_sorted(), (
+            f"'time' column within vintage_time={vt} is not sorted in ascending order"
+        )
 
 
 def check_requires_exogenous_warns_on_X_future_X_forecast(
