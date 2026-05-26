@@ -765,11 +765,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         if isinstance(self._X_t_observed, dict):
             # Panel: save per-group step columns (unprefixed)
-            observed_dict = typing_cast(dict[str, pl.DataFrame | None], self._X_t_observed)
+            observed_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
             saved_step_data: dict[str, pl.DataFrame] = {}
             for group_name, group_df in observed_dict.items():
-                if group_df is None:
-                    continue
                 cols_present = [c for c in local_step_cols if c in group_df.columns]
                 if cols_present:
                     saved_step_data[group_name] = group_df.select(cols_present)
@@ -816,12 +814,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
             # Restore step columns
             if isinstance(self._X_t_observed, dict) and isinstance(saved_step_data, dict):
-                restore_dict = typing_cast(dict[str, pl.DataFrame | None], self._X_t_observed)
+                restore_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
                 saved_dict = typing_cast(dict[str, pl.DataFrame], saved_step_data)
                 for group_name, saved_df in saved_dict.items():
                     group_df = restore_dict[group_name]
-                    if group_df is None:
-                        continue
                     cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                     if cols_to_drop:
                         restored = group_df.drop(cols_to_drop)
