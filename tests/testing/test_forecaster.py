@@ -24,6 +24,7 @@ from yohou.testing.forecaster import (
     check_forecasting_horizon_validation,
     check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_interval_with_step_columns,
     check_observe_predict_with_step_columns,
     check_predict_time_columns,
     check_predict_X_forecast_override,
@@ -394,6 +395,29 @@ class TestStepColumnChecks:
         )
         forecaster = PointReductionForecaster()
         check_observe_predict_with_step_columns(
+            forecaster,
+            y[:60],
+            X[:60],
+            y[60:80],
+            X_actual_test=X[60:80],
+            X_future=X_future,
+            X_forecast=X_forecast,
+            forecasting_horizon=3,
+        )
+
+    def test_check_observe_predict_interval_with_step_columns(self, y_X_factory):
+        """check_observe_predict_interval_with_step_columns passes for a conformal forecaster."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=80,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        forecaster = SplitConformalForecaster(calibration_size=20)
+        check_observe_predict_interval_with_step_columns(
             forecaster,
             y[:60],
             X[:60],
