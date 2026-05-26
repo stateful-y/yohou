@@ -240,9 +240,7 @@ class TestSplitConformalObserveRewind:
         # Each vintage must have sorted time (regression test for stale point_forecaster_ state)
         for vt in y_pred["vintage_time"].unique():
             vintage = y_pred.filter(pl.col("vintage_time") == vt)
-            assert vintage["time"].is_sorted(), (
-                f"'time' within vintage_time={vt} is not sorted"
-            )
+            assert vintage["time"].is_sorted(), f"'time' within vintage_time={vt} is not sorted"
 
     def test_rewind(self, conformal_data):
         """Test that rewind delegates to the wrapped forecaster."""

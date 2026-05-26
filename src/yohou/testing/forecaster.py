@@ -1398,9 +1398,7 @@ def check_observe_predict_interval_with_step_columns(
     # Validate per-vintage time sorting (catches stale observation state bugs)
     for vt in y_pred["vintage_time"].unique():
         vintage = y_pred.filter(pl.col("vintage_time") == vt)
-        assert vintage["time"].is_sorted(), (
-            f"'time' column within vintage_time={vt} is not sorted in ascending order"
-        )
+        assert vintage["time"].is_sorted(), f"'time' column within vintage_time={vt} is not sorted in ascending order"
 
 
 def check_requires_exogenous_warns_on_X_future_X_forecast(
