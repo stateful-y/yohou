@@ -324,7 +324,12 @@ def _derive_step_columns(
         values that are windowed forward from each observation time.
     X_forecast : pl.DataFrame or None
         External forecasts with ``"vintage_time"`` and ``"time"`` columns.
-        Pivoted by ordinal rank within each vintage group.
+        Before pivoting, each vintage is filtered to timestamps within
+        ``(vintage_time, vintage_time + H * interval]``. Timestamps outside
+        this window are discarded. The remaining timestamps are pivoted by
+        ordinal rank within each vintage group. If filtering produces fewer
+        than H step columns, the missing columns are padded with null and
+        a ``UserWarning`` is emitted.
     observation_times : pl.Series
         Observation timestamps to derive step columns from.
     forecasting_horizon : int
@@ -339,8 +344,10 @@ def _derive_step_columns(
     -------
     pl.DataFrame or None
         Wide DataFrame with ``[time, <col>_step_1, ..., <col>_step_H]``
-        combining step columns from both sources. Returns ``None`` when
-        both ``X_future`` and ``X_forecast`` are ``None``.
+        combining step columns from both sources. Step columns always
+        span exactly ``1..H`` per value column: over-long forecasts are
+        clipped, and under-coverage is padded with null. Returns ``None``
+        when both ``X_future`` and ``X_forecast`` are ``None``.
 
     Raises
     ------
@@ -385,22 +392,51 @@ def _derive_step_columns(
 
         forecast_pivoted = pivot_forecasts(X_forecast_filtered)
 
-        # Warn if any vintage has fewer steps than the forecasting horizon
-        step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time"]
-        if step_cols_forecast:
-            import re  # noqa: PLC0415
+        # Determine value columns and their dtypes for padding
+        value_cols_info = {
+            c: X_forecast[c].dtype
+            for c in X_forecast.columns
+            if c not in ("vintage_time", "time")
+        }
 
+        # Warn if any vintage has fewer steps than the forecasting horizon
+        import re  # noqa: PLC0415
+
+        step_cols_forecast = [
+            c for c in forecast_pivoted.columns
+            if c != "time" and re.search(r"_step_\d+$", c)
+        ]
+        if step_cols_forecast:
             step_nums = [int(m.group(1)) for c in step_cols_forecast if (m := re.search(r"_step_(\d+)$", c))]
             max_step = max(step_nums) if step_nums else 0
             if max_step < forecasting_horizon:
                 import warnings  # noqa: PLC0415
 
                 warnings.warn(
-                    f"X_forecast covers {max_step} steps but forecasting_horizon is "
-                    f"{forecasting_horizon}. Some step features will be null.",
+                    f"X_forecast covers {max_step} of {forecasting_horizon} "
+                    f"forecast steps. The remaining step features will be null. "
+                    f"This is normal for short-range forecasts or when the "
+                    f"observation point has advanced past some forecast "
+                    f"timestamps. Tree-based estimators (XGBoost, LightGBM, "
+                    f"HistGradientBoosting) handle null features natively.",
                     UserWarning,
                     stacklevel=2,
                 )
+
+        # Pad missing step columns to H (partial coverage → null columns)
+        missing_exprs = []
+        for col, dtype in value_cols_info.items():
+            for h in range(1, forecasting_horizon + 1):
+                step_name = f"{col}_step_{h}"
+                if step_name not in forecast_pivoted.columns:
+                    missing_exprs.append(pl.lit(None).cast(dtype).alias(step_name))
+        if missing_exprs:
+            forecast_pivoted = forecast_pivoted.with_columns(missing_exprs)
+
+        # Drop raw value columns (present when pivot input was empty)
+        raw_in_pivot = [c for c in value_cols_info if c in forecast_pivoted.columns]
+        if raw_in_pivot:
+            forecast_pivoted = forecast_pivoted.drop(raw_in_pivot)
 
         # Filter to observation_times only (left join preserves order)
         obs_df = pl.DataFrame({"time": observation_times})
