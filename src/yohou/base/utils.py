@@ -393,19 +393,12 @@ def _derive_step_columns(
         forecast_pivoted = pivot_forecasts(X_forecast_filtered)
 
         # Determine value columns and their dtypes for padding
-        value_cols_info = {
-            c: X_forecast[c].dtype
-            for c in X_forecast.columns
-            if c not in ("vintage_time", "time")
-        }
+        value_cols_info = {c: X_forecast[c].dtype for c in X_forecast.columns if c not in ("vintage_time", "time")}
 
         # Warn if any vintage has fewer steps than the forecasting horizon
         import re  # noqa: PLC0415
 
-        step_cols_forecast = [
-            c for c in forecast_pivoted.columns
-            if c != "time" and re.search(r"_step_\d+$", c)
-        ]
+        step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time" and re.search(r"_step_\d+$", c)]
         if step_cols_forecast:
             step_nums = [int(m.group(1)) for c in step_cols_forecast if (m := re.search(r"_step_(\d+)$", c))]
             max_step = max(step_nums) if step_nums else 0
@@ -417,7 +410,7 @@ def _derive_step_columns(
                     f"forecast steps. The remaining step features will be null. "
                     f"This is normal for short-range forecasts or when the "
                     f"observation point has advanced past some forecast "
-                    f"timestamps. Tree-based estimators (XGBoost, LightGBM, "
+                    f"timestamps. Tree-based estimators (e.g. XGBoost, LightGBM, "
                     f"HistGradientBoosting) handle null features natively.",
                     UserWarning,
                     stacklevel=2,

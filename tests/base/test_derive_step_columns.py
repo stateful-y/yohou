@@ -248,6 +248,24 @@ class TestDeriveStepColumns:
         assert "5" in msg
         assert result is not None
 
+    def test_all_forecast_timestamps_beyond_horizon_returns_nulls(self):
+        """All timestamps beyond the horizon window → all step columns null."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 2,
+            "time": [datetime(2020, 1, 1, 10), datetime(2020, 1, 1, 11)],
+            "temp": [99.0, 100.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+        result = _derive_step_columns(None, X_forecast, obs, 3, "1h")
+
+        assert result is not None
+        step_cols = [c for c in result.columns if c != "time"]
+        assert sorted(step_cols) == ["temp_step_1", "temp_step_2", "temp_step_3"]
+        # All values should be null since nothing survived filtering
+        assert result["temp_step_1"][0] is None
+        assert result["temp_step_2"][0] is None
+        assert result["temp_step_3"][0] is None
+
     def test_no_warning_when_steps_cover_horizon(self):
         """No warning emitted when vintages have >= H timestamps."""
         X_forecast = pl.DataFrame({
