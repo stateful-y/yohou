@@ -444,7 +444,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Bypasses the feature transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Pivoted by ordinal rank within each vintage group.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
             Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
@@ -563,6 +565,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------
@@ -638,6 +643,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------

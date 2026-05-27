@@ -356,7 +356,7 @@ def _derive_step_columns(
         or appears in both X_future and X_forecast sources.
 
     """
-    from yohou.utils.pivot import pivot_forecasts, window_futures  # noqa: PLC0415
+    from yohou.utils.pivot import pivot_forecasts, window_forecasts, window_futures  # noqa: PLC0415
     from yohou.utils.validation import add_interval  # noqa: PLC0415
 
     if X_future is None and X_forecast is None:
@@ -373,40 +373,32 @@ def _derive_step_columns(
         parts.append(future_pivoted)
 
     if X_forecast is not None:
-        # Filter each vintage to timestamps within its forecasting horizon
-        # window: (vintage_time, vintage_time + H * interval].
-        # The predict path remaps vintage_time to observed_time_ before
-        # calling, so this correctly clips to the model's prediction window.
-        unique_vintages = X_forecast["vintage_time"].unique().to_list()
-        cutoffs = {vt: add_interval(vt, interval, n=forecasting_horizon) for vt in unique_vintages}
-        cutoff_df = pl.DataFrame({
-            "vintage_time": list(cutoffs.keys()),
-            "_cutoff": list(cutoffs.values()),
-        })
-        X_forecast_filtered = (
-            X_forecast
-            .join(cutoff_df, on="vintage_time", how="left")
-            .filter((pl.col("time") > pl.col("vintage_time")) & (pl.col("time") <= pl.col("_cutoff")))
-            .drop("_cutoff")
+        # Use as-of vintage selection: for each observation time T, select
+        # the latest vintage V <= T, then extract values at T+1..T+H.
+        forecast_pivoted = window_forecasts(
+            X_forecast, observation_times, forecasting_horizon, interval,
         )
-
-        forecast_pivoted = pivot_forecasts(X_forecast_filtered)
 
         # Determine value columns and their dtypes for padding
         value_cols_info = {c: X_forecast[c].dtype for c in X_forecast.columns if c not in ("vintage_time", "time")}
 
-        # Warn if any vintage has fewer steps than the forecasting horizon
+        # Warn if any value column has step columns that are entirely null,
+        # indicating the matched vintage(s) don't cover the full horizon.
         import re  # noqa: PLC0415
 
         step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time" and re.search(r"_step_\d+$", c)]
         if step_cols_forecast:
-            step_nums = [int(m.group(1)) for c in step_cols_forecast if (m := re.search(r"_step_(\d+)$", c))]
-            max_step = max(step_nums) if step_nums else 0
-            if max_step < forecasting_horizon:
+            # Find the highest step number that has at least one non-null value
+            max_covered = 0
+            for c in step_cols_forecast:
+                m = re.search(r"_step_(\d+)$", c)
+                if m and forecast_pivoted[c].null_count() < len(forecast_pivoted):
+                    max_covered = max(max_covered, int(m.group(1)))
+            if max_covered < forecasting_horizon:
                 import warnings  # noqa: PLC0415
 
                 warnings.warn(
-                    f"X_forecast covers {max_step} of {forecasting_horizon} "
+                    f"X_forecast covers {max_covered} of {forecasting_horizon} "
                     f"forecast steps. The remaining step features will be null. "
                     f"This is normal for short-range forecasts or when the "
                     f"observation point has advanced past some forecast "
@@ -426,14 +418,6 @@ def _derive_step_columns(
         if missing_exprs:
             forecast_pivoted = forecast_pivoted.with_columns(missing_exprs)
 
-        # Drop raw value columns (present when pivot input was empty)
-        raw_in_pivot = [c for c in value_cols_info if c in forecast_pivoted.columns]
-        if raw_in_pivot:
-            forecast_pivoted = forecast_pivoted.drop(raw_in_pivot)
-
-        # Filter to observation_times only (left join preserves order)
-        obs_df = pl.DataFrame({"time": observation_times})
-        forecast_pivoted = obs_df.join(forecast_pivoted, on="time", how="left")
         step_cols = [c for c in forecast_pivoted.columns if c != "time"]
         for c in step_cols:
             if c in source_names:
