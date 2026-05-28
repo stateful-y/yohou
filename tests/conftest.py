@@ -595,7 +595,7 @@ def _generate_exogenous(
     ``window_futures`` fills all step columns without NaN.
 
     X_forecast vintages extend H steps beyond y range so
-    ``pivot_forecasts`` produces non-null step columns.
+    step columns are non-null.
     """
     from datetime import timedelta
 

@@ -745,9 +745,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # When the caller overrides X_forecast with a single vintage whose
         # vintage_time differs from observed_time_, remap vintage_time so
-        # pivot_forecasts output joins correctly against observation_times
-        # in _derive_step_columns.  Multi-vintage overrides are left
-        # untouched (one of their vintages should already match obs_time).
+        # the join against observation_times in _derive_step_columns works
+        # correctly.  Multi-vintage overrides are left untouched (one of
+        # their vintages should already match obs_time).
         if X_forecast is not None and X_forecast_eff is not None:
             vintages = X_forecast_eff["vintage_time"].unique()
             if len(vintages) == 1 and vintages[0] != obs_time:

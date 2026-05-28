@@ -104,9 +104,10 @@ any transformer-derived features (`target_lag_1`, `temp_rolling_mean_7`, etc.).
 
 Two public utilities handle this pivoting:
 
-- [`pivot_forecasts()`](/pages/api/generated/yohou.utils.pivot.pivot_forecasts/) converts tidy `[vintage_time, time, col1, col2]` to
-  wide `[time, col1_step_1, col1_step_2, ...]`, pivoting on the vintage
-  dimension
+- [`window_forecasts()`](/pages/api/generated/yohou.utils.pivot.window_forecasts/) selects the latest vintage at or before each
+  observation time (as-of matching) and converts tidy
+  `[vintage_time, time, col1, col2]` to wide
+  `[time, col1_step_1, col1_step_2, ...]`
 - [`window_futures()`](/pages/api/generated/yohou.utils.pivot.window_futures/) converts flat `[time, col1, col2]` to wide format by
   looking forward from each observation time
 
@@ -267,5 +268,5 @@ All composition forecasters propagate the three parameters to their children:
   before the target
 - [Reduction Forecasting](reduction-forecasting.md) explains the direct
   reduction strategy and how `step_feature_alignment` fits in
-- [`pivot_forecasts`](../api/utils.md) and [`window_futures`](../api/utils.md)
+- [`window_forecasts`](../api/utils.md) and [`window_futures`](../api/utils.md)
   handle vintage pivoting and known-future windowing respectively
