@@ -219,3 +219,19 @@ class TestWindowForecasts:
 
         assert "store_A__temp_step_1" in result.columns
         assert "store_A__temp_step_2" in result.columns
+
+    def test_all_obs_before_all_vintages_produces_all_nulls(self):
+        """Non-empty X_forecast but all obs before all vintages returns all nulls."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1, 6)] * 2,
+            "time": [datetime(2020, 1, 1, 7), datetime(2020, 1, 1, 8)],
+            "temp": [10.0, 11.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1, 0), datetime(2020, 1, 1, 3)])
+        result = window_forecasts(X_forecast, obs, forecasting_horizon=2, interval="1h")
+
+        assert result.shape == (2, 3)
+        assert result["temp_step_1"][0] is None
+        assert result["temp_step_1"][1] is None
+        assert result["temp_step_2"][0] is None
+        assert result["temp_step_2"][1] is None

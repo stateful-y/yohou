@@ -135,3 +135,85 @@ class TestObserveAsofVintageSelection:
 
         assert f._X_forecast_raw_ is not None
         assert len(f._X_forecast_raw_) == 0
+
+
+class TestPanelObserveAsofVintageSelection:
+    """Verify as-of vintage selection works for panel forecasters."""
+
+    @staticmethod
+    def _fit_panel_forecaster() -> PointReductionForecaster:
+        """Fit a minimal panel forecaster with X_forecast."""
+        train_times = pl.Series(
+            "time",
+            [datetime(2020, 1, 1) + timedelta(hours=i) for i in range(N_TRAIN)],
+        )
+        y_train = pl.DataFrame({
+            "time": train_times,
+            "store_a__sales": [float(i) for i in range(N_TRAIN)],
+            "store_b__sales": [float(i + 100) for i in range(N_TRAIN)],
+        })
+        # Build panel X_forecast with one vintage per observation
+        rows = []
+        for i in range(N_TRAIN):
+            vt = train_times[i]
+            for s in range(1, H + 1):
+                rows.append({
+                    "vintage_time": vt,
+                    "time": vt + timedelta(hours=s),
+                    "store_a__temp": float(100 * i + s),
+                    "store_b__temp": float(200 * i + s),
+                })
+        x_fc = pl.DataFrame(rows)
+
+        f = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(max_iter=10, random_state=SEED),
+            feature_transformer=LagTransformer([1, 2]),
+            reduction_strategy="direct",
+        )
+        f.fit(y_train, forecasting_horizon=H, X_forecast=x_fc)
+        return f
+
+    def test_panel_no_vintage_before_obs_produces_empty(self):
+        """Panel: all vintages after obs_time produces empty _X_forecast_raw_."""
+        f = self._fit_panel_forecaster()
+        obs_time = datetime(2020, 1, 1) + timedelta(hours=N_TRAIN)
+        y_obs = pl.DataFrame({
+            "time": [obs_time],
+            "store_a__sales": [999.0],
+            "store_b__sales": [888.0],
+        })
+        future_vintage = obs_time + timedelta(hours=6)
+        x_fc = pl.DataFrame({
+            "vintage_time": [future_vintage] * H,
+            "time": [future_vintage + timedelta(hours=s) for s in range(1, H + 1)],
+            "store_a__temp": [1.0] * H,
+            "store_b__temp": [2.0] * H,
+        })
+
+        f.observe(y_obs, X_forecast=x_fc)
+
+        assert f._X_forecast_raw_ is not None
+        assert len(f._X_forecast_raw_) == 0
+
+    def test_panel_earlier_vintage_selected(self):
+        """Panel: latest vintage before obs_time is selected."""
+        f = self._fit_panel_forecaster()
+        obs_time = datetime(2020, 1, 1) + timedelta(hours=N_TRAIN)
+        vintage = obs_time - timedelta(hours=2)
+        y_obs = pl.DataFrame({
+            "time": [obs_time],
+            "store_a__sales": [999.0],
+            "store_b__sales": [888.0],
+        })
+        x_fc = pl.DataFrame({
+            "vintage_time": [vintage] * H,
+            "time": [vintage + timedelta(hours=s) for s in range(1, H + 1)],
+            "store_a__temp": [1.0] * H,
+            "store_b__temp": [2.0] * H,
+        })
+
+        f.observe(y_obs, X_forecast=x_fc)
+
+        assert f._X_forecast_raw_ is not None
+        assert len(f._X_forecast_raw_) == H
+        assert f._X_forecast_raw_["vintage_time"][0] == vintage
