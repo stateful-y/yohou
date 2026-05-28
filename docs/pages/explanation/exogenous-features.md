@@ -183,6 +183,14 @@ Similarly, `X_forecast` may not cover all training observation times. Rows
 without matching forecast data produce null step columns. This is common when
 forecast archives start later than the target series.
 
+Conversely, a vintage whose timestamps extend beyond the forecasting horizon
+is clipped before pivoting. Each vintage keeps only timestamps in
+$(T_v,\; T_v + H \cdot \Delta t]$ where $T_v$ is the vintage time. This
+guarantees that step columns always span exactly `1..H` per value column,
+preventing spurious `step_(H+1)` columns from appearing in the feature
+matrix. If clipping leaves fewer than $H$ timestamps, the missing step
+columns are padded with null and a `UserWarning` is emitted.
+
 ## The Observe-Predict Loop
 
 The `observe()` method accepts `X_actual`, `X_future`, and `X_forecast`,

@@ -886,3 +886,65 @@ class TestMismatchedVintageOverride:
         assert step_before.equals(step_after), (
             "Step columns in _X_t_observed were not restored after predict(X_forecast=...) returned"
         )
+
+
+@pytest.mark.integration
+class TestSparseVintageSchedule:
+    """Integration test: 6h vintage schedule with hourly observations."""
+
+    def test_fit_observe_predict_with_sparse_vintages(self):
+        """Fit with 6h vintages, observe hourly, predict with non-null step columns."""
+        rng = np.random.default_rng(SEED)
+        n_train = 200
+        n_test = 12
+        h = 6
+        vintage_interval_hours = 6
+        n_total = n_train + n_test
+
+        times = pl.Series("time", [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(n_total)])
+        t = np.arange(n_total, dtype=float)
+        y_vals = 50.0 + 2.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n_total)
+        y = pl.DataFrame({"time": times, "price": y_vals})
+
+        # Build X_forecast with 6h vintage schedule (vintages at hours 0, 6, 12, 18, ...)
+        forecast_rows = []
+        for i in range(0, n_total, vintage_interval_hours):
+            vt = times[i]
+            for step in range(1, h + 1):
+                target_idx = i + step
+                if target_idx < n_total:
+                    forecast_rows.append({
+                        "vintage_time": vt,
+                        "time": times[target_idx],
+                        "wx_temp": float(np.sin(2 * np.pi * target_idx / 24) + rng.normal(0, 0.3)),
+                    })
+        x_forecast = pl.DataFrame(forecast_rows)
+
+        y_train = y[:n_train]
+        x_fc_train = x_forecast.filter(pl.col("vintage_time").is_in(times[:n_train]))
+
+        f = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=SEED),
+            feature_transformer=LagTransformer([1, 2, 3]),
+            reduction_strategy="direct",
+        )
+        f.fit(y=y_train, forecasting_horizon=h, X_forecast=x_fc_train)
+
+        assert len(f._step_column_names_) > 0
+        assert f._X_forecast_raw_ is not None
+
+        # Observe hourly for the test period (sparse vintages mean as-of matching)
+        obs_time = times[n_train]
+        y_obs = pl.DataFrame({"time": [obs_time], "price": [y_vals[n_train]]})
+        x_fc_obs = x_forecast.filter(
+            pl.col("vintage_time").is_in(times[n_train - vintage_interval_hours : n_train + 1])
+        )
+        f.observe(y=y_obs, X_forecast=x_fc_obs)
+
+        # Step columns should be non-null (as-of should find a vintage)
+        step_cols_in_X = [c for c in f._X_t_observed.columns if "_step_" in c]
+        assert len(step_cols_in_X) > 0
+
+        pred = f.predict()
+        assert len(pred) == h
+        assert "price" in pred.columns

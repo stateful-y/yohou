@@ -296,6 +296,9 @@ class BaseStandardForecaster:
             Known future features. If None, re-derived from stored raws.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts. If None, re-derived from stored raws.
+            The latest vintage at or before ``observed_time_`` is
+            selected (as-of matching), so vintage times do not need
+            to align exactly with observation times.
 
         Returns
         -------
@@ -357,7 +360,12 @@ class BaseStandardForecaster:
         if X_future is not None:
             self._X_future_raw_ = X_future
         if X_forecast is not None:
-            self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == self.observed_time_)
+            # Select the latest vintage at or before observed_time_ (as-of selection)
+            latest_vintage = X_forecast.filter(pl.col("vintage_time") <= self.observed_time_)["vintage_time"].max()
+            if latest_vintage is not None:
+                self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
+            else:
+                self._X_forecast_raw_ = X_forecast.clear()
 
     def _observe_with_precomputed_steps_standard(
         self,
