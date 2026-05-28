@@ -273,7 +273,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            External forecasts. See ``fit()`` for full parameter
+            description.
 
         Returns
         -------
@@ -369,8 +370,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            External forecasts. See ``fit()`` for full parameter
+            description.
 
         Returns
         -------
@@ -444,7 +445,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Bypasses the feature transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Pivoted by ordinal rank within each vintage group.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
             Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
@@ -563,6 +566,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------
@@ -638,6 +644,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------
@@ -703,7 +712,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None
             Known future features override. If None, uses stored raw.
         X_forecast : pl.DataFrame or None
-            External forecast override. If None, uses stored raw.
+            External forecast override. See ``predict()`` for full
+            parameter description. If None, uses stored raw.
         predict_fn : callable
             ``predict_fn() -> pl.DataFrame``. Called with overridden state.
 

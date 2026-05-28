@@ -283,3 +283,44 @@ class TestDeriveStepColumns:
 
         user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
         assert len(user_warnings) == 0
+
+    # --- Sparse vintage schedules (as-of selection) ---
+
+    def test_sparse_vintage_asof_selection(self):
+        """6-hourly vintages with hourly observations use as-of matching."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": ([datetime(2020, 1, 1, 0)] * 3 + [datetime(2020, 1, 1, 6)] * 3),
+            "time": ([datetime(2020, 1, 1, h) for h in range(1, 4)] + [datetime(2020, 1, 1, h) for h in range(7, 10)]),
+            "temp": [10.0, 11.0, 12.0, 20.0, 21.0, 22.0],
+        })
+        obs = pl.Series([
+            datetime(2020, 1, 1, 0),  # uses vintage 00:00
+            datetime(2020, 1, 1, 3),  # uses vintage 00:00 (latest <= 03:00)
+            datetime(2020, 1, 1, 6),  # uses vintage 06:00
+        ])
+        result = _derive_step_columns(None, X_forecast, obs, 2, "1h")
+
+        assert result is not None
+        assert result.shape == (3, 3)
+        # obs 00:00 → vintage 00:00 → step_1=val@01:00=10, step_2=val@02:00=11
+        assert result["temp_step_1"][0] == 10.0
+        assert result["temp_step_2"][0] == 11.0
+        # obs 03:00 → vintage 00:00 → step_1=val@04:00=null (not in forecast)
+        assert result["temp_step_1"][1] is None
+        # obs 06:00 → vintage 06:00 → step_1=val@07:00=20, step_2=val@08:00=21
+        assert result["temp_step_1"][2] == 20.0
+        assert result["temp_step_2"][2] == 21.0
+
+    def test_no_vintage_before_observation_produces_nulls(self):
+        """Observation before all vintages gets null step columns."""
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1, 6)] * 2,
+            "time": [datetime(2020, 1, 1, 7), datetime(2020, 1, 1, 8)],
+            "temp": [10.0, 11.0],
+        })
+        obs = pl.Series([datetime(2020, 1, 1, 3)])
+        result = _derive_step_columns(None, X_forecast, obs, 2, "1h")
+
+        assert result is not None
+        assert result["temp_step_1"][0] is None
+        assert result["temp_step_2"][0] is None
