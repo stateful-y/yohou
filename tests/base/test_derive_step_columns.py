@@ -289,14 +289,8 @@ class TestDeriveStepColumns:
     def test_sparse_vintage_asof_selection(self):
         """6-hourly vintages with hourly observations use as-of matching."""
         X_forecast = pl.DataFrame({
-            "vintage_time": (
-                [datetime(2020, 1, 1, 0)] * 3
-                + [datetime(2020, 1, 1, 6)] * 3
-            ),
-            "time": (
-                [datetime(2020, 1, 1, h) for h in range(1, 4)]
-                + [datetime(2020, 1, 1, h) for h in range(7, 10)]
-            ),
+            "vintage_time": ([datetime(2020, 1, 1, 0)] * 3 + [datetime(2020, 1, 1, 6)] * 3),
+            "time": ([datetime(2020, 1, 1, h) for h in range(1, 4)] + [datetime(2020, 1, 1, h) for h in range(7, 10)]),
             "temp": [10.0, 11.0, 12.0, 20.0, 21.0, 22.0],
         })
         obs = pl.Series([

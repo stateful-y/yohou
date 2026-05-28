@@ -345,6 +345,7 @@ def window_forecasts(
 
     # Build null result schema for empty / no-match cases
     def _null_result() -> pl.DataFrame:
+        """Return an all-null DataFrame with the expected step column schema."""
         cols: dict[str, pl.Series] = {"time": observation_times}
         for col in value_cols:
             for step in range(1, forecasting_horizon + 1):
@@ -359,12 +360,7 @@ def window_forecasts(
 
     # As-of join: for each observation time, find the latest vintage <= T
     obs_df = pl.DataFrame({"time": observation_times}).sort("time")
-    vintage_keys = (
-        X_forecast.select(vintage_col)
-        .unique()
-        .sort(vintage_col)
-        .rename({vintage_col: "_vintage"})
-    )
+    vintage_keys = X_forecast.select(vintage_col).unique().sort(vintage_col).rename({vintage_col: "_vintage"})
 
     matched = obs_df.join_asof(
         vintage_keys,
@@ -379,6 +375,7 @@ def window_forecasts(
     for obs_time, vintage in zip(
         matched["time"].to_list(),
         matched["_vintage"].to_list(),
+        strict=True,
     ):
         if vintage is None:
             continue
@@ -408,11 +405,7 @@ def window_forecasts(
     for step in range(1, forecasting_horizon + 1):
         for col in value_cols:
             pivot_exprs.append(
-                pl.when(pl.col("_step") == step)
-                .then(pl.col(col))
-                .otherwise(None)
-                .max()
-                .alias(f"{col}_step_{step}")
+                pl.when(pl.col("_step") == step).then(pl.col(col)).otherwise(None).max().alias(f"{col}_step_{step}")
             )
 
     result = joined.group_by("_obs_time", maintain_order=True).agg(pivot_exprs)
@@ -422,15 +415,5 @@ def window_forecasts(
     # (some may have had no matching vintage)
     obs_all = pl.DataFrame({"time": observation_times})
     result = obs_all.join(result, on="time", how="left")
-
-    # Ensure all step columns exist (fill missing with null for unmatched obs times)
-    missing_exprs = []
-    for col in value_cols:
-        for step in range(1, forecasting_horizon + 1):
-            step_name = f"{col}_step_{step}"
-            if step_name not in result.columns:
-                missing_exprs.append(pl.lit(None).cast(X_forecast[col].dtype).alias(step_name))
-    if missing_exprs:
-        result = result.with_columns(missing_exprs)
 
     return result

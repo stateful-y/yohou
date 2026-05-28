@@ -361,9 +361,7 @@ class BaseStandardForecaster:
             self._X_future_raw_ = X_future
         if X_forecast is not None:
             # Select the latest vintage at or before observed_time_ (as-of selection)
-            latest_vintage = (
-                X_forecast.filter(pl.col("vintage_time") <= self.observed_time_)["vintage_time"].max()
-            )
+            latest_vintage = X_forecast.filter(pl.col("vintage_time") <= self.observed_time_)["vintage_time"].max()
             if latest_vintage is not None:
                 self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
             else:

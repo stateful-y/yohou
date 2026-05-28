@@ -3,12 +3,10 @@
 from datetime import datetime, timedelta
 
 import polars as pl
-import pytest
 from sklearn.ensemble import HistGradientBoostingRegressor
 
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import LagTransformer
-
 
 FREQ = "1h"
 H = 3
@@ -31,7 +29,7 @@ def _make_x_forecast(
     plus the corresponding offset.
     """
     rows = []
-    for vt, offset in zip(vintage_times, forecast_start_offsets):
+    for vt, offset in zip(vintage_times, forecast_start_offsets, strict=True):
         for s in range(n_steps):
             rows.append({
                 "vintage_time": vt,

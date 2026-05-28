@@ -16,9 +16,12 @@ class TestWindowForecasts:
         X_forecast = pl.DataFrame({
             "vintage_time": [datetime(2020, 1, 1, h) for h in range(3) for _ in range(2)],
             "time": [
-                datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2),
-                datetime(2020, 1, 1, 2), datetime(2020, 1, 1, 3),
-                datetime(2020, 1, 1, 3), datetime(2020, 1, 1, 4),
+                datetime(2020, 1, 1, 1),
+                datetime(2020, 1, 1, 2),
+                datetime(2020, 1, 1, 2),
+                datetime(2020, 1, 1, 3),
+                datetime(2020, 1, 1, 3),
+                datetime(2020, 1, 1, 4),
             ],
             "temp": [10.0, 11.0, 12.0, 13.0, 14.0, 15.0],
         })
@@ -33,14 +36,8 @@ class TestWindowForecasts:
         """6-hourly vintages with hourly observation times."""
         # Vintage at 00:00 covers hours 1..48, vintage at 06:00 covers hours 7..54
         X_forecast = pl.DataFrame({
-            "vintage_time": (
-                [datetime(2020, 1, 1, 0)] * 10
-                + [datetime(2020, 1, 1, 6)] * 10
-            ),
-            "time": (
-                [datetime(2020, 1, 1, h) for h in range(1, 11)]
-                + [datetime(2020, 1, 1, h) for h in range(7, 17)]
-            ),
+            "vintage_time": ([datetime(2020, 1, 1, 0)] * 10 + [datetime(2020, 1, 1, 6)] * 10),
+            "time": ([datetime(2020, 1, 1, h) for h in range(1, 11)] + [datetime(2020, 1, 1, h) for h in range(7, 17)]),
             "temp": list(range(20)),
         })
         obs = pl.Series([

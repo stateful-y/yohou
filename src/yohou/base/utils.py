@@ -356,8 +356,7 @@ def _derive_step_columns(
         or appears in both X_future and X_forecast sources.
 
     """
-    from yohou.utils.pivot import pivot_forecasts, window_forecasts, window_futures  # noqa: PLC0415
-    from yohou.utils.validation import add_interval  # noqa: PLC0415
+    from yohou.utils.pivot import window_forecasts, window_futures  # noqa: PLC0415
 
     if X_future is None and X_forecast is None:
         return None
@@ -376,7 +375,10 @@ def _derive_step_columns(
         # Use as-of vintage selection: for each observation time T, select
         # the latest vintage V <= T, then extract values at T+1..T+H.
         forecast_pivoted = window_forecasts(
-            X_forecast, observation_times, forecasting_horizon, interval,
+            X_forecast,
+            observation_times,
+            forecasting_horizon,
+            interval,
         )
 
         # Determine value columns and their dtypes for padding
