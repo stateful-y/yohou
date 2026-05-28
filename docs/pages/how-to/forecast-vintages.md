@@ -44,7 +44,7 @@ X_forecast = pl.DataFrame({
 
 Each `vintage_time` value represents the observation point at which this
 forecast was known. Multiple rows per vintage capture the forecast horizon
-(step 1, step 2, etc.). Internally, [`pivot_forecasts`](/pages/api/generated/yohou.utils.pivot.pivot_forecasts/) converts this tidy
+(step 1, step 2, etc.). Internally, the framework converts this tidy
 format into step-indexed columns (`temperature_step_1`,
 `temperature_step_2`, ...).
 
@@ -152,5 +152,5 @@ score = scorer.score(y_test, preds)
 - [Exogenous Features Tutorial](../tutorials/exogenous-features.md): hands-on introduction
 - [Evaluate Forecasts with Multi-vintage Scoring](multi-vintage-scoring.md): scoring across
   forecast origins
-- [`pivot_forecasts` API Reference](../api/utils.md): tidy to step-indexed
-  column conversion
+- [`window_forecasts` API Reference](../api/utils.md): as-of vintage
+  matching with step alignment

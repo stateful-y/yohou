@@ -301,7 +301,5 @@ pred = restored.predict(X_forecast=new_vintage)
   rationale and internal mechanics
 - [Exogenous Features Tutorial](../tutorials/exogenous-features.md): hands-on
   introduction
-- [`pivot_forecasts` API Reference](../api/utils.md): utility for manual
-  forecast pivoting
 - [`window_forecasts` API Reference](../api/utils.md): utility for as-of
   vintage matching with step alignment
