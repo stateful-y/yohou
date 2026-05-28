@@ -92,7 +92,8 @@ class _BaseTrendForecaster(BasePointForecaster):
         X_future : pl.DataFrame or None, default=None
             Known future features.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts.
+            External forecasts. See ``fit()`` for full parameter
+            description.
 
         Returns
         -------
@@ -148,7 +149,9 @@ class _BaseTrendForecaster(BasePointForecaster):
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
 
         Returns
         -------

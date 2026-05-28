@@ -87,7 +87,10 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             feature transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
+            Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -158,8 +161,8 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             without mutating forecaster state.
         X_forecast : pl.DataFrame or None, default=None
             External forecast override with ``"vintage_time"`` and
-            ``"time"`` columns. Re-derives step columns without mutating
-            forecaster state.
+            ``"time"`` columns. Re-derives step columns using as-of
+            matching without mutating forecaster state.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -279,7 +282,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
         **params : dict
             Metadata to route to nested estimators.
 
