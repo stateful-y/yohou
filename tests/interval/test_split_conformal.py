@@ -221,6 +221,27 @@ class TestSplitConformalObserveRewind:
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) >= 1
 
+    def test_observe_predict_interval_multi_step(self, conformal_data):
+        """Test observe_predict_interval with forecasting_horizon > 1 produces sorted vintages."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        fh = 3
+        scf.fit(conformal_data[:200], forecasting_horizon=fh, coverage_rates=[0.9])
+
+        y_test = conformal_data[200:210]
+        y_pred = scf.observe_predict_interval(
+            y=y_test,
+            forecasting_horizon=fh,
+            coverage_rates=[0.9],
+        )
+        assert isinstance(y_pred, pl.DataFrame)
+        assert "vintage_time" in y_pred.columns
+        assert len(y_pred) > fh
+
+        # Each vintage must have sorted time (regression test for stale point_forecaster_ state)
+        for vt in y_pred["vintage_time"].unique():
+            vintage = y_pred.filter(pl.col("vintage_time") == vt)
+            assert vintage["time"].is_sorted(), f"'time' within vintage_time={vt} is not sorted"
+
     def test_rewind(self, conformal_data):
         """Test that rewind delegates to the wrapped forecaster."""
         scf = SplitConformalForecaster(calibration_size=50)
