@@ -2853,6 +2853,22 @@ class TestPlotForecastOptionalYTest:
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
+    def test_y_pred_none_raises(self):
+        """TypeError raised when y_pred is None."""
+        with pytest.raises(TypeError, match="y_pred is required"):
+            plot_forecast(y_pred=None)
+
+    def test_panel_non_numeric_no_y_test_raises(self):
+        """ValueError raised for non-numeric panel predictions without y_test."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_pred = pl.DataFrame({
+            "time": times,
+            "a__weather": ["sunny"] * 10,
+            "b__weather": ["rainy"] * 10,
+        })
+        with pytest.raises(ValueError, match="y_test is required for non-numeric panel"):
+            plot_forecast(y_pred=y_pred)
+
     def test_categorical_raises(self):
         """ValueError raised for categorical predictions without y_test."""
         times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
