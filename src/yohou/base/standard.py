@@ -157,7 +157,7 @@ class BaseStandardForecaster:
 
         self._X_t_observed = None
         if X_t is not None:
-            self._X_t_observed = X_t[[-1]]
+            self._X_t_observed = X_t.tail(1)
 
         # Store untransformed data for inverse_transform
         y_observed = None

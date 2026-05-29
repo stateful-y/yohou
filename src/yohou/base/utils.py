@@ -297,7 +297,7 @@ def _rewind_transformers_one(
         # directly on them raises NotFittedError because their fit() does
         # not set the base-class fitted attributes.
         X_t_all = feature_transformer.rewind_transform(X_feat_in)
-        X_t = X_t_all[[-1]]
+        X_t = X_t_all.tail(1)
 
     return X_t
 

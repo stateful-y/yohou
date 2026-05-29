@@ -44,13 +44,19 @@ class TestWeightedQuantile:
         result = weighted_quantile(x, q=0.5, weights=weights)
         assert isinstance(result, float)
 
-    def test_insufficient_weight_returns_inf(self):
-        """Test that insufficient weight returns infinity."""
+    def test_zero_weights_returns_inf(self):
+        """Test that all-zero weights returns infinity."""
         x = np.array([1.0, 2.0, 3.0])
-        # Sum of weights < 1 - q → insufficient
-        weights = np.array([0.01, 0.01, 0.01])
+        weights = np.array([0.0, 0.0, 0.0])
         result = weighted_quantile(x, q=0.1, weights=weights)
         assert result == float("inf")
+
+    def test_small_weights_normalizes(self):
+        """Test that small (but non-zero) weights are normalized and produce a finite result."""
+        x = np.array([1.0, 2.0, 3.0])
+        weights = np.array([0.01, 0.01, 0.01])
+        result = weighted_quantile(x, q=0.1, weights=weights)
+        assert np.isfinite(result)
 
     def test_single_element(self):
         """Test with single element array."""

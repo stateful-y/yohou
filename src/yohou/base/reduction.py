@@ -1062,11 +1062,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         assert self.local_X_t_schema_ is not None
         if panel_group_name is None:
             assert isinstance(self._X_t_observed, pl.DataFrame)
-            X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
+            X_t = self._X_t_observed.tail(1).select(~cs.by_name("time"))
         else:
             assert isinstance(self._X_t_observed, dict)
             X_t_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
-            X_t = X_t_dict[panel_group_name][[-1]].select(~cs.by_name("time"))
+            X_t = X_t_dict[panel_group_name].tail(1).select(~cs.by_name("time"))
         return X_t.select(list(self.local_X_t_schema_.keys()))
 
     def _reshape_predictions(
