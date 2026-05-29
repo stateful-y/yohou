@@ -245,7 +245,7 @@ def plot_forecast(
     prediction_mode = _detect_prediction_mode(_first_pred)  # ty: ignore[invalid-argument-type]
 
     # Detect panel data (fall back to y_pred when y_test is not provided)
-    _panel_source = y_test if y_test is not None else _first_pred
+    _panel_source: pl.DataFrame = y_test if y_test is not None else _first_pred  # ty: ignore[invalid-assignment]
     _, _panels = inspect_panel(_panel_source)
     is_panel = bool(_panels)
 
@@ -338,11 +338,7 @@ def plot_forecast(
     # Non-panel, single-model case
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
-
-    if y_test is not None:
-        test_value_cols = [c for c in y_test.columns if c != "time"]
-    else:
-        test_value_cols = list(pred_value_cols)
+    test_value_cols = [c for c in y_test.columns if c != "time"] if y_test is not None else list(pred_value_cols)
 
     # Apply columns filter
     if columns is not None:
@@ -1096,7 +1092,9 @@ def _plot_forecast_multi_model(
         test_value_cols = [c for c in y_test.columns if c != "time"]
     else:
         _any_pred = next(iter(y_preds.values()))
-        test_value_cols = [c for c in _any_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
+        test_value_cols = [
+            c for c in _any_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)
+        ]
 
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
@@ -1745,6 +1743,9 @@ def _plot_forecast_panel(
 
     """
     if prediction_mode != "numeric":
+        if y_test is None:
+            msg = "y_test is required for non-numeric panel predictions"
+            raise ValueError(msg)
         return _plot_forecast_panel_typed(
             y_test,
             y_pred,
@@ -1769,7 +1770,7 @@ def _plot_forecast_panel(
     _model_pal = eff_palette[3:] or eff_palette
 
     _first_pred = next(iter(y_pred.values())) if isinstance(y_pred, dict) else y_pred
-    _panel_source = y_test if y_test is not None else _first_pred
+    _panel_source: pl.DataFrame = y_test if y_test is not None else _first_pred  # ty: ignore[invalid-assignment]
     _, test_panels = inspect_panel(_panel_source)
 
     # Group panel columns by group prefix
