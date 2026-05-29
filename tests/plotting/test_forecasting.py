@@ -2812,3 +2812,64 @@ class TestPlotForecastPanelLegendGroups:
             lg = getattr(t, "legendgroup", None)
             if lg:
                 assert lg in ("x", "y"), f"Unexpected legendgroup: {lg}"
+
+
+class TestPlotForecastOptionalYTest:
+    """Tests for plot_forecast with y_test=None."""
+
+    def test_no_actual_trace(self):
+        """No 'Actual' trace is rendered when y_test is None."""
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [190 + i for i in range(30)],
+        })
+        fig = plot_forecast(y_pred=y_pred)
+        actual_traces = [t for t in fig.data if t.name is not None and "Actual" in t.name]
+        assert len(actual_traces) == 0
+        forecast_traces = [t for t in fig.data if t.name is not None and "Forecast" in t.name]
+        assert len(forecast_traces) > 0
+
+    def test_with_intervals(self):
+        """Intervals render without y_test."""
+        y_pred = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True),
+            "y": [190 + i for i in range(30)],
+            "y_lower_0.9": [185 + i for i in range(30)],
+            "y_upper_0.9": [195 + i for i in range(30)],
+        })
+        fig = plot_forecast(y_pred=y_pred, coverage_rates=[0.9])
+        pi_traces = [t for t in fig.data if t.name is not None and "PI" in t.name]
+        assert len(pi_traces) == 1
+
+    def test_panel_data(self):
+        """Panel data without y_test produces faceted subplots."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_pred = pl.DataFrame({
+            "time": times,
+            "g__a": list(range(10)),
+            "g__b": list(range(10, 20)),
+        })
+        fig = plot_forecast(y_pred=y_pred, facet_by="member")
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
+    def test_categorical_raises(self):
+        """ValueError raised for categorical predictions without y_test."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather": ["sunny"] * 10,
+        })
+        with pytest.raises(ValueError, match="y_test is required"):
+            plot_forecast(y_pred=y_pred)
+
+    def test_class_proba_raises(self):
+        """ValueError raised for class-probability predictions without y_test."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_pred = pl.DataFrame({
+            "time": times,
+            "weather_proba_sunny": [0.7] * 10,
+            "weather_proba_rainy": [0.3] * 10,
+        })
+        with pytest.raises(ValueError, match="y_test is required"):
+            plot_forecast(y_pred=y_pred)

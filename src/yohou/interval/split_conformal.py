@@ -771,13 +771,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             scale = (pred_val + epsilon) if multiplicative else 1.0
 
             if symmetric:
-                q = weighted_quantile(scores_col, coverage_rate, weights)
+                q = weighted_quantile(scores_col, 1.0 - coverage_rate, weights)
                 lower_data[col] = [pred_val - q * scale]
                 upper_data[col] = [pred_val + q * scale]
             else:
                 alpha = 1.0 - coverage_rate
-                lower_q = weighted_quantile(scores_col, alpha / 2.0, weights)
-                upper_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
+                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
+                upper_q = weighted_quantile(scores_col, alpha / 2.0, weights)
                 lower_data[col] = [pred_val + lower_q * scale]
                 upper_data[col] = [pred_val + upper_q * scale]
 

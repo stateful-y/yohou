@@ -72,8 +72,8 @@ def _detect_prediction_mode(df: pl.DataFrame) -> str:
 
 
 def plot_forecast(
-    y_test: pl.DataFrame,
-    y_pred: pl.DataFrame | dict[str, pl.DataFrame],
+    y_test: pl.DataFrame | None = None,
+    y_pred: pl.DataFrame | dict[str, pl.DataFrame] | None = None,
     *,
     y_train: pl.DataFrame | None = None,
     columns: str | list[str] | None = None,
@@ -113,8 +113,9 @@ def plot_forecast(
 
     Parameters
     ----------
-    y_test : pl.DataFrame
-        Actual test values with 'time' column.
+    y_test : pl.DataFrame | None, default=None
+        Actual test values with 'time' column.  When ``None``, only
+        the forecast and interval traces are rendered (no "Actual" line).
     y_pred : pl.DataFrame | dict[str, pl.DataFrame]
         Forecast values with 'time' column. May also contain interval columns
         named ``{col}_lower_{rate}`` and ``{col}_upper_{rate}``.
@@ -220,7 +221,10 @@ def plot_forecast(
     [`plot_score_per_step`][yohou.plotting.plot_score_per_step] : Score by horizon step.
     """
     # Validate inputs
-    validate_plotting_data(y_test)
+    if y_pred is None:
+        raise TypeError("y_pred is required")
+    if y_test is not None:
+        validate_plotting_data(y_test)
     if isinstance(y_pred, dict):
         for _name, pred_df in y_pred.items():
             validate_plotting_data(pred_df)  # ty: ignore[invalid-argument-type]
@@ -236,13 +240,14 @@ def plot_forecast(
     forecast_color = eff_palette[1 % len(eff_palette)]
     actual_color = eff_palette[2 % len(eff_palette)]
 
-    # Detect panel data
-    _, y_test_panels = inspect_panel(y_test)
-    is_panel = bool(y_test_panels)
-
     # Auto-detect prediction type from the first prediction DataFrame
     _first_pred = next(iter(y_pred.values())) if isinstance(y_pred, dict) else y_pred
     prediction_mode = _detect_prediction_mode(_first_pred)  # ty: ignore[invalid-argument-type]
+
+    # Detect panel data (fall back to y_pred when y_test is not provided)
+    _panel_source = y_test if y_test is not None else _first_pred
+    _, _panels = inspect_panel(_panel_source)
+    is_panel = bool(_panels)
 
     # For panel data, delegate to faceted handler (single or multi-model)
     if is_panel:
@@ -272,6 +277,8 @@ def plot_forecast(
 
     # Non-panel class-probability predictions
     if prediction_mode == "class_proba":
+        if y_test is None:
+            raise ValueError("y_test is required for class-probability predictions")
         return _plot_forecast_class_proba(
             y_test=y_test,
             y_pred=y_pred,
@@ -287,6 +294,8 @@ def plot_forecast(
 
     # Non-panel categorical predictions
     if prediction_mode == "categorical":
+        if y_test is None:
+            raise ValueError("y_test is required for categorical predictions")
         return _plot_forecast_categorical(
             y_test=y_test,
             y_pred=y_pred,
@@ -329,7 +338,11 @@ def plot_forecast(
     # Non-panel, single-model case
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
-    test_value_cols = [c for c in y_test.columns if c != "time"]
+
+    if y_test is not None:
+        test_value_cols = [c for c in y_test.columns if c != "time"]
+    else:
+        test_value_cols = list(pred_value_cols)
 
     # Apply columns filter
     if columns is not None:
@@ -413,25 +426,26 @@ def plot_forecast(
                         )
 
         # Actual test data (prepend last train point to close the gap)
-        _x_actual = y_test["time"]
-        _y_actual = y_test[col]
-        if y_train is not None and col in y_train.columns:
-            _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
-            _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
-        ctx.fig.add_trace(
-            go.Scatter(
-                x=_x_actual,
-                y=_y_actual,
-                mode="lines",
-                line={"color": actual_color, "width": line_width},
-                connectgaps=connect_gaps,
-                name=f"{col} (Actual)",
-                legendrank=1,
-                hovertemplate=_make_hovertemplate(f"{col} Actual", "Time", "Value"),
-            ),
-            row=ctx.row,
-            col=ctx.col,
-        )
+        if y_test is not None and col in y_test.columns:
+            _x_actual = y_test["time"]
+            _y_actual = y_test[col]
+            if y_train is not None and col in y_train.columns:
+                _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
+                _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
+            ctx.fig.add_trace(
+                go.Scatter(
+                    x=_x_actual,
+                    y=_y_actual,
+                    mode="lines",
+                    line={"color": actual_color, "width": line_width},
+                    connectgaps=connect_gaps,
+                    name=f"{col} (Actual)",
+                    legendrank=1,
+                    hovertemplate=_make_hovertemplate(f"{col} Actual", "Time", "Value"),
+                ),
+                row=ctx.row,
+                col=ctx.col,
+            )
 
         # Forecast
         if pred_col is not None and pred_col in y_pred.columns:
@@ -458,7 +472,7 @@ def plot_forecast(
             )
 
     fig = facet_figure(
-        y_test,
+        y_test if y_test is not None else y_pred,
         _render_forecast,
         columns=plot_columns,
         facet_n_cols=facet_n_cols,
@@ -1008,7 +1022,7 @@ def _plot_forecast_categorical(
 
 
 def _plot_forecast_multi_model(
-    y_test: pl.DataFrame,
+    y_test: pl.DataFrame | None,
     y_preds: dict[str, pl.DataFrame],
     *,
     y_train: pl.DataFrame | None,
@@ -1077,7 +1091,12 @@ def _plot_forecast_multi_model(
     _model_pal = eff_palette[3:] or eff_palette
 
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
-    test_value_cols = [c for c in y_test.columns if c != "time"]
+
+    if y_test is not None:
+        test_value_cols = [c for c in y_test.columns if c != "time"]
+    else:
+        _any_pred = next(iter(y_preds.values()))
+        test_value_cols = [c for c in _any_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
 
     if columns is not None:
         col_list = [columns] if isinstance(columns, str) else list(columns)
@@ -1167,25 +1186,26 @@ def _plot_forecast_multi_model(
                         )
 
         # Actual test data (prepend last train point to close the gap)
-        _x_actual = y_test["time"]
-        _y_actual = y_test[col]
-        if y_train is not None and col in y_train.columns:
-            _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
-            _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
-        ctx.fig.add_trace(
-            go.Scatter(
-                x=_x_actual,
-                y=_y_actual,
-                mode="lines",
-                line={"color": actual_color, "width": line_width},
-                connectgaps=connect_gaps,
-                name=f"{col} (Actual)",
-                legendrank=1,
-                hovertemplate=_make_hovertemplate("Actual", "Time", "Value"),
-            ),
-            row=ctx.row,
-            col=ctx.col,
-        )
+        if y_test is not None and col in y_test.columns:
+            _x_actual = y_test["time"]
+            _y_actual = y_test[col]
+            if y_train is not None and col in y_train.columns:
+                _x_actual = pl.concat([pl.Series("time", [y_train["time"][-1]]), _x_actual])
+                _y_actual = pl.concat([pl.Series([y_train[col][-1]], dtype=_y_actual.dtype), _y_actual])
+            ctx.fig.add_trace(
+                go.Scatter(
+                    x=_x_actual,
+                    y=_y_actual,
+                    mode="lines",
+                    line={"color": actual_color, "width": line_width},
+                    connectgaps=connect_gaps,
+                    name=f"{col} (Actual)",
+                    legendrank=1,
+                    hovertemplate=_make_hovertemplate("Actual", "Time", "Value"),
+                ),
+                row=ctx.row,
+                col=ctx.col,
+            )
 
         # Forecast lines per model (on top)
         for model_idx, (model_name, y_pred) in enumerate(y_preds.items()):
@@ -1219,7 +1239,7 @@ def _plot_forecast_multi_model(
             )
 
     fig = facet_figure(
-        y_test,
+        y_test if y_test is not None else next(iter(y_preds.values())),
         _render_multi_model,
         columns=plot_columns,
         facet_n_cols=facet_n_cols,
@@ -1645,7 +1665,7 @@ def _plot_forecast_panel_typed(
 
 
 def _plot_forecast_panel(
-    y_test: pl.DataFrame,
+    y_test: pl.DataFrame | None,
     y_pred: pl.DataFrame | dict[str, pl.DataFrame],
     *,
     y_train: pl.DataFrame | None,
@@ -1748,7 +1768,9 @@ def _plot_forecast_panel(
     forecast_color = eff_palette[1 % len(eff_palette)]
     _model_pal = eff_palette[3:] or eff_palette
 
-    _, test_panels = inspect_panel(y_test)
+    _first_pred = next(iter(y_pred.values())) if isinstance(y_pred, dict) else y_pred
+    _panel_source = y_test if y_test is not None else _first_pred
+    _, test_panels = inspect_panel(_panel_source)
 
     # Group panel columns by group prefix
     group_map: dict[str, list[str]] = {}
@@ -1927,7 +1949,7 @@ def _plot_forecast_panel(
             )
 
             # Actual
-            if col in y_test.columns:
+            if y_test is not None and col in y_test.columns:
                 if group_title is not None:
                     legend_kw = grouped_legend_kwargs(group_title, "Actual", legend_tracker, is_first_in_group=False)
                 else:
