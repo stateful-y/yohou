@@ -2890,6 +2890,51 @@ class TestPlotForecastOptionalYTest:
         assert isinstance(fig, go.Figure)
         assert len(fig.data) > 0
 
+    def test_panel_show_transition(self):
+        """Panel forecast with show_transition=True prepends last train point."""
+        dates_train = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
+        dates_test = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
+        y_train = pl.DataFrame({
+            "time": dates_train,
+            "y__a": [100.0 + i for i in range(91)],
+            "y__b": [200.0 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [191.0 + i for i in range(10)],
+            "y__b": [291.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates_test,
+            "y__a": [190.0 + i for i in range(10)],
+            "y__b": [289.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(
+            y_test,
+            y_pred,
+            y_train=y_train,
+            show_transition=True,
+            groups=["y"],
+        )
+        assert_figure_valid(fig)
+
+    def test_show_transition_column_not_in_train(self):
+        """show_transition=True with y_train missing forecast column skips prepend."""
+        y_train = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "other": [100.0 + i for i in range(91)],
+        })
+        y_test = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True),
+            "y": [191.0 + i for i in range(10)],
+        })
+        y_pred = pl.DataFrame({
+            "time": y_test["time"],
+            "y": [190.0 + i for i in range(10)],
+        })
+        fig = plot_forecast(y_test, y_pred, y_train=y_train, show_transition=True)
+        assert_figure_valid(fig)
+
     def test_class_proba_raises(self):
         """ValueError raised for class-probability predictions without y_test."""
         times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
