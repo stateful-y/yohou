@@ -692,7 +692,7 @@ class BasePanelForecaster:
             # Store X_t_observed for this group
             if X_t_observed is not None and X_t is not None:
                 X_t_group = X_t.get(panel_group_name)
-                X_t_observed[panel_group_name] = X_t_group[[-1]] if X_t_group is not None else None
+                X_t_observed[panel_group_name] = X_t_group.tail(1) if X_t_group is not None else None
 
         self._y_observed = y_observed
         self._X_t_observed = X_t_observed

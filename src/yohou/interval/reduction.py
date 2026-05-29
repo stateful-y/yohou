@@ -499,7 +499,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         if self.groups_ is None:
             # Global data
             assert isinstance(self._X_t_observed, pl.DataFrame)
-            X_t = self._X_t_observed[[-1]].select(~cs.by_name("time"))
+            X_t = self._X_t_observed.tail(1).select(~cs.by_name("time"))
             assert self.local_X_t_schema_ is not None
             X_tab = X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
             y_raw = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
@@ -521,7 +521,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             panel_frames: list[pl.DataFrame] = []
             for group_name in groups:
                 assert isinstance(self._X_t_observed, dict)
-                X_t_group = self._X_t_observed[group_name][[-1]].select(~cs.by_name("time"))
+                X_t_group = self._X_t_observed[group_name].tail(1).select(~cs.by_name("time"))
                 X_tab = X_t_group.select(list(self.local_X_t_schema_.keys())).to_numpy()
                 y_raw = estimator.predict(X_tab)
 
