@@ -2863,6 +2863,33 @@ class TestPlotForecastOptionalYTest:
         with pytest.raises(ValueError, match="y_test is required"):
             plot_forecast(y_pred=y_pred)
 
+    def test_multi_model(self):
+        """Multi-model predictions render without y_test."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_preds = {
+            "model_a": pl.DataFrame({"time": times, "y": [190 + i for i in range(30)]}),
+            "model_b": pl.DataFrame({"time": times, "y": [195 + i for i in range(30)]}),
+        }
+        fig = plot_forecast(y_pred=y_preds)
+        actual_traces = [t for t in fig.data if t.name is not None and "Actual" in t.name]
+        assert len(actual_traces) == 0
+        assert len(fig.data) > 0
+
+    def test_multi_model_with_intervals(self):
+        """Multi-model with intervals renders without y_test."""
+        times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 30), "1d", eager=True)
+        y_preds = {
+            "model_a": pl.DataFrame({
+                "time": times,
+                "y": [190 + i for i in range(30)],
+                "y_lower_0.9": [185 + i for i in range(30)],
+                "y_upper_0.9": [195 + i for i in range(30)],
+            }),
+        }
+        fig = plot_forecast(y_pred=y_preds, coverage_rates=[0.9])
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) > 0
+
     def test_class_proba_raises(self):
         """ValueError raised for class-probability predictions without y_test."""
         times = pl.date_range(pl.date(2020, 4, 1), pl.date(2020, 4, 10), "1d", eager=True)
