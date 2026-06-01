@@ -349,6 +349,177 @@ class TestNanHandlingEdgeBranches:
         assert y_out.shape[0] == 3
 
 
+class TestNanHandlingPredict:
+    """Tests for NaN handling at predict time when nan_handling='drop'."""
+
+    def test_multi_output_returns_nan_on_nan_features(self):
+        """Predict returns NaN when features contain NaN at predict time (multi-output)."""
+        y = _make_y_with_nan(30, nan_positions=[28, 29])
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=y, forecasting_horizon=2)
+        y_pred = forecaster.predict()
+        value_col = [c for c in y_pred.columns if c not in ("time", "vintage_time")][0]
+        assert y_pred[value_col].is_nan().all(), "Should return NaN predictions"
+
+    def test_multi_output_panel_returns_nan_on_nan_features(self):
+        """Panel data returns NaN predictions when features have NaN (multi-output)."""
+        length = 30
+        times = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        values_a = [float(i) for i in range(length)]
+        values_b = [float(i) for i in range(length)]
+        values_a[-1] = float("nan")
+        values_b[-1] = float("nan")
+        y = pl.DataFrame({
+            "time": times,
+            "x__value": values_a,
+            "y__value": values_b,
+        })
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+            panel_strategy="global",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=y, forecasting_horizon=2)
+        y_pred = forecaster.predict()
+        target_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
+        for col in target_cols:
+            assert y_pred[col].is_nan().all(), f"Column {col} should be NaN"
+
+    def test_direct_returns_nan_on_nan_features(self):
+        """Predict returns NaN when features contain NaN (direct strategy)."""
+        y = _make_y_with_nan(30, nan_positions=[28, 29])
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+            reduction_strategy="direct",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=y, forecasting_horizon=2)
+        y_pred = forecaster.predict()
+        value_col = [c for c in y_pred.columns if c not in ("time", "vintage_time")][0]
+        assert y_pred[value_col].is_nan().all(), "Should return NaN predictions"
+
+    def test_dir_rec_returns_nan_on_nan_features(self):
+        """Predict returns NaN when features contain NaN (dir-rec strategy)."""
+        y = _make_y_with_nan(30, nan_positions=[28, 29])
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+            reduction_strategy="dir-rec",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=y, forecasting_horizon=2)
+        y_pred = forecaster.predict()
+        value_col = [c for c in y_pred.columns if c not in ("time", "vintage_time")][0]
+        assert y_pred[value_col].is_nan().all(), "Should return NaN predictions"
+
+    def test_dir_rec_panel_returns_nan_on_nan_features(self):
+        """Panel data returns NaN predictions when features have NaN (dir-rec strategy)."""
+        length = 30
+        times = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        values_a = [float(i) for i in range(length)]
+        values_b = [float(i) for i in range(length)]
+        values_a[-1] = float("nan")
+        values_b[-1] = float("nan")
+        y = pl.DataFrame({
+            "time": times,
+            "x__value": values_a,
+            "y__value": values_b,
+        })
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+            reduction_strategy="dir-rec",
+            panel_strategy="global",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=y, forecasting_horizon=2)
+        y_pred = forecaster.predict()
+        target_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time")]
+        for col in target_cols:
+            assert y_pred[col].is_nan().all(), f"Column {col} should be NaN"
+
+
+class TestFeaturesHaveNanEdgeCases:
+    """Cover edge branches in _features_have_nan for non-float data."""
+
+    def test_no_float_columns_with_null(self):
+        """_features_have_nan detects null in non-float columns."""
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        X_tab = pl.DataFrame({"a": [1, None, 3], "b": [10, 20, 30]})
+        assert forecaster._features_have_nan(X_tab) is True
+
+    def test_no_float_columns_clean(self):
+        """_features_have_nan returns False for clean non-float data."""
+        forecaster = PointReductionForecaster(
+            estimator=_RecordingEstimator(),
+            nan_handling="drop",
+        )
+        X_tab = pl.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        assert forecaster._features_have_nan(X_tab) is False
+
+
+class TestResolveWeightParamsEdgeCases:
+    """Cover edge branches in _resolve_sample_weight_params."""
+
+    def test_var_keyword_fallback(self):
+        """Estimator with **kwargs accepts sample_weight via VAR_KEYWORD fallback."""
+
+        class KwargsEstimator(BaseEstimator):
+            def fit(self, X, y, **kwargs):
+                self.kwargs_ = kwargs
+                return self
+
+            def predict(self, X):
+                return np.zeros(_nrows(X))
+
+        from yohou.base.reduction import BaseReductionForecaster
+
+        sw = np.array([1.0, 2.0, 3.0])
+        result = BaseReductionForecaster._resolve_sample_weight_params(KwargsEstimator(), sw)
+        assert "sample_weight" in result
+        np.testing.assert_array_equal(result["sample_weight"], sw)
+
+    def test_no_support_raises_valueerror(self):
+        """Estimator without sample_weight or **kwargs raises ValueError."""
+
+        class StrictEstimator(BaseEstimator):
+            def fit(self, X, y):
+                return self
+
+            def predict(self, X):
+                return np.zeros(_nrows(X))
+
+        from yohou.base.reduction import BaseReductionForecaster
+
+        sw = np.array([1.0, 2.0, 3.0])
+        with pytest.raises(ValueError, match="StrictEstimator"):
+            BaseReductionForecaster._resolve_sample_weight_params(StrictEstimator(), sw)
+
+
 class TestParameterValidation:
     def test_invalid_nan_handling_raises(self):
         """4.12: Invalid nan_handling value raises ValueError."""

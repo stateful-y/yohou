@@ -14,6 +14,7 @@ import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.parallel import Parallel, delayed
 
@@ -58,12 +59,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
     nan_handling : {"drop", "pass"}, default="pass"
-        How to handle NaN values in the tabularized training data.
+        How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
         handle NaN natively, such as tree-based models). ``"drop"``
         removes any training instance where X or y contains NaN before
         fitting the estimator, and emits a warning with the count of
-        dropped rows.
+        dropped rows. At predict time, returns NaN predictions for any
+        time step whose features contain NaN.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -659,6 +661,86 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         return X_tab, y_tab, sample_weight
 
+    def _features_have_nan(self, X_tab: pl.DataFrame) -> bool:
+        """Check if a feature DataFrame contains any NaN or null values.
+
+        Only used when ``nan_handling="drop"`` to decide whether the
+        estimator can be called safely at predict time.
+        """
+        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+        float_cols = X_tab.select(cs.float())
+        if float_cols.width > 0:
+            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+            return not (null_free & nan_free).all()
+        return not null_free.all()
+
+    def _nan_predict_result(self, n_rows: int = 1) -> np.ndarray:
+        """Return a NaN array shaped like a multi-output prediction."""
+        assert self.local_y_t_schema_ is not None
+        n_outputs = self.fit_forecasting_horizon_ * len(self.local_y_t_schema_)
+        return np.full((n_rows, n_outputs), np.nan)
+
+    @staticmethod
+    def _resolve_sample_weight_params(
+        estimator: BaseEstimator,
+        sample_weight: np.ndarray,
+    ) -> dict[str, Any]:
+        """Resolve how to pass sample_weight to the estimator's fit method.
+
+        Handles plain estimators, sklearn ``Pipeline`` (configuring
+        metadata routing on the last step), and meta-estimators that
+        accept ``**kwargs``.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The (cloned) estimator about to be fitted. May be mutated
+            in place (metadata routing configuration on Pipeline steps).
+        sample_weight : np.ndarray
+            Sample weights array.
+
+        Returns
+        -------
+        dict[str, Any]
+            Keyword arguments to merge into the ``fit`` call.
+
+        Raises
+        ------
+        ValueError
+            If the estimator cannot accept ``sample_weight``.
+
+        """
+        fit_sig = inspect.signature(estimator.fit)  # ty: ignore[unresolved-attribute]
+
+        # 1. Explicit sample_weight parameter
+        if "sample_weight" in fit_sig.parameters:
+            return {"sample_weight": sample_weight}
+
+        # 2. Pipeline: configure metadata routing on the last step
+        if isinstance(estimator, Pipeline):
+            last_step = estimator.steps[-1][1]
+            last_sig = inspect.signature(last_step.fit)
+            if "sample_weight" not in last_sig.parameters:
+                raise ValueError(
+                    f"Pipeline's final step {last_step.__class__.__name__} does not support "
+                    f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
+                )
+            last_step.set_fit_request(sample_weight=True)
+            for _, step in estimator.steps[:-1]:
+                if step != "passthrough":
+                    step.set_fit_request(sample_weight=False)
+            return {"sample_weight": sample_weight}
+
+        # 3. VAR_KEYWORD fallback (**kwargs / **fit_params)
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values())
+        if has_var_keyword:
+            return {"sample_weight": sample_weight}
+
+        raise ValueError(
+            f"Estimator {estimator.__class__.__name__} does not support "
+            f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
+        )
+
     def _fit_single_estimator(
         self,
         X_tab: pl.DataFrame,
@@ -690,17 +772,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         estimator = clone(self.estimator).set_params(**(estimator_params or {}))
 
-        if sample_weight is not None:
-            fit_signature = inspect.signature(estimator.fit)
-            if "sample_weight" not in fit_signature.parameters:
-                raise ValueError(
-                    f"Estimator {estimator.__class__.__name__} does not support "
-                    f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
-                )
-
         fit_params = estimator_fit_params or {}
         if sample_weight is not None:
-            fit_params = {**fit_params, "sample_weight": sample_weight}
+            fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
 
         estimator.fit(X_tab, y_tab, **fit_params)
         return estimator
@@ -1122,13 +1196,19 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         if self.groups_ is None:
             X_tab = self._get_predict_features()
-            y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                y_tab_pred = self._nan_predict_result()
+            else:
+                y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return self._reshape_predictions(y_tab_pred)
 
         y_pred_dict = {}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            y_tab_pred = estimator.predict(X_tab)
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                y_tab_pred = self._nan_predict_result()
+            else:
+                y_tab_pred = estimator.predict(X_tab)
             y_pred_dict[panel_group_name] = self._reshape_predictions(y_tab_pred, panel_group_name)
         return pl.concat(list(y_pred_dict.values()), how="horizontal")
 
@@ -1161,6 +1241,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         def _predict_step(est: BaseEstimator, X_tab: pl.DataFrame) -> np.ndarray:
             """Predict a single horizon step."""
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                return np.full(n_targets, np.nan)
             pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return np.atleast_1d(pred.ravel())[:n_targets]
 
@@ -1220,8 +1302,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_aug = X_tab.clone()
             rows = []
             for i, est in enumerate(estimators):
-                pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
-                pred = np.atleast_1d(pred.ravel())
+                if self.nan_handling == "drop" and self._features_have_nan(X_aug):
+                    pred = np.full(n_targets, np.nan)
+                else:
+                    pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
+                    pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model
                 X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
@@ -1235,8 +1320,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_aug = X_tab.clone()
             rows = []
             for i, est in enumerate(estimators):
-                pred = est.predict(X_aug)
-                pred = np.atleast_1d(pred.ravel())
+                if self.nan_handling == "drop" and self._features_have_nan(X_aug):
+                    pred = np.full(n_targets, np.nan)
+                else:
+                    pred = est.predict(X_aug)
+                    pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
