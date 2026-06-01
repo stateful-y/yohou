@@ -58,12 +58,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
     nan_handling : {"drop", "pass"}, default="pass"
-        How to handle NaN values in the tabularized training data.
+        How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
         handle NaN natively, such as tree-based models). ``"drop"``
         removes any training instance where X or y contains NaN before
         fitting the estimator, and emits a warning with the count of
-        dropped rows.
+        dropped rows. At predict time, returns NaN predictions for any
+        time step whose features contain NaN.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1
@@ -659,6 +660,25 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         return X_tab, y_tab, sample_weight
 
+    def _features_have_nan(self, X_tab: pl.DataFrame) -> bool:
+        """Check if a feature DataFrame contains any NaN or null values.
+
+        Only used when ``nan_handling="drop"`` to decide whether the
+        estimator can be called safely at predict time.
+        """
+        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+        float_cols = X_tab.select(cs.float())
+        if float_cols.width > 0:
+            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+            return not (null_free & nan_free).all()
+        return not null_free.all()
+
+    def _nan_predict_result(self, n_rows: int = 1) -> np.ndarray:
+        """Return a NaN array shaped like a multi-output prediction."""
+        assert self.local_y_t_schema_ is not None
+        n_outputs = self.fit_forecasting_horizon_ * len(self.local_y_t_schema_)
+        return np.full((n_rows, n_outputs), np.nan)
+
     def _fit_single_estimator(
         self,
         X_tab: pl.DataFrame,
@@ -1122,13 +1142,19 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         if self.groups_ is None:
             X_tab = self._get_predict_features()
-            y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                y_tab_pred = self._nan_predict_result()
+            else:
+                y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return self._reshape_predictions(y_tab_pred)
 
         y_pred_dict = {}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            y_tab_pred = estimator.predict(X_tab)
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                y_tab_pred = self._nan_predict_result()
+            else:
+                y_tab_pred = estimator.predict(X_tab)
             y_pred_dict[panel_group_name] = self._reshape_predictions(y_tab_pred, panel_group_name)
         return pl.concat(list(y_pred_dict.values()), how="horizontal")
 
@@ -1161,6 +1187,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         def _predict_step(est: BaseEstimator, X_tab: pl.DataFrame) -> np.ndarray:
             """Predict a single horizon step."""
+            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
+                return np.full(n_targets, np.nan)
             pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
             return np.atleast_1d(pred.ravel())[:n_targets]
 
@@ -1220,8 +1248,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_aug = X_tab.clone()
             rows = []
             for i, est in enumerate(estimators):
-                pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
-                pred = np.atleast_1d(pred.ravel())
+                if self.nan_handling == "drop" and self._features_have_nan(X_aug):
+                    pred = np.full(n_targets, np.nan)
+                else:
+                    pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
+                    pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model
                 X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
@@ -1235,8 +1266,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             X_aug = X_tab.clone()
             rows = []
             for i, est in enumerate(estimators):
-                pred = est.predict(X_aug)
-                pred = np.atleast_1d(pred.ravel())
+                if self.nan_handling == "drop" and self._features_have_nan(X_aug):
+                    pred = np.full(n_targets, np.nan)
+                else:
+                    pred = est.predict(X_aug)
+                    pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 X_aug = X_aug.with_columns([pl.Series(f"__aug_{i}_{j}", [v]) for j, v in enumerate(pred)])
             y_pred_arr = np.vstack(rows)
