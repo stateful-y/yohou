@@ -14,6 +14,7 @@ import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.parallel import Parallel, delayed
 
@@ -679,6 +680,67 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         n_outputs = self.fit_forecasting_horizon_ * len(self.local_y_t_schema_)
         return np.full((n_rows, n_outputs), np.nan)
 
+    @staticmethod
+    def _resolve_sample_weight_params(
+        estimator: BaseEstimator,
+        sample_weight: np.ndarray,
+    ) -> dict[str, Any]:
+        """Resolve how to pass sample_weight to the estimator's fit method.
+
+        Handles plain estimators, sklearn ``Pipeline`` (configuring
+        metadata routing on the last step), and meta-estimators that
+        accept ``**kwargs``.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The (cloned) estimator about to be fitted. May be mutated
+            in place (metadata routing configuration on Pipeline steps).
+        sample_weight : np.ndarray
+            Sample weights array.
+
+        Returns
+        -------
+        dict[str, Any]
+            Keyword arguments to merge into the ``fit`` call.
+
+        Raises
+        ------
+        ValueError
+            If the estimator cannot accept ``sample_weight``.
+
+        """
+        fit_sig = inspect.signature(estimator.fit)  # ty: ignore[unresolved-attribute]
+
+        # 1. Explicit sample_weight parameter
+        if "sample_weight" in fit_sig.parameters:
+            return {"sample_weight": sample_weight}
+
+        # 2. Pipeline: configure metadata routing on the last step
+        if isinstance(estimator, Pipeline):
+            last_step = estimator.steps[-1][1]
+            last_sig = inspect.signature(last_step.fit)
+            if "sample_weight" not in last_sig.parameters:
+                raise ValueError(
+                    f"Pipeline's final step {last_step.__class__.__name__} does not support "
+                    f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
+                )
+            last_step.set_fit_request(sample_weight=True)
+            for _, step in estimator.steps[:-1]:
+                if step != "passthrough":
+                    step.set_fit_request(sample_weight=False)
+            return {"sample_weight": sample_weight}
+
+        # 3. VAR_KEYWORD fallback (**kwargs / **fit_params)
+        has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values())
+        if has_var_keyword:
+            return {"sample_weight": sample_weight}
+
+        raise ValueError(
+            f"Estimator {estimator.__class__.__name__} does not support "
+            f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
+        )
+
     def _fit_single_estimator(
         self,
         X_tab: pl.DataFrame,
@@ -710,17 +772,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         estimator = clone(self.estimator).set_params(**(estimator_params or {}))
 
-        if sample_weight is not None:
-            fit_signature = inspect.signature(estimator.fit)
-            if "sample_weight" not in fit_signature.parameters:
-                raise ValueError(
-                    f"Estimator {estimator.__class__.__name__} does not support "
-                    f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
-                )
-
         fit_params = estimator_fit_params or {}
         if sample_weight is not None:
-            fit_params = {**fit_params, "sample_weight": sample_weight}
+            fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
 
         estimator.fit(X_tab, y_tab, **fit_params)
         return estimator
