@@ -1,6 +1,7 @@
 """Base class for reduction-based forecasters."""
 
 import abc
+import contextlib
 import inspect
 import numbers
 import warnings
@@ -728,7 +729,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             last_step.set_fit_request(sample_weight=True)
             for _, step in estimator.steps[:-1]:
                 if step != "passthrough":
-                    step.set_fit_request(sample_weight=False)
+                    with contextlib.suppress(TypeError, AttributeError):
+                        step.set_fit_request(sample_weight=False)
             return {"sample_weight": sample_weight}
 
         # 3. VAR_KEYWORD fallback (**kwargs / **fit_params)

@@ -1418,3 +1418,19 @@ class TestPipelineSampleWeightRouting:
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns
+
+    def test_pipeline_with_non_weight_aware_intermediate_step(self, simple_series):
+        """Pipeline with intermediate step that lacks set_fit_request for sample_weight."""
+        from sklearn.impute import SimpleImputer
+
+        pipe = Pipeline([
+            ("imputer", SimpleImputer(strategy="mean")),
+            ("scaler", StandardScaler()),
+            ("ridge", Ridge()),
+        ])
+        f = PointReductionForecaster(estimator=pipe)
+        f.set_fit_request(time_weight=True)
+        f.fit(simple_series, forecasting_horizon=3, time_weight=self._constant_weight)
+        y_pred = f.predict()
+        assert len(y_pred) == 3
+        assert "time" in y_pred.columns
