@@ -469,7 +469,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         check_is_fitted(self)
 
         observation_horizons = self._get_observation_horizons()
-        observation_horizon = max(observation_horizons)
+        observation_horizon = max(observation_horizons, default=0)
 
         return observation_horizon
 

@@ -282,7 +282,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             # String case - get by name
             return self.named_steps[ind]
 
-    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any) -> pl.DataFrame:  # ty: ignore[invalid-method-override]
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any, **kwargs: Any) -> pl.DataFrame:  # ty: ignore[invalid-method-override]
         """Fit the pipeline.
 
         Parameters
@@ -296,13 +296,22 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         routed_params : Any
             Routed parameters.
 
+        **kwargs : Any
+            Additional keyword arguments forwarded to the parent ``_fit``
+            (e.g. ``callback_ctx`` in scikit-learn >= 1.9).
+
         Returns
         -------
         X_t : pl.DataFrame
             Transformed data.
 
         """
-        return sklearn_Pipeline._fit(self, X, y, routed_params)  # ty: ignore[invalid-argument-type]
+        if "callback_ctx" not in kwargs:
+            # sklearn >= 1.9 requires callback_ctx in Pipeline._fit
+            _init = getattr(sklearn_Pipeline, "_init_callback_context", None)
+            if _init is not None:
+                kwargs["callback_ctx"] = _init(self, max_subtasks=len(self.steps))
+        return sklearn_Pipeline._fit(self, X, y, routed_params, **kwargs)  # ty: ignore[invalid-argument-type]
 
     @property
     def named_steps(self) -> Bunch:
