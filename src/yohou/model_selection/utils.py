@@ -370,6 +370,7 @@ def _fit_and_score(
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
     train_scores: dict[str, float | str] | float | str | None = None
+    y_pred: pl.DataFrame | None = None
     fit_time: float
     score_time: float
     try:
