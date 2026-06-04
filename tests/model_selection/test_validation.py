@@ -50,11 +50,6 @@ def fit_and_score_data():
     return y, train, test, fh
 
 
-# =============================================================================
-# Task 3.1: cross_validate tests
-# =============================================================================
-
-
 class TestCrossValidateSingleMetric:
     """Tests for cross_validate with a single scorer."""
 
@@ -249,11 +244,6 @@ class TestCrossValidatePredictParams:
         assert len(result) == 3
 
 
-# =============================================================================
-# Task 3.2: cross_val_score tests
-# =============================================================================
-
-
 class TestCrossValScore:
     """Tests for cross_val_score."""
 
@@ -307,11 +297,6 @@ class TestCrossValScore:
             cv=3,
         )
         assert all(s <= 0 for s in scores["score"].to_list())
-
-
-# =============================================================================
-# Task 3.3: cross_val_predict tests
-# =============================================================================
 
 
 class TestCrossValPredict:
@@ -387,11 +372,6 @@ class TestCrossValPredict:
                 cv=3,
                 method="invalid",
             )
-
-
-# =============================================================================
-# Task 3.4: _fit_and_score changes tests
-# =============================================================================
 
 
 class TestFitAndScoreReturnPredictions:
