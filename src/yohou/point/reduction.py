@@ -39,12 +39,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     nan_handling : {"drop", "pass"}, default="pass"
-        How to handle NaN values in the tabularized training data.
+        How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
         handle NaN natively, such as tree-based models). ``"drop"``
         removes any training instance where X or y contains NaN before
         fitting the estimator, and emits a warning with the count of
-        dropped rows.
+        dropped rows. At predict time, returns NaN predictions for any
+        time step whose features contain NaN.
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy
         (fitting and predicting H independent models). ``None`` means 1

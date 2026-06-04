@@ -622,6 +622,103 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             **params,
         )
 
+    def observe_predict_interval(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        coverage_rates: list[float] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = None,
+        groups: list[str] | None = None,
+        stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Alternate recursive observe and predict_interval.
+
+        Equivalent to calling ``observe(y, X_actual)`` then
+        ``predict_interval()``.  Returns interval predictions.
+
+        Overrides the parent implementation to pass ``observe_fn`` so that
+        the wrapped ``point_forecaster_`` observation state is correctly
+        advanced at each stride step.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series with a ``"time"`` column (datetime) and one
+            or more numeric value columns.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
+        coverage_rates : list of float or None, default=None
+            Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
+            for 90 % and 95 % intervals).  If ``None``, defaults to the rates
+            used at fit time.
+        strategy : {"mean", "median", "point"} or None, default=None
+            Strategy for deriving point predictions from prediction intervals
+            during recursive multi-step forecasting.
+        groups : list of str or None, default=None
+            Panel group prefixes to operate on.  If ``None``, all groups
+            are used.
+        stride : int or None, default=None
+            Step size for rolling update-predict.  If ``None``, defaults to
+            ``forecasting_horizon``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Interval predictions with ``"vintage_time"``, ``"time"``, and
+            lower/upper bound columns for each target at each coverage rate.
+
+        """
+        check_is_fitted(
+            self,
+            ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
+        )
+
+        y, X_actual, groups = validate_forecaster_data(
+            self,
+            y=y,
+            X_actual=X_actual,
+            reset=False,
+            groups=groups,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+
+        forecasting_horizon, _ = self._validate_predict_params(forecasting_horizon, coverage_rates)
+
+        if stride is None:
+            stride = self.fit_forecasting_horizon_
+
+        return self._observe_predict_loop(
+            predict_fn=self.predict_interval,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            groups=groups,
+            stride=stride,
+            observe_fn=self.observe,
+            forecasting_horizon=forecasting_horizon,
+            coverage_rates=coverage_rates,
+            strategy=strategy,
+            **params,
+        )
+
     def _weighted_inverse_score(
         self,
         y_pred_step: pl.DataFrame,
@@ -674,13 +771,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             scale = (pred_val + epsilon) if multiplicative else 1.0
 
             if symmetric:
-                q = weighted_quantile(scores_col, coverage_rate, weights)
+                q = weighted_quantile(scores_col, 1.0 - coverage_rate, weights)
                 lower_data[col] = [pred_val - q * scale]
                 upper_data[col] = [pred_val + q * scale]
             else:
                 alpha = 1.0 - coverage_rate
-                lower_q = weighted_quantile(scores_col, alpha / 2.0, weights)
-                upper_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
+                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
+                upper_q = weighted_quantile(scores_col, alpha / 2.0, weights)
                 lower_data[col] = [pred_val + lower_q * scale]
                 upper_data[col] = [pred_val + upper_q * scale]
 

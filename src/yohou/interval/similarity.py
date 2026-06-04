@@ -280,7 +280,8 @@ class DistanceSimilarity(BaseSimilarity):
         XA = X_features.select(pl.exclude("time")).to_numpy()
         XB = self._X_observed.select(pl.exclude("time")).to_numpy()
         distances: np.ndarray = cdist(XA, XB, metric=self.metric, **self.metric_params)  # ty: ignore[no-matching-overload]
-        weights = np.reciprocal(np.exp(distances))
+        neg_d = -distances
+        weights = np.exp(neg_d - np.max(neg_d, axis=1, keepdims=True))
 
         weights = weights / np.sum(weights, axis=1)[:, np.newaxis] * self._X_observed.shape[1]
         weights = weights / (1 + np.sum(weights, axis=1)[:, np.newaxis])

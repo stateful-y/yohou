@@ -198,6 +198,59 @@ forecaster.observe(y=y_new, X_actual=X_actual_new)
 pred = forecaster.predict(X_future=holidays_new, X_forecast=weather_new)
 ```
 
+## As-of Vintage Selection
+
+`X_forecast` uses **as-of (backward) matching**: for each observation time
+$T$, the forecaster selects the latest vintage $V$ where $V \leq T$, then
+extracts forecast values at $T + 1 \cdot \Delta t$ through
+$T + H \cdot \Delta t$ from that vintage's rows. This means vintage times
+do not need to align exactly with observation times.
+
+### Sparse vintage schedules
+
+External forecast providers often publish on a coarser schedule than your
+observation frequency. For example, a weather model might issue forecasts
+every 6 hours while you observe hourly. With as-of matching, each hourly
+observation automatically picks up the most recent 6-hourly vintage:
+
+```text
+Vintages:     V0=00:00          V1=06:00          V2=12:00
+              |                 |                 |
+Observations: 00 01 02 03 04 05 06 07 08 09 10 11 12 ...
+              ↑                 ↑
+              uses V0            uses V1
+```
+
+Observation at 03:00 uses vintage V0 (00:00) because that is the latest
+vintage at or before 03:00. Observation at 09:00 uses vintage V1 (06:00).
+
+### Step alignment
+
+Step columns are always relative to the **observation time**, not the
+vintage time. For observation $T$ with a matched vintage $V$:
+
+- `step_1` = forecast value at $T + 1 \cdot \Delta t$
+- `step_2` = forecast value at $T + 2 \cdot \Delta t$
+- ...
+- `step_H` = forecast value at $T + H \cdot \Delta t$
+
+If the vintage does not cover a particular target time (because the
+forecast did not extend that far), the corresponding step column is null.
+
+### Null step columns
+
+Null step columns are expected in two situations:
+
+1. **No vintage available**: the observation time is before all vintage
+   times in `X_forecast`. All step columns are null for that row.
+2. **Partial coverage**: the matched vintage's forecast horizon does not
+   reach $T + h \cdot \Delta t$. Later step columns are null.
+
+Tree-based estimators (XGBoost, LightGBM, HistGradientBoosting) handle
+null features natively. For estimators that require complete data, set
+`nan_handling="drop"` so rows with null step features are excluded from
+training.
+
 ## Pickle and Restore
 
 The three-parameter state (step column names, observation window) survives
@@ -231,6 +284,15 @@ pred = restored.predict(X_forecast=new_vintage)
 : All `X_future` and `X_forecast` columns seen during `fit()` must also be
   present at `predict()` time with the same names.
 
+**Problem: `UserWarning` about X_forecast covering fewer steps than the horizon**
+: The forecast vintage covers fewer future timestamps than `forecasting_horizon`.
+  This is normal for short-range forecasts or when the observation point has
+  advanced past some forecast timestamps (e.g., after `observe()`). The missing
+  step columns are filled with null. Tree-based estimators (XGBoost, LightGBM,
+  HistGradientBoosting) handle null features natively. For estimators that do
+  not support nulls, set `nan_handling="drop"` so null rows are excluded from
+  training, or provide forecasts with full horizon coverage.
+
 ## See Also
 
 - [Work with Forecast Vintages](forecast-vintages.md): X_forecast preparation,
@@ -239,5 +301,5 @@ pred = restored.predict(X_forecast=new_vintage)
   rationale and internal mechanics
 - [Exogenous Features Tutorial](../tutorials/exogenous-features.md): hands-on
   introduction
-- [`pivot_forecasts` API Reference](../api/utils.md): utility for manual
-  forecast pivoting
+- [`window_forecasts` API Reference](../api/utils.md): utility for as-of
+  vintage matching with step alignment

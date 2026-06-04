@@ -273,7 +273,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            External forecasts. See ``fit()`` for full parameter
+            description.
 
         Returns
         -------
@@ -369,8 +370,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            External forecasts. See ``fit()`` for full parameter
+            description.
 
         Returns
         -------
@@ -444,7 +445,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Bypasses the feature transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Pivoted by ordinal rank within each vintage group.
+            columns. Vintage times do not need to align exactly with
+            observation times; the latest vintage at or before each
+            observation time is selected automatically (as-of matching).
             Bypasses the feature transformer.
         **params : dict
             Metadata to route to nested estimators.
@@ -563,6 +566,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------
@@ -638,6 +644,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            Vintage times do not need to align exactly with observation
+            times; the latest vintage at or before ``observed_time_`` is
+            selected automatically (as-of matching).
 
         Returns
         -------
@@ -703,7 +712,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None
             Known future features override. If None, uses stored raw.
         X_forecast : pl.DataFrame or None
-            External forecast override. If None, uses stored raw.
+            External forecast override. See ``predict()`` for full
+            parameter description. If None, uses stored raw.
         predict_fn : callable
             ``predict_fn() -> pl.DataFrame``. Called with overridden state.
 
@@ -735,9 +745,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # When the caller overrides X_forecast with a single vintage whose
         # vintage_time differs from observed_time_, remap vintage_time so
-        # pivot_forecasts output joins correctly against observation_times
-        # in _derive_step_columns.  Multi-vintage overrides are left
-        # untouched (one of their vintages should already match obs_time).
+        # the join against observation_times in _derive_step_columns works
+        # correctly.  Multi-vintage overrides are left untouched (one of
+        # their vintages should already match obs_time).
         if X_forecast is not None and X_forecast_eff is not None:
             vintages = X_forecast_eff["vintage_time"].unique()
             if len(vintages) == 1 and vintages[0] != obs_time:
@@ -765,11 +775,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         if isinstance(self._X_t_observed, dict):
             # Panel: save per-group step columns (unprefixed)
-            saved_step_data = {}
-            for group_name, group_df in self._X_t_observed.items():
-                cols_present = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+            observed_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+            saved_step_data: dict[str, pl.DataFrame] = {}
+            for group_name, group_df in observed_dict.items():
+                cols_present = [c for c in local_step_cols if c in group_df.columns]
                 if cols_present:
-                    saved_step_data[group_name] = group_df.select(cols_present)  # ty: ignore[unresolved-attribute]
+                    saved_step_data[group_name] = group_df.select(cols_present)
         else:
             # Standard: save step columns from last row
             cols_present = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
@@ -812,13 +823,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             self._X_forecast_raw_ = saved_forecast_raw
 
             # Restore step columns
-            if isinstance(self._X_t_observed, dict):
-                for group_name, saved_df in saved_step_data.items():  # ty: ignore[unresolved-attribute]
-                    group_df = self._X_t_observed[group_name]
-                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+            if isinstance(self._X_t_observed, dict) and isinstance(saved_step_data, dict):
+                restore_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+                saved_dict = typing_cast(dict[str, pl.DataFrame], saved_step_data)
+                for group_name, saved_df in saved_dict.items():
+                    group_df = restore_dict[group_name]
+                    cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                     if cols_to_drop:
-                        restored = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                        self._X_t_observed[group_name] = pl.concat([restored, saved_df], how="horizontal")
+                        restored = group_df.drop(cols_to_drop)
+                        restore_dict[group_name] = pl.concat([restored, saved_df], how="horizontal")
             elif saved_step_data is not None:
                 cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
                 if cols_to_drop:

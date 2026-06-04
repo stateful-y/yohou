@@ -449,6 +449,9 @@ class BasePanelForecaster:
             Known future features. If None, re-derived from stored raws.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+            The latest vintage at or before the observation time is
+            selected (as-of matching), so vintage times do not need
+            to align exactly with observation times.
 
         Returns
         -------
@@ -549,7 +552,12 @@ class BasePanelForecaster:
         if X_future is not None:
             self._X_future_raw_ = X_future
         if X_forecast is not None:
-            self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == obs_time)
+            # Select the latest vintage at or before observed_time_ (as-of selection)
+            latest_vintage = X_forecast.filter(pl.col("vintage_time") <= obs_time)["vintage_time"].max()
+            if latest_vintage is not None:
+                self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
+            else:
+                self._X_forecast_raw_ = X_forecast.clear()
 
     def _observe_with_precomputed_steps_panel(
         self,
@@ -606,15 +614,25 @@ class BasePanelForecaster:
             )
 
             # Hstack pre-computed step columns for this group
-            if X_t_local is not None and X_step_precomputed is not None:
-                step_group = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
-                    ~cs.by_name("time")
-                )
+            if X_t_local is not None and X_step_precomputed is not None and self._step_schema_per_group_ is not None:
+                # Filter schema to columns available in the precomputed steps
+                # (test folds may have fewer forecast vintages than training).
+                available = set(X_step_precomputed.columns)
+                step_schema = {
+                    k: v
+                    for k, v in self._step_schema_per_group_.items()
+                    if k in available or f"{panel_group_name}__{k}" in available
+                }
+                step_group = get_group_df(X_step_precomputed, panel_group_name, step_schema).select(~cs.by_name("time"))
                 X_t_local = pl.concat([X_t_local, step_group], how="horizontal")
-            elif X_t_local is None and X_step_precomputed is not None:
-                X_t_local = get_group_df(X_step_precomputed, panel_group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
-                    ~cs.by_name("time")
-                )
+            elif X_t_local is None and X_step_precomputed is not None and self._step_schema_per_group_ is not None:
+                available = set(X_step_precomputed.columns)
+                step_schema = {
+                    k: v
+                    for k, v in self._step_schema_per_group_.items()
+                    if k in available or f"{panel_group_name}__{k}" in available
+                }
+                X_t_local = get_group_df(X_step_precomputed, panel_group_name, step_schema).select(~cs.by_name("time"))
 
             X_t_updated[panel_group_name] = X_t_local
 
@@ -674,7 +692,7 @@ class BasePanelForecaster:
             # Store X_t_observed for this group
             if X_t_observed is not None and X_t is not None:
                 X_t_group = X_t.get(panel_group_name)
-                X_t_observed[panel_group_name] = X_t_group[[-1]] if X_t_group is not None else None
+                X_t_observed[panel_group_name] = X_t_group.tail(1) if X_t_group is not None else None
 
         self._y_observed = y_observed
         self._X_t_observed = X_t_observed
