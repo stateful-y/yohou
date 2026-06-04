@@ -216,7 +216,7 @@ def _fit_and_score(
     *,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
-    scorer: BaseScorer | _MultimetricScorer,
+    scorer: BaseScorer | _MultimetricScorer | None,
     train: np.ndarray[Any, Any],
     test: np.ndarray[Any, Any],
     verbose: int,
@@ -229,6 +229,10 @@ def _fit_and_score(
     return_n_test_samples: bool = False,
     return_times: bool = False,
     return_forecaster: bool = False,
+    return_predictions: bool = False,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
+    predict_method: str | None = None,
     split_progress: tuple[int, int] | None = None,
     candidate_progress: tuple[int, int] | None = None,
     error_score: float | str = np.nan,
@@ -252,10 +256,11 @@ def _fit_and_score(
     X_forecast : pl.DataFrame or None, default=None
         External forecasts with ``"vintage_time"`` and ``"time"``
         columns.
-    scorer : BaseScorer or _MultimetricScorer
+    scorer : BaseScorer, _MultimetricScorer, or None
         Scorer (single or multi-metric) used to evaluate predictions.
         A single scorer returns a float; a ``_MultimetricScorer`` returns
-        a dict mapping scorer names to floats.
+        a dict mapping scorer names to floats. When ``None``, scoring
+        is skipped (useful with ``return_predictions=True``).
     train : np.ndarray
         Row indices of training samples.
     test : np.ndarray
@@ -281,6 +286,18 @@ def _fit_and_score(
         Whether to include fit and score wall-clock times in the result.
     return_forecaster : bool, default=False
         Whether to include the fitted forecaster in the result.
+    return_predictions : bool, default=False
+        Whether to include the predictions DataFrame in the result.
+    predict_forecasting_horizon : int or None, default=None
+        Override forecasting horizon for ``observe_predict``.
+        ``None`` uses the forecaster's fit-time default.
+    predict_stride : int or None, default=None
+        Override stride for rolling ``observe_predict``.
+        ``None`` uses the forecaster's default.
+    predict_method : str or None, default=None
+        Explicit prediction method (``"predict"``,
+        ``"predict_interval"``, or ``"predict_class_proba"``).
+        Used when ``scorer=None`` and ``return_predictions=True``.
     split_progress : tuple of (int, int) or None, default=None
         ``(current_split, total_splits)`` for verbose logging.
     candidate_progress : tuple of (int, int) or None, default=None
@@ -304,6 +321,7 @@ def _fit_and_score(
         - ``"score_time"`` - float (seconds), only if *return_times*.
         - ``"parameters"`` - dict or None, only if *return_parameters*.
         - ``"forecaster"`` - fitted forecaster, only if *return_forecaster*.
+        - ``"predictions"`` - pl.DataFrame, only if *return_predictions*.
         - ``"fit_error"`` - traceback string or ``None``.
 
     """
@@ -352,6 +370,7 @@ def _fit_and_score(
     result: dict[str, object] = {}
     test_scores: dict[str, float | str] | float | str
     train_scores: dict[str, float | str] | float | str | None = None
+    y_pred: pl.DataFrame | None = None
     fit_time: float
     score_time: float
     try:
@@ -377,7 +396,7 @@ def _fit_and_score(
                 test_scores = {name: float(error_score) for name in scorer._scorers}
                 if return_train_score:
                     train_scores = {name: float(error_score) for name in scorer._scorers}
-            else:
+            elif scorer is not None:
                 test_scores = float(error_score)
                 if return_train_score:
                     train_scores = float(error_score)
@@ -386,21 +405,52 @@ def _fit_and_score(
         result["fit_error"] = None
 
         fit_time = time.time() - start_time
-        test_scores = _score(
-            forecaster,
-            y_train,
-            y_test,
-            X_actual_test,
-            predict_func_params,
-            scorer,
-            score_params_test,
-            error_score,
-            X_future=X_future,
-            X_forecast=X_forecast_test,
-        )
+
+        # Need a scorer for _predict to resolve response method
+        if scorer is not None:
+            y_pred = _predict(
+                forecaster,
+                y_test,
+                X_actual_test,
+                scorer,
+                predict_func_params=predict_func_params,
+                predict_forecasting_horizon=predict_forecasting_horizon,
+                predict_stride=predict_stride,
+                coverage_rates=coverage_rates,
+                X_future=X_future,
+                X_forecast=X_forecast_test,
+            )
+
+            test_scores = _score(
+                forecaster,
+                y_train,
+                y_test,
+                y_pred,
+                scorer,
+                score_params_test,
+                error_score,
+            )
+        elif return_predictions:
+            y_pred = _predict(
+                forecaster,
+                y_test,
+                X_actual_test,
+                method=predict_method or "predict",
+                predict_func_params=predict_func_params,
+                predict_forecasting_horizon=predict_forecasting_horizon,
+                predict_stride=predict_stride,
+                coverage_rates=coverage_rates,
+                X_future=X_future,
+                X_forecast=X_forecast_test,
+            )
+        else:
+            y_pred = None
+
         score_time = time.time() - start_time - fit_time
 
         if return_train_score:
+            if scorer is None:
+                raise ValueError("return_train_score requires a scorer.")
             # forecaster is stateful and needs to be rewound to predict the past
             score_params_train = _check_method_params(y, params=score_params, indices=train)
             train_rewind = train[: -len(test)]
@@ -412,24 +462,33 @@ def _fit_and_score(
             forecaster.rewind(
                 y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
             )
+            y_pred_train = _predict(
+                forecaster,
+                y_train_test,
+                X_actual_train_test,
+                scorer,
+                predict_func_params=predict_func_params,
+                predict_forecasting_horizon=predict_forecasting_horizon,
+                predict_stride=predict_stride,
+                coverage_rates=coverage_rates,
+                X_future=X_future,
+                X_forecast=X_forecast_train,
+            )
             train_scores = _score(
                 forecaster,
                 y_train_rewind,
                 y_train_test,
-                X_actual_train_test,
-                predict_func_params,
+                y_pred_train,
                 scorer,
                 score_params_train,
                 error_score,
-                X_future=X_future,
-                X_forecast=X_forecast_train,
             )
 
     if verbose > 1:
         total_time = score_time + fit_time
         end_msg = f"[CV{progress_msg}] END "
         result_msg = params_msg + (";" if params_msg else "")
-        if verbose > 2:
+        if verbose > 2 and scorer is not None:
             if isinstance(test_scores, dict):
                 for scorer_name in sorted(test_scores):
                     result_msg += f" {scorer_name}: ("
@@ -443,7 +502,8 @@ def _fit_and_score(
         end_msg += "." * (80 - len(end_msg) - len(result_msg))
         end_msg += result_msg
 
-    result["test_scores"] = test_scores
+    if scorer is not None:
+        result["test_scores"] = test_scores
     if return_train_score:
         result["train_scores"] = train_scores
     if return_n_test_samples:
@@ -455,6 +515,8 @@ def _fit_and_score(
         result["parameters"] = parameters
     if return_forecaster:
         result["forecaster"] = forecaster
+    if return_predictions:
+        result["predictions"] = y_pred
     return result
 
 
@@ -570,19 +632,125 @@ def _validate_forecaster_scorer_compatibility(
         )
 
 
+def _predict(
+    forecaster: BaseForecaster,
+    y_test: pl.DataFrame,
+    X_actual_test: pl.DataFrame | None,
+    scorer: BaseScorer | _MultimetricScorer | None = None,
+    *,
+    method: str | None = None,
+    predict_func_params: dict[str, object] | None = None,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
+    coverage_rates: list[float] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """Produce predictions from a fitted forecaster.
+
+    Resolves the response method from ``scorer`` (or uses ``method``
+    directly), calls the appropriate ``observe_*`` method on the
+    forecaster, deduplicates overlapping prediction windows, and
+    returns a clean DataFrame.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster to generate predictions from.
+    y_test : pl.DataFrame
+        Test target time series with a ``"time"`` column.
+    X_actual_test : pl.DataFrame or None
+        Test actual feature observations, or ``None``.
+    scorer : BaseScorer, _MultimetricScorer, or None, default=None
+        Scorer used to determine which prediction method to call.
+        Ignored when ``method`` is provided.
+    method : str or None, default=None
+        Explicit prediction method (``"predict"``,
+        ``"predict_interval"``, or ``"predict_class_proba"``).
+        When provided, overrides scorer-based resolution.
+        One of ``scorer`` or ``method`` must be provided.
+    predict_func_params : dict or None, default=None
+        Routed metadata passed to the prediction function.
+    predict_forecasting_horizon : int or None, default=None
+        Forecasting horizon for ``observe_predict``.  ``None`` uses the
+        forecaster's fit-time default.
+    predict_stride : int or None, default=None
+        Stride for rolling ``observe_predict``.  ``None`` uses the
+        forecaster's default (equal to forecasting horizon).
+    coverage_rates : list of float or None, default=None
+        Coverage rates for interval predictions.  When ``None``,
+        rates are collected from the scorer automatically (if a
+        scorer is provided).
+    X_future : pl.DataFrame or None, default=None
+        Known future features with a ``"time"`` column.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"``
+        columns.
+
+    Returns
+    -------
+    pl.DataFrame
+        Predictions deduplicated by ``"time"`` (keeping the last
+        occurrence) and sorted by ``"time"``.
+    """
+    predict_func_params = {} if predict_func_params is None else dict(predict_func_params)
+
+    # Resolve which forecaster method to call
+    if method is not None:
+        response_method = method
+    elif scorer is not None:
+        response_method = _resolve_response_method(scorer)
+    else:
+        raise ValueError("Either scorer or method must be provided to _predict.")
+    observe_method = _OBSERVE_METHOD_MAP[response_method]
+
+    # Inject optional predict params
+    if predict_forecasting_horizon is not None:
+        predict_func_params["forecasting_horizon"] = predict_forecasting_horizon
+    if predict_stride is not None:
+        predict_func_params["stride"] = predict_stride
+
+    if response_method == "predict_interval":
+        coverage_rates_for_predict = (
+            coverage_rates
+            if coverage_rates is not None
+            else (_collect_coverage_rates(scorer) if scorer is not None else None)
+        )
+        y_pred = getattr(forecaster, observe_method)(
+            y_test,
+            X_actual_test,
+            coverage_rates=coverage_rates_for_predict,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            **predict_func_params,
+        )
+    else:
+        y_pred = getattr(forecaster, observe_method)(
+            y_test,
+            X_actual_test,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            **predict_func_params,
+        )
+
+    # observe_predict produces overlapping prediction windows when the last
+    # observation chunk is smaller than stride. Deduplicate (keeping the most
+    # recently informed prediction) and sort so downstream scorers receive a
+    # clean, monotonically increasing time column.
+    # TODO: Address this formally in scorers
+    return y_pred.unique(subset=["time"], keep="last").sort("time")
+
+
 def _score(
     forecaster: BaseForecaster,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_actual_test: pl.DataFrame | None,
-    predict_func_params: dict[str, object] | None,
+    y_pred: pl.DataFrame,
     scorer: BaseScorer | _MultimetricScorer,
     score_params: dict[str, object] | None,
     error_score: str | float = "raise",
-    X_future: pl.DataFrame | None = None,
-    X_forecast: pl.DataFrame | None = None,
 ) -> float | dict[str, float | str] | str:
-    """Compute the score(s) of a forecaster on a given test set.
+    """Compute the score(s) of a forecaster from pre-computed predictions.
 
     Will return a dict of floats if ``scorer`` is a ``_MultiMetricScorer``,
     otherwise a single float is returned.
@@ -590,60 +758,24 @@ def _score(
     Parameters
     ----------
     forecaster : BaseForecaster
-        Fitted forecaster to evaluate.
+        Fitted forecaster (used by stateful scorers that need it).
+    y_train : pl.DataFrame
+        Training target time series (used by scorers like MASE).
     y_test : pl.DataFrame
         Test target time series.
-    X_actual_test : pl.DataFrame or None
-        Test actual feature observations, or ``None``.
-    predict_func_params : dict or None
-        Routed metadata for the prediction function.
+    y_pred : pl.DataFrame
+        Predictions produced by ``_predict``.
     scorer : BaseScorer or _MultimetricScorer
         Scorer used to evaluate predictions.
     score_params : dict or None
         Routed metadata for the scorer.
     error_score : float or "raise", default="raise"
         Value to assign if scoring fails.
-    X_future : pl.DataFrame or None, default=None
-        Known future features with a ``"time"`` column.
-    X_forecast : pl.DataFrame or None, default=None
-        External forecasts with ``"vintage_time"`` and ``"time"``
-        columns.
     """
     score_params = {} if score_params is None else score_params
-    predict_func_params = {} if predict_func_params is None else predict_func_params
 
     scores: float | dict[str, float | str] | str
     try:
-        # Resolve which forecaster method to call
-        response_method = _resolve_response_method(scorer)
-        observe_method = _OBSERVE_METHOD_MAP[response_method]
-
-        if response_method == "predict_interval":
-            coverage_rates_for_predict = _collect_coverage_rates(scorer)
-            y_pred = getattr(forecaster, observe_method)(
-                y_test,
-                X_actual_test,
-                coverage_rates=coverage_rates_for_predict,
-                X_future=X_future,
-                X_forecast=X_forecast,
-                **predict_func_params,
-            )
-        else:
-            y_pred = getattr(forecaster, observe_method)(
-                y_test,
-                X_actual_test,
-                X_future=X_future,
-                X_forecast=X_forecast,
-                **predict_func_params,
-            )
-
-        # observe_predict produces overlapping prediction windows when the last
-        # observation chunk is smaller than stride. Deduplicate (keeping the most
-        # recently informed prediction) and sort so downstream scorers receive a
-        # clean, monotonically increasing time column.
-        # TODO: Address this formally in scorers
-        y_pred = y_pred.unique(subset=["time"], keep="last").sort("time")
-
         # Only fit scorer if it has a fit method (stateful scorers)
         if hasattr(scorer, "fit"):
             scorer.fit(y_train, forecaster=forecaster)

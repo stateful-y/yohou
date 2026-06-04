@@ -18,6 +18,7 @@ from yohou.model_selection.utils import (
     _MultimetricScorer,
     _needs_interval_predictions,
     _needs_point_predictions,
+    _predict,
     _score,
 )
 from yohou.point.naive import SeasonalNaive
@@ -683,6 +684,73 @@ class TestFitAndScoreOptionalReturns:
         assert "forecaster" in result
         assert isinstance(result["forecaster"], SeasonalNaive)
 
+    def test_scorer_none_error_score_on_fit_failure(self, fit_and_score_data):
+        """With scorer=None, fit failure does not set test_scores."""
+        y, train, test, fh = fit_and_score_data
+        result = _fit_and_score(
+            _FailingForecaster(seasonality=1),
+            y,
+            None,
+            fh,
+            scorer=None,
+            train=train,
+            test=test,
+            verbose=0,
+            parameters=None,
+            fit_params=None,
+            predict_func_params=None,
+            score_params=None,
+            error_score=0.0,
+            return_predictions=True,
+        )
+        assert "test_scores" not in result
+        assert result["fit_error"] is not None
+
+    def test_scorer_none_return_train_score_raises(self, fit_and_score_data):
+        """return_train_score=True with scorer=None raises ValueError."""
+        y, train, test, fh = fit_and_score_data
+        with pytest.raises(ValueError, match="return_train_score requires a scorer"):
+            _fit_and_score(
+                SeasonalNaive(seasonality=1),
+                y,
+                None,
+                fh,
+                scorer=None,
+                train=train,
+                test=test,
+                verbose=0,
+                parameters=None,
+                fit_params=None,
+                predict_func_params=None,
+                score_params=None,
+                return_train_score=True,
+                return_predictions=True,
+                predict_method="predict",
+            )
+
+    def test_scorer_none_verbose_skips_score_display(self, fit_and_score_data):
+        """With scorer=None and verbose>2, score display is skipped."""
+        y, train, test, fh = fit_and_score_data
+        result = _fit_and_score(
+            SeasonalNaive(seasonality=1),
+            y,
+            None,
+            fh,
+            scorer=None,
+            train=train,
+            test=test,
+            verbose=3,
+            parameters=None,
+            fit_params=None,
+            predict_func_params=None,
+            score_params=None,
+            return_predictions=True,
+            predict_method="predict",
+            split_progress=(1, 3),
+        )
+        assert "test_scores" not in result
+        assert "predictions" in result
+
 
 class TestScoreSingleScorerError:
     """Tests for _score error handling with a single scorer."""
@@ -697,14 +765,16 @@ class TestScoreSingleScorerError:
         mock_tags.scorer_tags = None
         failing_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        # Create a dummy y_pred (mock scorer controls return value)
+        y_pred = y_test.clone()
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 failing_scorer,
                 None,
                 error_score=0.0,
@@ -728,13 +798,14 @@ class TestScoreDataFrameRejection:
         df_scorer.fit = MagicMock()
         df_scorer._response_method = "predict"
 
+        y_pred = y_test.clone()
+
         with pytest.raises(ValueError, match="aggregation_method"):
             _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 df_scorer,
                 None,
                 error_score="raise",
@@ -749,13 +820,14 @@ class TestScoreDataFrameRejection:
         ms.return_value = {"a": pl.DataFrame({"score": [1.0]})}
         ms.fit = MagicMock()
 
+        y_pred = y_test.clone()
+
         with pytest.raises(ValueError, match="aggregation_method"):
             _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 ms,
                 None,
                 error_score="raise",
@@ -777,12 +849,12 @@ class TestScoreNegation:
         mock_tags.scorer_tags.lower_is_better = True
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -801,12 +873,12 @@ class TestScoreNegation:
         mock_tags.scorer_tags.lower_is_better = False
         mock_scorer.__sklearn_tags__ = MagicMock(return_value=mock_tags)
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -829,12 +901,12 @@ class TestScoreNegation:
 
         ms = _MultimetricScorer(scorers={"mae": scorer})
 
+        y_pred = _predict(forecaster, y_test, None, ms)
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             ms,
             {},
             error_score="raise",
@@ -851,12 +923,12 @@ class TestScoreNegation:
         mock_scorer.fit = MagicMock()
         mock_scorer._response_method = "predict"
 
+        y_pred = y_test.clone()
         result = _score(
             forecaster,
             y_train,
             y_test,
-            None,
-            None,
+            y_pred,
             mock_scorer,
             None,
             error_score="raise",
@@ -876,14 +948,15 @@ class TestScoreMultimetricStringError:
         ms.return_value = {"a": "Traceback (most recent call last):\n..."}
         ms.fit = MagicMock()
 
+        y_pred = y_test.clone()
+
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = _score(
                 forecaster,
                 y_train,
                 y_test,
-                None,
-                None,
+                y_pred,
                 ms,
                 None,
                 error_score=0.0,

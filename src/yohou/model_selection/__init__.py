@@ -11,6 +11,11 @@ from .split import (
     check_cv_alignment,
     train_test_split,
 )
+from .validation import (
+    cross_val_predict,
+    cross_val_score,
+    cross_validate,
+)
 
 __all__ = [
     "BaseSplitter",
@@ -19,5 +24,8 @@ __all__ = [
     "RandomizedSearchCV",
     "SlidingWindowSplitter",
     "check_cv_alignment",
+    "cross_val_predict",
+    "cross_val_score",
+    "cross_validate",
     "train_test_split",
 ]
