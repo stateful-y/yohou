@@ -55,7 +55,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
     """Meta-forecaster that chains feature forecasting into target forecasting.
 
     Fits a `feature_forecaster` to forecast exogenous features X_actual, then
-    feeds those predicted features into a `target_forecaster` to predict y.
+    feeds those forecasts into a `target_forecaster` through its ``X_forecast``
+    channel to predict y. The target consumes the forecast as contemporaneous
+    step features (``feat_step_1 .. feat_step_H``), so the feature forecast
+    actually influences the prediction at every horizon step.
 
     This is useful when exogenous features are not known in advance at
     prediction time and must be forecasted first.
@@ -66,17 +69,23 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Forecaster for the target variable y. Receives predicted X_actual at predict time.
     feature_forecaster : BaseForecaster
         Forecaster for exogenous features X_actual. Trained to forecast X_actual as if it were y.
-    strategy : {"actual", "predicted", "rewind"}, default="actual"
-        Training data strategy for target forecaster:
+    strategy : {"actual", "predicted", "rewind"}, default="rewind"
+        Quality of the in-sample feature forecast the target trains on. In every
+        strategy the forecast is supplied to the target through the ``X_forecast``
+        channel (as ``vintage_time + time + features``), and the target decides how
+        to consume the resulting step features via its own ``step_feature_alignment``.
 
-        - "actual": Train target forecaster on actual X_actual values (perfect foresight).
-          Simpler and uses all data, but may cause train-test mismatch since
-          predict() uses forecasted X_actual.
-        - "predicted": Split data and train target forecaster on predicted X_actual values.
-          Requires more data but avoids distribution shift between train and predict.
-        - "rewind": Fit feature_forecaster on full data, rewind to observation horizon,
-          then predict X_actual and train target_forecaster on predicted X_actual. Uses all data
-          for feature learning while avoiding distribution shift.
+        - "actual": Train the target on perfect-foresight features (actual values
+          windowed forward and labelled with a vintage). Uses all data, but creates
+          a train/serve mismatch since predict() uses forecasted features.
+        - "predicted": Split data, fit the feature forecaster on the first portion,
+          and train the target on a rolling forecast over the second portion.
+          Requires more data but matches train and serve forecast quality.
+        - "rewind": Fit the feature forecaster on full data, rewind to the
+          observation horizon, then roll forward producing one vintage per origin
+          and train the target on that rolling forecast. Uses all data for feature
+          learning while matching train and serve forecast quality. This is the
+          default: it has no train/serve mismatch.
     split_ratio : float, default=0.5
         Fraction of data used to fit feature_forecaster when strategy="predicted".
         Remaining data used for target_forecaster training with predicted X_actual.
@@ -125,14 +134,16 @@ class ForecastedFeatureForecaster(BaseForecaster):
 
     Notes
     -----
-    - The feature_forecaster is trained with X_actual as y (forecasting the features)
-    - The target_forecaster receives forecasted X_actual at predict time
-    - Use strategy="predicted" when feature forecasts are noisy and you want
-      the target forecaster to learn from similar quality inputs as it will see
-      at prediction time
-    - At predict time, X_actual can contain known-ahead features (e.g., holidays,
-      promotions) that don't need forecasting. These are merged with the
-      forecasted features before being passed to the target_forecaster.
+    - The feature_forecaster is trained with X_actual as y (forecasting the features).
+    - At both fit and predict the feature forecast is passed to the target as
+      ``X_forecast`` (keeping ``vintage_time``); the target builds step columns and
+      consumes them per its ``step_feature_alignment``. A target with
+      ``requires_exogenous=False`` (e.g. a naive forecaster) ignores the forecast.
+    - Use strategy="predicted" or "rewind" when feature forecasts are noisy and you
+      want the target to learn from similar-quality inputs as it sees at predict time.
+    - A caller-supplied ``X_forecast`` (external forecasts for other features) is
+      merged with the meta's feature forecast on ``(vintage_time, time)``; a value
+      column-name collision raises ``ValueError``. ``X_future`` is forwarded untouched.
 
     See Also
     --------
@@ -154,7 +165,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         target_forecaster: BaseForecaster,
         feature_forecaster: BaseForecaster,
         *,
-        strategy: Literal["actual", "predicted", "rewind"] = "actual",
+        strategy: Literal["actual", "predicted", "rewind"] = "rewind",
         split_ratio: float = 0.5,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
@@ -263,65 +274,54 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self.feature_forecaster_ = clone(self.feature_forecaster)
         self.target_forecaster_ = clone(self.target_forecaster)
 
+        # Build an in-sample feature forecast as an X_forecast frame
+        # (vintage_time + time + features) and leave feature_forecaster_ observed
+        # up to the end of the training data so its vintages line up with the
+        # target at predict time. The forecast is routed to the target through the
+        # X_forecast channel (not X_actual), so the target builds step columns and
+        # actually consumes the forecast at every horizon step.
         if self.strategy == "actual":
-            # Fit feature forecaster: X_actual is treated as y (what to forecast)
+            # Perfect foresight: train the feature forecaster on all data (leaving
+            # it observed at the end) and feed the target the actual feature values
+            # windowed forward as a vintage-labelled forecast. Window only the
+            # columns the feature forecaster actually produces (it may forecast a
+            # subset of X_actual, e.g. a ColumnForecaster that drops known-ahead
+            # columns), so the fit-time and predict-time X_forecast schemas match.
             self.feature_forecaster_.fit(
                 y=X_actual,
                 X_actual=None,
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
-
-            # Fit target forecaster with actual X_actual
-            self.target_forecaster_.fit(
-                y=y,
-                X_actual=X_actual,
-                forecasting_horizon=forecasting_horizon,
-                X_future=X_future,
-                X_forecast=X_forecast,
-                **routed_params.target_forecaster.fit,
-            )
+            forecast_preview = self.feature_forecaster_.predict(forecasting_horizon=forecasting_horizon)
+            forecast_cols = [c for c in forecast_preview.columns if c not in ("vintage_time", "time")]
+            feature_forecast = self._actuals_as_forecast(X_actual.select(["time", *forecast_cols]), forecasting_horizon)
 
         elif self.strategy == "rewind":
-            # Fit feature forecaster on full data
+            # Fit on full data, rewind to the observation horizon, then roll forward
+            # producing one vintage per origin. observe_predict leaves the feature
+            # forecaster observed at the end of the data (state synced to target).
             self.feature_forecaster_.fit(
                 y=X_actual,
                 X_actual=None,
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
-
-            # Rewind feature forecaster to minimal observation horizon
             obs_horizon = self.feature_forecaster_.observation_horizon
             # Need obs_horizon + 1 rows: obs_horizon for transformer memory + 1 for transform
             rewind_size = obs_horizon + 1
-            if obs_horizon <= 0 or len(X_actual) <= rewind_size:
+            if obs_horizon < 0 or len(X_actual) <= rewind_size:
                 raise ValueError(
                     f"Cannot use strategy='rewind': observation_horizon={obs_horizon} "
                     f"but len(X_actual)={len(X_actual)}. Need len(X_actual) > observation_horizon + 1 to rewind."
                 )
             self.feature_forecaster_.rewind(y=X_actual[:rewind_size], X_actual=None)
-
-            # Predict X_actual from rewind point to end
-            X_pred = self.feature_forecaster_.predict(
-                forecasting_horizon=len(X_actual) - rewind_size,
-            )
-
-            # Prepare X_actual for target forecaster (drop vintage_time, keep time)
-            X_for_target = X_pred.drop(["vintage_time"], strict=False)
-
-            # Fit target forecaster with predicted X_actual
-            self.target_forecaster_.fit(
-                y=y[rewind_size:],
-                X_actual=X_for_target,
+            feature_forecast = self.feature_forecaster_.observe_predict(
+                y=X_actual[rewind_size:],
+                X_actual=None,
                 forecasting_horizon=forecasting_horizon,
-                X_future=X_future,
-                X_forecast=X_forecast,
-                **routed_params.target_forecaster.fit,
+                stride=1,
             )
-
-            # Sync feature_forecaster to same observation time as target_forecaster
-            self.feature_forecaster_.observe(y=X_actual[rewind_size:], X_actual=None)
 
         else:  # strategy == "predicted"
             n_split = int(len(y) * self.split_ratio)
@@ -338,43 +338,50 @@ class ForecastedFeatureForecaster(BaseForecaster):
                     f"Decrease split_ratio to leave at least 2 rows."
                 )
 
-            # Fit feature forecaster on first portion
+            # Fit the feature forecaster on the first portion, then roll forward over
+            # the second portion (one vintage per origin). observe_predict leaves the
+            # feature forecaster observed at the end of the data (state synced).
             self.feature_forecaster_.fit(
                 y=X_actual[:n_split],
                 X_actual=None,
-                forecasting_horizon=len(y) - n_split,
+                forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
-
-            # Predict X_actual for second portion
-            X_pred = self.feature_forecaster_.predict(
-                forecasting_horizon=len(y) - n_split,
-            )
-
-            # Prepare X_actual for target forecaster (drop time columns)
-            X_for_target = X_pred.drop(["vintage_time"], strict=False)
-
-            # Fit target forecaster on second portion with predicted X_actual
-            self.target_forecaster_.fit(
-                y=y[n_split:],
-                X_actual=X_for_target,
+            feature_forecast = self.feature_forecaster_.observe_predict(
+                y=X_actual[n_split:],
+                X_actual=None,
                 forecasting_horizon=forecasting_horizon,
-                X_future=X_future,
-                X_forecast=X_forecast,
-                **routed_params.target_forecaster.fit,
+                stride=1,
             )
 
-            # Sync feature_forecaster to the end of training data so both forecasters
-            # share the same observed_time_. We feed actual X_actual (not predicted) because:
-            # 1. observe() updates the observation buffer/clock, not the model weights.
-            # 2. At predict time and during rolling observe_predict, the feature
-            #    forecaster should always base its state on actuals.
-            # 3. The "predicted" strategy only governs what X_actual the target_forecaster was
-            #    *trained* on: the feature_forecaster's runtime state should track reality.
-            # TODO: This might be more complicated than just predict+observe. It depends on
-            # how predictions are going to be made (e.g., rolling vs single-shot, whether
-            # actual X becomes available after prediction, etc.)
-            self.feature_forecaster_.observe(y=X_actual[n_split:], X_actual=None)
+        # Only feed the forecast to a target that can consume exogenous features.
+        # A target with requires_exogenous=False (e.g. a naive forecaster) ignores
+        # X_forecast, so we skip it entirely (passing it would set the target's
+        # forecast state and needlessly restrict variable-horizon prediction).
+        self._target_requires_exogenous_ = bool(
+            self.target_forecaster_.__sklearn_tags__().forecaster_tags.requires_exogenous
+        )
+        if self._target_requires_exogenous_:
+            # Merge any caller-supplied external forecast, then align the target's
+            # training window to the span the feature forecast actually covers (early
+            # rows have no vintage and would yield null step features).
+            target_X_forecast = self._merge_forecasts(feature_forecast, X_forecast)
+            first_covered = feature_forecast["vintage_time"].min()
+            y_target = y.filter(pl.col("time") >= first_covered)
+        else:
+            target_X_forecast = None
+            y_target = y
+
+        # The target consumes the feature forecast via X_forecast; X_actual is left
+        # to genuine lagged-history features (none here), so it is None.
+        self.target_forecaster_.fit(
+            y=y_target,
+            X_actual=None,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=target_X_forecast,
+            **routed_params.target_forecaster.fit,
+        )
 
         # Store standard fitted attributes
         self.fit_forecasting_horizon_ = forecasting_horizon
@@ -382,11 +389,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self.groups_ = self.target_forecaster_.groups_
         if hasattr(self.target_forecaster_, "local_y_schema_"):
             self.local_y_schema_ = self.target_forecaster_.local_y_schema_
-        if hasattr(self.target_forecaster_, "local_X_actual_schema_"):
-            self.local_X_actual_schema_ = self.target_forecaster_.local_X_actual_schema_
-        else:
-            # Build local_X_actual_schema_ from X_actual columns (excluding time)
-            self.local_X_actual_schema_ = {col: X_actual.schema[col] for col in X_actual.columns if col != "time"}
+        # The meta-forecaster's public X_actual is the exogenous feature block the
+        # user passes in; describe it from the input. (The target itself is fit with
+        # X_actual=None because the features flow through the X_forecast channel.)
+        self.local_X_actual_schema_ = {col: X_actual.schema[col] for col in X_actual.columns if col != "time"}
         self.shared_X_actual_schema_ = None  # No shared X_actual features for this forecaster
 
         # Set transformed schema attributes (no transformation for meta-forecaster)
@@ -398,6 +404,114 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self._X_t_observed = X_actual
 
         return self
+
+    def _actuals_as_forecast(self, X_actual: pl.DataFrame, forecasting_horizon: int) -> pl.DataFrame:
+        """Window actual feature values into a perfect-foresight X_forecast frame.
+
+        For each origin time ``T`` emits the actual feature values at ``T+1 .. T+H``,
+        tagged with ``vintage_time=T``. Used by ``strategy="actual"`` so the target
+        trains on perfect-foresight step features through the same ``X_forecast``
+        channel it receives forecasts from at predict time.
+
+        Parameters
+        ----------
+        X_actual : pl.DataFrame
+            Actual feature observations with a ``"time"`` column.
+        forecasting_horizon : int
+            Number of forward steps (H) per origin.
+
+        Returns
+        -------
+        pl.DataFrame
+            Long frame with ``["vintage_time", "time", <features>]``.
+
+        """
+        feature_cols = [c for c in X_actual.columns if c != "time"]
+        parts = [
+            X_actual.select(
+                pl.col("time").alias("vintage_time"),
+                pl.col("time").shift(-h).alias("time"),
+                *[pl.col(c).shift(-h).alias(c) for c in feature_cols],
+            ).drop_nulls(subset=["time"])
+            for h in range(1, forecasting_horizon + 1)
+        ]
+        return pl.concat(parts).sort("vintage_time", "time")
+
+    def _merge_forecasts(
+        self,
+        feature_forecast: pl.DataFrame,
+        user_X_forecast: pl.DataFrame | None,
+    ) -> pl.DataFrame:
+        """Merge the meta's feature forecast with a caller-supplied X_forecast.
+
+        Joins on ``(vintage_time, time)``. Raises ``ValueError`` on a value-column
+        name collision. Returns ``feature_forecast`` unchanged when
+        ``user_X_forecast`` is None.
+
+        Parameters
+        ----------
+        feature_forecast : pl.DataFrame
+            The meta's forecast of the exogenous features.
+        user_X_forecast : pl.DataFrame or None
+            Caller-supplied external forecast for other features.
+
+        Returns
+        -------
+        pl.DataFrame
+            The combined external-forecast frame.
+
+        """
+        if user_X_forecast is None:
+            return feature_forecast
+        keys = {"vintage_time", "time"}
+        collision = (set(feature_forecast.columns) - keys) & (set(user_X_forecast.columns) - keys)
+        if collision:
+            raise ValueError(
+                "X_forecast supplied to ForecastedFeatureForecaster collides with "
+                f"forecasted feature column(s) {sorted(collision)}. Rename the external "
+                "forecast columns or drop them from the feature block."
+            )
+        return feature_forecast.join(user_X_forecast, on=["vintage_time", "time"], how="full", coalesce=True)
+
+    def _predict_feature_forecast(
+        self,
+        forecasting_horizon: int,
+        groups: list[str] | None,
+        user_X_forecast: pl.DataFrame | None,
+        routed_predict_params: dict,
+    ) -> pl.DataFrame | None:
+        """Produce the X_forecast frame to pass to the target at predict time.
+
+        Forecasts the exogenous features and merges them with any caller-supplied
+        ``X_forecast``. Returns the caller's ``X_forecast`` unchanged (no feature
+        forecast generated) when the target ignores exogenous features.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            Number of steps ahead to forecast.
+        groups : list of str or None
+            Panel group prefixes.
+        user_X_forecast : pl.DataFrame or None
+            Caller-supplied external forecast.
+        routed_predict_params : dict
+            Metadata-routing params for the feature forecaster's predict call.
+
+        Returns
+        -------
+        pl.DataFrame or None
+            The combined external-forecast frame, or None when the target does
+            not consume exogenous features.
+
+        """
+        if not getattr(self, "_target_requires_exogenous_", True):
+            return None
+        feature_forecast = self.feature_forecaster_.predict(
+            forecasting_horizon=forecasting_horizon,
+            groups=groups,
+            **routed_predict_params,
+        )
+        return self._merge_forecasts(feature_forecast, user_X_forecast)
 
     @available_if(_target_forecaster_has("predict"))
     def predict(
@@ -450,15 +564,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Process metadata routing
         routed_params = process_routing(self, "predict", **params)
 
-        # Predict y using target forecaster (feature predictions flow
-        # through observe; at predict time target_forecaster uses its
-        # observation window set during fit/observe)
+        # Forecast the exogenous features, then feed that forecast to the target
+        # through the X_forecast channel (merged with any caller-supplied forecast).
+        target_X_forecast = self._predict_feature_forecast(
+            forecasting_horizon, groups, X_forecast, routed_params.feature_forecaster.predict
+        )
+
         return self.target_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             predict_transformed=predict_transformed,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=target_X_forecast,
             **routed_params.target_forecaster.predict,
         )
 
@@ -512,12 +629,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Process metadata routing
         routed_params = process_routing(self, "predict_interval", **params)
 
+        # The feature forecaster always produces point forecasts of the features;
+        # feed them to the target through X_forecast.
+        target_X_forecast = self._predict_feature_forecast(
+            forecasting_horizon, groups, X_forecast, routed_params.feature_forecaster.predict
+        )
+
         return self.target_forecaster_.predict_interval(
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
             groups=groups,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=target_X_forecast,
             **routed_params.target_forecaster.predict_interval,
         )
 
@@ -563,10 +686,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 groups=groups,
             )
 
-        # Observe new y and X_actual for target forecaster
+        # Observe new y for the target forecaster. X_actual is None because the
+        # target consumes the features through X_forecast, not its lagged-history
+        # channel; the feature forecast is regenerated at predict time.
         self.target_forecaster_.observe(
             y=y,
-            X_actual=X_actual,
+            X_actual=None,
             groups=groups,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -615,10 +740,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 groups=groups,
             )
 
-        # Rewind target forecaster
+        # Rewind target forecaster. X_actual is None because the target consumes
+        # the features through X_forecast, not its lagged-history channel.
         self.target_forecaster_.rewind(
             y=y,
-            X_actual=X_actual,
+            X_actual=None,
             groups=groups,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -758,11 +884,15 @@ class ForecastedFeatureForecaster(BaseForecaster):
         _raise_for_params(params, self, "predict_class_proba")
         routed_params = process_routing(self, "predict_class_proba", **params)
 
+        target_X_forecast = self._predict_feature_forecast(
+            forecasting_horizon, groups, X_forecast, routed_params.feature_forecaster.predict
+        )
+
         return self.target_forecaster_.predict_class_proba(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=target_X_forecast,
             **routed_params.target_forecaster.predict_class_proba,
         )
 

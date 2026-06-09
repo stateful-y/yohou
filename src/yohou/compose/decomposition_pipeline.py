@@ -365,6 +365,16 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         if self.store_residuals:
             self.residuals_ = {}
 
+        # Each component re-derives its own step columns from X_future/X_forecast.
+        # _pre_fit already merged the pipeline-level step columns into X_t, so strip
+        # them before forwarding to avoid a name collision when a component derives
+        # the same step columns again from the (also-forwarded) X_forecast/X_future.
+        X_t_components = X_t
+        if X_t is not None and self._step_column_names_:
+            drop_cols = [c for c in X_t.columns if c in self._step_column_names_]
+            if drop_cols:
+                X_t_components = X_t.drop(drop_cols)
+
         residuals = y_t
         for name, forecaster in self.forecasters:
             # Clone and fit forecaster on current residuals
@@ -375,7 +385,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
             forecaster_clone.fit(
                 y=residuals,
-                X_actual=X_t,
+                X_actual=X_t_components,
                 forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -405,16 +415,16 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                     schema=y_t.schema,
                 )
                 X_rewind = None
-                if X_t is not None:
+                if X_t_components is not None:
                     X_rewind = pl.DataFrame(
-                        {col: [rewind_time] if col == "time" else [None] for col in X_t.columns},
-                        schema=X_t.schema,
+                        {col: [rewind_time] if col == "time" else [None] for col in X_t_components.columns},
+                        schema=X_t_components.schema,
                     )
             else:
                 y_rewind = residuals[:forecaster_observation_horizon]
                 X_rewind = None
-                if X_t is not None:
-                    X_rewind = X_t[:forecaster_observation_horizon]
+                if X_t_components is not None:
+                    X_rewind = X_t_components[:forecaster_observation_horizon]
 
             forecaster_clone_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast)
 
@@ -422,7 +432,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             # sized blocks, predict after each.  The inner join below
             # filters out predictions beyond the training range.
             residuals_remaining = residuals[forecaster_observation_horizon:]
-            X_remaining = X_t[forecaster_observation_horizon:] if X_t is not None else None
+            X_remaining = X_t_components[forecaster_observation_horizon:] if X_t_components is not None else None
             y_pred_train = forecaster_clone_pred.observe_predict(
                 y=residuals_remaining,
                 X_actual=X_remaining,

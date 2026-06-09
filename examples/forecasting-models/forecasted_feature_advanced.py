@@ -108,8 +108,11 @@ def _(mo):
     mo.md(r"""
     ## 2. Strategy: "actual"
 
-    The target forecaster is trained on actual feature values. At
-    prediction time, you must provide X_actual (or use the default forecast).
+    The target is trained on perfect-foresight features (actual values
+    windowed forward). At prediction time the feature forecaster supplies the
+    forecast automatically through the target's `X_forecast` channel, so you do
+    not pass features to `predict`. This is simple but creates a train/serve
+    mismatch (perfect at train, forecasted at serve).
     """)
 
 
@@ -144,8 +147,10 @@ def _(mo):
     mo.md(r"""
     ## 3. Strategy: "predicted"
 
-    Both fit and predict use the feature forecaster's predictions.
-    This avoids train-test leakage.
+    The target trains on a rolling forecast of the features over a held-out
+    portion, so it sees the same forecast quality at fit as at predict (no
+    train/serve mismatch). In every strategy the forecast reaches the target
+    through `X_forecast`; the strategies differ only in the forecast's quality.
     """)
 
 

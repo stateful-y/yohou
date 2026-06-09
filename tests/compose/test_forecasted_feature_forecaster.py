@@ -710,3 +710,147 @@ class TestClassProbaForecastedFeature:
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3
+
+
+def _make_contemporaneous_data(n: int = 120, seed: int = 0):
+    """Build data where the target depends on a future feature value.
+
+    sales[t] = 3 * price[t] + small noise, so the feature forecast genuinely
+    drives the target prediction (contemporaneous dependence).
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+        interval="1d",
+        eager=True,
+    )
+    price = 10.0 + 5.0 * np.sin(2 * np.pi * np.arange(n) / 7) + 0.05 * np.arange(n)
+    sales = 3.0 * price + rng.normal(0, 0.5, n)
+    y = pl.DataFrame({"time": time, "sales": sales})
+    X_actual = pl.DataFrame({"time": time, "price": price})
+    return y, X_actual
+
+
+class TestXForecastRouting:
+    """Tests for the corrected predict-time data flow (feature forecast via X_forecast)."""
+
+    def test_default_strategy_is_rewind(self):
+        """Default strategy is 'rewind' (no train/serve mismatch)."""
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        assert forecaster.strategy == "rewind"
+
+    def test_feature_forecast_changes_predictions(self):
+        """Two different feature forecasters yield different target predictions."""
+        y, X_actual = _make_contemporaneous_data()
+        y_train, X_train = y[:100], X_actual[:100]
+
+        common = {
+            "target_forecaster": PointReductionForecaster(estimator=Ridge()),
+            "strategy": "rewind",
+        }
+        fc_a = ForecastedFeatureForecaster(feature_forecaster=PointReductionForecaster(estimator=Ridge()), **common)
+        fc_b = ForecastedFeatureForecaster(feature_forecaster=SeasonalNaive(seasonality=1), **common)
+        fc_a.fit(y_train, X_train, forecasting_horizon=7)
+        fc_b.fit(y_train, X_train, forecasting_horizon=7)
+
+        pred_a = fc_a.predict(forecasting_horizon=7)
+        pred_b = fc_b.predict(forecasting_horizon=7)
+        assert not pred_a["sales"].equals(pred_b["sales"])
+
+    @pytest.mark.parametrize("strategy", ["actual", "predicted", "rewind"])
+    def test_feature_forecaster_invoked_at_predict(self, strategy):
+        """feature_forecaster_ is consulted at predict time in every strategy."""
+        from unittest.mock import patch
+
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy=strategy,
+            split_ratio=0.6,
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+
+        real_predict = forecaster.feature_forecaster_.predict
+        with patch.object(forecaster.feature_forecaster_, "predict", wraps=real_predict) as spy:
+            forecaster.predict(forecasting_horizon=5)
+        assert spy.called
+
+    @pytest.mark.parametrize("strategy", ["actual", "predicted", "rewind"])
+    def test_observed_time_parity_after_fit(self, strategy):
+        """feature and target forecasters share the same observed_time_ after fit."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy=strategy,
+            split_ratio=0.6,
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
+
+    def test_merge_forecasts_disjoint_columns(self):
+        """_merge_forecasts joins disjoint external-forecast columns on (vintage_time, time)."""
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        t0 = datetime(2020, 1, 1)
+        feat = pl.DataFrame({
+            "vintage_time": [t0, t0],
+            "time": [t0 + timedelta(days=1), t0 + timedelta(days=2)],
+            "price": [1.0, 2.0],
+        })
+        user = pl.DataFrame({
+            "vintage_time": [t0, t0],
+            "time": [t0 + timedelta(days=1), t0 + timedelta(days=2)],
+            "promo": [1.0, 0.0],
+        })
+        merged = forecaster._merge_forecasts(feat, user)
+        assert set(merged.columns) == {"vintage_time", "time", "price", "promo"}
+        assert merged.height == 2
+        # None passthrough returns the feature forecast unchanged.
+        assert forecaster._merge_forecasts(feat, None) is feat
+
+    def test_user_x_forecast_collision_raises(self):
+        """A caller X_forecast colliding with a forecasted feature raises ValueError."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+
+        origin = forecaster.target_forecaster_.observed_time_
+        future_times = pl.datetime_range(
+            start=origin + timedelta(days=1),
+            end=origin + timedelta(days=5),
+            interval="1d",
+            eager=True,
+        )
+        colliding = pl.DataFrame({
+            "vintage_time": [origin] * 5,
+            "time": future_times,
+            "price": [1.0, 2.0, 3.0, 4.0, 5.0],  # same name as the forecasted feature
+        })
+        with pytest.raises(ValueError, match="collides"):
+            forecaster.predict(forecasting_horizon=5, X_forecast=colliding)
+
+    def test_non_exogenous_target_degrades_gracefully(self):
+        """A requires_exogenous=False target fits and predicts without error."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=7),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        pred = forecaster.predict(forecasting_horizon=5)
+        assert len(pred) == 5
