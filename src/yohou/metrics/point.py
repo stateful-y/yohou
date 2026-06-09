@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numbers
 import warnings
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context
+from yohou.utils.weighting import BaseWeighter
 
 from .base import BasePointScorer
 
@@ -120,11 +120,17 @@ class MeanAbsoluteError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -216,11 +222,17 @@ class MeanSquaredError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -313,11 +325,17 @@ class RootMeanSquaredError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -435,11 +453,17 @@ class RootMeanSquaredScaledError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.seasonality = seasonality
 
@@ -616,11 +640,17 @@ class MeanAbsolutePercentageError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.epsilon = epsilon
 
@@ -725,11 +755,17 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.epsilon = epsilon
 
@@ -850,11 +886,17 @@ class MeanAbsoluteScaledError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.seasonality = seasonality
 
@@ -1020,23 +1062,24 @@ class MedianAbsoluteError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute per-row absolute errors for median aggregation."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(  # type: ignore
+    def score(
         self,
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute median absolute error.
@@ -1047,8 +1090,6 @@ class MedianAbsoluteError(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1063,7 +1104,6 @@ class MedianAbsoluteError(BasePointScorer):
             If time_weight or step_weight are passed (median is not weight-compatible).
 
         """
-        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1073,7 +1113,7 @@ class MedianAbsoluteError(BasePointScorer):
         )
 
         # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
+        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
 
         dims = self._normalize_agg_methods(self.aggregation_method)
         collapse_steps = "stepwise" in dims
@@ -1184,11 +1224,17 @@ class MaxAbsoluteError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
@@ -1284,23 +1330,24 @@ class R2Score(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Not used directly. R² overrides score()."""
         return (y_truth - y_pred).select(pl.all().pow(2))
 
-    def score(  # type: ignore
+    def score(
         self,
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute R-squared score.
@@ -1311,8 +1358,6 @@ class R2Score(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1327,7 +1372,6 @@ class R2Score(BasePointScorer):
             If time_weight or step_weight are passed.
 
         """
-        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1337,7 +1381,7 @@ class R2Score(BasePointScorer):
         )
 
         # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
+        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
 
         def _compute_r2(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
             """Compute per-column R² score."""
@@ -1458,23 +1502,24 @@ class MeanDirectionalAccuracy(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Not used directly. MDA overrides score()."""
         return (y_truth - y_pred).select(pl.all().abs())
 
-    def score(  # type: ignore
+    def score(
         self,
         y_truth: pl.DataFrame,
         y_pred: pl.DataFrame,
         /,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         **params,
     ) -> float | pl.DataFrame:
         """Compute Mean Directional Accuracy.
@@ -1485,8 +1530,6 @@ class MeanDirectionalAccuracy(BasePointScorer):
             True values with "time" column.
         y_pred : pl.DataFrame
             Predicted values with "time" column.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-vintage weights for cross-vintage aggregation.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1501,7 +1544,6 @@ class MeanDirectionalAccuracy(BasePointScorer):
             If time_weight or step_weight are passed.
 
         """
-        self._reject_weights(**params)
         check_is_fitted(self, ["_is_fitted"])
 
         y_truth, y_pred, context = validate_scorer_data(
@@ -1514,7 +1556,7 @@ class MeanDirectionalAccuracy(BasePointScorer):
             return 0.0
 
         # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, vintage_weight)
+        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
 
         def _compute_mda(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame | None:
             """Compute per-column mean directional accuracy."""

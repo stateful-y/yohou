@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
+from yohou.utils.weighting import BaseWeighter
+
 from .base import BaseClassProbaScorer
 
 if TYPE_CHECKING:
@@ -94,11 +96,17 @@ class LogLoss(BaseClassProbaScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth, y_pred):
@@ -200,11 +208,17 @@ class BrierScore(BaseClassProbaScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(self, y_truth, y_pred):
@@ -317,11 +331,17 @@ class RankedProbabilityScore(BaseClassProbaScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.class_order = class_order
 
