@@ -1,4 +1,4 @@
-"""Tests for sample_weight_alignment strategies and time_weight integration in reduction forecasters."""
+"""Tests for sample_weight_alignment strategies and weighter integration in reduction forecasters."""
 
 from datetime import datetime, timedelta
 
@@ -8,6 +8,7 @@ import pytest
 from sklearn.linear_model import LinearRegression
 
 from yohou.point import PointReductionForecaster
+from yohou.utils.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
 
 
 @pytest.fixture
@@ -20,20 +21,18 @@ def reduction_data():
     return y
 
 
-@pytest.fixture
-def linear_weight_fn():
-    """Return a 1-param weight function giving linearly increasing weights."""
-
-    def _weight_fn(time: pl.Series) -> pl.Series:
-        n = len(time)
-        return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
-
-    return _weight_fn
+def _increasing_table(reduction_data: pl.DataFrame) -> TableWeighter:
+    """A TableWeighter giving linearly increasing weights over the data times."""
+    frame = pl.DataFrame({
+        "time": reduction_data["time"].to_list(),
+        "weight": [float(i + 1) for i in range(len(reduction_data))],
+    })
+    return TableWeighter(frame=frame, on="time")
 
 
-def _make_forecaster():
+def _make_forecaster(**kwargs):
     """Create a default PointReductionForecaster with LinearRegression."""
-    return PointReductionForecaster(estimator=LinearRegression())
+    return PointReductionForecaster(estimator=LinearRegression(), **kwargs)
 
 
 class TestSampleWeightAlignmentStrategies:
@@ -43,36 +42,23 @@ class TestSampleWeightAlignmentStrategies:
         "alignment",
         ["first_step", "mean_step", "weighted_mean_step", "max_weight_step", "min_weight_step"],
     )
-    def test_alignment_strategy_produces_fitted_forecaster(self, reduction_data, linear_weight_fn, alignment):
+    def test_alignment_strategy_produces_fitted_forecaster(self, reduction_data, alignment):
         """Each alignment strategy should produce a fitted forecaster without error."""
-        f = _make_forecaster()
-        f.set_fit_request(time_weight=True, sample_weight_alignment=True)
-        f.fit(
-            reduction_data,
-            forecasting_horizon=3,
-            time_weight=linear_weight_fn,
-            sample_weight_alignment=alignment,
-        )
+        f = _make_forecaster(time_weighter=LinearDecayWeighter(), sample_weight_alignment=alignment)
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3
 
-    def test_different_alignments_produce_different_predictions(self, reduction_data, linear_weight_fn):
+    def test_different_alignments_produce_different_predictions(self, reduction_data):
         """Different alignment strategies should generally produce different predictions."""
         results = {}
         for alignment in ["first_step", "mean_step", "weighted_mean_step", "max_weight_step", "min_weight_step"]:
-            f = _make_forecaster()
-            f.set_fit_request(time_weight=True, sample_weight_alignment=True)
-            f.fit(
-                reduction_data,
-                forecasting_horizon=3,
-                time_weight=linear_weight_fn,
-                sample_weight_alignment=alignment,
-            )
+            f = _make_forecaster(time_weighter=LinearDecayWeighter(), sample_weight_alignment=alignment)
+            f.fit(reduction_data, forecasting_horizon=3)
             pred = f.predict(forecasting_horizon=3)
             results[alignment] = pred["value"].to_numpy()
 
-        # At least some pairs should differ (not all alignments give identical results)
         pairs_differ = 0
         strategies = list(results.keys())
         for i, s1 in enumerate(strategies):
@@ -82,18 +68,12 @@ class TestSampleWeightAlignmentStrategies:
 
         assert pairs_differ > 0, "All alignment strategies produced identical predictions"
 
-    def test_weighted_mean_step_vs_mean_step_differ(self, reduction_data, linear_weight_fn):
+    def test_weighted_mean_step_vs_mean_step_differ(self, reduction_data):
         """weighted_mean_step and mean_step should produce different results with non-uniform weights."""
         forecasters = {}
         for alignment in ["mean_step", "weighted_mean_step"]:
-            f = _make_forecaster()
-            f.set_fit_request(time_weight=True, sample_weight_alignment=True)
-            f.fit(
-                reduction_data,
-                forecasting_horizon=5,
-                time_weight=linear_weight_fn,
-                sample_weight_alignment=alignment,
-            )
+            f = _make_forecaster(time_weighter=LinearDecayWeighter(), sample_weight_alignment=alignment)
+            f.fit(reduction_data, forecasting_horizon=5)
             forecasters[alignment] = f.predict(forecasting_horizon=5)
 
         pred_mean = forecasters["mean_step"]["value"].to_numpy()
@@ -101,119 +81,83 @@ class TestSampleWeightAlignmentStrategies:
         assert not np.allclose(pred_mean, pred_wmean)
 
 
-class TestTimeWeightCallableFit:
-    """Tests for time_weight callable integration with fit()."""
+class TestTimeWeighterFit:
+    """Tests for time_weighter integration with fit()."""
 
-    def test_time_weight_none_matches_no_kwarg(self, reduction_data):
-        """Passing time_weight=None should match omitting it entirely."""
+    def test_time_weighter_none_matches_no_weighter(self, reduction_data):
+        """Passing time_weighter=None should match omitting it entirely."""
         f1 = _make_forecaster()
         f1.fit(reduction_data, forecasting_horizon=3)
         pred1 = f1.predict(forecasting_horizon=3)
 
-        f2 = _make_forecaster()
-        f2.set_fit_request(time_weight=True)
-        f2.fit(reduction_data, forecasting_horizon=3, time_weight=None)
+        f2 = _make_forecaster(time_weighter=None)
+        f2.fit(reduction_data, forecasting_horizon=3)
         pred2 = f2.predict(forecasting_horizon=3)
 
-        np.testing.assert_array_almost_equal(
-            pred1["value"].to_numpy(),
-            pred2["value"].to_numpy(),
-        )
+        np.testing.assert_array_almost_equal(pred1["value"].to_numpy(), pred2["value"].to_numpy())
 
-    def test_nonuniform_weight_changes_predictions(self, reduction_data, linear_weight_fn):
-        """Non-uniform time_weight should change predictions vs no weight."""
+    def test_nonuniform_weighter_changes_predictions(self, reduction_data):
+        """Non-uniform time_weighter should change predictions vs no weight."""
         f_plain = _make_forecaster()
         f_plain.fit(reduction_data, forecasting_horizon=3)
         pred_plain = f_plain.predict(forecasting_horizon=3)
 
-        f_weighted = _make_forecaster()
-        f_weighted.set_fit_request(time_weight=True)
-        f_weighted.fit(
-            reduction_data,
-            forecasting_horizon=3,
-            time_weight=linear_weight_fn,
-        )
+        f_weighted = _make_forecaster(time_weighter=LinearDecayWeighter())
+        f_weighted.fit(reduction_data, forecasting_horizon=3)
         pred_weighted = f_weighted.predict(forecasting_horizon=3)
 
-        assert not np.allclose(
-            pred_plain["value"].to_numpy(),
-            pred_weighted["value"].to_numpy(),
-        )
+        assert not np.allclose(pred_plain["value"].to_numpy(), pred_weighted["value"].to_numpy())
 
 
-class TestTimeWeightDataFrameFit:
-    """Tests for time_weight as pl.DataFrame in fit()."""
+class TestTableWeighterFit:
+    """Tests for TableWeighter (DataFrame-backed) time weighting in fit()."""
 
-    def test_dataframe_weight_works(self, reduction_data):
-        """DataFrame time_weight with 'time' and 'weight' columns should work."""
-        tw_df = pl.DataFrame({
-            "time": reduction_data["time"].to_list(),
-            "weight": list(range(1, len(reduction_data) + 1)),
-        }).cast({"weight": pl.Float64})
-
-        f = _make_forecaster()
-        f.set_fit_request(time_weight=True)
-        f.fit(reduction_data, forecasting_horizon=3, time_weight=tw_df)
+    def test_table_weighter_works(self, reduction_data):
+        """A TableWeighter with 'time' and 'weight' columns should work."""
+        f = _make_forecaster(time_weighter=_increasing_table(reduction_data))
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3
 
 
-class TestTimeWeightValidation:
-    """Tests for time_weight error paths in reduction forecasters."""
+class TestTimeWeighterValidation:
+    """Tests for time_weighter error paths in reduction forecasters."""
 
     def test_zero_sum_weights_raises(self, reduction_data):
         """Weights summing to zero should raise ValueError."""
-
-        def zero_weights(time: pl.Series) -> pl.Series:
-            return pl.Series("w", [0.0] * len(time), dtype=pl.Float64)
-
-        f = _make_forecaster()
-        f.set_fit_request(time_weight=True)
-
+        f = _make_forecaster(time_weighter=LookupWeighter(mapping={}, default=0.0))
         with pytest.raises(ValueError, match="zero"):
-            f.fit(reduction_data, forecasting_horizon=3, time_weight=zero_weights)
+            f.fit(reduction_data, forecasting_horizon=3)
 
-    def test_estimator_without_sample_weight_raises(self, reduction_data, linear_weight_fn):
+    def test_estimator_without_sample_weight_raises(self, reduction_data):
         """Estimator that doesn't support sample_weight should raise ValueError."""
         from sklearn.neighbors import KNeighborsRegressor
 
-        f = PointReductionForecaster(estimator=KNeighborsRegressor())
-        f.set_fit_request(time_weight=True)
-
+        f = PointReductionForecaster(estimator=KNeighborsRegressor(), time_weighter=LinearDecayWeighter())
         with pytest.raises(ValueError, match="sample_weight"):
-            f.fit(reduction_data, forecasting_horizon=3, time_weight=linear_weight_fn)
+            f.fit(reduction_data, forecasting_horizon=3)
 
 
-class TestVintageWeightFit:
-    """Tests for vintage_weight integration with fit()."""
+class TestVintageWeighterFit:
+    """Tests for vintage_weighter integration with fit()."""
 
-    def test_vintage_weight_none_matches_no_kwarg(self, reduction_data):
-        """Passing vintage_weight=None should match omitting it entirely."""
+    def test_vintage_weighter_none_matches_no_weighter(self, reduction_data):
+        """Passing vintage_weighter=None should match omitting it entirely."""
         f1 = _make_forecaster()
         f1.fit(reduction_data, forecasting_horizon=3)
         pred1 = f1.predict(forecasting_horizon=3)
 
-        f2 = _make_forecaster()
-        f2.set_fit_request(vintage_weight=True)
-        f2.fit(reduction_data, forecasting_horizon=3, vintage_weight=None)
+        f2 = _make_forecaster(vintage_weighter=None)
+        f2.fit(reduction_data, forecasting_horizon=3)
         pred2 = f2.predict(forecasting_horizon=3)
 
-        np.testing.assert_array_almost_equal(
-            pred1["value"].to_numpy(),
-            pred2["value"].to_numpy(),
-        )
+        np.testing.assert_array_almost_equal(pred1["value"].to_numpy(), pred2["value"].to_numpy())
 
-    def test_vintage_weight_callable(self, reduction_data):
-        """Callable vintage_weight should produce a fitted forecaster."""
-
-        def vw_fn(time: pl.Series) -> pl.Series:
-            n = len(time)
-            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
-
-        f = _make_forecaster()
-        f.set_fit_request(vintage_weight=True)
-        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+    def test_vintage_weighter_works(self, reduction_data):
+        """A vintage TableWeighter should produce a fitted forecaster."""
+        f = _make_forecaster(vintage_weighter=_increasing_table(reduction_data))
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3
@@ -222,148 +166,93 @@ class TestVintageWeightFit:
 class TestInvalidSampleWeightAlignment:
     """Tests for invalid sample_weight_alignment values."""
 
-    def test_invalid_alignment_raises(self, reduction_data, linear_weight_fn):
-        """Invalid sample_weight_alignment should raise ValueError."""
-        f = _make_forecaster()
-        f.set_fit_request(time_weight=True, sample_weight_alignment=True)
-        with pytest.raises(ValueError, match="Invalid sample_weight_alignment"):
-            f.fit(
-                reduction_data,
-                forecasting_horizon=3,
-                time_weight=linear_weight_fn,
-                sample_weight_alignment="invalid_strategy",
-            )
+    def test_invalid_alignment_raises(self, reduction_data):
+        """Invalid sample_weight_alignment should raise an error mentioning the param."""
+        f = _make_forecaster(time_weighter=LinearDecayWeighter(), sample_weight_alignment="invalid_strategy")
+        with pytest.raises(ValueError, match="sample_weight_alignment"):
+            f.fit(reduction_data, forecasting_horizon=3)
 
-    def test_vintage_weight_dataframe(self, reduction_data):
-        """DataFrame vintage_weight should work."""
-        vw_df = pl.DataFrame({
-            "time": reduction_data["time"].to_list(),
-            "weight": list(range(1, len(reduction_data) + 1)),
-        }).cast({"weight": pl.Float64})
-
-        f = _make_forecaster()
-        f.set_fit_request(vintage_weight=True)
-        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_df)
-        result = f.predict(forecasting_horizon=3)
-        assert isinstance(result, pl.DataFrame)
-
-    def test_vintage_weight_dict(self, reduction_data):
-        """Dict vintage_weight should work."""
+    def test_vintage_weighter_dict(self, reduction_data):
+        """A LookupWeighter (dict-backed) vintage weighter should work."""
         times = reduction_data["time"].to_list()
-        vw_dict = {t: float(i + 1) for i, t in enumerate(times)}
-
-        f = _make_forecaster()
-        f.set_fit_request(vintage_weight=True)
-        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_dict)
+        vw = LookupWeighter(mapping={t: float(i + 1) for i, t in enumerate(times)})
+        f = _make_forecaster(vintage_weighter=vw)
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
 
-    def test_vintage_weight_changes_predictions(self, reduction_data):
-        """Non-uniform vintage_weight should change predictions vs no weight."""
+    def test_vintage_weighter_changes_predictions(self, reduction_data):
+        """Non-uniform vintage_weighter should change predictions vs no weight."""
         f_plain = _make_forecaster()
         f_plain.fit(reduction_data, forecasting_horizon=3)
         pred_plain = f_plain.predict(forecasting_horizon=3)
 
-        # Weight only the first 5 observations, zero out the rest
-        def vw_fn(time: pl.Series) -> pl.Series:
-            n = len(time)
-            weights = [0.0] * n
-            for i in range(min(5, n)):
-                weights[i] = 1.0
-            return pl.Series("w", weights, dtype=pl.Float64)
+        # Weight only the first 5 observations, zero out the rest.
+        times = reduction_data["time"].to_list()
+        weights = [1.0 if i < 5 else 0.0 for i in range(len(times))]
+        vw = TableWeighter(frame=pl.DataFrame({"time": times, "weight": weights}), on="time")
 
-        f_weighted = _make_forecaster()
-        f_weighted.set_fit_request(vintage_weight=True)
-        f_weighted.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        f_weighted = _make_forecaster(vintage_weighter=vw)
+        f_weighted.fit(reduction_data, forecasting_horizon=3)
         pred_weighted = f_weighted.predict(forecasting_horizon=3)
 
-        assert not np.allclose(
-            pred_plain["value"].to_numpy(),
-            pred_weighted["value"].to_numpy(),
+        assert not np.allclose(pred_plain["value"].to_numpy(), pred_weighted["value"].to_numpy())
+
+
+class TestCombinedTimeAndVintageWeighter:
+    """Tests for combining time_weighter and vintage_weighter."""
+
+    def test_both_weighters_work_together(self, reduction_data):
+        """Providing both time_weighter and vintage_weighter should produce a fitted forecaster."""
+        f = _make_forecaster(
+            time_weighter=LinearDecayWeighter(),
+            vintage_weighter=_increasing_table(reduction_data),
         )
-
-
-class TestCombinedTimeAndVintageWeight:
-    """Tests for combining time_weight and vintage_weight."""
-
-    def test_both_weights_work_together(self, reduction_data, linear_weight_fn):
-        """Providing both time_weight and vintage_weight should produce fitted forecaster."""
-
-        def vw_fn(time: pl.Series) -> pl.Series:
-            n = len(time)
-            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
-
-        f = _make_forecaster()
-        f.set_fit_request(time_weight=True, vintage_weight=True)
-        f.fit(
-            reduction_data,
-            forecasting_horizon=3,
-            time_weight=linear_weight_fn,
-            vintage_weight=vw_fn,
-        )
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3
 
-    def test_combined_differs_from_individual(self, reduction_data, linear_weight_fn):
+    def test_combined_differs_from_individual(self, reduction_data):
         """Combined weights should differ from either individual weight alone."""
+        times = reduction_data["time"].to_list()
+        weights = [0.01] * len(times)
+        weights[-1] = 100.0
+        vw = TableWeighter(frame=pl.DataFrame({"time": times, "weight": weights}), on="time")
 
-        def vw_fn(time: pl.Series) -> pl.Series:
-            n = len(time)
-            weights = [0.01] * n
-            weights[-1] = 100.0
-            return pl.Series("w", weights, dtype=pl.Float64)
-
-        f_tw = _make_forecaster()
-        f_tw.set_fit_request(time_weight=True)
-        f_tw.fit(reduction_data, forecasting_horizon=3, time_weight=linear_weight_fn)
+        f_tw = _make_forecaster(time_weighter=LinearDecayWeighter())
+        f_tw.fit(reduction_data, forecasting_horizon=3)
         pred_tw = f_tw.predict(forecasting_horizon=3)["value"].to_numpy()
 
-        f_vw = _make_forecaster()
-        f_vw.set_fit_request(vintage_weight=True)
-        f_vw.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+        f_vw = _make_forecaster(vintage_weighter=vw)
+        f_vw.fit(reduction_data, forecasting_horizon=3)
         pred_vw = f_vw.predict(forecasting_horizon=3)["value"].to_numpy()
 
-        f_both = _make_forecaster()
-        f_both.set_fit_request(time_weight=True, vintage_weight=True)
-        f_both.fit(
-            reduction_data,
-            forecasting_horizon=3,
-            time_weight=linear_weight_fn,
-            vintage_weight=vw_fn,
-        )
+        f_both = _make_forecaster(time_weighter=LinearDecayWeighter(), vintage_weighter=vw)
+        f_both.fit(reduction_data, forecasting_horizon=3)
         pred_both = f_both.predict(forecasting_horizon=3)["value"].to_numpy()
 
-        differs_from_tw = not np.allclose(pred_both, pred_tw)
-        differs_from_vw = not np.allclose(pred_both, pred_vw)
-        assert differs_from_tw or differs_from_vw
+        assert not np.allclose(pred_both, pred_tw) or not np.allclose(pred_both, pred_vw)
 
     def test_zero_vintage_weight_raises(self, reduction_data):
-        """All-zero vintage_weight should raise ValueError."""
-
-        def zero_vw(time: pl.Series) -> pl.Series:
-            return pl.Series("w", [0.0] * len(time), dtype=pl.Float64)
-
-        f = _make_forecaster()
-        f.set_fit_request(vintage_weight=True)
+        """All-zero vintage_weighter should raise ValueError."""
+        f = _make_forecaster(vintage_weighter=LookupWeighter(mapping={}, default=0.0))
         with pytest.raises(ValueError, match="zero"):
-            f.fit(reduction_data, forecasting_horizon=3, vintage_weight=zero_vw)
+            f.fit(reduction_data, forecasting_horizon=3)
 
 
-class TestVintageWeightDirectStrategies:
-    """Tests for vintage_weight with different reduction strategies."""
+class TestVintageWeighterDirectStrategies:
+    """Tests for vintage_weighter with different reduction strategies."""
 
     @pytest.mark.parametrize("strategy", ["multi-output", "direct"])
-    def test_vintage_weight_with_strategy(self, reduction_data, strategy):
-        """vintage_weight should work with each reduction strategy."""
-
-        def vw_fn(time: pl.Series) -> pl.Series:
-            n = len(time)
-            return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
-
-        f = PointReductionForecaster(estimator=LinearRegression(), reduction_strategy=strategy)
-        f.set_fit_request(vintage_weight=True)
-        f.fit(reduction_data, forecasting_horizon=3, vintage_weight=vw_fn)
+    def test_vintage_weighter_with_strategy(self, reduction_data, strategy):
+        """vintage_weighter should work with each reduction strategy."""
+        f = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy=strategy,
+            vintage_weighter=_increasing_table(reduction_data),
+        )
+        f.fit(reduction_data, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=3)
         assert isinstance(result, pl.DataFrame)
         assert len(result) == 3

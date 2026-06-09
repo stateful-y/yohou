@@ -2013,11 +2013,17 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ):
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.average = average
         self.zero_division = zero_division
