@@ -185,7 +185,7 @@ def _(ProductWeighter, ExponentialDecayWeighter, pl, plot_time_weight, SeasonalE
     _times = y_train.get_column("time")
     weight_df_composed = pl.DataFrame({
         "time": _times,
-        "time_weight": composed_fn(_times).to_list(),
+        "time_weight": composed_fn.compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df_composed, title="Composed: Exponential Decay + Seasonal Emphasis")
 
@@ -347,11 +347,9 @@ def _(
         _fc = PointReductionForecaster(
             estimator=Ridge(),
             feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            time_weighter=_wfn,
         )
-        _fit_kwargs = {"forecasting_horizon": forecasting_horizon}
-        if _wfn is not None:
-            _fit_kwargs["time_weight"] = _wfn
-        _fc.fit(y_train, **_fit_kwargs)
+        _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
         _y_preds[_label] = _fc.predict(forecasting_horizon=forecasting_horizon)
 
     plot_score_summary(

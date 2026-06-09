@@ -130,7 +130,7 @@ def _(mo):
 @app.cell
 def _(ExponentialDecayWeighter, plot_time_weight, y_test):
     w_exp = ExponentialDecayWeighter(half_life=6)
-    _weights_df = y_test.select("time").with_columns(w_exp(y_test["time"]).alias("time_weight"))
+    _weights_df = y_test.select("time").with_columns(w_exp.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Exponential Decay (half_life=6)")
     return (w_exp,)
 
@@ -159,7 +159,7 @@ def _(mo):
 @app.cell
 def _(LinearDecayWeighter, plot_time_weight, y_test):
     w_lin = LinearDecayWeighter(max_steps=None)
-    _weights_df = y_test.select("time").with_columns(w_lin(y_test["time"]).alias("time_weight"))
+    _weights_df = y_test.select("time").with_columns(w_lin.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Linear Decay (full range)")
     return (w_lin,)
 
@@ -185,7 +185,7 @@ def _(mo):
 @app.cell
 def _(plot_time_weight, SeasonalEmphasisWeighter, y_test):
     w_season = SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)
-    _weights_df = y_test.select("time").with_columns(w_season(y_test["time"]).alias("time_weight"))
+    _weights_df = y_test.select("time").with_columns(w_season.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Seasonal Emphasis (period=12, emphasis=3x)")
 
 
@@ -211,7 +211,7 @@ def _(
         ExponentialDecayWeighter(half_life=6),
         SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0),
     ])
-    _weights_df = y_test.select("time").with_columns(w_composed(y_test["time"]).alias("time_weight"))
+    _weights_df = y_test.select("time").with_columns(w_composed.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Composed: Exponential + Seasonal")
     return (w_composed,)
 

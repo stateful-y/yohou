@@ -450,8 +450,8 @@ def _(ExponentialDecayWeighter, LinearDecayWeighter, pl, y_train):
     _exp_fn = ExponentialDecayWeighter(half_life=24)
     _lin_fn = LinearDecayWeighter()
 
-    exp_weight_df = pl.DataFrame({"time": _times, "time_weight": _exp_fn(_times)})
-    lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn(_times)})
+    exp_weight_df = pl.DataFrame({"time": _times, "time_weight": _exp_fn.compute_weights(_times)})
+    lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn.compute_weights(_times)})
     return exp_weight_df, lin_weight_df
 
 

@@ -921,7 +921,7 @@ def _(
         "seasonal": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
     }
     _weights_df = y_train.select("time").with_columns([
-        pl.Series(f"time_weight__{name}", fn(y_train["time"]).to_list()) for name, fn in _fns.items()
+        pl.Series(f"time_weight__{name}", fn.compute_weights(y_train["time"]).to_list()) for name, fn in _fns.items()
     ])
     plot_time_weight(
         _weights_df,
