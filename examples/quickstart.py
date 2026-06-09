@@ -14,7 +14,29 @@ __gallery__ = {
     "description": "Comprehensive end-to-end tour of yohou beyond the Getting Started tutorials, covering data loading, baseline forecasting, preprocessing pipelines, decomposition, cross-validation search, and interval prediction.",
     "category": "tutorial",
     "section": "getting-started",
-    "api_references": ["DecompositionPipeline", "FeaturePipeline", "FourierSeasonalityForecaster", "GridSearchCV", "LocalPanelForecaster", "LogTransformer", "MeanSquaredError", "PointReductionForecaster", "PolynomialTrendForecaster", "RandomizedSearchCV", "SeasonalDifferencing", "SeasonalNaive", "SplitConformalForecaster", "compose_weights", "inspect_panel", "plot_calibration", "plot_cv_results_scatter", "plot_score_per_vintage", "plot_score_time_series", "plot_splits", "plot_time_weight"],
+    "api_references": [
+        "DecompositionPipeline",
+        "FeaturePipeline",
+        "FourierSeasonalityForecaster",
+        "GridSearchCV",
+        "LocalPanelForecaster",
+        "LogTransformer",
+        "MeanSquaredError",
+        "PointReductionForecaster",
+        "PolynomialTrendForecaster",
+        "RandomizedSearchCV",
+        "SeasonalDifferencing",
+        "SeasonalNaive",
+        "SplitConformalForecaster",
+        "ProductWeighter",
+        "inspect_panel",
+        "plot_calibration",
+        "plot_cv_results_scatter",
+        "plot_score_per_vintage",
+        "plot_score_time_series",
+        "plot_splits",
+        "plot_time_weight",
+    ],
 }
 app = marimo.App(width="medium")
 
@@ -80,10 +102,10 @@ def _():
     )
     from yohou.utils.panel import inspect_panel
     from yohou.utils.weighting import (
-        compose_weights,
-        exponential_decay_weight,
-        linear_decay_weight,
-        seasonal_emphasis_weight,
+        ExponentialDecayWeighter,
+        LinearDecayWeighter,
+        ProductWeighter,
+        SeasonalEmphasisWeighter,
     )
 
     return (
@@ -106,14 +128,14 @@ def _():
         SlidingWindowSplitter,
         SplitConformalForecaster,
         clone,
-        compose_weights,
+        ProductWeighter,
         copy,
-        exponential_decay_weight,
+        ExponentialDecayWeighter,
         fetch_dominick,
         fetch_tourism_monthly,
         go,
         inspect_panel,
-        linear_decay_weight,
+        LinearDecayWeighter,
         pl,
         plot_calibration,
         plot_cv_results_scatter,
@@ -124,7 +146,7 @@ def _():
         plot_score_per_vintage,
         plot_score_time_series,
         randint,
-        seasonal_emphasis_weight,
+        SeasonalEmphasisWeighter,
         train_test_split,
         uniform,
     )
@@ -877,26 +899,26 @@ def _(mo):
 
     | Function | Effect |
     |----------|--------|
-    | `exponential_decay_weight(half_life=…)` | Recent data gets exponentially more weight |
-    | `linear_decay_weight(max_steps=…)` | Linear ramp from 0 → 1 |
-    | `seasonal_emphasis_weight(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
-    | `compose_weights(fn1, fn2, …)` | Multiply multiple weight functions element-wise |
+    | `ExponentialDecayWeighter(half_life=…)` | Recent data gets exponentially more weight |
+    | `LinearDecayWeighter(max_steps=…)` | Linear ramp from 0 → 1 |
+    | `SeasonalEmphasisWeighter(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
+    | `ProductWeighter([fn1, fn2, …])` | Multiply multiple weight functions element-wise |
     """)
 
 
 @app.cell
 def _(
-    exponential_decay_weight,
-    linear_decay_weight,
+    ExponentialDecayWeighter,
+    LinearDecayWeighter,
     pl,
     plot_time_weight,
-    seasonal_emphasis_weight,
+    SeasonalEmphasisWeighter,
     y_train,
 ):
     _fns = {
-        "exponential": exponential_decay_weight(half_life=15),
-        "linear": linear_decay_weight(max_steps=None),
-        "seasonal": seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
+        "exponential": ExponentialDecayWeighter(half_life=15),
+        "linear": LinearDecayWeighter(max_steps=None),
+        "seasonal": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
     }
     _weights_df = y_train.select("time").with_columns([
         pl.Series(f"time_weight__{name}", fn(y_train["time"]).to_list()) for name, fn in _fns.items()
@@ -915,28 +937,26 @@ def _(mo):
     mo.md(r"""
     ### Composing weights & metadata routing
 
-    `compose_weights(fn1, fn2, …)` multiplies weight vectors element-wise, so
+    `ProductWeighter([fn1, fn2, …])` multiplies weight vectors element-wise, so
     recent *and* seasonally prominent timesteps are emphasised simultaneously:
 
     ```python
-    _tw = compose_weights(
-        exponential_decay_weight(half_life=20),   # recency
-        seasonal_emphasis_weight(seasonality=12, emphasis=3.0),  # season
-    )
+    _tw = ProductWeighter([
+        ExponentialDecayWeighter(half_life=20),   # recency
+        SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),  # season
+    ])
     ```
 
-    Yohou uses **sklearn metadata routing** to thread `time_weight` through
-    pipelines without touching every intermediate step.
-    Opt the forecaster in with `.set_fit_request(time_weight=True)`, then
-    pass the weight as a keyword argument to `.fit()`:
+    Weighting is configured on the forecaster constructor via the
+    `time_weighter` parameter, so its settings are tunable by search:
 
     ```python
-    forecaster.set_fit_request(time_weight=True)
-    forecaster.fit(y_train, forecasting_horizon=h, time_weight=_tw)
+    forecaster = PointReductionForecaster(..., time_weighter=_tw)
+    forecaster.fit(y_train, forecasting_horizon=h)
     ```
 
-    The framework converts `time_weight` to sklearn's `sample_weight` internally
-    before passing it to the underlying estimator.
+    The framework converts the weighter's per-timestep weights to sklearn's
+    `sample_weight` internally before passing it to the underlying estimator.
     """)
 
 
@@ -948,18 +968,18 @@ def _(
     PointReductionForecaster,
     Ridge,
     SeasonalDifferencing,
-    compose_weights,
-    exponential_decay_weight,
+    ProductWeighter,
+    ExponentialDecayWeighter,
     forecasting_horizon,
     scorer,
-    seasonal_emphasis_weight,
+    SeasonalEmphasisWeighter,
     y_test,
     y_train,
 ):
-    _tw = compose_weights(
-        exponential_decay_weight(half_life=20),
-        seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
-    )
+    _tw = ProductWeighter([
+        ExponentialDecayWeighter(half_life=20),
+        SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
+    ])
 
     weighted_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=10),
@@ -970,9 +990,10 @@ def _(
         feature_transformer=FeaturePipeline([
             ("lag", LagTransformer(lag=[1, 2, 3])),
         ]),
-    ).set_fit_request(time_weight=True)
+        time_weighter=_tw,
+    )
 
-    weighted_forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, time_weight=_tw)
+    weighted_forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_weighted = weighted_forecaster.predict(forecasting_horizon=forecasting_horizon)
     mae_weighted = scorer.score(y_test, y_pred_weighted)
     print(f"Time-weighted MAE: {mae_weighted:.2f}")

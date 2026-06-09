@@ -14,7 +14,7 @@ __gallery__ = {
     "description": "Apply exponential decay, linear decay, and seasonal emphasis weighting to forecast evaluation, prioritising recent or periodic time steps.",
     "category": "how-to",
     "section": "evaluation-search",
-    "companion": "/pages/how-to/time-weighting/"
+    "companion": "/pages/how-to/time-weighting/",
 }
 app = marimo.App(width="medium")
 
@@ -60,10 +60,10 @@ def _():
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
     from yohou.utils.weighting import (
-        compose_weights,
-        exponential_decay_weight,
-        linear_decay_weight,
-        seasonal_emphasis_weight,
+        ExponentialDecayWeighter,
+        LinearDecayWeighter,
+        ProductWeighter,
+        SeasonalEmphasisWeighter,
     )
 
     return (
@@ -71,17 +71,17 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        compose_weights,
+        ProductWeighter,
         deepcopy,
-        exponential_decay_weight,
+        ExponentialDecayWeighter,
         fetch_dominick,
         fetch_tourism_monthly,
-        linear_decay_weight,
+        LinearDecayWeighter,
         plot_score_per_vintage,
         plot_score_time_series,
         plot_time_series,
         plot_time_weight,
-        seasonal_emphasis_weight,
+        SeasonalEmphasisWeighter,
         train_test_split,
     )
 
@@ -128,8 +128,8 @@ def _(mo):
 
 
 @app.cell
-def _(exponential_decay_weight, plot_time_weight, y_test):
-    w_exp = exponential_decay_weight(half_life=6)
+def _(ExponentialDecayWeighter, plot_time_weight, y_test):
+    w_exp = ExponentialDecayWeighter(half_life=6)
     _weights_df = y_test.select("time").with_columns(w_exp(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Exponential Decay (half_life=6)")
     return (w_exp,)
@@ -140,7 +140,7 @@ def _(MeanAbsoluteError, mo, w_exp, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
     _unweighted = float(_scorer.score(y_test, y_pred))
-    _weighted = float(_scorer.score(y_test, y_pred, time_weight=w_exp))
+    _weighted = float(_scorer.set_params(time_weighter=w_exp).score(y_test, y_pred))
     mo.md(f"**Unweighted MAE**: {_unweighted:.2f}\n\n**Exponential-weighted MAE**: {_weighted:.2f}")
 
 
@@ -149,7 +149,7 @@ def _(mo):
     mo.md(r"""
     ## 3. Linear Decay Weight
 
-    [`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/) assigns weights that decrease linearly from the most
+    [`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/) assigns weights that decrease linearly from the most
     recent observation to the oldest. The optional `max_steps` parameter limits
     how far back the decay extends; when set to `None`, the full test range
     is used.
@@ -157,8 +157,8 @@ def _(mo):
 
 
 @app.cell
-def _(linear_decay_weight, plot_time_weight, y_test):
-    w_lin = linear_decay_weight(max_steps=None)
+def _(LinearDecayWeighter, plot_time_weight, y_test):
+    w_lin = LinearDecayWeighter(max_steps=None)
     _weights_df = y_test.select("time").with_columns(w_lin(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Linear Decay (full range)")
     return (w_lin,)
@@ -168,7 +168,7 @@ def _(linear_decay_weight, plot_time_weight, y_test):
 def _(MeanAbsoluteError, mo, w_lin, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _weighted_lin = float(_scorer.score(y_test, y_pred, time_weight=w_lin))
+    _weighted_lin = float(_scorer.set_params(time_weighter=w_lin).score(y_test, y_pred))
     mo.md(f"**Linear-weighted MAE**: {_weighted_lin:.2f}")
 
 
@@ -183,8 +183,8 @@ def _(mo):
 
 
 @app.cell
-def _(plot_time_weight, seasonal_emphasis_weight, y_test):
-    w_season = seasonal_emphasis_weight(seasonality=12, emphasis=3.0)
+def _(plot_time_weight, SeasonalEmphasisWeighter, y_test):
+    w_season = SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)
     _weights_df = y_test.select("time").with_columns(w_season(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Seasonal Emphasis (period=12, emphasis=3x)")
 
@@ -201,16 +201,16 @@ def _(mo):
 
 @app.cell
 def _(
-    compose_weights,
-    exponential_decay_weight,
+    ProductWeighter,
+    ExponentialDecayWeighter,
     plot_time_weight,
-    seasonal_emphasis_weight,
+    SeasonalEmphasisWeighter,
     y_test,
 ):
-    w_composed = compose_weights(
-        exponential_decay_weight(half_life=6),
-        seasonal_emphasis_weight(seasonality=12, emphasis=2.0),
-    )
+    w_composed = ProductWeighter([
+        ExponentialDecayWeighter(half_life=6),
+        SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0),
+    ])
     _weights_df = y_test.select("time").with_columns(w_composed(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Composed: Exponential + Seasonal")
     return (w_composed,)
@@ -220,7 +220,7 @@ def _(
 def _(MeanAbsoluteError, mo, w_composed, y_pred, y_test, y_train):
     _scorer = MeanAbsoluteError()
     _scorer.fit(y_train)
-    _weighted_comp = float(_scorer.score(y_test, y_pred, time_weight=w_composed))
+    _weighted_comp = float(_scorer.set_params(time_weighter=w_composed).score(y_test, y_pred))
     mo.md(f"**Composed-weighted MAE**: {_weighted_comp:.2f}")
 
 
@@ -240,13 +240,13 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    compose_weights,
-    exponential_decay_weight,
+    ProductWeighter,
+    ExponentialDecayWeighter,
     fetch_dominick,
-    linear_decay_weight,
+    LinearDecayWeighter,
     mo,
     plot_score_time_series,
-    seasonal_emphasis_weight,
+    SeasonalEmphasisWeighter,
     train_test_split,
 ):
     _full = fetch_dominick().frame
@@ -275,25 +275,24 @@ def _(
     _y_pred_p = _fc_p.predict(forecasting_horizon=_horizon_p)
 
     _weights = [
-        ("Exponential Decay (half_life=10)", exponential_decay_weight(half_life=10)),
-        ("Linear Decay", linear_decay_weight(max_steps=None)),
-        ("Seasonal Emphasis (period=7, 3×)", seasonal_emphasis_weight(seasonality=7, emphasis=3.0)),
+        ("Exponential Decay (half_life=10)", ExponentialDecayWeighter(half_life=10)),
+        ("Linear Decay", LinearDecayWeighter(max_steps=None)),
+        ("Seasonal Emphasis (period=7, 3×)", SeasonalEmphasisWeighter(seasonality=7, emphasis=3.0)),
         (
             "Composed: Exponential + Seasonal",
-            compose_weights(
-                exponential_decay_weight(half_life=10),
-                seasonal_emphasis_weight(seasonality=7, emphasis=2.0),
-            ),
+            ProductWeighter([
+                ExponentialDecayWeighter(half_life=10),
+                SeasonalEmphasisWeighter(seasonality=7, emphasis=2.0),
+            ]),
         ),
     ]
 
     _plots = []
     for _label, _w in _weights:
         _fig = plot_score_time_series(
-            MeanAbsoluteError(),
+            MeanAbsoluteError(time_weighter=_w),
             _y_test_p,
             _y_pred_p,
-            time_weight=_w,
             title=f"Panel MAE - {_label}",
         )
         _plots.append(_fig)
