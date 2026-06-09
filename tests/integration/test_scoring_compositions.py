@@ -40,7 +40,7 @@ from yohou.metrics import (
 from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import LagTransformer
 from yohou.stationarity import PolynomialTrendForecaster
-from yohou.utils.weighting import exponential_decay_weight, linear_decay_weight
+from yohou.utils.weighting import ExponentialDecayWeighter, LinearDecayWeighter, TableWeighter
 
 
 @pytest.mark.integration
@@ -591,11 +591,10 @@ class TestTimeWeighting:
         score_unweighted = scorer_unweighted.score(y_test, y_pred_modified)
 
         # Fit scorer and score with exponential decay (recent emphasis)
-        time_weight = exponential_decay_weight(half_life=3)
+        time_weight = ExponentialDecayWeighter(half_life=3)
         scorer_weighted = MeanAbsoluteError()
         scorer_weighted.fit(y_train)
-        scorer_weighted.set_score_request(time_weight=True)
-        score_weighted = scorer_weighted.score(y_test, y_pred_modified, time_weight=time_weight)
+        score_weighted = scorer_weighted.set_params(time_weighter=time_weight).score(y_test, y_pred_modified)
 
         # With recent-emphasis weight, score should be LOWER (better)
         # because recent predictions (which are good) are weighted more
@@ -616,11 +615,10 @@ class TestTimeWeighting:
         y_test = y[80:90]
 
         # Fit scorer and score with linear decay weight
-        time_weight = linear_decay_weight()
+        time_weight = LinearDecayWeighter()
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(time_weight=True)
-        score = scorer.score(y_test, y_pred, time_weight=time_weight)
+        score = scorer.set_params(time_weighter=time_weight).score(y_test, y_pred)
 
         assert np.isfinite(score), f"Score should be finite, got {score}"
 
@@ -644,15 +642,11 @@ class TestTimeWeighting:
         # = (2 + 6 + 12 + 20 + 30) / 15
         # = 70 / 15 = 4.6667
 
-        # Fit scorer and score with time_weight
-        def weight_fn(time):
-            # Return polars Series, not numpy array
-            return pl.Series("weight", weights)
-
-        scorer = MeanAbsoluteError()
+        # Fit scorer and score with a table-backed time weighter
+        weight_frame = pl.DataFrame({"time": y_true["time"], "weight": weights})
+        scorer = MeanAbsoluteError(time_weighter=TableWeighter(frame=weight_frame, on="time"))
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-        score = scorer.score(y_true, y_pred, time_weight=weight_fn)
+        score = scorer.score(y_true, y_pred)
 
         assert np.abs(score - expected) < 1e-6, (
             f"Weighted MAE should match analytical: expected={expected}, got={score}"
@@ -681,11 +675,10 @@ class TestTimeWeighting:
         y_test = y[80:90]
 
         # Fit scorer and score with time weight
-        time_weight = exponential_decay_weight(half_life=3)
+        time_weight = ExponentialDecayWeighter(half_life=3)
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(time_weight=True)
-        score = scorer.score(y_test, y_pred, time_weight=time_weight)
+        score = scorer.set_params(time_weighter=time_weight).score(y_test, y_pred)
 
         assert np.isfinite(score), f"Score should be finite, got {score}"
 
@@ -714,13 +707,12 @@ class TestTimeWeighting:
         y_pred_b = y_pred_base.with_columns([(pl.col("value") + errors_b).alias("value")])
 
         # With recent-emphasis weight (exponential decay), scenario B should have higher score (worse)
-        time_weight = exponential_decay_weight(half_life=2)
+        time_weight = ExponentialDecayWeighter(half_life=2)
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(time_weight=True)
 
-        score_a = scorer.score(y_test, y_pred_a, time_weight=time_weight)
-        score_b = scorer.score(y_test, y_pred_b, time_weight=time_weight)
+        score_a = scorer.set_params(time_weighter=time_weight).score(y_test, y_pred_a)
+        score_b = scorer.set_params(time_weighter=time_weight).score(y_test, y_pred_b)
 
         # Scenario B (late errors) should have higher weighted score (worse)
         assert score_b > score_a, (

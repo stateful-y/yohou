@@ -7,6 +7,7 @@ import polars as pl
 import pytest
 
 from yohou.metrics import MeanAbsoluteError
+from yohou.utils.weighting import LookupWeighter
 
 
 @pytest.fixture()
@@ -177,7 +178,7 @@ class TestStepWeightFilter:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0}, default=0.0)).score(y_true, y_pred)
 
         # Only step-1 errors: 1, 1, 1 → mean=1.0
         assert isinstance(result, float)
@@ -187,7 +188,7 @@ class TestStepWeightFilter:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={2: 1.0, "*": 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={2: 1.0}, default=0.0)).score(y_true, y_pred)
 
         # Only step-2 errors: 2, 2, 2 → mean=2.0
         assert isinstance(result, float)
@@ -202,7 +203,9 @@ class TestStepWeightFilter:
 
         mae_filtered = MeanAbsoluteError()
         mae_filtered.fit(y_train)
-        result_filtered = mae_filtered.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
+        result_filtered = mae_filtered.set_params(
+            step_weighter=LookupWeighter(mapping={1: 1.0, 2: 1.0}, default=1.0)
+        ).score(y_true, y_pred)
 
         np.testing.assert_allclose(result_all, result_filtered, atol=1e-10)
 
@@ -218,7 +221,7 @@ class TestStepWeightFilter:
         })
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0}, default=0.0)).score(y_true, y_pred)
         # No forecasting_step -> step_weight ignored -> scores all rows
         assert isinstance(result, float)
         np.testing.assert_allclose(result, (1.0 + 2.0 + 2.0) / 3, atol=1e-10)
@@ -228,7 +231,7 @@ class TestStepWeightFilter:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError(aggregation_method="vintagewise")
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0}, default=0.0)).score(y_true, y_pred)
 
         assert isinstance(result, pl.DataFrame)
         assert "forecasting_step" in result.columns
@@ -241,7 +244,7 @@ class TestStepWeightFilter:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 1.0, "*": 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0}, default=0.0)).score(y_true, y_pred)
         np.testing.assert_allclose(result, 1.0, atol=1e-10)
 
 
@@ -406,11 +409,8 @@ class TestCollapseVintageDimensionWithMeta:
         })
         scorer = MeanAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
         scorer.fit(y_true)
-        scorer.set_score_request(vintage_weight=True)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight={vt1: 2.0, vt2: 1.0},
+        result = scorer.set_params(vintage_weighter=LookupWeighter(mapping={vt1: 2.0, vt2: 1.0}, default=1.0)).score(
+            y_true, y_pred
         )
         assert isinstance(result, pl.DataFrame)
 
@@ -428,10 +428,7 @@ class TestCollapseVintageDimensionWithMeta:
         })
         scorer = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
         scorer.fit(y_true)
-        scorer.set_score_request(vintage_weight=True)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight={vt1: 2.0, vt2: 1.0},
+        result = scorer.set_params(vintage_weighter=LookupWeighter(mapping={vt1: 2.0, vt2: 1.0}, default=1.0)).score(
+            y_true, y_pred
         )
         assert isinstance(result, float)

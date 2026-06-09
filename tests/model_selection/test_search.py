@@ -1,5 +1,7 @@
 """Systematic tests for GridSearchCV and RandomizedSearchCV using check generators."""
 
+from datetime import datetime, timedelta
+
 import numpy as np
 import pytest
 from scipy.stats import randint
@@ -1064,3 +1066,49 @@ class TestSearchForecasterHas:
             },
         )()
         assert check_fn(mock_search) is False
+
+
+class TestWeighterTuning:
+    """GridSearchCV can tune a forecaster's estimator-based weighter parameters."""
+
+    @staticmethod
+    def _series():
+        import polars as pl
+
+        n = 40
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        return pl.DataFrame({"time": times, "value": [float(i) + (i % 5) for i in range(n)]})
+
+    def test_grid_search_over_time_weighter_params(self):
+        """Nested weighter params (half_life, scale) are searchable via the `__` syntax."""
+        from yohou.point import PointReductionForecaster
+        from yohou.utils.weighting import ExponentialDecayWeighter
+
+        y = self._series()
+        fc = PointReductionForecaster(time_weighter=ExponentialDecayWeighter(half_life=7))
+        search = GridSearchCV(
+            fc,
+            param_grid={"time_weighter__half_life": [3, 7, 30], "time_weighter__scale": ["elapsed", "position"]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(y, forecasting_horizon=1)
+        assert search.best_params_["time_weighter__half_life"] in (3, 7, 30)
+        assert search.best_params_["time_weighter__scale"] in ("elapsed", "position")
+
+    def test_grid_search_over_weighter_instances(self):
+        """Whole weighter instances (including None) can be searched."""
+        from yohou.point import PointReductionForecaster
+        from yohou.utils.weighting import ExponentialDecayWeighter, LinearDecayWeighter
+
+        y = self._series()
+        fc = PointReductionForecaster()
+        search = GridSearchCV(
+            fc,
+            param_grid={"time_weighter": [ExponentialDecayWeighter(7), LinearDecayWeighter(3), None]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+            refit=True,
+        )
+        search.fit(y, forecasting_horizon=1)
+        assert "time_weighter" in search.best_params_

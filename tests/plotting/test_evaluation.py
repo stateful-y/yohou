@@ -22,6 +22,7 @@ from yohou.plotting import (
     plot_score_summary,
     plot_score_time_series,
 )
+from yohou.utils.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
 
 from .conftest import assert_figure_valid, assert_layout, visible_legend_names
 
@@ -832,14 +833,15 @@ class TestPlotScoreTimeSeriesPanel:
 
     def test_panel_with_step_and_vintage_weight(self, panel_forecast):
         """Panel score time series forwards step_weight and vintage_weight."""
-        scorer = MeanAbsoluteError()
+        scorer = MeanAbsoluteError(
+            step_weighter=LookupWeighter(mapping={}, default=1.0),
+            vintage_weighter=LookupWeighter(mapping={}, default=1.0),
+        )
         fig = plot_score_time_series(
             scorer,
             panel_forecast["y_truth"],
             panel_forecast["y_pred"],
             groups=["value"],
-            step_weight=lambda s: pl.Series("w", [1.0] * len(s), dtype=pl.Float64),
-            vintage_weight=lambda v: pl.Series("w", [1.0] * len(v), dtype=pl.Float64),
         )
         assert_figure_valid(fig)
 
@@ -1030,13 +1032,14 @@ class TestPlotScoreTimeSeriesNonPanel:
     def test_non_panel_with_step_and_vintage_weight(self, simple_data):
         """Non-panel score time series forwards step_weight and vintage_weight."""
         y_truth, y_pred = simple_data
-        scorer = MeanAbsoluteError()
+        scorer = MeanAbsoluteError(
+            step_weighter=LookupWeighter(mapping={}, default=1.0),
+            vintage_weighter=LookupWeighter(mapping={}, default=1.0),
+        )
         fig = plot_score_time_series(
             scorer,
             y_truth,
             y_pred,
-            step_weight=lambda s: pl.Series("w", [1.0] * len(s), dtype=pl.Float64),
-            vintage_weight=lambda v: pl.Series("w", [1.0] * len(v), dtype=pl.Float64),
         )
         assert_figure_valid(fig)
 
@@ -1345,13 +1348,8 @@ class TestPlotScoreTimeSeriesTimeWeight:
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         y_truth = pl.DataFrame({"time": dates, "y": [100.0 + i for i in range(91)]})
         y_pred = pl.DataFrame({"time": dates, "y": [102.0 + i for i in range(91)]})
-        scorer = MeanAbsoluteError()
-
-        def linear_weight(y: pl.DataFrame) -> pl.Series:
-            n = len(y)
-            return pl.Series("weight", [float(i + 1) / n for i in range(n)])
-
-        fig = plot_score_time_series(scorer, y_truth, y_pred, time_weight=linear_weight)
+        scorer = MeanAbsoluteError(time_weighter=LinearDecayWeighter())
+        fig = plot_score_time_series(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
     def test_dataframe_time_weight(self):
@@ -1359,9 +1357,9 @@ class TestPlotScoreTimeSeriesTimeWeight:
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
         y_truth = pl.DataFrame({"time": dates, "y": [100.0 + i for i in range(91)]})
         y_pred = pl.DataFrame({"time": dates, "y": [102.0 + i for i in range(91)]})
-        scorer = MeanAbsoluteError()
         tw = pl.DataFrame({"time": dates, "weight": [1.0] * 91})
-        fig = plot_score_time_series(scorer, y_truth, y_pred, time_weight=tw)
+        scorer = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
+        fig = plot_score_time_series(scorer, y_truth, y_pred)
         assert_figure_valid(fig)
 
 
@@ -2082,13 +2080,12 @@ class TestPlotScoreTimeSeriesPanelEdgeCases:
         })
         # time_weight as a DataFrame with uniform weights
         weights = pl.DataFrame({"time": times, "weight": [1.0] * 5})
-        scorer = MeanAbsoluteError()
+        scorer = MeanAbsoluteError(time_weighter=TableWeighter(frame=weights, on="time"))
         fig = plot_score_time_series(
             scorer,
             y_truth,
             y_pred,
             groups=["grp"],
-            time_weight=weights,
         )
         assert isinstance(fig, go.Figure)
         assert len(fig.data) >= 1
