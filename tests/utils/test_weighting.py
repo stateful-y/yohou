@@ -278,3 +278,131 @@ def test_combine_weight_vectors_multiplies_and_normalizes() -> None:
 def test_combine_weight_vectors_all_none_returns_none() -> None:
     """All-None inputs return None."""
     assert combine_weight_vectors(None, None, n=3) is None
+
+
+def test_normalize_weights_zero_sum_raises() -> None:
+    """normalize_weights rejects an all-zero array (cannot scale)."""
+    with pytest.raises(ValueError, match="sum is zero"):
+        normalize_weights(np.array([0.0, 0.0]))
+
+
+def test_combine_weight_vectors_zero_product_raises() -> None:
+    """combine_weight_vectors rejects inputs whose product sums to zero."""
+    with pytest.raises(ValueError, match="sum to zero"):
+        combine_weight_vectors(np.array([1.0, 0.0]), np.array([0.0, 1.0]), n=2)
+
+
+# ---------------------------------------------------------------------------
+# Single-element key short-circuits
+# ---------------------------------------------------------------------------
+
+
+def test_linear_decay_single_key_returns_one() -> None:
+    """A length-1 key yields weight 1.0 (no rank range to decay over)."""
+    weights = LinearDecayWeighter().compute_weights(pl.Series("time", [datetime(2024, 1, 1)])).to_list()
+    assert weights == pytest.approx([1.0])
+
+
+def test_seasonal_emphasis_single_key_returns_one() -> None:
+    """A length-1 key yields weight 1.0 (no phase to emphasize)."""
+    weights = SeasonalEmphasisWeighter(seasonality=7).compute_weights(pl.Series("time", [datetime(2024, 1, 1)]))
+    assert weights.to_list() == pytest.approx([1.0])
+
+
+# ---------------------------------------------------------------------------
+# TableWeighter error/branch paths
+# ---------------------------------------------------------------------------
+
+
+def test_table_weighter_none_frame_raises(times: pl.Series) -> None:
+    """A None frame cannot resolve any weights."""
+    with pytest.raises(ValueError, match="non-None"):
+        TableWeighter(frame=None).compute_weights(times)
+
+
+def test_table_weighter_falls_back_to_weight_column(times: pl.Series) -> None:
+    """When the group column is absent, the generic 'weight' column is used."""
+    frame = pl.DataFrame({"time": times, "weight": [1.0, 2.0, 3.0]})
+    weights = TableWeighter(frame=frame, on="time").compute_weights(times, group_name="B").to_list()
+    assert weights == pytest.approx([1.0, 2.0, 3.0])
+
+
+def test_table_weighter_missing_weight_column_raises(times: pl.Series) -> None:
+    """A frame without a 'weight' column raises for global data."""
+    frame = pl.DataFrame({"time": times, "other": [1.0, 2.0, 3.0]})
+    with pytest.raises(ValueError, match="must have 'weight' column"):
+        TableWeighter(frame=frame, on="time").compute_weights(times)
+
+
+def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
+    """A frame missing both '{group}_weight' and 'weight' raises for panel data."""
+    frame = pl.DataFrame({"time": times, "other": [1.0, 2.0, 3.0]})
+    with pytest.raises(ValueError, match="missing both 'C_weight' and 'weight'"):
+        TableWeighter(frame=frame, on="time").compute_weights(times, group_name="C")
+
+
+# ---------------------------------------------------------------------------
+# ProductWeighter get_params / set_params edge paths
+# ---------------------------------------------------------------------------
+
+
+def test_product_get_params_skips_components_without_get_params() -> None:
+    """Components lacking get_params are skipped when building deep params."""
+
+    class _NoParams:
+        pass
+
+    w = ProductWeighter([_NoParams()])  # type: ignore[list-item]
+    params = w.get_params(deep=True)
+    assert params["weighters"] == w.weighters
+    assert not any(name.startswith("weighters__") for name in params)
+
+
+def test_product_set_params_replaces_weighters_and_own_attr() -> None:
+    """set_params replaces the weighters list and assigns other own params."""
+    w = ProductWeighter([ExponentialDecayWeighter(1)])
+    new = [LinearDecayWeighter(2)]
+    w.set_params(weighters=new, _tag="x")
+    assert w.weighters is new
+    assert w._tag == "x"  # type: ignore[attr-defined]
+
+
+def test_product_set_params_routes_nested() -> None:
+    """Nested weighters__i__param keys are routed to the component."""
+    w = ProductWeighter([ExponentialDecayWeighter(1), LinearDecayWeighter(2)])
+    w.set_params(weighters__0__half_life=9)
+    assert w.weighters[0].half_life == 9
+
+
+def test_product_set_params_nested_with_none_weighters_raises() -> None:
+    """Routing nested params with no weighters list raises."""
+    w = ProductWeighter(None)
+    with pytest.raises(ValueError, match="Cannot set nested"):
+        w.set_params(weighters__0__half_life=9)
+
+
+# ---------------------------------------------------------------------------
+# resolve_weighter_to_array contract checks
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_weighter_to_array_rejects_non_series(times: pl.Series) -> None:
+    """A weighter returning a non-Series is rejected."""
+
+    class _BadType(BaseWeighter):
+        def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+            return np.ones(len(key))  # type: ignore[return-value]
+
+    with pytest.raises(ValueError, match="must return pl.Series"):
+        resolve_weighter_to_array(_BadType(), times)
+
+
+def test_resolve_weighter_to_array_rejects_mismatched_length(times: pl.Series) -> None:
+    """A weighter returning the wrong number of weights is rejected."""
+
+    class _BadLength(BaseWeighter):
+        def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+            return pl.Series([1.0], dtype=pl.Float64)
+
+    with pytest.raises(ValueError, match="expected 3 rows"):
+        resolve_weighter_to_array(_BadLength(), times)

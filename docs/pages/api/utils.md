@@ -62,16 +62,17 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 
 | Name | Description |
 | --- | --- |
-| [`exponential_decay_weight`](generated/yohou.utils.weighting.exponential_decay_weight.md) | Generate exponential decay weights giving more weight to recent times. |
-| [`linear_decay_weight`](generated/yohou.utils.weighting.linear_decay_weight.md) | Generate linear decay weights giving more weight to recent times. |
-| [`seasonal_emphasis_weight`](generated/yohou.utils.weighting.seasonal_emphasis_weight.md) | Generate weights emphasizing specific seasonal positions. |
-| [`compose_weights`](generated/yohou.utils.weighting.compose_weights.md) | Compose multiple weight functions by multiplication. |
-| [`validate_callable_signature`](generated/yohou.utils.weighting.validate_callable_signature.md) | Validate that callable has valid signature for time weighting. |
-| [`normalize_weights`](generated/yohou.utils.weighting.normalize_weights.md) | Normalize weights so they sum to the number of elements. |
-| [`validate_weight_array`](generated/yohou.utils.weighting.validate_weight_array.md) | Validate a resolved weight array for NaN, negatives, infinities, and all-zero. |
-| [`resolve_dict_weights`](generated/yohou.utils.weighting.resolve_dict_weights.md) | Map a ``{key: weight}`` dict to an aligned numpy array. |
+| [`BaseWeighter`](generated/yohou.utils.weighting.BaseWeighter.md) | Base class for time-axis weighter estimators. |
+| [`ExponentialDecayWeighter`](generated/yohou.utils.weighting.ExponentialDecayWeighter.md) | Exponential decay weights giving more weight to recent keys. |
+| [`LinearDecayWeighter`](generated/yohou.utils.weighting.LinearDecayWeighter.md) | Linear decay weights giving more weight to recent keys. |
+| [`SeasonalEmphasisWeighter`](generated/yohou.utils.weighting.SeasonalEmphasisWeighter.md) | Weights emphasizing keys in phase with the most recent seasonal position. |
+| [`LookupWeighter`](generated/yohou.utils.weighting.LookupWeighter.md) | Explicit per-key weights from a mapping. |
+| [`TableWeighter`](generated/yohou.utils.weighting.TableWeighter.md) | DataFrame-driven weights resolved by joining on a key column. |
+| [`ProductWeighter`](generated/yohou.utils.weighting.ProductWeighter.md) | Compose weighters by element-wise multiplication. |
 | [`combine_weight_vectors`](generated/yohou.utils.weighting.combine_weight_vectors.md) | Combine weight vectors multiplicatively and normalize. |
-| [`resolve_weight_to_array`](generated/yohou.utils.weighting.resolve_weight_to_array.md) | Resolve a weight specification (callable, DataFrame, or dict) to a numpy array. |
+| [`normalize_weights`](generated/yohou.utils.weighting.normalize_weights.md) | Normalize weights so they sum to the number of elements. |
+| [`resolve_weighter_to_array`](generated/yohou.utils.weighting.resolve_weighter_to_array.md) | Resolve a weighter to a validated numpy weight array aligned to the key series. |
+| [`validate_weight_array`](generated/yohou.utils.weighting.validate_weight_array.md) | Validate a resolved weight array for NaN, negatives, infinities, and all-zero. |
 
 ### Time intervals
 
