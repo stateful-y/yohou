@@ -61,6 +61,62 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         if bad_cols:
             raise ValueError(f"{method_name}() received data with null or NaN values in columns: {bad_cols}")
 
+    @staticmethod
+    def _to_weights(
+        distances: np.ndarray,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
+        r"""Convert a distance matrix to calibration weights.
+
+        Applies a numerically-stable softmax of negative distances and
+        reserves uniform mass for the (hypothetical) test point over the
+        calibration axis:
+
+        $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}
+        {1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
+
+        Each output row is non-negative and sums to a value strictly less
+        than 1; the remainder ``1 / (1 + \sum_k raw)`` is the mass reserved
+        for the new test point, following the non-exchangeable conformal
+        construction (Barber et al., 2023).
+
+        Parameters
+        ----------
+        distances : numpy.ndarray
+            Distance matrix of shape ``(n_pred, n_calibration)``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Weight matrix of shape ``(n_pred, n_calibration)``.
+
+        """
+        neg_d = -(distances - distances.max(axis=1, keepdims=True))
+        return BaseSimilarity._reserve_mass(np.exp(neg_d))
+
+    @staticmethod
+    def _reserve_mass(
+        raw_weights: np.ndarray,
+    ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
+        r"""Normalize non-negative weights, reserving uniform mass per row.
+
+        Returns ``raw / (\sum_k raw + 1)`` so each row is non-negative and
+        sums to a value strictly less than 1; the remainder is reserved for
+        the test point. Shared by the distance softmax (:meth:`_to_weights`)
+        and the ``CompositeSimilarity`` multiply combination.
+
+        Parameters
+        ----------
+        raw_weights : numpy.ndarray
+            Non-negative weight matrix of shape ``(n_pred, n_calibration)``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Row-normalized weight matrix of the same shape.
+
+        """
+        return raw_weights / (raw_weights.sum(axis=1, keepdims=True) + 1.0)
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 

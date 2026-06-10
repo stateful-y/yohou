@@ -173,17 +173,17 @@ forecaster = SplitConformalForecaster(
 
 ### Temporal Similarity
 
-[`TemporalSimilarity`](/pages/api/generated/yohou.interval.similarity.TemporalSimilarity/)
+[`SeasonalSimilarity`](/pages/api/generated/yohou.interval.similarity.SeasonalSimilarity/)
 captures seasonal patterns by extracting Fourier features (sine and cosine components)
 from timestamps at specified seasonal periods. Predictions at similar seasonal
 positions (for example, all Mondays, or all January observations) receive higher
 calibration weights.
 
 ```python
-from yohou.interval import SplitConformalForecaster, TemporalSimilarity
+from yohou.interval import SplitConformalForecaster, SeasonalSimilarity
 
 forecaster = SplitConformalForecaster(
-    similarity=TemporalSimilarity(seasonalities=[7.0, 365.25]),
+    similarity=SeasonalSimilarity(seasonalities=[7.0, 365.25]),
     calibration_size=100,
 )
 ```
@@ -204,14 +204,14 @@ from yohou.interval import (
     SplitConformalForecaster,
     CompositeSimilarity,
     DistanceSimilarity,
-    TemporalSimilarity,
+    SeasonalSimilarity,
 )
 
 forecaster = SplitConformalForecaster(
     similarity=CompositeSimilarity(
         similarities=[
-            DistanceSimilarity(metric="euclidean"),
-            TemporalSimilarity(seasonalities=[7.0]),
+            ("dist", DistanceSimilarity(metric="euclidean")),
+            ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
         ],
         combination="multiply",
     ),

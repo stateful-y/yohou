@@ -10,7 +10,7 @@ from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks
 from yohou.interval import DistanceSimilarity, SplitConformalForecaster
-from yohou.interval.similarity import TemporalSimilarity
+from yohou.interval.similarity import SeasonalSimilarity
 from yohou.metrics import AbsoluteResidual, Residual
 from yohou.point import SeasonalNaive
 from yohou.testing import _yield_yohou_forecaster_checks
@@ -563,7 +563,7 @@ class TestSplitConformalObserveRewindSimilarity:
         assert len(scf.conformity_scores_) == n_scores
 
     def test_observe_with_temporal_similarity(self):
-        """Test that observe() works with TemporalSimilarity."""
+        """Test that observe() works with SeasonalSimilarity."""
         n = 200
         dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
         np.random.seed(42)
@@ -576,7 +576,7 @@ class TestSplitConformalObserveRewindSimilarity:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteResidual(),
-            similarity=TemporalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonalities=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 

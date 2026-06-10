@@ -2,7 +2,7 @@
 
 from .base import BaseIntervalForecaster, BaseSimilarity
 from .reduction import IntervalReductionForecaster
-from .similarity import CompositeSimilarity, DistanceSimilarity, TemporalSimilarity
+from .similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
 from .split_conformal import SplitConformalForecaster
 
 __all__ = [
@@ -12,5 +12,5 @@ __all__ = [
     "DistanceSimilarity",
     "IntervalReductionForecaster",
     "SplitConformalForecaster",
-    "TemporalSimilarity",
+    "SeasonalSimilarity",
 ]
