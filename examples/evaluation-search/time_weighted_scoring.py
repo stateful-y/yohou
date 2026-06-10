@@ -208,8 +208,8 @@ def _(
     y_test,
 ):
     w_composed = ProductWeighter([
-        ExponentialDecayWeighter(half_life=6),
-        SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0),
+        ("decay", ExponentialDecayWeighter(half_life=6)),
+        ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0)),
     ])
     _weights_df = y_test.select("time").with_columns(w_composed.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Composed: Exponential + Seasonal")
@@ -281,8 +281,8 @@ def _(
         (
             "Composed: Exponential + Seasonal",
             ProductWeighter([
-                ExponentialDecayWeighter(half_life=10),
-                SeasonalEmphasisWeighter(seasonality=7, emphasis=2.0),
+                ("decay", ExponentialDecayWeighter(half_life=10)),
+                ("seasonal", SeasonalEmphasisWeighter(seasonality=7, emphasis=2.0)),
             ]),
         ),
     ]

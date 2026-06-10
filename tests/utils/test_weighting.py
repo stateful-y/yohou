@@ -166,7 +166,7 @@ def test_product_multiplies_components(times: pl.Series) -> None:
     a = ExponentialDecayWeighter(half_life=2)
     b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
     expected = (a.compute_weights(times) * b.compute_weights(times)).to_list()
-    got = ProductWeighter([a, b]).compute_weights(times).to_list()
+    got = ProductWeighter([("a", a), ("b", b)]).compute_weights(times).to_list()
     assert got == pytest.approx(expected)
 
 
@@ -177,20 +177,20 @@ def test_product_empty_raises(times: pl.Series) -> None:
 
 
 def test_product_nested_params_addressable() -> None:
-    """Component params are addressable via weighters__i__param."""
-    w = ProductWeighter([ExponentialDecayWeighter(7), SeasonalEmphasisWeighter(7)])
-    assert "weighters__0__half_life" in w.get_params()
-    w.set_params(weighters__0__half_life=14)
-    assert w.weighters[0].half_life == 14
+    """Component params are addressable via <name>__param (sklearn _BaseComposition)."""
+    w = ProductWeighter([("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))])
+    assert "decay__half_life" in w.get_params(deep=True)
+    w.set_params(decay__half_life=14)
+    assert dict(w.weighters)["decay"].half_life == 14
 
 
 def test_product_clone_roundtrips() -> None:
     """ProductWeighter survives sklearn clone."""
-    w = ProductWeighter([ExponentialDecayWeighter(7), LinearDecayWeighter(3)])
+    w = ProductWeighter([("decay", ExponentialDecayWeighter(7)), ("lin", LinearDecayWeighter(3))])
     c = clone(w)
     assert isinstance(c, ProductWeighter)
-    assert c.weighters[0].half_life == 7
-    assert c.weighters[1].max_steps == 3
+    assert dict(c.weighters)["decay"].half_life == 7
+    assert dict(c.weighters)["lin"].max_steps == 3
 
 
 # ---------------------------------------------------------------------------
@@ -346,39 +346,26 @@ def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_product_get_params_skips_components_without_get_params() -> None:
-    """Components lacking get_params are skipped when building deep params."""
-
-    class _NoParams:
-        pass
-
-    w = ProductWeighter([_NoParams()])  # type: ignore[list-item]
-    params = w.get_params(deep=True)
-    assert params["weighters"] == w.weighters
-    assert not any(name.startswith("weighters__") for name in params)
-
-
-def test_product_set_params_replaces_weighters_and_own_attr() -> None:
-    """set_params replaces the weighters list and assigns other own params."""
-    w = ProductWeighter([ExponentialDecayWeighter(1)])
-    new = [LinearDecayWeighter(2)]
-    w.set_params(weighters=new, _tag="x")
+def test_product_set_params_replaces_weighters_list() -> None:
+    """set_params replaces the whole weighters list."""
+    w = ProductWeighter([("decay", ExponentialDecayWeighter(1))])
+    new = [("lin", LinearDecayWeighter(2))]
+    w.set_params(weighters=new)
     assert w.weighters is new
-    assert w._tag == "x"  # type: ignore[attr-defined]
 
 
 def test_product_set_params_routes_nested() -> None:
-    """Nested weighters__i__param keys are routed to the component."""
-    w = ProductWeighter([ExponentialDecayWeighter(1), LinearDecayWeighter(2)])
-    w.set_params(weighters__0__half_life=9)
-    assert w.weighters[0].half_life == 9
+    """Nested <name>__param keys are routed to the named component."""
+    w = ProductWeighter([("decay", ExponentialDecayWeighter(1)), ("lin", LinearDecayWeighter(2))])
+    w.set_params(decay__half_life=9)
+    assert dict(w.weighters)["decay"].half_life == 9
 
 
-def test_product_set_params_nested_with_none_weighters_raises() -> None:
-    """Routing nested params with no weighters list raises."""
-    w = ProductWeighter(None)
-    with pytest.raises(ValueError, match="Cannot set nested"):
-        w.set_params(weighters__0__half_life=9)
+def test_product_bare_list_rejected(times: pl.Series) -> None:
+    """A bare list (not named tuples) is rejected at compute time."""
+    w = ProductWeighter([ExponentialDecayWeighter(1), LinearDecayWeighter(2)])  # type: ignore[list-item]
+    with pytest.raises(ValueError, match="name, weighter"):
+        w.compute_weights(times)
 
 
 # ---------------------------------------------------------------------------

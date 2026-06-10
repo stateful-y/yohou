@@ -20,7 +20,7 @@ import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
 
-from yohou.utils._compat import Interval, StrOptions
+from yohou.utils._compat import Interval, StrOptions, _BaseComposition
 
 __all__ = [
     "BaseWeighter",
@@ -471,17 +471,22 @@ class TableWeighter(BaseWeighter):
         return pl.Series(weights_np, dtype=pl.Float64).alias("weight")
 
 
-class ProductWeighter(BaseWeighter):
-    """Compose weighters by element-wise multiplication.
+class ProductWeighter(BaseWeighter, _BaseComposition):
+    """Compose named weighters by element-wise multiplication.
 
-    Multiplies the ``compute_weights`` outputs of its components. Component
-    parameters are addressable with integer-indexed nested keys
-    (``weighters__0__half_life``) so composed weightings remain tunable.
+    Multiplies the ``compute_weights`` outputs of its components. Sub-weighters
+    are named ``(name, weighter)`` tuples, so their parameters are addressable
+    as ``<name>__<param>`` (sklearn ``_BaseComposition``) and tunable — e.g.
+    ``time_weighter__decay__half_life`` through a forecaster. This matches
+    every other yohou compositor (``CompositeSimilarity``, ``FeaturePipeline``,
+    ``ColumnForecaster``, the voting ensembles, …).
 
     Parameters
     ----------
-    weighters : list of BaseWeighter
-        Component weighters to multiply. Must be non-empty.
+    weighters : list of (str, BaseWeighter) tuples
+        Named component weighters to multiply, e.g.
+        ``[("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))]``.
+        Must be non-empty.
 
     See Also
     --------
@@ -493,7 +498,10 @@ class ProductWeighter(BaseWeighter):
     >>> import polars as pl
     >>> from datetime import datetime
     >>> times = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
-    >>> w = ProductWeighter([ExponentialDecayWeighter(2), SeasonalEmphasisWeighter(2, 1.5)])
+    >>> w = ProductWeighter([
+    ...     ("decay", ExponentialDecayWeighter(2)),
+    ...     ("seasonal", SeasonalEmphasisWeighter(2, 1.5)),
+    ... ])
     >>> _ = w.compute_weights(times)
 
     """
@@ -502,25 +510,16 @@ class ProductWeighter(BaseWeighter):
         "weighters": [list, None],
     }
 
-    def __init__(self, weighters: list[BaseWeighter] | None = None) -> None:
+    def __init__(self, weighters: list[tuple[str, BaseWeighter]] | None = None) -> None:
         self.weighters = weighters
 
-    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
-        """Compute the product of all component weights for ``key``."""
-        if not self.weighters:
-            raise ValueError("ProductWeighter requires at least one weighter")
-        result = pl.Series(np.ones(len(key)), dtype=pl.Float64)
-        for weighter in self.weighters:
-            result = result * weighter.compute_weights(key, group_name)
-        return result.alias("weight")
-
     def get_params(self, deep: bool = True) -> dict[str, Any]:
-        """Get parameters, including integer-indexed component parameters.
+        """Get parameters, including nested component parameters.
 
         Parameters
         ----------
         deep : bool, default=True
-            If True, include component parameters as ``weighters__{i}__{param}``.
+            If True, include component parameters as ``<name>__<param>``.
 
         Returns
         -------
@@ -528,48 +527,35 @@ class ProductWeighter(BaseWeighter):
             Parameter names mapped to values.
 
         """
-        params: dict[str, Any] = {"weighters": self.weighters}
-        if deep:
-            for i, weighter in enumerate(self.weighters or []):
-                if hasattr(weighter, "get_params"):
-                    for sub_name, sub_val in weighter.get_params(deep=True).items():
-                        params[f"weighters__{i}__{sub_name}"] = sub_val
-        return params
+        return self._get_params("weighters", deep=deep)
 
     def set_params(self, **params: Any) -> ProductWeighter:
-        """Set parameters, routing ``weighters__{i}__{param}`` to components.
+        """Set parameters, routing ``<name>__<param>`` to named sub-weighters.
 
         Parameters
         ----------
         **params : dict
-            Parameters to set. Nested keys ``weighters__{i}__{param}`` are routed
-            to the i-th component weighter.
+            Parameters to set.
 
         Returns
         -------
         self
 
         """
-        nested: dict[int, dict[str, Any]] = {}
-        own: dict[str, Any] = {}
-        for name, value in params.items():
-            if name.startswith("weighters__"):
-                _, idx_str, sub_name = name.split("__", 2)
-                nested.setdefault(int(idx_str), {})[sub_name] = value
-            else:
-                own[name] = value
-
-        if "weighters" in own:
-            self.weighters = own.pop("weighters")
-        for key, value in own.items():
-            setattr(self, key, value)
-        if nested:
-            weighters = self.weighters
-            if weighters is None:
-                raise ValueError("Cannot set nested weighter parameters when `weighters` is None")
-            for idx, sub_params in nested.items():
-                weighters[idx].set_params(**sub_params)
+        self._set_params("weighters", **params)
         return self
+
+    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+        """Compute the product of all component weights for ``key``."""
+        if not self.weighters:
+            raise ValueError("ProductWeighter requires at least one weighter")
+        result = pl.Series(np.ones(len(key)), dtype=pl.Float64)
+        for item in self.weighters:
+            if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
+                raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
+            _name, weighter = item
+            result = result * weighter.compute_weights(key, group_name)
+        return result.alias("weight")
 
 
 def resolve_weighter_to_array(

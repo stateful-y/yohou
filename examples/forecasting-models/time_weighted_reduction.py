@@ -178,8 +178,8 @@ def _(mo):
 @app.cell
 def _(ProductWeighter, ExponentialDecayWeighter, pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
     composed_fn = ProductWeighter([
-        ExponentialDecayWeighter(half_life=365),
-        SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
+        ("decay", ExponentialDecayWeighter(half_life=365)),
+        ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),
     ])
 
     _times = y_train.get_column("time")

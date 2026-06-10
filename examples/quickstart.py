@@ -902,7 +902,7 @@ def _(mo):
     | `ExponentialDecayWeighter(half_life=…)` | Recent data gets exponentially more weight |
     | `LinearDecayWeighter(max_steps=…)` | Linear ramp from 0 → 1 |
     | `SeasonalEmphasisWeighter(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
-    | `ProductWeighter([fn1, fn2, …])` | Multiply multiple weight functions element-wise |
+    | `ProductWeighter([(name, fn1), (name, fn2), …])` | Multiply multiple weight functions element-wise |
     """)
 
 
@@ -937,13 +937,13 @@ def _(mo):
     mo.md(r"""
     ### Composing weights & metadata routing
 
-    `ProductWeighter([fn1, fn2, …])` multiplies weight vectors element-wise, so
+    `ProductWeighter([(name, fn1), (name, fn2), …])` multiplies weight vectors element-wise, so
     recent *and* seasonally prominent timesteps are emphasised simultaneously:
 
     ```python
     _tw = ProductWeighter([
-        ExponentialDecayWeighter(half_life=20),   # recency
-        SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),  # season
+        ("decay", ExponentialDecayWeighter(half_life=20)),         # recency
+        ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),  # season
     ])
     ```
 
@@ -977,8 +977,8 @@ def _(
     y_train,
 ):
     _tw = ProductWeighter([
-        ExponentialDecayWeighter(half_life=20),
-        SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
+        ("decay", ExponentialDecayWeighter(half_life=20)),
+        ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),
     ])
 
     weighted_forecaster = PointReductionForecaster(
