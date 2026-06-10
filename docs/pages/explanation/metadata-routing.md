@@ -1,11 +1,17 @@
 # Metadata Routing
 
-Metadata routing is the mechanism by which parameters like `sample_weight`,
-`coverage_rates`, and `groups` flow from a top-level call (such as
+Metadata routing is the mechanism by which parameters like `coverage_rates` and
+`groups` flow from a top-level call (such as
 [`GridSearchCV.fit()`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/))
 down through nested estimators to the objects that actually use them. Without
 it, there would be no way for a pipeline or search object to know which of its
 child estimators should receive a given parameter.
+
+`sample_weight` also travels through this machinery, but — unlike the parameters
+above — **you never supply it yourself.** A forecaster computes it internally
+from its configured weighters and forwards it to the wrapped estimator. It is an
+internal forwarding detail, not a top-level input. To weight training, configure
+a weighter (see [Weighting](weighting.md)); never route `sample_weight` by hand.
 
 Yohou builds on
 [scikit-learn's metadata routing infrastructure](https://scikit-learn.org/stable/metadata_routing.html),
@@ -29,10 +35,14 @@ is nothing to configure manually.
 The metadata that flows through yohou's estimator hierarchy includes:
 
 - **`sample_weight`**: per-sample training weights handed to a wrapped sklearn
-  estimator's `fit`. A reduction forecaster computes this internally from its
-  `time_weighter`/`vintage_weighter` and forwards it to the estimator (for a
-  `Pipeline` estimator it requests `sample_weight` on the final step). Pipeline
-  transformers and custom consumers can also request it directly.
+  estimator's `fit`. **You never pass this yourself.** A reduction forecaster
+  computes it internally from its `time_weighter`/`vintage_weighter`, then uses
+  the routing machinery to forward it to the wrapped estimator (for a `Pipeline`
+  estimator it requests `sample_weight` on the final step). It appears in this
+  list only because it rides the same infrastructure — as an internal forwarding
+  detail between the forecaster and its estimator, not a parameter a caller
+  supplies. To weight training, configure a weighter (see
+  [Weighting](weighting.md)).
 - **`coverage_rates`**: the list of interval coverage levels, routed to an
   interval forecaster's `predict_interval` (and `fit`).
 - **`groups`**: panel group names, used by `predict`/`observe_predict` to
@@ -63,7 +73,7 @@ the consumer that ultimately uses `sample_weight` in its `fit`.
 | Wrapped sklearn estimator (e.g. `Ridge`) | `fit` | `sample_weight` |
 | [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) | `fit`, `predict_interval` | `coverage_rates` |
 | Panel forecasters | `predict`, `observe_predict` | `groups` |
-| Pipeline transformers / custom consumers | `fit`, `transform` | requested key (e.g. `sample_weight`) |
+| Pipeline transformers / custom consumers | `fit`, `transform` | any requested key |
 
 ### Routers
 
@@ -86,9 +96,13 @@ requested it, sklearn raises an error.
 ```python
 from sklearn.linear_model import Ridge
 
-# A wrapped estimator requests sample_weight in its fit
+# The generic sklearn mechanism: an estimator requests sample_weight in its fit
 estimator = Ridge().set_fit_request(sample_weight=True)
 ```
+
+This is the underlying sklearn mechanism. For `sample_weight` specifically you do
+not write this in yohou — a reduction forecaster sets the request on its wrapped
+estimator internally when it forwards the weights it computed from your weighters.
 
 The request values are:
 
@@ -119,18 +133,18 @@ method.
 ### Aliasing
 
 Aliases let two consumers receive different values for a parameter that shares
-the same name. For example, if two estimators each need a different
-`sample_weight`, the caller can pass them under separate names:
+the same name. For example, if two consumers each need a different `my_metadata`,
+the caller can pass them under separate names:
 
 ```python
-estimator_a.set_fit_request(sample_weight="weight_a")
-estimator_b.set_fit_request(sample_weight="weight_b")
+consumer_a.set_fit_request(my_metadata="meta_a")
+consumer_b.set_fit_request(my_metadata="meta_b")
 
-router.fit(X, y, weight_a=w_a, weight_b=w_b)
+router.fit(X, y, meta_a=value_a, meta_b=value_b)
 ```
 
-The router remaps `weight_a` to `estimator_a`'s `sample_weight` and `weight_b`
-to `estimator_b`'s `sample_weight`.
+The router remaps `meta_a` to `consumer_a`'s `my_metadata` and `meta_b`
+to `consumer_b`'s `my_metadata`.
 
 ## Yohou's Extended Method Registry
 
@@ -172,13 +186,11 @@ router receives a method call with extra parameters, it calls
 `process_routing()` to look up which child requested what and dispatches
 accordingly.
 
-For example, when `GridSearchCV.fit()` is called with `sample_weight=weights`,
-the flow is:
+For example, when `GridSearchCV.fit()` is called with
+`coverage_rates=[0.8, 0.95]`, the flow is:
 
-1. `process_routing(self, "fit", sample_weight=weights)` inspects the routing
-   table.
-2. It finds that the forecaster forwards `fit` metadata to its wrapped estimator,
-   which requested `sample_weight` in `fit`.
+1. `process_routing(self, "fit", coverage_rates=...)` inspects the routing table.
+2. It finds that the interval forecaster requested `coverage_rates` in `fit`.
 3. It returns a dictionary keyed by child name, with each child's parameters
    grouped by method.
 4. The router calls each child's method with the appropriate subset of
@@ -190,17 +202,21 @@ provide it, the child simply does not receive it (no error).
 
 ## Putting It Together
 
-A complete example showing metadata flowing through a search object:
+A complete example showing fit-time weights reaching the estimator — with no
+`sample_weight` ever passed by hand:
 
 ```python
 from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
+from yohou.utils.weighting import ExponentialDecayWeighter
 from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
 
-# The wrapped estimator requests sample_weight in its fit
-estimator = Ridge().set_fit_request(sample_weight=True)
-forecaster = PointReductionForecaster(estimator=estimator)
+# Fit-time weighting is configured with a weighter, not routed as metadata.
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=ExponentialDecayWeighter(half_life=30),
+)
 
 search = GridSearchCV(
     forecaster=forecaster,
@@ -209,20 +225,21 @@ search = GridSearchCV(
     scoring=MeanAbsoluteError(),
 )
 
-# sample_weight flows down to the wrapped estimator's fit()
-search.fit(y=train, forecasting_horizon=7, sample_weight=weights)
+# No sample_weight argument — the forecaster computes it from its time_weighter.
+search.fit(y=train, forecasting_horizon=7)
 ```
 
-The forecaster forwards the `fit` metadata it receives to the wrapped estimator,
-so `sample_weight` reaches `Ridge.fit()` and shapes the learned coefficients.
+On each fit, the forecaster resolves its `time_weighter` into a `sample_weight`
+array, wires the request on its wrapped estimator internally, and forwards the
+weights through the routing machinery so they reach `Ridge.fit()` and shape the
+learned coefficients. The user-facing knob is the weighter on `__init__`; the
+`sample_weight` that travels through routing is produced and consumed entirely
+inside the framework.
 
-If `Ridge().set_fit_request(sample_weight=True)` were omitted, `GridSearchCV`
-would raise an error explaining that `sample_weight` was passed but not
-explicitly requested. This fail-safe ensures metadata never silently disappears.
-
-In practice you rarely hand-pass `sample_weight` here: a forecaster configured
-with a `time_weighter` computes it for you (see [Weighting](weighting.md)). The
-example uses the raw `sample_weight` to show the routing mechanism in isolation.
+This is also why `sample_weight` is never accepted at a top-level `fit()`: there
+is no caller-supplied `sample_weight` to route. Passing one would be a mistake —
+to influence training weights, configure or tune a weighter
+(`time_weighter__half_life`) instead. See [Weighting](weighting.md).
 
 ## Connections
 
