@@ -177,7 +177,7 @@ class ExponentialDecayWeighter(BaseWeighter):
         "scale": [StrOptions({"elapsed", "position"}), None],
     }
 
-    def __init__(self, half_life: int | float | timedelta, scale: str | None = None) -> None:
+    def __init__(self, half_life: int | float | timedelta = 1, scale: str | None = None) -> None:
         self.half_life = half_life
         self.scale = scale
 
@@ -325,7 +325,7 @@ class SeasonalEmphasisWeighter(BaseWeighter):
         "emphasis": [Interval(numbers.Real, 0, None, closed="neither")],
     }
 
-    def __init__(self, seasonality: int | list[int], emphasis: float = 2.0) -> None:
+    def __init__(self, seasonality: int | list[int] = 1, emphasis: float = 2.0) -> None:
         self.seasonality = seasonality
         self.emphasis = emphasis
 
@@ -387,19 +387,20 @@ class LookupWeighter(BaseWeighter):
     """
 
     _parameter_constraints: dict = {
-        "mapping": [dict],
+        "mapping": [dict, None],
         "default": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
-    def __init__(self, mapping: dict, default: float = 1.0) -> None:
+    def __init__(self, mapping: dict | None = None, default: float = 1.0) -> None:
         self.mapping = mapping
         self.default = default
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Compute lookup weights for ``key``."""
         self._validate_params()
-        effective_default = self.mapping.get("*", self.default)
-        lookup = {k: v for k, v in self.mapping.items() if k != "*"}
+        mapping = self.mapping or {}
+        effective_default = mapping.get("*", self.default)
+        lookup = {k: v for k, v in mapping.items() if k != "*"}
         weights = np.array([lookup.get(k, effective_default) for k in key.to_list()], dtype=np.float64)
         return pl.Series(weights, dtype=pl.Float64).alias("weight")
 
@@ -429,17 +430,19 @@ class TableWeighter(BaseWeighter):
     """
 
     _parameter_constraints: dict = {
-        "frame": [pl.DataFrame],
+        "frame": [pl.DataFrame, None],
         "on": [str],
     }
 
-    def __init__(self, frame: pl.DataFrame, on: str = "time") -> None:
+    def __init__(self, frame: pl.DataFrame | None = None, on: str = "time") -> None:
         self.frame = frame
         self.on = on
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Compute join-based weights for ``key``."""
         self._validate_params()
+        if self.frame is None:
+            raise ValueError("TableWeighter requires a non-None `frame` to compute weights")
         key_df = pl.DataFrame({self.on: key})
         joined = key_df.join(self.frame, on=self.on, how="left")
 
@@ -496,10 +499,10 @@ class ProductWeighter(BaseWeighter):
     """
 
     _parameter_constraints: dict = {
-        "weighters": [list],
+        "weighters": [list, None],
     }
 
-    def __init__(self, weighters: list[BaseWeighter]) -> None:
+    def __init__(self, weighters: list[BaseWeighter] | None = None) -> None:
         self.weighters = weighters
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
@@ -527,7 +530,7 @@ class ProductWeighter(BaseWeighter):
         """
         params: dict[str, Any] = {"weighters": self.weighters}
         if deep:
-            for i, weighter in enumerate(self.weighters):
+            for i, weighter in enumerate(self.weighters or []):
                 if hasattr(weighter, "get_params"):
                     for sub_name, sub_val in weighter.get_params(deep=True).items():
                         params[f"weighters__{i}__{sub_name}"] = sub_val
@@ -560,8 +563,12 @@ class ProductWeighter(BaseWeighter):
             self.weighters = own.pop("weighters")
         for key, value in own.items():
             setattr(self, key, value)
-        for idx, sub_params in nested.items():
-            self.weighters[idx].set_params(**sub_params)
+        if nested:
+            weighters = self.weighters
+            if weighters is None:
+                raise ValueError("Cannot set nested weighter parameters when `weighters` is None")
+            for idx, sub_params in nested.items():
+                weighters[idx].set_params(**sub_params)
         return self
 
 
