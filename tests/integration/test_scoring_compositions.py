@@ -40,7 +40,7 @@ from yohou.metrics import (
 from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import LagTransformer
 from yohou.stationarity import PolynomialTrendForecaster
-from yohou.utils.weighting import ExponentialDecayWeighter, LinearDecayWeighter, TableWeighter
+from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter, TableWeighter
 
 
 @pytest.mark.integration

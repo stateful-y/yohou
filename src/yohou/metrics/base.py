@@ -16,11 +16,8 @@ from yohou.metrics._context import ScoringContext
 from yohou.utils import Tags, inspect_panel, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
 from yohou.utils.validation import check_interval_consistency
-from yohou.utils.weighting import (
-    BaseWeighter,
-    normalize_weights,
-    resolve_weighter_to_array,
-)
+from yohou.weighting import BaseWeighter
+from yohou.weighting.weighters import _normalize_weights, _resolve_weighter_to_array
 
 __all__ = [
     "BaseClassProbaScorer",
@@ -558,7 +555,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         For group-uniform weighters (decay, lookup, etc.), zeros are combined
         into a mask and matching rows are removed from ``y_truth``,
         ``y_pred``, and ``context``. For panel-aware weighters (e.g. a
-        :class:`~yohou.utils.weighting.TableWeighter` with per-group weight
+        :class:`~yohou.weighting.weighters.TableWeighter` with per-group weight
         columns), weights are resolved per-group into a ``dict[str, np.ndarray]``
         but NOT used for row pre-filtering. Panel-awareness is detected by
         comparing per-group resolved weights.
@@ -582,14 +579,14 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                 return None
 
             if not has_panel:
-                return resolve_weighter_to_array(weighter, key_series, None, name)
+                return _resolve_weighter_to_array(weighter, key_series, None, name)
 
             # Resolve per-group; detect panel-awareness by comparison.
             result_dict: dict[str, np.ndarray] = {}
             first_arr: np.ndarray | None = None
             uniform = True
             for group_name in panel_groups:
-                arr = resolve_weighter_to_array(weighter, key_series, group_name, name)
+                arr = _resolve_weighter_to_array(weighter, key_series, group_name, name)
                 result_dict[group_name] = arr
                 if first_arr is None:
                     first_arr = arr
@@ -711,7 +708,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             return context
         if context.vintage_time is None:
             return context
-        vw_resolved = resolve_weighter_to_array(
+        vw_resolved = _resolve_weighter_to_array(
             vintage_weighter,
             context.vintage_time,
             None,
@@ -749,13 +746,13 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             """Apply a single normalized weight (array or dict) to scores."""
             if isinstance(w_resolved, dict):
                 for group_name, group_arr in w_resolved.items():
-                    normed = normalize_weights(group_arr)  # ty: ignore[invalid-argument-type]
+                    normed = _normalize_weights(group_arr)  # ty: ignore[invalid-argument-type]
                     tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
                     group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]  # ty: ignore[no-matching-overload]
                     if group_cols:
                         df = _apply_array(df, tiled, group_cols)
             else:
-                normed = normalize_weights(w_resolved)
+                normed = _normalize_weights(w_resolved)
                 tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
                 df = _apply_array(df, tiled, value_cols)
             return df

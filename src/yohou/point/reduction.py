@@ -9,7 +9,7 @@ from sklearn.linear_model import LinearRegression
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 from .base import BasePointForecaster
 
@@ -62,7 +62,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     time_weighter : BaseWeighter or None, default=None
         Per-timestep training-sample weighter (e.g.
-        [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter]).
+        [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter]).
         Its parameters are tunable via search (e.g.
         ``time_weighter__half_life``). If None, samples are unweighted.
     vintage_weighter : BaseWeighter or None, default=None

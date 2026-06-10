@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 
 from yohou.metrics import MeanAbsoluteError
-from yohou.utils.weighting import LookupWeighter
+from yohou.weighting import LookupWeighter
 
 
 @pytest.fixture()

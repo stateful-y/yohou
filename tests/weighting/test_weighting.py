@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 from sklearn.base import clone
 
-from yohou.utils.weighting import (
+from yohou.weighting import (
     BaseWeighter,
     CompositeWeighter,
     ExponentialDecayWeighter,
@@ -17,10 +17,12 @@ from yohou.utils.weighting import (
     LookupWeighter,
     SeasonalEmphasisWeighter,
     TableWeighter,
-    combine_weight_vectors,
-    normalize_weights,
-    resolve_weighter_to_array,
-    validate_weight_array,
+)
+from yohou.weighting.weighters import (
+    _combine_weight_vectors,
+    _normalize_weights,
+    _resolve_weighter_to_array,
+    _validate_weight_array,
 )
 
 
@@ -227,13 +229,13 @@ def test_base_weighter_is_abstract() -> None:
 
 
 # ---------------------------------------------------------------------------
-# resolve_weighter_to_array + validation helpers
+# _resolve_weighter_to_array + validation helpers
 # ---------------------------------------------------------------------------
 
 
 def test_resolve_weighter_to_array_validates(times: pl.Series) -> None:
-    """resolve_weighter_to_array returns a validated numpy array."""
-    arr = resolve_weighter_to_array(ExponentialDecayWeighter(1), times, None, "time weight")
+    """_resolve_weighter_to_array returns a validated numpy array."""
+    arr = _resolve_weighter_to_array(ExponentialDecayWeighter(1), times, None, "time weight")
     assert isinstance(arr, np.ndarray)
     assert arr.tolist() == pytest.approx([0.25, 0.5, 1.0])
 
@@ -241,55 +243,55 @@ def test_resolve_weighter_to_array_validates(times: pl.Series) -> None:
 def test_validate_weight_array_rejects_nan() -> None:
     """NaN weights are rejected."""
     with pytest.raises(ValueError, match="NaN"):
-        validate_weight_array(np.array([1.0, np.nan, 1.0]), name="w")
+        _validate_weight_array(np.array([1.0, np.nan, 1.0]), name="w")
 
 
 def test_validate_weight_array_rejects_negative() -> None:
     """Negative weights are rejected."""
     with pytest.raises(ValueError, match="negative"):
-        validate_weight_array(np.array([1.0, -1.0]), name="w")
+        _validate_weight_array(np.array([1.0, -1.0]), name="w")
 
 
 def test_validate_weight_array_rejects_inf() -> None:
     """Infinite weights are rejected."""
     with pytest.raises(ValueError, match="infinite"):
-        validate_weight_array(np.array([1.0, np.inf]), name="w")
+        _validate_weight_array(np.array([1.0, np.inf]), name="w")
 
 
 def test_validate_weight_array_rejects_all_zero() -> None:
     """All-zero weights are rejected."""
     with pytest.raises(ValueError, match="zero"):
-        validate_weight_array(np.array([0.0, 0.0]), name="w")
+        _validate_weight_array(np.array([0.0, 0.0]), name="w")
 
 
 def test_normalize_weights_sums_to_n() -> None:
-    """normalize_weights scales the array to sum to its length."""
-    out = normalize_weights(np.array([1.0, 3.0]))
+    """_normalize_weights scales the array to sum to its length."""
+    out = _normalize_weights(np.array([1.0, 3.0]))
     assert out.sum() == pytest.approx(2.0)
 
 
 def test_combine_weight_vectors_multiplies_and_normalizes() -> None:
-    """combine_weight_vectors multiplies inputs and normalizes to n."""
-    out = combine_weight_vectors(np.array([1.0, 2.0]), np.array([2.0, 1.0]), n=2)
+    """_combine_weight_vectors multiplies inputs and normalizes to n."""
+    out = _combine_weight_vectors(np.array([1.0, 2.0]), np.array([2.0, 1.0]), n=2)
     assert out is not None
     assert out.sum() == pytest.approx(2.0)
 
 
 def test_combine_weight_vectors_all_none_returns_none() -> None:
     """All-None inputs return None."""
-    assert combine_weight_vectors(None, None, n=3) is None
+    assert _combine_weight_vectors(None, None, n=3) is None
 
 
 def test_normalize_weights_zero_sum_raises() -> None:
-    """normalize_weights rejects an all-zero array (cannot scale)."""
+    """_normalize_weights rejects an all-zero array (cannot scale)."""
     with pytest.raises(ValueError, match="sum is zero"):
-        normalize_weights(np.array([0.0, 0.0]))
+        _normalize_weights(np.array([0.0, 0.0]))
 
 
 def test_combine_weight_vectors_zero_product_raises() -> None:
-    """combine_weight_vectors rejects inputs whose product sums to zero."""
+    """_combine_weight_vectors rejects inputs whose product sums to zero."""
     with pytest.raises(ValueError, match="sum to zero"):
-        combine_weight_vectors(np.array([1.0, 0.0]), np.array([0.0, 1.0]), n=2)
+        _combine_weight_vectors(np.array([1.0, 0.0]), np.array([0.0, 1.0]), n=2)
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +371,7 @@ def test_composite_bare_list_rejected(times: pl.Series) -> None:
 
 
 # ---------------------------------------------------------------------------
-# resolve_weighter_to_array contract checks
+# _resolve_weighter_to_array contract checks
 # ---------------------------------------------------------------------------
 
 
@@ -381,7 +383,7 @@ def test_resolve_weighter_to_array_rejects_non_series(times: pl.Series) -> None:
             return np.ones(len(key))  # type: ignore[return-value]
 
     with pytest.raises(ValueError, match="must return pl.Series"):
-        resolve_weighter_to_array(_BadType(), times)
+        _resolve_weighter_to_array(_BadType(), times)
 
 
 def test_resolve_weighter_to_array_rejects_mismatched_length(times: pl.Series) -> None:
@@ -392,7 +394,7 @@ def test_resolve_weighter_to_array_rejects_mismatched_length(times: pl.Series) -
             return pl.Series([1.0], dtype=pl.Float64)
 
     with pytest.raises(ValueError, match="expected 3 rows"):
-        resolve_weighter_to_array(_BadLength(), times)
+        _resolve_weighter_to_array(_BadLength(), times)
 
 
 # ---------------------------------------------------------------------------
@@ -455,3 +457,45 @@ def test_composite_get_params_includes_combination_and_weights() -> None:
     params = w.get_params(deep=True)
     assert params["combination"] == "mean"
     assert params["weights"] == [1.0]
+
+
+def test_weighters_not_importable_from_old_utils_path() -> None:
+    """Weighters moved to yohou.weighting; the old utils path is gone."""
+    with pytest.raises((ImportError, ModuleNotFoundError)):
+        from yohou.utils.weighting import ExponentialDecayWeighter  # noqa: F401
+
+
+def test_weighters_not_reexported_from_utils() -> None:
+    """yohou.utils no longer exposes weighter estimators."""
+    from yohou import utils
+
+    for name in (
+        "BaseWeighter",
+        "ExponentialDecayWeighter",
+        "LinearDecayWeighter",
+        "SeasonalEmphasisWeighter",
+        "LookupWeighter",
+        "TableWeighter",
+        "CompositeWeighter",
+    ):
+        assert name not in utils.__all__
+        assert not hasattr(utils, name)
+
+
+def test_public_weighters_are_discoverable() -> None:
+    """all_estimators finds the weighters under the new yohou.weighting path."""
+    from yohou.utils.discovery import all_estimators
+
+    discovered = dict(all_estimators())
+    # BaseWeighter is abstract and is excluded by all_estimators; only the
+    # concrete weighters are discoverable.
+    for name in (
+        "ExponentialDecayWeighter",
+        "LinearDecayWeighter",
+        "SeasonalEmphasisWeighter",
+        "LookupWeighter",
+        "TableWeighter",
+        "CompositeWeighter",
+    ):
+        assert name in discovered, f"{name} not discovered"
+        assert discovered[name].__module__.startswith("yohou.weighting")

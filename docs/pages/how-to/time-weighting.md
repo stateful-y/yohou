@@ -21,12 +21,12 @@ parameters are introspectable, clonable, and tunable by search (covered in
 [§6](#6-tune-your-weighting)).
 
 If you want to down-weight old observations smoothly, use
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/).
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/).
 It halves the weight every `half_life`, keeping the most recent observation at
 1.0:
 
 ```python
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 weighter = ExponentialDecayWeighter(half_life=365)
 ```
@@ -46,10 +46,10 @@ forecasting steps. A `timedelta` `half_life` with `scale="position"` raises
 `ValueError`.
 
 If you prefer a simple ramp from 0 (oldest) to 1 (newest), use
-[`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/):
+[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/):
 
 ```python
-from yohou.utils.weighting import LinearDecayWeighter
+from yohou.weighting import LinearDecayWeighter
 
 weighter = LinearDecayWeighter()
 ```
@@ -61,11 +61,11 @@ weighter = LinearDecayWeighter(max_steps=100)
 ```
 
 If seasonality matters more than recency, use
-[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/)
+[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/)
 to boost observations at the same seasonal position as the most recent one:
 
 ```python
-from yohou.utils.weighting import SeasonalEmphasisWeighter
+from yohou.weighting import SeasonalEmphasisWeighter
 
 # Emphasize same-month observations (monthly data with yearly cycle)
 weighter = SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0)
@@ -83,13 +83,13 @@ weighter = SeasonalEmphasisWeighter(seasonality=[7, 365], emphasis=1.5)
 When you want weights assigned by key rather than by a decay rule, use the
 lookup and table weighters.
 
-[`LookupWeighter`](/pages/api/generated/yohou.utils.weighting.LookupWeighter/)
+[`LookupWeighter`](/pages/api/generated/yohou.weighting.weighters.LookupWeighter/)
 maps keys to weights via a `dict`. Keys absent from the mapping receive the
 tunable `default` weight (this replaces the old `"*"` wildcard):
 
 ```python
 from datetime import datetime
-from yohou.utils.weighting import LookupWeighter
+from yohou.weighting import LookupWeighter
 
 weighter = LookupWeighter(
     mapping={datetime(2024, 6, 1): 2.0, datetime(2024, 7, 1): 2.0},
@@ -97,12 +97,12 @@ weighter = LookupWeighter(
 )
 ```
 
-[`TableWeighter`](/pages/api/generated/yohou.utils.weighting.TableWeighter/)
+[`TableWeighter`](/pages/api/generated/yohou.weighting.weighters.TableWeighter/)
 resolves weights by joining the key series to a `pl.DataFrame` on a key column:
 
 ```python
 import polars as pl
-from yohou.utils.weighting import TableWeighter
+from yohou.weighting import TableWeighter
 
 frame = pl.DataFrame({
     "time": y_train["time"],
@@ -118,14 +118,14 @@ with no matching row raises `ValueError`.
 ## 3. Compose Multiple Weights
 
 To combine recency and seasonal effects, use
-[`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/).
+[`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/).
 Its components are **named `(name, weighter)` tuples** (the same convention as
 `FeaturePipeline` and the voting ensembles), which keeps every sub-weighter's
 parameters addressable for tuning. By default it multiplies the component
 weights element-wise:
 
 ```python
-from yohou.utils.weighting import CompositeWeighter
+from yohou.weighting import CompositeWeighter
 
 weighter = CompositeWeighter([
     ("decay", ExponentialDecayWeighter(half_life=365)),
@@ -264,7 +264,7 @@ subclass that dispatches on `group_name`:
 
 ```python
 import polars as pl
-from yohou.utils.weighting import BaseWeighter, ExponentialDecayWeighter
+from yohou.weighting import BaseWeighter, ExponentialDecayWeighter
 
 class PerStoreDecay(BaseWeighter):
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
@@ -303,4 +303,4 @@ disable the filled area under the curve, pass `fill=False`.
 - [Model Selection](../explanation/model-selection.md) for tuning weighter parameters as hyperparameters
 - [Handle Long Series](handle-long-series.md) for limiting history length as an alternative to down-weighting old data
 - [Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weighter` and `vintage_weighter` in context
-- [API Reference: yohou.utils.weighting](/pages/api/utils/) for the full parameter listing
+- [API Reference: yohou.weighting](/pages/api/weighting/) for the full parameter listing

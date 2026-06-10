@@ -9,7 +9,7 @@ from sklearn.exceptions import NotFittedError
 
 from yohou.metrics import MeanAbsoluteError
 from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
-from yohou.utils.weighting import BaseWeighter, LookupWeighter, TableWeighter
+from yohou.weighting import BaseWeighter, LookupWeighter, TableWeighter
 
 
 class _CallableWeighter(BaseWeighter):

@@ -59,7 +59,7 @@ def _():
     )
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from yohou.utils.weighting import (
+    from yohou.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
         CompositeWeighter,
@@ -149,7 +149,7 @@ def _(mo):
     mo.md(r"""
     ## 3. Linear Decay Weight
 
-    [`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/) assigns weights that decrease linearly from the most
+    [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) assigns weights that decrease linearly from the most
     recent observation to the oldest. The optional `max_steps` parameter limits
     how far back the decay extends; when set to `None`, the full test range
     is used.

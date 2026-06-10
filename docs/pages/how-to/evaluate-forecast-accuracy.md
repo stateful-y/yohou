@@ -192,13 +192,13 @@ interval forecasting workflow.
 ## 7. Apply Time Weighting
 
 Weight recent errors more heavily by constructing the scorer with an
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/).
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/).
 Weighting is a constructor parameter, so it is part of the scorer's
 configuration rather than a per-call argument:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 weighted_scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
 weighted_mae = weighted_scorer.score(y_test, y_pred)

@@ -101,7 +101,7 @@ def _():
         SeasonalDifferencing,
     )
     from yohou.utils.panel import inspect_panel
-    from yohou.utils.weighting import (
+    from yohou.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
         CompositeWeighter,

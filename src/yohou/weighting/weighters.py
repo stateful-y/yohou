@@ -30,10 +30,6 @@ __all__ = [
     "CompositeWeighter",
     "SeasonalEmphasisWeighter",
     "TableWeighter",
-    "combine_weight_vectors",
-    "normalize_weights",
-    "resolve_weighter_to_array",
-    "validate_weight_array",
 ]
 
 
@@ -55,12 +51,12 @@ class BaseWeighter(BaseEstimator, metaclass=abc.ABCMeta):
 
     See Also
     --------
-    - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Recency decay weighting.
-    - [`LinearDecayWeighter`][yohou.utils.weighting.LinearDecayWeighter] : Linear recency weighting.
-    - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
-    - [`LookupWeighter`][yohou.utils.weighting.LookupWeighter] : Explicit per-key weights.
-    - [`TableWeighter`][yohou.utils.weighting.TableWeighter] : DataFrame-driven weights.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter] : Recency decay weighting.
+    - [`LinearDecayWeighter`][yohou.weighting.weighters.LinearDecayWeighter] : Linear recency weighting.
+    - [`SeasonalEmphasisWeighter`][yohou.weighting.weighters.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
+    - [`LookupWeighter`][yohou.weighting.weighters.LookupWeighter] : Explicit per-key weights.
+    - [`TableWeighter`][yohou.weighting.weighters.TableWeighter] : DataFrame-driven weights.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     """
 
@@ -149,9 +145,9 @@ class ExponentialDecayWeighter(BaseWeighter):
 
     See Also
     --------
-    - [`LinearDecayWeighter`][yohou.utils.weighting.LinearDecayWeighter] : Linear recency weighting.
-    - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`LinearDecayWeighter`][yohou.weighting.weighters.LinearDecayWeighter] : Linear recency weighting.
+    - [`SeasonalEmphasisWeighter`][yohou.weighting.weighters.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -230,9 +226,9 @@ class LinearDecayWeighter(BaseWeighter):
 
     See Also
     --------
-    - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Exponential recency weighting.
-    - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter] : Exponential recency weighting.
+    - [`SeasonalEmphasisWeighter`][yohou.weighting.weighters.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -296,9 +292,9 @@ class SeasonalEmphasisWeighter(BaseWeighter):
 
     See Also
     --------
-    - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Exponential recency weighting.
-    - [`LinearDecayWeighter`][yohou.utils.weighting.LinearDecayWeighter] : Linear recency weighting.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter] : Exponential recency weighting.
+    - [`LinearDecayWeighter`][yohou.weighting.weighters.LinearDecayWeighter] : Linear recency weighting.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -366,8 +362,8 @@ class LookupWeighter(BaseWeighter):
 
     See Also
     --------
-    - [`TableWeighter`][yohou.utils.weighting.TableWeighter] : DataFrame-driven weights.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`TableWeighter`][yohou.weighting.weighters.TableWeighter] : DataFrame-driven weights.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -424,8 +420,8 @@ class TableWeighter(BaseWeighter):
 
     See Also
     --------
-    - [`LookupWeighter`][yohou.utils.weighting.LookupWeighter] : Explicit per-key weights.
-    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
+    - [`LookupWeighter`][yohou.weighting.weighters.LookupWeighter] : Explicit per-key weights.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     """
 
@@ -504,8 +500,8 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
 
     See Also
     --------
-    - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Exponential recency weighting.
-    - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
+    - [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter] : Exponential recency weighting.
+    - [`SeasonalEmphasisWeighter`][yohou.weighting.weighters.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
 
     Examples
     --------
@@ -609,7 +605,7 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
         return result.alias("weight")
 
 
-def resolve_weighter_to_array(
+def _resolve_weighter_to_array(
     weighter: BaseWeighter,
     key_series: pl.Series,
     group_name: str | None = None,
@@ -647,11 +643,11 @@ def resolve_weighter_to_array(
     if len(weights_series) != len(key_series):
         raise ValueError(f"Weighter returned {len(weights_series)} weights, expected {len(key_series)} rows")
     weights_np = weights_series.to_numpy().astype(np.float64)
-    validate_weight_array(weights_np, name=name)
+    _validate_weight_array(weights_np, name=name)
     return weights_np
 
 
-def normalize_weights(weights: np.ndarray) -> np.ndarray:
+def _normalize_weights(weights: np.ndarray) -> np.ndarray:
     """Normalize weights so they sum to the number of elements.
 
     Applies ``weights * (n / sum(weights))`` so the sum of the returned array
@@ -680,7 +676,7 @@ def normalize_weights(weights: np.ndarray) -> np.ndarray:
     return weights * (len(weights) / total)
 
 
-def validate_weight_array(weights: np.ndarray, name: str = "weights") -> None:
+def _validate_weight_array(weights: np.ndarray, name: str = "weights") -> None:
     """Validate a resolved weight array for NaN, negatives, infinities, and all-zero.
 
     Parameters
@@ -717,7 +713,7 @@ def validate_weight_array(weights: np.ndarray, name: str = "weights") -> None:
         raise ValueError(f"All weights are zero for {name}")
 
 
-def combine_weight_vectors(*arrays: np.ndarray | None, n: int) -> np.ndarray | None:
+def _combine_weight_vectors(*arrays: np.ndarray | None, n: int) -> np.ndarray | None:
     """Combine weight vectors multiplicatively and normalize.
 
     Filters out ``None`` inputs, multiplies the remaining arrays element-wise,

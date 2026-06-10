@@ -140,7 +140,7 @@ Finally, let's examine how the training data is weighted with [`plot_time_weight
 
 ```python
 from yohou.plotting import plot_time_weight
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 weighter = ExponentialDecayWeighter(half_life=30)
 y_weighted = y_train.with_columns(

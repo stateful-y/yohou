@@ -8,7 +8,7 @@ import pytest
 from sklearn.linear_model import LinearRegression
 
 from yohou.point import PointReductionForecaster
-from yohou.utils.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
+from yohou.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
 
 
 @pytest.fixture

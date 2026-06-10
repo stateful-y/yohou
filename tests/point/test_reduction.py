@@ -13,7 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from conftest import run_checks
 from yohou.point import PointReductionForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
-from yohou.utils.weighting import LookupWeighter, TableWeighter
+from yohou.weighting import LookupWeighter, TableWeighter
 
 LENGTH = 22
 

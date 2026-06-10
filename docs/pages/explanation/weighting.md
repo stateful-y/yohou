@@ -55,7 +55,7 @@ estimator and targeting a different axis of the evaluation or training data.
 
 **`time_weighter`** is the most commonly used slot. It assigns importance to
 individual timestamps. An
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/)
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
 gives full credit to the most recent observations and geometrically less to
 older ones, reflecting the assumption that recent dynamics are more
 representative of the future. Its `half_life` parameter controls the rate of
@@ -63,12 +63,12 @@ decay: a short half-life aggressively de-emphasizes history, while a long one
 produces nearly uniform weighting.
 
 Beyond recency, the time slot also supports seasonal emphasis via
-[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/),
+[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/),
 which up-weights timestamps at specific positions within the seasonal cycle. A
 retailer preparing for year-end might weight December observations more heavily
 to favor models that excel in the hardest-to-predict season. To express recency
 *and* seasonality at once, combine the two with a
-[`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/)
+[`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/)
 and assign it to `time_weighter`.
 
 **`vintage_weighter`** shifts the focus from individual time steps to forecast
@@ -89,7 +89,7 @@ only affects evaluation (not training), it is a score-time-only slot.
 ## Weighters Are Estimators
 
 Every weighter is a scikit-learn estimator deriving from
-[`BaseWeighter`](/pages/api/generated/yohou.utils.weighting.BaseWeighter/): it
+[`BaseWeighter`](/pages/api/generated/yohou.weighting.weighters.BaseWeighter/): it
 maps a key series (timestamps, steps, or vintage times) to a series of
 non-negative weights through `compute_weights(key, group_name=None)`, declares
 its tunable parameters in `_parameter_constraints`, and is configured on the host
@@ -100,12 +100,12 @@ The built-in weighters cover the common strategies:
 
 | Weighter | Strategy |
 |---|---|
-| [`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/) | Geometric recency decay; `scale` selects an elapsed-time or rank-position basis |
-| [`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/) | Linear ramp from oldest to newest, optionally zeroed beyond `max_steps` |
-| [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/) | Up-weights keys in phase with the latest seasonal position |
-| [`LookupWeighter`](/pages/api/generated/yohou.utils.weighting.LookupWeighter/) | Explicit per-key weights from a `dict`; absent keys get the tunable `default` |
-| [`TableWeighter`](/pages/api/generated/yohou.utils.weighting.TableWeighter/) | Weights resolved by joining the key series to a `pl.DataFrame` |
-| [`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/) | Combines named sub-weighters by product or mean |
+| [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) | Geometric recency decay; `scale` selects an elapsed-time or rank-position basis |
+| [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) | Linear ramp from oldest to newest, optionally zeroed beyond `max_steps` |
+| [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/) | Up-weights keys in phase with the latest seasonal position |
+| [`LookupWeighter`](/pages/api/generated/yohou.weighting.weighters.LookupWeighter/) | Explicit per-key weights from a `dict`; absent keys get the tunable `default` |
+| [`TableWeighter`](/pages/api/generated/yohou.weighting.weighters.TableWeighter/) | Weights resolved by joining the key series to a `pl.DataFrame` |
+| [`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/) | Combines named sub-weighters by product or mean |
 
 `LookupWeighter` and `TableWeighter` replace the former raw-`dict` and
 raw-`pl.DataFrame` weight inputs, turning them into first-class tunable
@@ -171,7 +171,7 @@ sklearn estimator. Without it, a set of weights that averages to 0.5 would
 halve the effective learning rate, changing the model's regularization behavior
 in hard-to-predict ways.
 
-[`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/)
+[`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/)
 performs an analogous combination at the *weighter* level (as opposed to combining
 already-resolved arrays across slots). It holds named sub-weighters and combines
 their outputs by element-wise product (the default) or weighted mean, producing
@@ -209,4 +209,4 @@ removes that observation from scoring completely.
 
 ## Connections
 
-For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`); no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. The full API is documented in the [yohou.utils.weighting reference](/pages/api/utils/#weighting).
+For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`); no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. The full API is documented in the [yohou.weighting reference](/pages/api/weighting/).

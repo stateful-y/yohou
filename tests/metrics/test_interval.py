@@ -19,7 +19,7 @@ from yohou.metrics import (
 )
 from yohou.metrics.interval import _trapezoidal_weights
 from yohou.testing import _yield_yohou_scorer_checks
-from yohou.utils.weighting import LookupWeighter
+from yohou.weighting import LookupWeighter
 
 
 @pytest.fixture

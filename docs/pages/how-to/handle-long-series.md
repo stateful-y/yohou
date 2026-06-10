@@ -58,13 +58,13 @@ pipeline.observation_horizon  # 14
 Limiting history is a binary cutoff. Time weighting is a softer alternative
 that keeps all data but gives more importance to recent errors during model
 selection. Construct an
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/)
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
 or
-[`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/)
+[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/)
 and pass it to the `time_weighter` slot of scorers and forecasters:
 
 ```python
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 weighter = ExponentialDecayWeighter(half_life=365)
 ```
@@ -130,7 +130,7 @@ from yohou.preprocessing.resampling import Downsampler
 from yohou.stationarity import SeasonalDifferencing
 from yohou.preprocessing import LagTransformer
 from yohou.compose import FeaturePipeline
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 from yohou.metrics import MeanAbsoluteError
 
 # 1. Downsample hourly data to daily

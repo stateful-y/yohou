@@ -4,7 +4,7 @@ template: api-submodule.html
 
 # yohou.utils
 
-Validation, panel data, weighting, tags, discovery, and other utility functions.
+Validation, panel data, tags, discovery, and other utility functions.
 
 ### Discovery
 
@@ -56,22 +56,6 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`check_X_actual_required`](generated/yohou.utils.validation.check_X_actual_required.md) | Validate X_actual is provided when required for recursive prediction. |
 | [`check_forecasting_horizon_positive`](generated/yohou.utils.validation.check_forecasting_horizon_positive.md) | Validate forecasting horizon is positive. |
 | [`check_scorer_column_selection`](generated/yohou.utils.validation.check_scorer_column_selection.md) | Subselect columns based on scorer configuration. |
-
-### Weighting
-
-| Name | Description |
-| --- | --- |
-| [`BaseWeighter`](generated/yohou.utils.weighting.BaseWeighter.md) | Base class for time-axis weighter estimators. |
-| [`ExponentialDecayWeighter`](generated/yohou.utils.weighting.ExponentialDecayWeighter.md) | Exponential decay weights giving more weight to recent keys. |
-| [`LinearDecayWeighter`](generated/yohou.utils.weighting.LinearDecayWeighter.md) | Linear decay weights giving more weight to recent keys. |
-| [`SeasonalEmphasisWeighter`](generated/yohou.utils.weighting.SeasonalEmphasisWeighter.md) | Weights emphasizing keys in phase with the most recent seasonal position. |
-| [`LookupWeighter`](generated/yohou.utils.weighting.LookupWeighter.md) | Explicit per-key weights from a mapping. |
-| [`TableWeighter`](generated/yohou.utils.weighting.TableWeighter.md) | DataFrame-driven weights resolved by joining on a key column. |
-| [`CompositeWeighter`](generated/yohou.utils.weighting.CompositeWeighter.md) | Combine weighters by product or mean. |
-| [`combine_weight_vectors`](generated/yohou.utils.weighting.combine_weight_vectors.md) | Combine weight vectors multiplicatively and normalize. |
-| [`normalize_weights`](generated/yohou.utils.weighting.normalize_weights.md) | Normalize weights so they sum to the number of elements. |
-| [`resolve_weighter_to_array`](generated/yohou.utils.weighting.resolve_weighter_to_array.md) | Resolve a weighter to a validated numpy weight array aligned to the key series. |
-| [`validate_weight_array`](generated/yohou.utils.weighting.validate_weight_array.md) | Validate a resolved weight array for NaN, negatives, infinities, and all-zero. |
 
 ### Time intervals
 

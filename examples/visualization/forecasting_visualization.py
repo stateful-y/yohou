@@ -64,7 +64,7 @@ def _():
         PatternSeasonalityForecaster,
         PolynomialTrendForecaster,
     )
-    from yohou.utils.weighting import (
+    from yohou.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
     )

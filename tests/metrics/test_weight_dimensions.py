@@ -8,7 +8,7 @@ import pytest
 
 from yohou.metrics import IntervalScore, MeanAbsoluteError
 from yohou.metrics.point import MeanDirectionalAccuracy, MedianAbsoluteError, R2Score
-from yohou.utils.weighting import LookupWeighter, TableWeighter
+from yohou.weighting import LookupWeighter, TableWeighter
 
 
 @pytest.fixture()

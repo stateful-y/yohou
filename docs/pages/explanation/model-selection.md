@@ -89,15 +89,15 @@ Not all test errors deserve equal attention. A forecast that performed well last
 
 Three built-in weighters map a key `pl.Series` to a weight `pl.Series`:
 
-- [`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
-- [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
-- [`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+- [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
+- [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
+- [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
 
 Because the weighting lives on the scorer instance, a weighted scorer is a self-contained cross-validation objective; there is no per-call weight argument to route:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 scoring = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=90))
 ```
@@ -110,7 +110,7 @@ Constructor-residence has a second payoff: a weighter's settings become ordinary
 from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),

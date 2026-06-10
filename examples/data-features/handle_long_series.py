@@ -110,14 +110,14 @@ def _(mo):
     ## 3. Weight Recent Errors with Exponential Decay
 
     Instead of discarding old data entirely, weight recent observations
-    more heavily. [`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/) halves the weight every
+    more heavily. [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) halves the weight every
     `half_life` steps.
     """)
 
 
 @app.cell
 def _():
-    from yohou.utils.weighting import ExponentialDecayWeighter, LinearDecayWeighter
+    from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
 
     # Exponential decay: weight halves every 120 steps
     exp_weight = ExponentialDecayWeighter(half_life=120)

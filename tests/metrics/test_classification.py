@@ -24,7 +24,7 @@ from yohou.metrics.classification import (
     ROCAuC,
 )
 from yohou.testing import _yield_yohou_scorer_checks
-from yohou.utils.weighting import TableWeighter
+from yohou.weighting import TableWeighter
 
 
 @pytest.fixture

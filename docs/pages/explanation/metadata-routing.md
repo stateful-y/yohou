@@ -183,7 +183,7 @@ A complete example showing fit-time weights reaching the estimator, with no
 ```python
 from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
-from yohou.utils.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter
 from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
 

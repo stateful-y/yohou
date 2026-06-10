@@ -1082,7 +1082,7 @@ class TestWeighterTuning:
     def test_grid_search_over_time_weighter_params(self):
         """Nested weighter params (half_life, scale) are searchable via the `__` syntax."""
         from yohou.point import PointReductionForecaster
-        from yohou.utils.weighting import ExponentialDecayWeighter
+        from yohou.weighting import ExponentialDecayWeighter
 
         y = self._series()
         fc = PointReductionForecaster(time_weighter=ExponentialDecayWeighter(half_life=7))
@@ -1099,7 +1099,7 @@ class TestWeighterTuning:
     def test_grid_search_over_weighter_instances(self):
         """Whole weighter instances (including None) can be searched."""
         from yohou.point import PointReductionForecaster
-        from yohou.utils.weighting import ExponentialDecayWeighter, LinearDecayWeighter
+        from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
 
         y = self._series()
         fc = PointReductionForecaster()

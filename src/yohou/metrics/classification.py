@@ -7,7 +7,7 @@ import polars as pl
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 from yohou.metrics.base import BaseClassProbaScorer, BaseHardLabelScorer, BaseRankingScorer
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 __all__ = [
     "Accuracy",

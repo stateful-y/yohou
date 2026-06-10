@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from yohou.utils._compat import StrOptions
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 from .base import BaseIntervalScorer
 

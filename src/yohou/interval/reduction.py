@@ -12,7 +12,7 @@ from sklearn.multioutput import MultiOutputRegressor
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 from .base import BaseIntervalForecaster
 
@@ -62,7 +62,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
     time_weighter : BaseWeighter or None, default=None
         Per-timestep training-sample weighter (e.g.
-        [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter]).
+        [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter]).
         Its parameters are tunable via search. If None, samples are unweighted.
     vintage_weighter : BaseWeighter or None, default=None
         Per-vintage training-sample weighter, combined multiplicatively with

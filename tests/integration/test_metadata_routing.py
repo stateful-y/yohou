@@ -50,7 +50,7 @@ from yohou.testing.metadata_routing import (
     check_recorded_metadata,
     record_metadata,
 )
-from yohou.utils.weighting import TableWeighter
+from yohou.weighting import TableWeighter
 
 
 class ConsumingTransformer(BaseTransformer):

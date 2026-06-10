@@ -9,7 +9,7 @@ import pytest
 from sklearn.base import BaseEstimator
 
 from yohou.point import PointReductionForecaster
-from yohou.utils.weighting import TableWeighter
+from yohou.weighting import TableWeighter
 
 
 def _has_nan(data) -> bool:

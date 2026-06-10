@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 from .base import BasePointScorer
 

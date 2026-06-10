@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import polars as pl
 
-from yohou.utils.weighting import BaseWeighter
+from yohou.weighting import BaseWeighter
 
 from .base import BaseClassProbaScorer
 

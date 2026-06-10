@@ -22,7 +22,8 @@ from yohou.base.forecaster import BaseForecaster
 from yohou.base.transformer import BaseTransformer
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
-from yohou.utils.weighting import BaseWeighter, combine_weight_vectors, resolve_weighter_to_array
+from yohou.weighting import BaseWeighter
+from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter_to_array
 
 __all__ = ["BaseReductionForecaster"]
 
@@ -264,7 +265,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         # Resolve time_weighter with alignment strategy
         tw_aligned = None
         if self.time_weighter is not None:
-            weights_array = resolve_weighter_to_array(
+            weights_array = _resolve_weighter_to_array(
                 self.time_weighter,
                 time_series,
                 group_name=group_name,
@@ -307,7 +308,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         # Resolve vintage_weighter via direct lookup (no alignment)
         vw_aligned = None
         if self.vintage_weighter is not None:
-            vw_array = resolve_weighter_to_array(
+            vw_array = _resolve_weighter_to_array(
                 self.vintage_weighter,
                 time_series,
                 group_name=group_name,
@@ -317,7 +318,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             vw_aligned = vw_array[:n_samples]
 
         # Combine and normalize
-        sample_weights = combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
+        sample_weights = _combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
         if sample_weights is None:  # pragma: no cover
             # Both were None (shouldn't reach here since caller checks)
             sample_weights = np.ones(n_samples)

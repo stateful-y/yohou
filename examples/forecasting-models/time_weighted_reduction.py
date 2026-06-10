@@ -67,7 +67,7 @@ def _():
     from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from yohou.utils.weighting import (
+    from yohou.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
         CompositeWeighter,
@@ -170,7 +170,7 @@ def _(mo):
     mo.md(r"""
     ## 3. Composing Weights
 
-    [`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/) multiplies outputs of multiple weight functions. This lets
+    [`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/) multiplies outputs of multiple weight functions. This lets
     you combine, for example, exponential recency with seasonal emphasis:
     """)
 

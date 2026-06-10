@@ -22,7 +22,7 @@ from yohou.plotting import (
     plot_score_summary,
     plot_score_time_series,
 )
-from yohou.utils.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
+from yohou.weighting import LinearDecayWeighter, LookupWeighter, TableWeighter
 
 from .conftest import assert_figure_valid, assert_layout, visible_legend_names
 

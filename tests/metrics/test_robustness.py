@@ -14,7 +14,7 @@ from yohou.metrics import (
     MeanAbsoluteScaledError,
     RootMeanSquaredScaledError,
 )
-from yohou.utils.weighting import TableWeighter
+from yohou.weighting import TableWeighter
 
 
 @pytest.fixture()

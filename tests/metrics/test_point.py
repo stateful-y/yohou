@@ -22,7 +22,7 @@ from yohou.metrics import (
     SymmetricMeanAbsolutePercentageError,
 )
 from yohou.testing import _yield_yohou_scorer_checks
-from yohou.utils.weighting import LookupWeighter, TableWeighter
+from yohou.weighting import LookupWeighter, TableWeighter
 
 
 @pytest.fixture
