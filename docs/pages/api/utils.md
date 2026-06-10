@@ -41,7 +41,6 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`validate_plotting_data`](generated/yohou.utils.validate_data.validate_plotting_data.md) | Validate a DataFrame for plotting and resolve columns. |
 | [`validate_plotting_params`](generated/yohou.utils.validate_data.validate_plotting_params.md) | Validate common plotting function parameters. |
 | [`validate_search_data`](generated/yohou.utils.validation.validate_search_data.md) | Validate input data for hyperparameter search (GridSearchCV, RandomizedSearchCV). |
-| [`validate_time_weight`](generated/yohou.utils.validate_data.validate_time_weight.md) | Validate time_weight parameter for forecasters and scorers. |
 | [`validate_column_names`](generated/yohou.utils.validation.validate_column_names.md) | Validate that \_\_ separator is used only for panel data group names. |
 
 ### Time series validation

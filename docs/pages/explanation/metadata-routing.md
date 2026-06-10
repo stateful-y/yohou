@@ -1,7 +1,7 @@
 # Metadata Routing
 
-Metadata routing is the mechanism by which parameters like `time_weight`,
-`vintage_weight`, and `step_weight` flow from a top-level call (such as
+Metadata routing is the mechanism by which parameters like `sample_weight`,
+`coverage_rates`, and `groups` flow from a top-level call (such as
 [`GridSearchCV.fit()`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/))
 down through nested estimators to the objects that actually use them. Without
 it, there would be no way for a pipeline or search object to know which of its
@@ -14,23 +14,32 @@ moment you `import yohou` (via
 `sklearn.set_config(enable_metadata_routing=True)` in `__init__.py`), so there
 is nothing to configure manually.
 
+!!! note "Weighting is no longer routed metadata"
+    Time-axis weighting (recency decay, seasonal emphasis, per-step/per-vintage
+    weights) is **not** routed metadata. It is configured with weighter
+    estimators on a forecaster's or scorer's `__init__`
+    (`time_weighter`, `vintage_weighter`, `step_weighter`) — see
+    [Weighting](weighting.md). A forecaster converts its configured weighters
+    into the sklearn `sample_weight` it forwards to the wrapped estimator, and
+    *that* `sample_weight` is what travels through the routing machinery
+    described below.
+
 ## Routable Metadata Parameters
 
-Three weight parameters can be routed through yohou's estimator hierarchy:
+The metadata that flows through yohou's estimator hierarchy includes:
 
-- **`time_weight`**: weights observations by their position in time. Accepted as
-  a callable, a DataFrame with a `"time"` column, or a dict.
-- **`vintage_weight`**: weights observations by when they were first observed
-  (their vintage time). Accepted in the same formats as `time_weight`.
-- **`step_weight`**: weights per-step forecasting errors during scoring.
-  Accepted as a callable, a DataFrame with a `"forecasting_step"` column, or a
-  dict.
+- **`sample_weight`**: per-sample training weights handed to a wrapped sklearn
+  estimator's `fit`. A reduction forecaster computes this internally from its
+  `time_weighter`/`vintage_weighter` and forwards it to the estimator (for a
+  `Pipeline` estimator it requests `sample_weight` on the final step). Pipeline
+  transformers and custom consumers can also request it directly.
+- **`coverage_rates`**: the list of interval coverage levels, routed to an
+  interval forecaster's `predict_interval` (and `fit`).
+- **`groups`**: panel group names, used by `predict`/`observe_predict` to
+  operate on a subset of panel groups.
 
-Reduction forecasters consume `time_weight` and `vintage_weight` during
-`fit()`, converting them into a single `sample_weight` vector that is passed to
-the wrapped sklearn estimator. Scorers consume all three weight types in
-`score()`, applying them when aggregating errors across time, vintage, and
-forecasting step dimensions.
+Any consumer can additionally request its own arbitrary metadata key; the
+routing infrastructure is generic and not limited to the parameters above.
 
 ## Consumers and Routers
 
@@ -43,18 +52,18 @@ Sklearn's routing model has two roles:
 
 An object can be both. A
 [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-is a consumer (it uses `time_weight` and `vintage_weight` in `fit()`) and also
-a router (it forwards `fit` metadata to its wrapped sklearn estimator via
-`get_metadata_routing()`).
+is a router (it forwards `fit` metadata such as `sample_weight` to its wrapped
+sklearn estimator via `get_metadata_routing()`), and the wrapped estimator is
+the consumer that ultimately uses `sample_weight` in its `fit`.
 
 ### Consumers
 
 | Class | Methods | Accepted metadata |
 |---|---|---|
-| [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) | `fit` | `time_weight`, `vintage_weight` |
-| [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) | `fit` | `time_weight`, `vintage_weight` |
-| Point and interval scorers | `score` | `time_weight`, `vintage_weight`, `step_weight` |
-| Transformers (e.g. `StandardScaler`) | `fit`, `transform` | `time_weight` |
+| Wrapped sklearn estimator (e.g. `Ridge`) | `fit` | `sample_weight` |
+| [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) | `fit`, `predict_interval` | `coverage_rates` |
+| Panel forecasters | `predict`, `observe_predict` | `groups` |
+| Pipeline transformers / custom consumers | `fit`, `transform` | requested key (e.g. `sample_weight`) |
 
 ### Routers
 
@@ -75,13 +84,10 @@ prevents silent misrouting: if metadata is passed to a router but no child has
 requested it, sklearn raises an error.
 
 ```python
-from yohou.point import PointReductionForecaster
 from sklearn.linear_model import Ridge
 
-forecaster = PointReductionForecaster(estimator=Ridge())
-
-# Request time_weight and vintage_weight in fit
-forecaster.set_fit_request(time_weight=True, vintage_weight=True)
+# A wrapped estimator requests sample_weight in its fit
+estimator = Ridge().set_fit_request(sample_weight=True)
 ```
 
 The request values are:
@@ -96,40 +102,35 @@ The request values are:
   it to the parameter the consumer expects. This allows different consumers to
   receive different values for identically named parameters.
 
-Scorers use `set_score_request()`:
+Each routable method has its own request setter. An interval forecaster, for
+example, requests `coverage_rates` on its `predict_interval` method:
 
 ```python
-from yohou.metrics import MeanAbsoluteError
+from yohou.interval import IntervalReductionForecaster
 
-scorer = MeanAbsoluteError()
-scorer.set_score_request(time_weight=True, vintage_weight=True, step_weight=True)
+forecaster = IntervalReductionForecaster(estimator=Ridge())
+forecaster.set_predict_interval_request(coverage_rates=True)
 ```
 
-Transformers use `set_fit_request()` and `set_transform_request()`:
-
-```python
-from yohou.preprocessing import StandardScaler
-
-scaler = StandardScaler()
-scaler.set_fit_request(time_weight=True)
-scaler.set_transform_request(time_weight=True)
-```
+Transformers that consume a metadata key expose both `set_fit_request()` and
+`set_transform_request()`, so the key can be requested independently in each
+method.
 
 ### Aliasing
 
 Aliases let two consumers receive different values for a parameter that shares
-the same name. For example, if a forecaster and a scorer each need a different
-`time_weight`, the caller can pass them under separate names:
+the same name. For example, if two estimators each need a different
+`sample_weight`, the caller can pass them under separate names:
 
 ```python
-forecaster.set_fit_request(time_weight="train_weight")
-scorer.set_score_request(time_weight="eval_weight")
+estimator_a.set_fit_request(sample_weight="weight_a")
+estimator_b.set_fit_request(sample_weight="weight_b")
 
-search.fit(y=train, train_weight=w_train, eval_weight=w_eval)
+router.fit(X, y, weight_a=w_a, weight_b=w_b)
 ```
 
-The router remaps `train_weight` to the forecaster's `time_weight` and
-`eval_weight` to the scorer's `time_weight`.
+The router remaps `weight_a` to `estimator_a`'s `sample_weight` and `weight_b`
+to `estimator_b`'s `sample_weight`.
 
 ## Yohou's Extended Method Registry
 
@@ -154,7 +155,7 @@ The composite decomposition is what makes this work seamlessly. When
 [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
 calls `observe_predict` during cross-validation, sklearn's routing
 infrastructure splits the incoming parameters and forwards them to both
-`observe` and `predict` individually. A `time_weight` parameter requested by a
+`observe` and `predict` individually. A `groups` parameter requested by a
 forecaster's `predict` method will arrive correctly even when the caller uses
 `observe_predict`. This is the same mechanism sklearn uses for `fit_transform`
 and `fit_predict`, extended to yohou's time series operations.
@@ -171,13 +172,13 @@ router receives a method call with extra parameters, it calls
 `process_routing()` to look up which child requested what and dispatches
 accordingly.
 
-For example, when `GridSearchCV.fit()` is called with `time_weight=weights`,
+For example, when `GridSearchCV.fit()` is called with `sample_weight=weights`,
 the flow is:
 
-1. `process_routing(self, "fit", time_weight=weights)` inspects the routing
+1. `process_routing(self, "fit", sample_weight=weights)` inspects the routing
    table.
-2. It finds that the forecaster requested `time_weight` in `fit` and the scorer
-   requested it in `score`.
+2. It finds that the forecaster forwards `fit` metadata to its wrapped estimator,
+   which requested `sample_weight` in `fit`.
 3. It returns a dictionary keyed by child name, with each child's parameters
    grouped by method.
 4. The router calls each child's method with the appropriate subset of
@@ -197,31 +198,31 @@ from yohou.point import PointReductionForecaster
 from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
 
-forecaster = PointReductionForecaster(estimator=Ridge())
-forecaster.set_fit_request(time_weight=True)
-
-scorer = MeanAbsoluteError()
-scorer.set_score_request(time_weight=True)
+# The wrapped estimator requests sample_weight in its fit
+estimator = Ridge().set_fit_request(sample_weight=True)
+forecaster = PointReductionForecaster(estimator=estimator)
 
 search = GridSearchCV(
     forecaster=forecaster,
     param_grid={"observation_horizon": [5, 10]},
     cv=ExpandingWindowSplitter(n_splits=3),
-    scoring=scorer,
+    scoring=MeanAbsoluteError(),
 )
 
-# time_weight flows to both forecaster.fit() and scorer.score()
-search.fit(y=train, time_weight=weights)
+# sample_weight flows down to the wrapped estimator's fit()
+search.fit(y=train, forecasting_horizon=7, sample_weight=weights)
 ```
 
-Inside `PointReductionForecaster.fit()`, the received `time_weight` is
-converted into a `sample_weight` vector and forwarded to the sklearn
-estimator's `fit()` method. Inside `MeanAbsoluteError.score()`, the same
-`time_weight` is used to produce a weighted average of the errors across time.
+The forecaster forwards the `fit` metadata it receives to the wrapped estimator,
+so `sample_weight` reaches `Ridge.fit()` and shapes the learned coefficients.
 
-If `set_fit_request(time_weight=True)` were omitted, `GridSearchCV` would raise
-an error explaining that `time_weight` was passed but not explicitly requested
-by the forecaster. This fail-safe ensures metadata never silently disappears.
+If `Ridge().set_fit_request(sample_weight=True)` were omitted, `GridSearchCV`
+would raise an error explaining that `sample_weight` was passed but not
+explicitly requested. This fail-safe ensures metadata never silently disappears.
+
+In practice you rarely hand-pass `sample_weight` here: a forecaster configured
+with a `time_weighter` computes it for you (see [Weighting](weighting.md)). The
+example uses the raw `sample_weight` to show the routing mechanism in isolation.
 
 ## Connections
 
@@ -231,12 +232,13 @@ routing. [Forecaster Composition](forecaster-composition.md) explains how
 `observe` and `rewind` propagate through composite forecasters and how state is
 managed in pipelines. [Model Selection](model-selection.md) describes
 cross-validation and hyperparameter search, where metadata routing ensures
-parameters reach the right estimators. The weight types (`time_weight`,
-`vintage_weight`, `step_weight`) that flow through the routing infrastructure
-are discussed in [Weighting](weighting.md). [Extending Yohou](extending-yohou.md)
-covers how custom components participate in the routing infrastructure through
-tags and base class conventions.
+parameters reach the right estimators. Time-axis weighting — configured with
+weighter estimators on `__init__` rather than routed as metadata — is discussed
+in [Weighting](weighting.md), which also explains how a forecaster turns its
+weighters into the `sample_weight` that does flow through this infrastructure.
+[Extending Yohou](extending-yohou.md) covers how custom components participate in
+the routing infrastructure through tags and base class conventions.
 
-For practical recipes on routing weights through search and composition, see
+For practical recipes on tuning and composition, see
 [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md) and
 [How to Use Time Weighting](../how-to/time-weighting.md).

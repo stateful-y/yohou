@@ -32,7 +32,6 @@ from .validate_data import (
     validate_plotting_params,
     validate_scorer_data,
     validate_splitter_data,
-    validate_time_weight,
     validate_transformer_data,
 )
 from .validation import (
@@ -127,7 +126,6 @@ __all__ = [
     "validate_scorer_data",
     "validate_search_data",
     "validate_splitter_data",
-    "validate_time_weight",
     "validate_transformer_data",
     "validate_weight_array",
     "window_futures",

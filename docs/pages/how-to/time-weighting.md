@@ -14,173 +14,280 @@ of your history.
 
 ## 1. Choose a Weighting Strategy
 
-The `time_weight` parameter accepts a callable, a `pl.DataFrame`, or a `dict`.
-Built-in weight functions (callables) cover the most common patterns.
+Time weighting is expressed with **weighter estimators**: small scikit-learn
+estimators that map a key series (observation times, vintage times, or integer
+forecasting steps) to a series of weights. Because they are estimators, their
+parameters are introspectable, clonable, and tunable by search (covered in
+[§6](#6-tune-your-weighting)).
 
 If you want to down-weight old observations smoothly, use
-[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/).
-It halves the weight every `half_life` days, keeping the most recent
-observation at 1.0:
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.utils.weighting.ExponentialDecayWeighter/).
+It halves the weight every `half_life`, keeping the most recent observation at
+1.0:
 
 ```python
-from yohou.utils.weighting import exponential_decay_weight
+from yohou.utils.weighting import ExponentialDecayWeighter
 
-weight_fn = exponential_decay_weight(half_life=365)
+weighter = ExponentialDecayWeighter(half_life=365)
 ```
 
-`half_life` accepts an `int`, `float` (both interpreted as days), or a
-`timedelta` for explicit units.
+`ExponentialDecayWeighter` has a `scale` parameter that sets the decay *basis* —
+real elapsed time versus rank position — which matters when sampling is
+irregular. When `scale=None` (the default) it is inferred from the key dtype:
+
+| Key dtype             | Inferred `scale` | `half_life` units            | Decay basis                          |
+| --------------------- | ---------------- | ---------------------------- | ------------------------------------ |
+| datetime              | `"elapsed"`      | days (`int`/`float`) or `timedelta` | real elapsed time to the latest key |
+| numeric / integer step| `"position"`     | steps (`int`/`float`)        | rank-index distance to the latest key |
+
+Set `scale` explicitly to override the inference — e.g. `scale="position"` to
+decay regularly-spaced datetimes by row position, or to weight integer
+forecasting steps. A `timedelta` `half_life` with `scale="position"` raises
+`ValueError`.
 
 If you prefer a simple ramp from 0 (oldest) to 1 (newest), use
-[`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/):
+[`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/):
 
 ```python
-from yohou.utils.weighting import linear_decay_weight
+from yohou.utils.weighting import LinearDecayWeighter
 
-weight_fn = linear_decay_weight()
+weighter = LinearDecayWeighter()
 ```
 
 To zero out observations older than a fixed window, pass `max_steps`:
 
 ```python
-weight_fn = linear_decay_weight(max_steps=100)
+weighter = LinearDecayWeighter(max_steps=100)
 ```
 
 If seasonality matters more than recency, use
-[`seasonal_emphasis_weight`](/pages/api/generated/yohou.utils.weighting.seasonal_emphasis_weight/)
+[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/)
 to boost observations at the same seasonal position as the most recent one:
 
 ```python
-from yohou.utils.weighting import seasonal_emphasis_weight
+from yohou.utils.weighting import SeasonalEmphasisWeighter
 
 # Emphasize same-month observations (monthly data with yearly cycle)
-weight_fn = seasonal_emphasis_weight(seasonality=12, emphasis=2.0)
+weighter = SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0)
 ```
 
 In-phase observations get the `emphasis` weight (default 2.0), all others get
 1.0. For multiple seasonalities, pass a list:
 
 ```python
-weight_fn = seasonal_emphasis_weight(seasonality=[7, 365], emphasis=1.5)
+weighter = SeasonalEmphasisWeighter(seasonality=[7, 365], emphasis=1.5)
 ```
 
-If you already have pre-computed weights, pass a `pl.DataFrame` with `"time"`
-and `"weight"` columns:
+## 2. Use Explicit or Table-Driven Weights
 
-```python
-import polars as pl
+When you want weights assigned by key rather than by a decay rule, use the
+lookup and table weighters.
 
-time_weight = pl.DataFrame({
-    "time": y_train["time"],
-    "weight": [1.0, 1.0, 0.5, 0.5, 0.0],
-})
-```
-
-For panel data, use group-specific columns (e.g. `"store_a_weight"`,
-`"store_b_weight"`) or a single `"weight"` column applied to all groups.
-
-You can also pass a `dict` mapping timestamps to weights. Timestamps not in
-the dict get a default weight of 1.0 (or use `"*"` to set a different default):
+[`LookupWeighter`](/pages/api/generated/yohou.utils.weighting.LookupWeighter/)
+maps keys to weights via a `dict`. Keys absent from the mapping receive the
+tunable `default` weight (this replaces the old `"*"` wildcard):
 
 ```python
 from datetime import datetime
+from yohou.utils.weighting import LookupWeighter
 
-time_weight = {
-    datetime(2024, 6, 1): 2.0,
-    datetime(2024, 7, 1): 2.0,
-    "*": 0.5,  # all other timestamps
-}
-```
-
-## 2. Compose Multiple Weights
-
-To combine recency and seasonal effects, use
-[`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/).
-It multiplies the weight functions element-wise:
-
-```python
-from yohou.utils.weighting import compose_weights
-
-weight_fn = compose_weights(
-    exponential_decay_weight(half_life=365),
-    seasonal_emphasis_weight(seasonality=12, emphasis=2.0),
+weighter = LookupWeighter(
+    mapping={datetime(2024, 6, 1): 2.0, datetime(2024, 7, 1): 2.0},
+    default=0.5,  # weight for all other keys
 )
 ```
 
-## 3. Apply Weights During Training
+[`TableWeighter`](/pages/api/generated/yohou.utils.weighting.TableWeighter/)
+resolves weights by joining the key series to a `pl.DataFrame` on a key column:
 
-Pass the weight function as `time_weight` when fitting a reduction forecaster:
+```python
+import polars as pl
+from yohou.utils.weighting import TableWeighter
+
+frame = pl.DataFrame({
+    "time": y_train["time"],
+    "weight": [1.0, 1.0, 0.5, 0.5, 0.0],
+})
+weighter = TableWeighter(frame=frame, on="time")
+```
+
+For panel data, give the frame group-specific columns (e.g. `"store_a_weight"`,
+`"store_b_weight"`) or a single `"weight"` column applied to all groups. A key
+with no matching row raises `ValueError`.
+
+## 3. Compose Multiple Weights
+
+To combine recency and seasonal effects, use
+[`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/).
+Its components are **named `(name, weighter)` tuples** (the same convention as
+`FeaturePipeline` and the voting ensembles), which keeps every sub-weighter's
+parameters addressable for tuning. By default it multiplies the component
+weights element-wise:
+
+```python
+from yohou.utils.weighting import CompositeWeighter
+
+weighter = CompositeWeighter([
+    ("decay", ExponentialDecayWeighter(half_life=365)),
+    ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0)),
+])
+```
+
+Pass `combination="mean"` to average the components instead of multiplying, and
+`weights=[...]` to give per-component exponents (under `"multiply"`) or mixing
+coefficients (under `"mean"`):
+
+```python
+weighter = CompositeWeighter(
+    [("decay", ExponentialDecayWeighter(half_life=365)),
+     ("seasonal", SeasonalEmphasisWeighter(seasonality=12))],
+    combination="mean",
+    weights=[2.0, 1.0],
+)
+```
+
+## 4. Apply Weights During Training
+
+Weighting is a **constructor parameter** of the forecaster, not an argument to
+`fit`. Pass a weighter to the `time_weighter` slot of a reduction forecaster:
 
 ```python
 from sklearn.linear_model import Ridge
 from yohou.point import PointReductionForecaster
 
-forecaster = PointReductionForecaster(estimator=Ridge())
-forecaster.fit(
-    y_train,
-    forecasting_horizon=12,
-    time_weight=weight_fn,
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=ExponentialDecayWeighter(half_life=365),
 )
+forecaster.fit(y_train, forecasting_horizon=12)
 ```
 
 The forecaster converts time weights to sklearn `sample_weight` internally.
 Because each training sample spans multiple forecast steps, the per-timestamp
 weights must be collapsed into one weight per sample. The
-`sample_weight_alignment` parameter controls how:
+`sample_weight_alignment` constructor parameter controls how:
 
 ```python
-forecaster.fit(
-    y_train,
-    forecasting_horizon=12,
-    time_weight=weight_fn,
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=ExponentialDecayWeighter(half_life=365),
     sample_weight_alignment="mean_step",
 )
+forecaster.fit(y_train, forecasting_horizon=12)
 ```
 
-The default is `"first_step"`. See [Weighting](../explanation/weighting.md) for
-a full comparison of alignment strategies.
+The default is `"first_step"`. A `vintage_weighter` slot is available for
+per-vintage weighting. See [Weighting](../explanation/weighting.md) for a full
+comparison of alignment strategies.
 
-## 4. Apply Weights During Scoring
+## 5. Apply Weights During Scoring
 
-Scorers accept `time_weight` in `score()` to weight per-timestep errors:
+Scorers carry their weighting on `__init__` too. Pass a weighter to
+`time_weighter` to weight per-timestep errors:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
 
-scorer = MeanAbsoluteError()
+scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
 scorer.fit(y_train)
-weighted_score = scorer.score(y_test, y_pred, time_weight=weight_fn)
+weighted_score = scorer.score(y_test, y_pred)
 ```
 
-Scorers also support `step_weight` and `vintage_weight` for multi-vintage
-predictions. See [Multi-vintage Scoring](multi-vintage-scoring.md) for details.
+Scorers also expose `step_weighter` and `vintage_weighter` for multi-vintage
+predictions. A scorer only exposes the weighter slots it supports — e.g.
+`MedianAbsoluteError` has no `time_weighter` parameter, so an unsupported
+weighter is rejected at construction rather than at `score` time. See
+[Multi-vintage Scoring](multi-vintage-scoring.md) for details.
 
-## 5. Customize Weights for Panel Data
-
-Weight functions can accept a second parameter with the group name, letting you
-assign different weight profiles per panel:
+Because the weighting lives on the scorer instance, a weighted scorer is a valid
+cross-validation objective with no per-call weight argument:
 
 ```python
-def panel_weight(time: pl.Series, group_name: str | None) -> pl.Series:
-    if group_name == "store_a":
-        return exponential_decay_weight(half_life=180)(time)
-    return exponential_decay_weight(half_life=365)(time)
+from yohou.model_selection import cross_validate
 
-forecaster.fit(y_train, forecasting_horizon=12, time_weight=panel_weight)
+cross_validate(forecaster, y_train, forecasting_horizon=12, scoring=scorer)
 ```
 
-The framework detects whether your callable takes one or two parameters
-automatically. For global (non-panel) data, `group_name` is `None`.
+## 6. Tune Your Weighting
 
-## 6. Visualize the Weight Profile
+Because weighters are constructor parameters, their settings are searchable
+hyperparameters addressed with the `__` syntax. Tune the decay half-life — and
+even the decay basis — directly:
+
+```python
+from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
+
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=ExponentialDecayWeighter(half_life=365),
+)
+
+search = GridSearchCV(
+    forecaster,
+    param_grid={
+        "time_weighter__half_life": [90, 180, 365, 730],
+        "time_weighter__scale": ["elapsed", "position"],
+    },
+    cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
+)
+search.fit(y_train, forecasting_horizon=12)
+```
+
+Components of a `CompositeWeighter` are reachable through their names
+(`time_weighter__decay__half_life`), and you can search over whole weighter
+instances by listing them as grid values:
+
+```python
+search = GridSearchCV(
+    forecaster,
+    param_grid={"time_weighter": [
+        ExponentialDecayWeighter(half_life=180),
+        LinearDecayWeighter(max_steps=100),
+    ]},
+    cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
+)
+search.fit(y_train, forecasting_horizon=12)
+```
+
+Weighters recompute on each fold's own key series, so recency is always relative
+to that fold's most-recent key.
+
+## 7. Customize Weights for Panel Data
+
+Built-in weighters are panel-aware automatically: for panel data the forecaster
+calls `compute_weights(key, group_name)` once per group, on that group's own key
+series, so each group is weighted relative to its own most-recent key. The
+built-ins ignore `group_name` (every group gets the same profile shape).
+
+To give different groups different *parameters*, write a small `BaseWeighter`
+subclass that dispatches on `group_name`:
+
+```python
+import polars as pl
+from yohou.utils.weighting import BaseWeighter, ExponentialDecayWeighter
+
+class PerStoreDecay(BaseWeighter):
+    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+        half_life = 180 if group_name == "store_a" else 365
+        return ExponentialDecayWeighter(half_life=half_life).compute_weights(key, group_name)
+
+forecaster = PointReductionForecaster(estimator=Ridge(), time_weighter=PerStoreDecay())
+forecaster.fit(y_train, forecasting_horizon=12)
+```
+
+For global (non-panel) data, `group_name` is `None`.
+
+## 8. Visualize the Weight Profile
 
 [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
-shows weights over time. Build the expected DataFrame and pass it in:
+shows weights over time. Call the weighter's `compute_weights` on the key series
+to build the expected DataFrame:
 
 ```python
 from yohou.plotting import plot_time_weight
 
-weights = weight_fn(y_train["time"])
+weighter = ExponentialDecayWeighter(half_life=365)
+weights = weighter.compute_weights(y_train["time"])
 weights_df = y_train.select("time").with_columns(time_weight=weights)
 
 plot_time_weight(weights_df)
@@ -191,8 +298,9 @@ disable the filled area under the curve, pass `fill=False`.
 
 ## See Also
 
-- [Weighting](../explanation/weighting.md) for the conceptual overview of weight types, alignment strategies, and normalization
+- [Weighting](../explanation/weighting.md) for the conceptual overview of weighter types, alignment strategies, and normalization
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md) for using scorers with and without weights
+- [Model Selection](../explanation/model-selection.md) for tuning weighter parameters as hyperparameters
 - [Handle Long Series](handle-long-series.md) for limiting history length as an alternative to down-weighting old data
-- [Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weight` and `vintage_weight` in context
+- [Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weighter` and `vintage_weighter` in context
 - [API Reference: yohou.utils.weighting](/pages/api/utils/) for the full parameter listing

@@ -2355,14 +2355,10 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
             True class labels with ``"time"`` column.
         y_pred : pl.DataFrame
             Predicted probabilities with ``"time"`` column.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Time-based evaluation weights.
-        step_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-step weights.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-vintage weights.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata to route to nested estimators. Time-axis weighting is
+            configured on ``__init__`` via the scorer's weighter parameters,
+            not passed here.
 
         Returns
         -------
