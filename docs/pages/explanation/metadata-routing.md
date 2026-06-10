@@ -7,12 +7,6 @@ down through nested estimators to the objects that actually use them. Without
 it, there would be no way for a pipeline or search object to know which of its
 child estimators should receive a given parameter.
 
-`sample_weight` also travels through this machinery, but — unlike the parameters
-above — **you never supply it yourself.** A forecaster computes it internally
-from its configured weighters and forwards it to the wrapped estimator. It is an
-internal forwarding detail, not a top-level input. To weight training, configure
-a weighter (see [Weighting](weighting.md)); never route `sample_weight` by hand.
-
 Yohou builds on
 [scikit-learn's metadata routing infrastructure](https://scikit-learn.org/stable/metadata_routing.html),
 extending it with time series specific methods. Routing is enabled globally the
@@ -20,29 +14,10 @@ moment you `import yohou` (via
 `sklearn.set_config(enable_metadata_routing=True)` in `__init__.py`), so there
 is nothing to configure manually.
 
-!!! note "Weighting is no longer routed metadata"
-    Time-axis weighting (recency decay, seasonal emphasis, per-step/per-vintage
-    weights) is **not** routed metadata. It is configured with weighter
-    estimators on a forecaster's or scorer's `__init__`
-    (`time_weighter`, `vintage_weighter`, `step_weighter`) — see
-    [Weighting](weighting.md). A forecaster converts its configured weighters
-    into the sklearn `sample_weight` it forwards to the wrapped estimator, and
-    *that* `sample_weight` is what travels through the routing machinery
-    described below.
-
 ## Routable Metadata Parameters
 
-The metadata that flows through yohou's estimator hierarchy includes:
+The metadata a caller can supply at a top-level call includes:
 
-- **`sample_weight`**: per-sample training weights handed to a wrapped sklearn
-  estimator's `fit`. **You never pass this yourself.** A reduction forecaster
-  computes it internally from its `time_weighter`/`vintage_weighter`, then uses
-  the routing machinery to forward it to the wrapped estimator (for a `Pipeline`
-  estimator it requests `sample_weight` on the final step). It appears in this
-  list only because it rides the same infrastructure — as an internal forwarding
-  detail between the forecaster and its estimator, not a parameter a caller
-  supplies. To weight training, configure a weighter (see
-  [Weighting](weighting.md)).
 - **`coverage_rates`**: the list of interval coverage levels, routed to an
   interval forecaster's `predict_interval` (and `fit`).
 - **`groups`**: panel group names, used by `predict`/`observe_predict` to
@@ -50,6 +25,16 @@ The metadata that flows through yohou's estimator hierarchy includes:
 
 Any consumer can additionally request its own arbitrary metadata key; the
 routing infrastructure is generic and not limited to the parameters above.
+
+### `sample_weight` is not a caller-supplied parameter
+
+`sample_weight` rides the same machinery but you never pass it. A reduction
+forecaster resolves its configured weighters (`time_weighter`,
+`vintage_weighter`) into a `sample_weight` array, wires the request on its
+wrapped estimator, and forwards the array so it reaches the estimator's `fit`.
+It is produced and consumed entirely inside the framework. To weight training,
+configure a weighter on the forecaster's `__init__` rather than routing
+`sample_weight` by hand (see [Weighting](weighting.md)).
 
 ## Consumers and Routers
 
@@ -60,11 +45,11 @@ Sklearn's routing model has two roles:
 - A **router** is a meta-estimator that forwards metadata to its children
   without necessarily using it itself.
 
-An object can be both. A
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
-is a router (it forwards `fit` metadata such as `sample_weight` to its wrapped
-sklearn estimator via `get_metadata_routing()`), and the wrapped estimator is
-the consumer that ultimately uses `sample_weight` in its `fit`.
+An object can be both. An
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+is a consumer of `coverage_rates`, which it uses directly in its
+`predict_interval` method, and at the same time a router that forwards `fit`
+metadata to its wrapped sklearn estimator.
 
 ### Consumers
 
@@ -93,17 +78,6 @@ By default, no metadata is forwarded anywhere. Each consumer must explicitly
 prevents silent misrouting: if metadata is passed to a router but no child has
 requested it, sklearn raises an error.
 
-```python
-from sklearn.linear_model import Ridge
-
-# The generic sklearn mechanism: an estimator requests sample_weight in its fit
-estimator = Ridge().set_fit_request(sample_weight=True)
-```
-
-This is the underlying sklearn mechanism. For `sample_weight` specifically you do
-not write this in yohou — a reduction forecaster sets the request on its wrapped
-estimator internally when it forwards the weights it computed from your weighters.
-
 The request values are:
 
 - `True`: the method requests this parameter. If provided, it will be forwarded;
@@ -120,6 +94,7 @@ Each routable method has its own request setter. An interval forecaster, for
 example, requests `coverage_rates` on its `predict_interval` method:
 
 ```python
+from sklearn.linear_model import Ridge
 from yohou.interval import IntervalReductionForecaster
 
 forecaster = IntervalReductionForecaster(estimator=Ridge())
@@ -202,7 +177,7 @@ provide it, the child simply does not receive it (no error).
 
 ## Putting It Together
 
-A complete example showing fit-time weights reaching the estimator — with no
+A complete example showing fit-time weights reaching the estimator, with no
 `sample_weight` ever passed by hand:
 
 ```python
@@ -225,21 +200,16 @@ search = GridSearchCV(
     scoring=MeanAbsoluteError(),
 )
 
-# No sample_weight argument — the forecaster computes it from its time_weighter.
+# No sample_weight argument: the forecaster computes it from its time_weighter.
 search.fit(y=train, forecasting_horizon=7)
 ```
 
 On each fit, the forecaster resolves its `time_weighter` into a `sample_weight`
 array, wires the request on its wrapped estimator internally, and forwards the
 weights through the routing machinery so they reach `Ridge.fit()` and shape the
-learned coefficients. The user-facing knob is the weighter on `__init__`; the
-`sample_weight` that travels through routing is produced and consumed entirely
-inside the framework.
-
-This is also why `sample_weight` is never accepted at a top-level `fit()`: there
-is no caller-supplied `sample_weight` to route. Passing one would be a mistake —
-to influence training weights, configure or tune a weighter
-(`time_weighter__half_life`) instead. See [Weighting](weighting.md).
+learned coefficients. The user-facing knob is the weighter on `__init__`, and to
+vary it during search you tune the weighter's parameters directly
+(`time_weighter__half_life`). See [Weighting](weighting.md).
 
 ## Connections
 
@@ -249,10 +219,10 @@ routing. [Forecaster Composition](forecaster-composition.md) explains how
 `observe` and `rewind` propagate through composite forecasters and how state is
 managed in pipelines. [Model Selection](model-selection.md) describes
 cross-validation and hyperparameter search, where metadata routing ensures
-parameters reach the right estimators. Time-axis weighting — configured with
-weighter estimators on `__init__` rather than routed as metadata — is discussed
+parameters reach the right estimators. Time-axis weighting, configured with
+weighter estimators on `__init__` rather than routed as metadata, is discussed
 in [Weighting](weighting.md), which also explains how a forecaster turns its
-weighters into the `sample_weight` that does flow through this infrastructure.
+weighters into the `sample_weight` that flows through this infrastructure.
 [Extending Yohou](extending-yohou.md) covers how custom components participate in
 the routing infrastructure through tags and base class conventions.
 

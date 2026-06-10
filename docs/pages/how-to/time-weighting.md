@@ -31,8 +31,8 @@ from yohou.utils.weighting import ExponentialDecayWeighter
 weighter = ExponentialDecayWeighter(half_life=365)
 ```
 
-`ExponentialDecayWeighter` has a `scale` parameter that sets the decay *basis* —
-real elapsed time versus rank position — which matters when sampling is
+`ExponentialDecayWeighter` has a `scale` parameter that sets the decay *basis*
+(real elapsed time versus rank position), which matters when sampling is
 irregular. When `scale=None` (the default) it is inferred from the key dtype:
 
 | Key dtype             | Inferred `scale` | `half_life` units            | Decay basis                          |
@@ -40,7 +40,7 @@ irregular. When `scale=None` (the default) it is inferred from the key dtype:
 | datetime              | `"elapsed"`      | days (`int`/`float`) or `timedelta` | real elapsed time to the latest key |
 | numeric / integer step| `"position"`     | steps (`int`/`float`)        | rank-index distance to the latest key |
 
-Set `scale` explicitly to override the inference — e.g. `scale="position"` to
+Set `scale` explicitly to override the inference, e.g. `scale="position"` to
 decay regularly-spaced datetimes by row position, or to weight integer
 forecasting steps. A `timedelta` `half_life` with `scale="position"` raises
 `ValueError`.
@@ -194,7 +194,7 @@ weighted_score = scorer.score(y_test, y_pred)
 ```
 
 Scorers also expose `step_weighter` and `vintage_weighter` for multi-vintage
-predictions. A scorer only exposes the weighter slots it supports — e.g.
+predictions. A scorer only exposes the weighter slots it supports. For example,
 `MedianAbsoluteError` has no `time_weighter` parameter, so an unsupported
 weighter is rejected at construction rather than at `score` time. See
 [Multi-vintage Scoring](multi-vintage-scoring.md) for details.
@@ -211,8 +211,8 @@ cross_validate(forecaster, y_train, forecasting_horizon=12, scoring=scorer)
 ## 6. Tune Your Weighting
 
 Because weighters are constructor parameters, their settings are searchable
-hyperparameters addressed with the `__` syntax. Tune the decay half-life — and
-even the decay basis — directly:
+hyperparameters addressed with the `__` syntax. Tune the decay half-life, and
+even the decay basis, directly:
 
 ```python
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter

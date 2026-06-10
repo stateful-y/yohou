@@ -175,7 +175,7 @@ in hard-to-predict ways.
 performs an analogous combination at the *weighter* level (as opposed to combining
 already-resolved arrays across slots). It holds named sub-weighters and combines
 their outputs by element-wise product (the default) or weighted mean, producing
-a single weighter that expresses all priorities simultaneously — this is how you
+a single weighter that expresses all priorities simultaneously. This is how you
 combine, for example, an exponential decay with a seasonal emphasis into one
 `time_weighter`. Because the sub-weighters are named tuples exposed through
 sklearn's `_BaseComposition`, each component's parameters remain addressable for
@@ -188,8 +188,8 @@ signature. When yohou trains or evaluates panel data, it calls the weighter once
 per group, passing that group's key series and its name, so each group is
 weighted relative to its own most-recent key. The built-in weighters ignore
 `group_name` (every group receives the same profile shape). To encode
-group-specific *parameters* — for example, weighting recent data more
-aggressively for volatile groups while using gentler decay for stable ones —
+group-specific *parameters* (for example, weighting recent data more
+aggressively for volatile groups while using gentler decay for stable ones),
 write a small `BaseWeighter` subclass whose `compute_weights` branches on
 `group_name`.
 
@@ -209,4 +209,4 @@ removes that observation from scoring completely.
 
 ## Connections
 
-For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`) — no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. The full API is documented in the [yohou.utils.weighting reference](/pages/api/utils/#weighting).
+For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`); no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. The full API is documented in the [yohou.utils.weighting reference](/pages/api/utils/#weighting).

@@ -93,7 +93,7 @@ Three built-in weighters map a key `pl.Series` to a weight `pl.Series`:
 - [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.utils.weighting.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
 - [`LinearDecayWeighter`](/pages/api/generated/yohou.utils.weighting.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
 
-Because the weighting lives on the scorer instance, a weighted scorer is a self-contained cross-validation objective — there is no per-call weight argument to route:
+Because the weighting lives on the scorer instance, a weighted scorer is a self-contained cross-validation objective; there is no per-call weight argument to route:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
@@ -104,7 +104,7 @@ scoring = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=90)
 
 ### Weighters Are Tunable Hyperparameters
 
-Constructor-residence has a second payoff: a weighter's settings become ordinary searchable hyperparameters, addressed with the `__` syntax. You can tune the recency half-life — or the decay basis — alongside the model's own parameters, and the search clones and varies them directly (no metadata routing involved):
+Constructor-residence has a second payoff: a weighter's settings become ordinary searchable hyperparameters, addressed with the `__` syntax. You can tune the recency half-life (or the decay basis) alongside the model's own parameters, and the search clones and varies them directly (no metadata routing involved):
 
 ```python
 from sklearn.linear_model import Ridge
