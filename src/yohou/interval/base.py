@@ -90,7 +90,10 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
             Weight matrix of shape ``(n_pred, n_calibration)``.
 
         """
-        neg_d = -(distances - distances.max(axis=1, keepdims=True))
+        # Stable softmax of the exponent -d: subtract its row max (= -min(d)),
+        # so every exponent is <= 0 and exp() cannot overflow.
+        neg_d = -distances
+        neg_d = neg_d - neg_d.max(axis=1, keepdims=True)
         return BaseSimilarity._reserve_mass(np.exp(neg_d))
 
     @staticmethod

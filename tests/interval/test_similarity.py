@@ -1147,3 +1147,33 @@ class TestSimilarityTuningThroughForecaster:
         )
         search.fit(y, forecasting_horizon=1)
         assert search.best_params_["similarity__metric"] in ("euclidean", "cityblock")
+
+
+class TestSimilarityNumericalStability:
+    """Regression: large distances must not overflow exp() or produce NaN weights."""
+
+    def test_to_weights_large_distances_finite(self):
+        from yohou.interval.base import BaseSimilarity
+
+        # Distances large enough that exp(+max) would overflow without stabilisation.
+        distances = np.array([[0.0, 500.0, 1000.0], [800.0, 0.0, 1600.0]])
+        w = BaseSimilarity._to_weights(distances)
+        assert np.all(np.isfinite(w))
+        assert np.all(w >= 0)
+        assert np.all(w.sum(axis=1) < 1.0)
+        # Closest (distance 0) keeps the largest weight in each row.
+        assert w[0, 0] == w[0].max()
+        assert w[1, 1] == w[1].max()
+
+    def test_distance_similarity_large_values_no_overflow(self):
+        import warnings
+
+        dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(20)]
+        y = pl.DataFrame({"time": dates, "value": [float(i) for i in range(20)]})
+        # Predictions spanning a large magnitude range -> large pairwise distances.
+        y_pred = pl.DataFrame({"time": dates, "value": [float(i) * 1000.0 for i in range(20)]})
+        sim = DistanceSimilarity().fit(y, y_pred)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            w = sim.predict(y_pred.tail(1))
+        assert np.all(np.isfinite(w))
