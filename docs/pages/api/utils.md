@@ -68,7 +68,7 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`SeasonalEmphasisWeighter`](generated/yohou.utils.weighting.SeasonalEmphasisWeighter.md) | Weights emphasizing keys in phase with the most recent seasonal position. |
 | [`LookupWeighter`](generated/yohou.utils.weighting.LookupWeighter.md) | Explicit per-key weights from a mapping. |
 | [`TableWeighter`](generated/yohou.utils.weighting.TableWeighter.md) | DataFrame-driven weights resolved by joining on a key column. |
-| [`ProductWeighter`](generated/yohou.utils.weighting.ProductWeighter.md) | Compose weighters by element-wise multiplication. |
+| [`CompositeWeighter`](generated/yohou.utils.weighting.CompositeWeighter.md) | Combine weighters by product or mean. |
 | [`combine_weight_vectors`](generated/yohou.utils.weighting.combine_weight_vectors.md) | Combine weight vectors multiplicatively and normalize. |
 | [`normalize_weights`](generated/yohou.utils.weighting.normalize_weights.md) | Normalize weights so they sum to the number of elements. |
 | [`resolve_weighter_to_array`](generated/yohou.utils.weighting.resolve_weighter_to_array.md) | Resolve a weighter to a validated numpy weight array aligned to the key series. |

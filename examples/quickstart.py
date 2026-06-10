@@ -28,7 +28,7 @@ __gallery__ = {
         "SeasonalDifferencing",
         "SeasonalNaive",
         "SplitConformalForecaster",
-        "ProductWeighter",
+        "CompositeWeighter",
         "inspect_panel",
         "plot_calibration",
         "plot_cv_results_scatter",
@@ -104,7 +104,7 @@ def _():
     from yohou.utils.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
-        ProductWeighter,
+        CompositeWeighter,
         SeasonalEmphasisWeighter,
     )
 
@@ -128,7 +128,7 @@ def _():
         SlidingWindowSplitter,
         SplitConformalForecaster,
         clone,
-        ProductWeighter,
+        CompositeWeighter,
         copy,
         ExponentialDecayWeighter,
         fetch_dominick,
@@ -902,7 +902,7 @@ def _(mo):
     | `ExponentialDecayWeighter(half_life=…)` | Recent data gets exponentially more weight |
     | `LinearDecayWeighter(max_steps=…)` | Linear ramp from 0 → 1 |
     | `SeasonalEmphasisWeighter(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
-    | `ProductWeighter([(name, fn1), (name, fn2), …])` | Multiply multiple weight functions element-wise |
+    | `CompositeWeighter([(name, fn1), (name, fn2), …])` | Multiply multiple weight functions element-wise |
     """)
 
 
@@ -937,11 +937,11 @@ def _(mo):
     mo.md(r"""
     ### Composing weights & metadata routing
 
-    `ProductWeighter([(name, fn1), (name, fn2), …])` multiplies weight vectors element-wise, so
+    `CompositeWeighter([(name, fn1), (name, fn2), …])` multiplies weight vectors element-wise, so
     recent *and* seasonally prominent timesteps are emphasised simultaneously:
 
     ```python
-    _tw = ProductWeighter([
+    _tw = CompositeWeighter([
         ("decay", ExponentialDecayWeighter(half_life=20)),         # recency
         ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),  # season
     ])
@@ -968,7 +968,7 @@ def _(
     PointReductionForecaster,
     Ridge,
     SeasonalDifferencing,
-    ProductWeighter,
+    CompositeWeighter,
     ExponentialDecayWeighter,
     forecasting_horizon,
     scorer,
@@ -976,7 +976,7 @@ def _(
     y_test,
     y_train,
 ):
-    _tw = ProductWeighter([
+    _tw = CompositeWeighter([
         ("decay", ExponentialDecayWeighter(half_life=20)),
         ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),
     ])

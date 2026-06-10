@@ -14,7 +14,7 @@ from __future__ import annotations
 import abc
 import numbers
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import polars as pl
@@ -27,7 +27,7 @@ __all__ = [
     "ExponentialDecayWeighter",
     "LinearDecayWeighter",
     "LookupWeighter",
-    "ProductWeighter",
+    "CompositeWeighter",
     "SeasonalEmphasisWeighter",
     "TableWeighter",
     "combine_weight_vectors",
@@ -60,7 +60,7 @@ class BaseWeighter(BaseEstimator, metaclass=abc.ABCMeta):
     - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
     - [`LookupWeighter`][yohou.utils.weighting.LookupWeighter] : Explicit per-key weights.
     - [`TableWeighter`][yohou.utils.weighting.TableWeighter] : DataFrame-driven weights.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     """
 
@@ -151,7 +151,7 @@ class ExponentialDecayWeighter(BaseWeighter):
     --------
     - [`LinearDecayWeighter`][yohou.utils.weighting.LinearDecayWeighter] : Linear recency weighting.
     - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -232,7 +232,7 @@ class LinearDecayWeighter(BaseWeighter):
     --------
     - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Exponential recency weighting.
     - [`SeasonalEmphasisWeighter`][yohou.utils.weighting.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -298,7 +298,7 @@ class SeasonalEmphasisWeighter(BaseWeighter):
     --------
     - [`ExponentialDecayWeighter`][yohou.utils.weighting.ExponentialDecayWeighter] : Exponential recency weighting.
     - [`LinearDecayWeighter`][yohou.utils.weighting.LinearDecayWeighter] : Linear recency weighting.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -367,7 +367,7 @@ class LookupWeighter(BaseWeighter):
     See Also
     --------
     - [`TableWeighter`][yohou.utils.weighting.TableWeighter] : DataFrame-driven weights.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     Examples
     --------
@@ -425,7 +425,7 @@ class TableWeighter(BaseWeighter):
     See Also
     --------
     - [`LookupWeighter`][yohou.utils.weighting.LookupWeighter] : Explicit per-key weights.
-    - [`ProductWeighter`][yohou.utils.weighting.ProductWeighter] : Compose weighters by multiplication.
+    - [`CompositeWeighter`][yohou.utils.weighting.CompositeWeighter] : Combine weighters by product or mean.
 
     """
 
@@ -471,22 +471,36 @@ class TableWeighter(BaseWeighter):
         return pl.Series(weights_np, dtype=pl.Float64).alias("weight")
 
 
-class ProductWeighter(BaseWeighter, _BaseComposition):
-    """Compose named weighters by element-wise multiplication.
+class CompositeWeighter(BaseWeighter, _BaseComposition):
+    r"""Combine multiple named weighters into a single weight series.
 
-    Multiplies the ``compute_weights`` outputs of its components. Sub-weighters
-    are named ``(name, weighter)`` tuples, so their parameters are addressable
-    as ``<name>__<param>`` (sklearn ``_BaseComposition``) and tunable — e.g.
-    ``time_weighter__decay__half_life`` through a forecaster. This matches
-    every other yohou compositor (``CompositeSimilarity``, ``FeaturePipeline``,
+    Multiplies or averages the ``compute_weights`` outputs of its components.
+    Sub-weighters are named ``(name, weighter)`` tuples, so their parameters are
+    addressable as ``<name>__<param>`` (sklearn ``_BaseComposition``) and tunable
+    — e.g. ``time_weighter__decay__half_life`` through a forecaster. Mirrors
+    ``CompositeSimilarity`` and the other yohou compositors (``FeaturePipeline``,
     ``ColumnForecaster``, the voting ensembles, …).
 
     Parameters
     ----------
     weighters : list of (str, BaseWeighter) tuples
-        Named component weighters to multiply, e.g.
+        Named component weighters to combine, e.g.
         ``[("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))]``.
         Must be non-empty.
+    combination : {"multiply", "mean"}, default="multiply"
+        How to combine the component weight series.
+
+        ``"multiply"``
+            Element-wise product with optional exponents:
+            ``w = prod(w_i ** alpha_i)``.
+        ``"mean"``
+            Weighted average: ``w = sum(alpha_i * w_i) / sum(alpha_i)``.
+    weights : list of float or None, default=None
+        Per-component exponents (under ``"multiply"``) or mixing coefficients
+        (under ``"mean"``), aligned with ``weighters``. If None, every component
+        contributes equally (1.0 each). Named ``weights`` to match
+        ``CompositeSimilarity``; it configures the *composition*, not the
+        produced weight series.
 
     See Also
     --------
@@ -498,7 +512,7 @@ class ProductWeighter(BaseWeighter, _BaseComposition):
     >>> import polars as pl
     >>> from datetime import datetime
     >>> times = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
-    >>> w = ProductWeighter([
+    >>> w = CompositeWeighter([
     ...     ("decay", ExponentialDecayWeighter(2)),
     ...     ("seasonal", SeasonalEmphasisWeighter(2, 1.5)),
     ... ])
@@ -508,10 +522,19 @@ class ProductWeighter(BaseWeighter, _BaseComposition):
 
     _parameter_constraints: dict = {
         "weighters": [list, None],
+        "combination": [str],
+        "weights": [list, None],
     }
 
-    def __init__(self, weighters: list[tuple[str, BaseWeighter]] | None = None) -> None:
+    def __init__(
+        self,
+        weighters: list[tuple[str, BaseWeighter]] | None = None,
+        combination: Literal["multiply", "mean"] = "multiply",
+        weights: list[float] | None = None,
+    ) -> None:
         self.weighters = weighters
+        self.combination = combination
+        self.weights = weights
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """Get parameters, including nested component parameters.
@@ -529,7 +552,7 @@ class ProductWeighter(BaseWeighter, _BaseComposition):
         """
         return self._get_params("weighters", deep=deep)
 
-    def set_params(self, **params: Any) -> ProductWeighter:
+    def set_params(self, **params: Any) -> CompositeWeighter:
         """Set parameters, routing ``<name>__<param>`` to named sub-weighters.
 
         Parameters
@@ -545,16 +568,44 @@ class ProductWeighter(BaseWeighter, _BaseComposition):
         self._set_params("weighters", **params)
         return self
 
-    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
-        """Compute the product of all component weights for ``key``."""
+    def _check_weighters(self) -> None:
+        """Validate the composition parameters (not the sklearn ``_validate_params``)."""
         if not self.weighters:
-            raise ValueError("ProductWeighter requires at least one weighter")
-        result = pl.Series(np.ones(len(key)), dtype=pl.Float64)
+            raise ValueError("CompositeWeighter requires at least one weighter")
         for item in self.weighters:
             if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
                 raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
-            _name, weighter = item
-            result = result * weighter.compute_weights(key, group_name)
+        if self.combination not in ("multiply", "mean"):
+            raise ValueError(f"combination must be 'multiply' or 'mean', got {self.combination!r}")
+        if self.weights is not None and len(self.weights) != len(self.weighters):
+            raise ValueError(
+                f"weights length ({len(self.weights)}) must match weighters length ({len(self.weighters)})"
+            )
+
+    def _resolved_weights(self) -> list[float]:
+        """Return per-component weights, defaulting to 1.0 each."""
+        if self.weights is not None:
+            return self.weights
+        return [1.0] * len(self.weighters)  # ty: ignore[invalid-argument-type]
+
+    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+        """Combine all component weights for ``key`` by product or mean."""
+        self._check_weighters()
+        alphas = self._resolved_weights()
+        series = [weighter.compute_weights(key, group_name) for _name, weighter in self.weighters]  # ty: ignore[not-iterable]
+
+        if self.combination == "multiply":
+            result = pl.Series(np.ones(len(key)), dtype=pl.Float64)
+            for s, alpha in zip(series, alphas, strict=True):
+                result = result * s.pow(alpha)
+        else:  # mean
+            result = pl.Series(np.zeros(len(key)), dtype=pl.Float64)
+            for s, alpha in zip(series, alphas, strict=True):
+                result = result + s * alpha
+            total_alpha = sum(alphas)
+            if total_alpha != 0:
+                result = result / total_alpha
+
         return result.alias("weight")
 
 

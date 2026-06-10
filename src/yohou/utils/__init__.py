@@ -57,10 +57,10 @@ from .validation import (
 )
 from .weighting import (
     BaseWeighter,
+    CompositeWeighter,
     ExponentialDecayWeighter,
     LinearDecayWeighter,
     LookupWeighter,
-    ProductWeighter,
     SeasonalEmphasisWeighter,
     TableWeighter,
     combine_weight_vectors,
@@ -80,7 +80,7 @@ __all__ = [
     "LookupWeighter",
     "POINT",
     "POINT_INTERVAL",
-    "ProductWeighter",
+    "CompositeWeighter",
     "SeasonalEmphasisWeighter",
     "SplitterTags",
     "TableWeighter",

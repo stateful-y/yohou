@@ -62,7 +62,7 @@ def _():
     from yohou.utils.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
-        ProductWeighter,
+        CompositeWeighter,
         SeasonalEmphasisWeighter,
     )
 
@@ -71,7 +71,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        ProductWeighter,
+        CompositeWeighter,
         deepcopy,
         ExponentialDecayWeighter,
         fetch_dominick,
@@ -201,13 +201,13 @@ def _(mo):
 
 @app.cell
 def _(
-    ProductWeighter,
+    CompositeWeighter,
     ExponentialDecayWeighter,
     plot_time_weight,
     SeasonalEmphasisWeighter,
     y_test,
 ):
-    w_composed = ProductWeighter([
+    w_composed = CompositeWeighter([
         ("decay", ExponentialDecayWeighter(half_life=6)),
         ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=2.0)),
     ])
@@ -240,7 +240,7 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    ProductWeighter,
+    CompositeWeighter,
     ExponentialDecayWeighter,
     fetch_dominick,
     LinearDecayWeighter,
@@ -280,7 +280,7 @@ def _(
         ("Seasonal Emphasis (period=7, 3×)", SeasonalEmphasisWeighter(seasonality=7, emphasis=3.0)),
         (
             "Composed: Exponential + Seasonal",
-            ProductWeighter([
+            CompositeWeighter([
                 ("decay", ExponentialDecayWeighter(half_life=10)),
                 ("seasonal", SeasonalEmphasisWeighter(seasonality=7, emphasis=2.0)),
             ]),

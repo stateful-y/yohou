@@ -17,7 +17,7 @@ __gallery__ = {
     "companion": "/pages/how-to/time-weighting/",
     "api_references": [
         "PointReductionForecaster",
-        "ProductWeighter",
+        "CompositeWeighter",
         "ExponentialDecayWeighter",
         "LinearDecayWeighter",
         "plot_score_per_step",
@@ -70,7 +70,7 @@ def _():
     from yohou.utils.weighting import (
         ExponentialDecayWeighter,
         LinearDecayWeighter,
-        ProductWeighter,
+        CompositeWeighter,
         SeasonalEmphasisWeighter,
     )
 
@@ -79,7 +79,7 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        ProductWeighter,
+        CompositeWeighter,
         ExponentialDecayWeighter,
         fetch_sunspot,
         LinearDecayWeighter,
@@ -170,14 +170,14 @@ def _(mo):
     mo.md(r"""
     ## 3. Composing Weights
 
-    [`ProductWeighter`](/pages/api/generated/yohou.utils.weighting.ProductWeighter/) multiplies outputs of multiple weight functions. This lets
+    [`CompositeWeighter`](/pages/api/generated/yohou.utils.weighting.CompositeWeighter/) multiplies outputs of multiple weight functions. This lets
     you combine, for example, exponential recency with seasonal emphasis:
     """)
 
 
 @app.cell
-def _(ProductWeighter, ExponentialDecayWeighter, pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
-    composed_fn = ProductWeighter([
+def _(CompositeWeighter, ExponentialDecayWeighter, pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
+    composed_fn = CompositeWeighter([
         ("decay", ExponentialDecayWeighter(half_life=365)),
         ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),
     ])

@@ -11,10 +11,10 @@ from sklearn.base import clone
 
 from yohou.utils.weighting import (
     BaseWeighter,
+    CompositeWeighter,
     ExponentialDecayWeighter,
     LinearDecayWeighter,
     LookupWeighter,
-    ProductWeighter,
     SeasonalEmphasisWeighter,
     TableWeighter,
     combine_weight_vectors,
@@ -157,38 +157,38 @@ def test_table_weighter_panel_group_column(times: pl.Series) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ProductWeighter (thread D)
+# CompositeWeighter (thread D)
 # ---------------------------------------------------------------------------
 
 
-def test_product_multiplies_components(times: pl.Series) -> None:
-    """ProductWeighter multiplies component outputs element-wise."""
+def test_composite_multiplies_components(times: pl.Series) -> None:
+    """CompositeWeighter multiplies component outputs element-wise."""
     a = ExponentialDecayWeighter(half_life=2)
     b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
     expected = (a.compute_weights(times) * b.compute_weights(times)).to_list()
-    got = ProductWeighter([("a", a), ("b", b)]).compute_weights(times).to_list()
+    got = CompositeWeighter([("a", a), ("b", b)]).compute_weights(times).to_list()
     assert got == pytest.approx(expected)
 
 
-def test_product_empty_raises(times: pl.Series) -> None:
-    """An empty ProductWeighter raises."""
+def test_composite_empty_raises(times: pl.Series) -> None:
+    """An empty CompositeWeighter raises."""
     with pytest.raises(ValueError, match="at least one"):
-        ProductWeighter([]).compute_weights(times)
+        CompositeWeighter([]).compute_weights(times)
 
 
-def test_product_nested_params_addressable() -> None:
+def test_composite_nested_params_addressable() -> None:
     """Component params are addressable via <name>__param (sklearn _BaseComposition)."""
-    w = ProductWeighter([("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))])
+    w = CompositeWeighter([("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))])
     assert "decay__half_life" in w.get_params(deep=True)
     w.set_params(decay__half_life=14)
     assert dict(w.weighters)["decay"].half_life == 14
 
 
-def test_product_clone_roundtrips() -> None:
-    """ProductWeighter survives sklearn clone."""
-    w = ProductWeighter([("decay", ExponentialDecayWeighter(7)), ("lin", LinearDecayWeighter(3))])
+def test_composite_clone_roundtrips() -> None:
+    """CompositeWeighter survives sklearn clone."""
+    w = CompositeWeighter([("decay", ExponentialDecayWeighter(7)), ("lin", LinearDecayWeighter(3))])
     c = clone(w)
-    assert isinstance(c, ProductWeighter)
+    assert isinstance(c, CompositeWeighter)
     assert dict(c.weighters)["decay"].half_life == 7
     assert dict(c.weighters)["lin"].max_steps == 3
 
@@ -342,28 +342,28 @@ def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ProductWeighter get_params / set_params edge paths
+# CompositeWeighter get_params / set_params edge paths
 # ---------------------------------------------------------------------------
 
 
-def test_product_set_params_replaces_weighters_list() -> None:
+def test_composite_set_params_replaces_weighters_list() -> None:
     """set_params replaces the whole weighters list."""
-    w = ProductWeighter([("decay", ExponentialDecayWeighter(1))])
+    w = CompositeWeighter([("decay", ExponentialDecayWeighter(1))])
     new = [("lin", LinearDecayWeighter(2))]
     w.set_params(weighters=new)
     assert w.weighters is new
 
 
-def test_product_set_params_routes_nested() -> None:
+def test_composite_set_params_routes_nested() -> None:
     """Nested <name>__param keys are routed to the named component."""
-    w = ProductWeighter([("decay", ExponentialDecayWeighter(1)), ("lin", LinearDecayWeighter(2))])
+    w = CompositeWeighter([("decay", ExponentialDecayWeighter(1)), ("lin", LinearDecayWeighter(2))])
     w.set_params(decay__half_life=9)
     assert dict(w.weighters)["decay"].half_life == 9
 
 
-def test_product_bare_list_rejected(times: pl.Series) -> None:
+def test_composite_bare_list_rejected(times: pl.Series) -> None:
     """A bare list (not named tuples) is rejected at compute time."""
-    w = ProductWeighter([ExponentialDecayWeighter(1), LinearDecayWeighter(2)])  # type: ignore[list-item]
+    w = CompositeWeighter([ExponentialDecayWeighter(1), LinearDecayWeighter(2)])  # type: ignore[list-item]
     with pytest.raises(ValueError, match="name, weighter"):
         w.compute_weights(times)
 
@@ -393,3 +393,65 @@ def test_resolve_weighter_to_array_rejects_mismatched_length(times: pl.Series) -
 
     with pytest.raises(ValueError, match="expected 3 rows"):
         resolve_weighter_to_array(_BadLength(), times)
+
+
+# ---------------------------------------------------------------------------
+# CompositeWeighter combination = "mean" and per-component weights
+# ---------------------------------------------------------------------------
+
+
+def test_composite_mean_combination(times: pl.Series) -> None:
+    """combination='mean' averages the component weight series."""
+    a = ExponentialDecayWeighter(half_life=2)
+    b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
+    expected = ((a.compute_weights(times) + b.compute_weights(times)) / 2).to_list()
+    got = CompositeWeighter([("a", a), ("b", b)], combination="mean").compute_weights(times).to_list()
+    assert got == pytest.approx(expected)
+
+
+def test_composite_mean_weighted_coefficients(times: pl.Series) -> None:
+    """Per-component coefficients give a weighted average under mean."""
+    a = ExponentialDecayWeighter(half_life=2)
+    b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
+    expected = ((a.compute_weights(times) * 0.25 + b.compute_weights(times) * 0.75) / 1.0).to_list()
+    got = (
+        CompositeWeighter([("a", a), ("b", b)], combination="mean", weights=[0.25, 0.75])
+        .compute_weights(times)
+        .to_list()
+    )
+    assert got == pytest.approx(expected)
+
+
+def test_composite_multiply_exponents(times: pl.Series) -> None:
+    """Per-component exponents apply under multiply."""
+    a = ExponentialDecayWeighter(half_life=2)
+    b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
+    expected = (a.compute_weights(times).pow(2.0) * b.compute_weights(times).pow(0.5)).to_list()
+    got = (
+        CompositeWeighter([("a", a), ("b", b)], combination="multiply", weights=[2.0, 0.5])
+        .compute_weights(times)
+        .to_list()
+    )
+    assert got == pytest.approx(expected)
+
+
+def test_composite_invalid_combination_raises(times: pl.Series) -> None:
+    """An unknown combination raises."""
+    w = CompositeWeighter([("a", ExponentialDecayWeighter(1)), ("b", LinearDecayWeighter(2))], combination="bad")
+    with pytest.raises(ValueError, match="combination"):
+        w.compute_weights(times)
+
+
+def test_composite_weights_length_mismatch_raises(times: pl.Series) -> None:
+    """weights length must match the number of components."""
+    w = CompositeWeighter([("a", ExponentialDecayWeighter(1)), ("b", LinearDecayWeighter(2))], weights=[1.0])
+    with pytest.raises(ValueError, match="weights length"):
+        w.compute_weights(times)
+
+
+def test_composite_get_params_includes_combination_and_weights() -> None:
+    """combination and weights are introspectable / tunable."""
+    w = CompositeWeighter([("a", ExponentialDecayWeighter(1))], combination="mean", weights=[1.0])
+    params = w.get_params(deep=True)
+    assert params["combination"] == "mean"
+    assert params["weights"] == [1.0]
