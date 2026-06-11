@@ -9,9 +9,11 @@ import polars as pl
 from scipy.spatial.distance import cdist
 from sklearn.base import clone
 
+from yohou.utils._compat import _BaseComposition
+
 from .base import BaseSimilarity
 
-__all__ = ["CompositeSimilarity", "DistanceSimilarity", "TemporalSimilarity"]
+__all__ = ["CompositeSimilarity", "DistanceSimilarity", "SeasonalSimilarity"]
 
 
 class DistanceSimilarity(BaseSimilarity):
@@ -113,7 +115,7 @@ class DistanceSimilarity(BaseSimilarity):
         metric_params: dict[str, object] | None = None,
     ) -> None:
         self.metric = metric
-        self.metric_params = metric_params if metric_params is not None else {}
+        self.metric_params = metric_params
 
     def _get_X(
         self,
@@ -279,17 +281,11 @@ class DistanceSimilarity(BaseSimilarity):
 
         XA = X_features.select(pl.exclude("time")).to_numpy()
         XB = self._X_observed.select(pl.exclude("time")).to_numpy()
-        distances: np.ndarray = cdist(XA, XB, metric=self.metric, **self.metric_params)  # ty: ignore[no-matching-overload]
-        neg_d = -distances
-        weights = np.exp(neg_d - np.max(neg_d, axis=1, keepdims=True))
-
-        weights = weights / np.sum(weights, axis=1)[:, np.newaxis] * self._X_observed.shape[1]
-        weights = weights / (1 + np.sum(weights, axis=1)[:, np.newaxis])
-
-        return weights
+        distances: np.ndarray = cdist(XA, XB, metric=self.metric, **(self.metric_params or {}))  # ty: ignore[no-matching-overload]
+        return self._to_weights(distances)
 
 
-class TemporalSimilarity(BaseSimilarity):
+class SeasonalSimilarity(BaseSimilarity):
     r"""Temporal similarity using Fourier features for weighting observations.
 
     Computes observation weights by measuring the distance between
@@ -331,16 +327,20 @@ class TemporalSimilarity(BaseSimilarity):
     captured (e.g. December 31 is close to January 1). Multiple
     seasonalities combine naturally by concatenating feature vectors.
 
-    The weight normalisation matches ``DistanceSimilarity`` exactly:
+    The weight normalisation matches ``DistanceSimilarity`` exactly, via the
+    shared [`BaseSimilarity._to_weights`][yohou.interval.base.BaseSimilarity]:
+    a numerically-stable softmax of negative distances with uniform mass
+    reserved for the test point, ``w_{ji} = raw_{ji} / (1 + \sum_k raw_{jk})``
+    where ``raw_{ji} = \exp(-(d_{ji} - \max_k d_{jk}))``. Each row is
+    non-negative and sums below 1, following the non-exchangeable conformal
+    construction (Barber et al., 2023).
 
-    $$w_{ji} = \frac{\exp(-d(x_j, x_i))}{\sum_k \exp(-d(x_j, x_k))} \cdot n_{\text{features}}$$
-
-    followed by
-
-    $$w_{ji} \leftarrow \frac{w_{ji}}{1 + \sum_k w_{jk}}$$
-
-    This reserves probability mass for a uniform component, following
-    the conformal prediction literature.
+    References
+    ----------
+    [1] Barber, R.F., Candes, E.J., Ramdas, A., & Tibshirani, R.J.
+        (2023). "Conformal prediction beyond exchangeability." Annals of
+        Statistics, 51(2), 816-845.
+        https://doi.org/10.1214/23-AOS2276
 
     See Also
     --------
@@ -352,7 +352,7 @@ class TemporalSimilarity(BaseSimilarity):
     >>> from datetime import datetime, timedelta
     >>> import polars as pl
     >>> import numpy as np
-    >>> from yohou.interval.similarity import TemporalSimilarity
+    >>> from yohou.interval.similarity import SeasonalSimilarity
     >>>
     >>> # Daily data with 3 weeks of calibration
     >>> dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(21)]
@@ -360,7 +360,7 @@ class TemporalSimilarity(BaseSimilarity):
     >>> y_pred = pl.DataFrame({"time": dates, "value": np.random.randn(21)})
     >>>
     >>> # Fit with weekly seasonality
-    >>> sim = TemporalSimilarity(seasonalities=[7.0])
+    >>> sim = SeasonalSimilarity(seasonalities=[7.0])
     >>> _ = sim.fit(y, y_pred)
     >>>
     >>> # Predict weights for a new Monday
@@ -389,7 +389,7 @@ class TemporalSimilarity(BaseSimilarity):
         self.seasonalities = seasonalities
         self.harmonics = harmonics
         self.metric = metric
-        self.metric_params = metric_params if metric_params is not None else {}
+        self.metric_params = metric_params
 
     def _resolve_harmonics(self) -> dict[float, list[int]]:
         """Resolve harmonics, defaulting to first harmonic per seasonality.
@@ -439,7 +439,7 @@ class TemporalSimilarity(BaseSimilarity):
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
-    ) -> "TemporalSimilarity":
+    ) -> "SeasonalSimilarity":
         """Fit the temporal similarity from calibration predictions.
 
         Auto-detects the time interval from consecutive timestamps in
@@ -481,7 +481,7 @@ class TemporalSimilarity(BaseSimilarity):
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
-    ) -> "TemporalSimilarity":
+    ) -> "SeasonalSimilarity":
         """Observe new data and extend the reference feature matrix.
 
         Parameters
@@ -508,7 +508,7 @@ class TemporalSimilarity(BaseSimilarity):
         y: pl.DataFrame,
         y_pred: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
-    ) -> "TemporalSimilarity":
+    ) -> "SeasonalSimilarity":
         """Rewind the most recently observed data.
 
         Removes the last ``len(y)`` rows from the internal feature
@@ -559,51 +559,49 @@ class TemporalSimilarity(BaseSimilarity):
             new_features,
             self._features_observed,
             metric=self.metric,
-            **self.metric_params,
+            **(self.metric_params or {}),
         )  # ty: ignore[no-matching-overload]
-        weights = np.exp(-distances)
-
-        weights = weights / np.sum(weights, axis=1)[:, np.newaxis] * self._n_features
-        weights = weights / (1 + np.sum(weights, axis=1)[:, np.newaxis])
-
-        return weights
+        return self._to_weights(distances)
 
 
-class CompositeSimilarity(BaseSimilarity):
-    r"""Combine multiple similarity measures into a single weight vector.
+class CompositeSimilarity(BaseSimilarity, _BaseComposition):
+    r"""Combine multiple named similarity measures into a single weight vector.
 
     Delegates ``fit``, ``observe``, ``rewind``, and ``predict`` to each
     sub-similarity and then combines their weight matrices using either
-    element-wise multiplication or weighted averaging.
+    element-wise multiplication or weighted averaging. Sub-similarities are
+    named ``(name, similarity)`` tuples, so their parameters are tunable via
+    the ``similarities__<name>__<param>`` syntax (sklearn ``_BaseComposition``).
 
     Parameters
     ----------
-    similarities : list of BaseSimilarity
-        At least two similarity instances to combine.
+    similarities : list of (str, BaseSimilarity) tuples
+        At least two named sub-similarities to combine, e.g.
+        ``[("dist", DistanceSimilarity()), ("seasonal", SeasonalSimilarity([7.0]))]``.
     combination : {"multiply", "mean"}, default="multiply"
         How to combine the individual weight matrices.
 
         ``"multiply"``
             Element-wise product with optional exponents:
-            ``w_combined = prod(w_i ** alpha_i)``, then re-normalised
-            so rows lie in (0, 1).
+            ``w_combined = prod(w_i ** alpha_i)``, then re-normalised with the
+            shared per-row mass reservation.
         ``"mean"``
-            Weighted average: ``w_combined = sum(alpha_i * w_i)``.
+            Weighted average: ``w_combined = sum(alpha_i * w_i) / sum(alpha_i)``.
 
     weights : list of float or None, default=None
         Per-similarity exponents (multiply) or mixing coefficients
-        (mean). If ``None``, all similarities contribute equally
-        (exponents/coefficients of 1.0).
+        (mean), aligned with ``similarities``. If ``None``, all
+        similarities contribute equally (exponents/coefficients of 1.0).
 
     Attributes
     ----------
-    similarities_ : list of BaseSimilarity
-        Fitted copies of the sub-similarities (set after ``fit``).
+    similarities_ : list of (str, BaseSimilarity) tuples
+        Fitted copies of the named sub-similarities (set after ``fit``).
 
     See Also
     --------
     - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Value-based distance similarity.
-    - [`TemporalSimilarity`][yohou.interval.similarity.TemporalSimilarity] : Temporal Fourier feature similarity.
+    - [`SeasonalSimilarity`][yohou.interval.similarity.SeasonalSimilarity] : Seasonal-phase Fourier feature similarity.
 
     Examples
     --------
@@ -613,7 +611,7 @@ class CompositeSimilarity(BaseSimilarity):
     >>> from yohou.interval.similarity import (
     ...     CompositeSimilarity,
     ...     DistanceSimilarity,
-    ...     TemporalSimilarity,
+    ...     SeasonalSimilarity,
     ... )
     >>>
     >>> dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(28)]
@@ -622,8 +620,8 @@ class CompositeSimilarity(BaseSimilarity):
     >>>
     >>> comp = CompositeSimilarity(
     ...     similarities=[
-    ...         DistanceSimilarity(metric="euclidean"),
-    ...         TemporalSimilarity(seasonalities=[7.0]),
+    ...         ("dist", DistanceSimilarity(metric="euclidean")),
+    ...         ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
     ...     ],
     ...     combination="multiply",
     ... )
@@ -644,7 +642,7 @@ class CompositeSimilarity(BaseSimilarity):
 
     def __init__(
         self,
-        similarities: list[BaseSimilarity] | None = None,
+        similarities: list[tuple[str, BaseSimilarity]] | None = None,
         combination: Literal["multiply", "mean"] = "multiply",
         weights: list[float] | None = None,
     ) -> None:
@@ -652,13 +650,49 @@ class CompositeSimilarity(BaseSimilarity):
         self.combination = combination
         self.weights = weights
 
-    def _validate_params(self) -> None:
-        """Validate constructor parameters."""
+    def get_params(self, deep: bool = True) -> dict[str, Any]:
+        """Get parameters, including nested sub-similarity parameters.
+
+        Parameters
+        ----------
+        deep : bool, default=True
+            If True, include sub-similarity parameters as
+            ``similarities__<name>__<param>``.
+
+        Returns
+        -------
+        dict
+            Parameter names mapped to values.
+
+        """
+        return self._get_params("similarities", deep=deep)
+
+    def set_params(self, **params: Any) -> "CompositeSimilarity":
+        """Set parameters, routing ``similarities__<name>__<param>`` to sub-similarities.
+
+        Parameters
+        ----------
+        **params : dict
+            Parameters to set.
+
+        Returns
+        -------
+        self
+
+        """
+        self._set_params("similarities", **params)
+        return self
+
+    def _check_similarities(self) -> None:
+        """Validate the composition parameters (not the sklearn ``_validate_params``)."""
         if self.similarities is None or len(self.similarities) < 2:
             raise ValueError(
                 "CompositeSimilarity requires at least 2 sub-similarities, "
                 f"got {0 if self.similarities is None else len(self.similarities)}"
             )
+        for item in self.similarities:
+            if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
+                raise ValueError(f"Each entry in `similarities` must be a (name, similarity) tuple, got {item!r}")
         if self.combination not in ("multiply", "mean"):
             raise ValueError(f"combination must be 'multiply' or 'mean', got {self.combination!r}")
         if self.weights is not None and len(self.weights) != len(self.similarities):
@@ -694,8 +728,11 @@ class CompositeSimilarity(BaseSimilarity):
         self
 
         """
-        self._validate_params()
-        self.similarities_ = [clone(sim).fit(y=y, y_pred=y_pred, X_actual=X_actual) for sim in self.similarities]  # ty: ignore[not-iterable]
+        self._check_similarities()
+        self.similarities_ = [
+            (name, clone(sim).fit(y=y, y_pred=y_pred, X_actual=X_actual))
+            for name, sim in self.similarities  # ty: ignore[not-iterable]
+        ]
         return self
 
     def observe(
@@ -720,7 +757,7 @@ class CompositeSimilarity(BaseSimilarity):
         self
 
         """
-        for sim in self.similarities_:
+        for _name, sim in self.similarities_:
             sim.observe(y=y, y_pred=y_pred, X_actual=X_actual)
         return self
 
@@ -746,7 +783,7 @@ class CompositeSimilarity(BaseSimilarity):
         self
 
         """
-        for sim in self.similarities_:
+        for _name, sim in self.similarities_:
             sim.rewind(y=y, y_pred=y_pred, X_actual=X_actual)
         return self
 
@@ -772,18 +809,14 @@ class CompositeSimilarity(BaseSimilarity):
 
         """
         alphas = self._resolved_weights()
-        weight_matrices = [sim.predict(y_pred=y_pred, X_actual=X_actual) for sim in self.similarities_]
+        weight_matrices = [sim.predict(y_pred=y_pred, X_actual=X_actual) for _name, sim in self.similarities_]
 
         if self.combination == "multiply":
             combined = np.ones_like(weight_matrices[0])
             for w, alpha in zip(weight_matrices, alphas, strict=True):
                 combined *= np.power(w, alpha)
-            # Re-normalise so rows lie in (0, 1)
-            row_sums = combined.sum(axis=1, keepdims=True)
-            row_sums = np.where(row_sums == 0, 1.0, row_sums)
-            n_features = combined.shape[1]
-            combined = combined / row_sums * n_features
-            combined = combined / (1 + combined.sum(axis=1, keepdims=True))
+            # Shared per-row mass reservation (drops the former arbitrary feature-count factor).
+            combined = self._reserve_mass(combined)
         else:  # mean
             combined = np.zeros_like(weight_matrices[0])
             for w, alpha in zip(weight_matrices, alphas, strict=True):

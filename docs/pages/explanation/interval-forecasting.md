@@ -153,14 +153,22 @@ then produces intervals that adapt to local conditions.
 
 [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
 computes distances between the current prediction context and each calibration point
-in feature space, then converts distances to weights using a softmax of negative
-distances:
+in feature space, then converts distances to weights using a numerically stable
+softmax of negative distances with uniform mass reserved for the test point:
 
-$$w_{ji} = \frac{\exp(-d(x_j, x_i))}{\sum_k \exp(-d(x_j, x_k))}$$
+$$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}{1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
 
 Calibration points close to the current prediction get exponentially higher weights
 than distant ones. The distance metric is configurable: euclidean, cityblock, cosine,
 or any metric supported by `scipy.spatial.distance.cdist`.
+
+The leading `1` in the denominator reserves uniform mass for the hypothetical test
+point, so each weight row is non-negative and sums to a value strictly below 1. This
+follows the non-exchangeable conformal construction of
+[Barber et al. (2023)](https://doi.org/10.1214/23-AOS2276): the test
+point, whose residual is unknown, is treated as one more calibration candidate that
+always holds a baseline share of the mass. That reserved share shrinks as more
+calibration points fall close to the prediction context, and grows when none do.
 
 ```python
 from yohou.interval import SplitConformalForecaster, DistanceSimilarity
@@ -171,19 +179,19 @@ forecaster = SplitConformalForecaster(
 )
 ```
 
-### Temporal Similarity
+### Seasonal Similarity
 
-[`TemporalSimilarity`](/pages/api/generated/yohou.interval.similarity.TemporalSimilarity/)
+[`SeasonalSimilarity`](/pages/api/generated/yohou.interval.similarity.SeasonalSimilarity/)
 captures seasonal patterns by extracting Fourier features (sine and cosine components)
 from timestamps at specified seasonal periods. Predictions at similar seasonal
 positions (for example, all Mondays, or all January observations) receive higher
 calibration weights.
 
 ```python
-from yohou.interval import SplitConformalForecaster, TemporalSimilarity
+from yohou.interval import SplitConformalForecaster, SeasonalSimilarity
 
 forecaster = SplitConformalForecaster(
-    similarity=TemporalSimilarity(seasonalities=[7.0, 365.25]),
+    similarity=SeasonalSimilarity(seasonalities=[7.0, 365.25]),
     calibration_size=100,
 )
 ```
@@ -204,14 +212,14 @@ from yohou.interval import (
     SplitConformalForecaster,
     CompositeSimilarity,
     DistanceSimilarity,
-    TemporalSimilarity,
+    SeasonalSimilarity,
 )
 
 forecaster = SplitConformalForecaster(
     similarity=CompositeSimilarity(
         similarities=[
-            DistanceSimilarity(metric="euclidean"),
-            TemporalSimilarity(seasonalities=[7.0]),
+            ("dist", DistanceSimilarity(metric="euclidean")),
+            ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
         ],
         combination="multiply",
     ),

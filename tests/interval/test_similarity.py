@@ -7,7 +7,7 @@ import polars as pl
 import pytest
 from sklearn.base import clone
 
-from yohou.interval.similarity import CompositeSimilarity, DistanceSimilarity, TemporalSimilarity
+from yohou.interval.similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
 
 
 @pytest.fixture
@@ -95,9 +95,9 @@ class TestDistanceSimilarityBasic:
         assert sim.metric == "euclidean"
 
     def test_default_metric_params(self):
-        """Test default metric_params is empty dict."""
+        """Test default metric_params is None."""
         sim = DistanceSimilarity()
-        assert sim.metric_params == {}
+        assert sim.metric_params is None
 
 
 class TestDistanceSimilarityMetrics:
@@ -315,20 +315,20 @@ class TestDistanceSimilarityNullRejection:
             sim.fit(y, y_pred_null)
 
 
-class TestTemporalSimilarityBasic:
-    """Basic tests for TemporalSimilarity."""
+class TestSeasonalSimilarityBasic:
+    """Basic tests for SeasonalSimilarity."""
 
     def test_fit_returns_self(self, daily_data):
         """Test that fit returns the estimator."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         result = sim.fit(y, y_pred)
         assert result is sim
 
     def test_predict_returns_ndarray(self, daily_data, daily_prediction_data):
         """Test that predict returns a numpy array."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert isinstance(weights, np.ndarray)
@@ -336,7 +336,7 @@ class TestTemporalSimilarityBasic:
     def test_predict_shape(self, daily_data, daily_prediction_data):
         """Test that predict returns correct shape."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert weights.shape == (1, 70)
@@ -344,7 +344,7 @@ class TestTemporalSimilarityBasic:
     def test_predict_shape_multi_row(self, daily_data):
         """Test predict shape with multiple prediction rows."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
 
         dates = [datetime(2021, 3, 12) + timedelta(days=i) for i in range(3)]
@@ -355,7 +355,7 @@ class TestTemporalSimilarityBasic:
     def test_weights_are_positive(self, daily_data, daily_prediction_data):
         """Test that all weights are positive."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert np.all(weights > 0)
@@ -363,7 +363,7 @@ class TestTemporalSimilarityBasic:
     def test_weights_are_finite(self, daily_data, daily_prediction_data):
         """Test that all weights are finite."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert np.all(np.isfinite(weights))
@@ -371,7 +371,7 @@ class TestTemporalSimilarityBasic:
     def test_weights_row_sum_less_than_one(self, daily_data, daily_prediction_data):
         """Test that weight rows sum to less than 1 (uniform component reserved)."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert np.all(np.sum(weights, axis=1) < 1.0)
@@ -379,25 +379,25 @@ class TestTemporalSimilarityBasic:
     def test_empty_seasonalities_raises(self, daily_data):
         """Test that empty seasonalities raises ValueError."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[])
+        sim = SeasonalSimilarity(seasonalities=[])
         with pytest.raises(ValueError, match="seasonalities"):
             sim.fit(y, y_pred)
 
     def test_none_seasonalities_raises(self, daily_data):
         """Test that None seasonalities raises ValueError."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=None)
+        sim = SeasonalSimilarity(seasonalities=None)
         with pytest.raises(ValueError, match="seasonalities"):
             sim.fit(y, y_pred)
 
 
-class TestTemporalSimilaritySeasonalProximity:
+class TestSeasonalSimilaritySeasonalProximity:
     """Tests verifying that same-season observations get higher weight."""
 
     def test_same_weekday_gets_higher_weight(self, daily_data):
         """Test that observations on the same weekday get higher weight."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
 
         # Predict for a specific day
@@ -417,7 +417,7 @@ class TestTemporalSimilaritySeasonalProximity:
     def test_weekday_weight_ratio(self, daily_data):
         """Test that same-weekday weight is significantly higher."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
 
         test_date = datetime(2021, 3, 15)  # Monday
@@ -433,13 +433,13 @@ class TestTemporalSimilaritySeasonalProximity:
         assert ratio > 2.0
 
 
-class TestTemporalSimilarityMultiSeasonality:
+class TestSeasonalSimilarityMultiSeasonality:
     """Tests for multiple seasonalities."""
 
     def test_multi_seasonality_feature_count(self, daily_data):
         """Test feature count with multiple seasonalities."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0, 365.25])
+        sim = SeasonalSimilarity(seasonalities=[7.0, 365.25])
         sim.fit(y, y_pred)
         # 2 features per seasonality (sin + cos), 2 seasonalities = 4
         assert sim._n_features == 4
@@ -447,19 +447,19 @@ class TestTemporalSimilarityMultiSeasonality:
     def test_multi_seasonality_predict_shape(self, daily_data, daily_prediction_data):
         """Test that multi-seasonality prediction shape is correct."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0, 365.25])
+        sim = SeasonalSimilarity(seasonalities=[7.0, 365.25])
         sim.fit(y, y_pred)
         weights = sim.predict(daily_prediction_data)
         assert weights.shape == (1, 70)
 
 
-class TestTemporalSimilarityHarmonics:
+class TestSeasonalSimilarityHarmonics:
     """Tests for custom harmonics."""
 
     def test_custom_harmonics(self, daily_data, daily_prediction_data):
         """Test with custom harmonics."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(
+        sim = SeasonalSimilarity(
             seasonalities=[7.0],
             harmonics={7.0: [1, 2, 3]},
         )
@@ -475,8 +475,8 @@ class TestTemporalSimilarityHarmonics:
         """Test that more harmonics give sharper weighting."""
         y, y_pred = daily_data
 
-        sim_1 = TemporalSimilarity(seasonalities=[7.0], harmonics={7.0: [1]})
-        sim_3 = TemporalSimilarity(seasonalities=[7.0], harmonics={7.0: [1, 2, 3]})
+        sim_1 = SeasonalSimilarity(seasonalities=[7.0], harmonics={7.0: [1]})
+        sim_3 = SeasonalSimilarity(seasonalities=[7.0], harmonics={7.0: [1, 2, 3]})
         sim_1.fit(y, y_pred)
         sim_3.fit(y, y_pred)
 
@@ -492,13 +492,13 @@ class TestTemporalSimilarityHarmonics:
         assert not np.allclose(w_1, w_3)
 
 
-class TestTemporalSimilarityObserve:
+class TestSeasonalSimilarityObserve:
     """Tests for observe method."""
 
     def test_observe_returns_self(self, daily_data):
         """Test that observe returns the estimator."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         result = sim.observe(y[:3], y_pred[:3])
         assert result is sim
@@ -506,7 +506,7 @@ class TestTemporalSimilarityObserve:
     def test_observe_extends_features(self, daily_data, daily_prediction_data):
         """Test that observe extends the reference feature matrix."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
 
         weights_before = sim.predict(daily_prediction_data)
@@ -522,12 +522,12 @@ class TestTemporalSimilarityObserve:
         assert weights_after.shape[1] == n_before + 5
 
 
-class TestTemporalSimilarityProperties:
+class TestSeasonalSimilarityProperties:
     """Tests for properties and sklearn compatibility."""
 
     def test_clone(self):
-        """Test that TemporalSimilarity can be cloned."""
-        sim = TemporalSimilarity(seasonalities=[7.0, 365.25], metric="cityblock")
+        """Test that SeasonalSimilarity can be cloned."""
+        sim = SeasonalSimilarity(seasonalities=[7.0, 365.25], metric="cityblock")
         cloned = clone(sim)
         assert cloned.seasonalities == [7.0, 365.25]
         assert cloned.metric == "cityblock"
@@ -535,7 +535,7 @@ class TestTemporalSimilarityProperties:
 
     def test_get_params(self):
         """Test get_params returns expected parameters."""
-        sim = TemporalSimilarity(
+        sim = SeasonalSimilarity(
             seasonalities=[7.0],
             harmonics={7.0: [1, 2]},
             metric="cosine",
@@ -547,13 +547,13 @@ class TestTemporalSimilarityProperties:
 
     def test_set_params(self):
         """Test set_params updates parameters."""
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.set_params(metric="cityblock")
         assert sim.metric == "cityblock"
 
     def test_tags(self):
         """Test sklearn tags are set correctly."""
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         tags = sim.__sklearn_tags__()
         assert tags.estimator_type == "similarity"
         assert tags.requires_fit is True
@@ -561,23 +561,23 @@ class TestTemporalSimilarityProperties:
     def test_auto_detect_interval(self, daily_data):
         """Test that interval is auto-detected from timestamps."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         assert sim.interval_td_ == timedelta(days=1)
 
     def test_first_time_stored(self, daily_data):
         """Test that first_time_ is stored from calibration data."""
         y, y_pred = daily_data
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         assert sim.first_time_ == datetime(2021, 1, 1)
 
 
-class TestTemporalSimilarityIntegration:
+class TestSeasonalSimilarityIntegration:
     """Integration tests with SplitConformalForecaster."""
 
     def test_with_split_conformal(self):
-        """Test TemporalSimilarity plugged into SplitConformalForecaster."""
+        """Test SeasonalSimilarity plugged into SplitConformalForecaster."""
         from yohou.interval import SplitConformalForecaster
         from yohou.metrics.conformity import AbsoluteResidual
         from yohou.point import SeasonalNaive
@@ -593,7 +593,7 @@ class TestTemporalSimilarityIntegration:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteResidual(),
-            similarity=TemporalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonalities=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=3, coverage_rates=[0.9])
 
@@ -618,7 +618,7 @@ class TestTemporalSimilarityIntegration:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteResidual(),
-            similarity=TemporalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonalities=[7.0]),
         )
         scf_weighted.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 
@@ -654,7 +654,7 @@ class TestTemporalSimilarityIntegration:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=GammaResidual(),
-            similarity=TemporalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonalities=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 
@@ -681,7 +681,7 @@ class TestTemporalSimilarityIntegration:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteGammaResidual(),
-            similarity=TemporalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonalities=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 
@@ -713,8 +713,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         result = comp.fit(y, y_pred)
@@ -724,8 +724,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
@@ -737,8 +737,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
@@ -750,8 +750,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
@@ -762,8 +762,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
@@ -774,8 +774,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="multiply",
         )
@@ -787,8 +787,8 @@ class TestCompositeSimilarityBasic:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="mean",
         )
@@ -819,7 +819,7 @@ class TestCompositeSimilarityValidation:
 
     def test_invalid_combination_raises(self):
         comp = CompositeSimilarity(
-            similarities=[DistanceSimilarity(), DistanceSimilarity()],
+            similarities=[("a", DistanceSimilarity()), ("b", DistanceSimilarity())],
             combination="invalid",
         )
         with pytest.raises(ValueError, match="combination"):
@@ -830,7 +830,7 @@ class TestCompositeSimilarityValidation:
 
     def test_weights_length_mismatch_raises(self):
         comp = CompositeSimilarity(
-            similarities=[DistanceSimilarity(), DistanceSimilarity()],
+            similarities=[("a", DistanceSimilarity()), ("b", DistanceSimilarity())],
             weights=[1.0, 2.0, 3.0],
         )
         with pytest.raises(ValueError, match="weights length"):
@@ -847,8 +847,8 @@ class TestCompositeSimilarityWeights:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="multiply",
             weights=[2.0, 0.5],
@@ -862,8 +862,8 @@ class TestCompositeSimilarityWeights:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="mean",
             weights=[0.3, 0.7],
@@ -882,14 +882,14 @@ class TestCompositeSimilarityWeights:
         dist_sim.fit(y, y_pred)
         w_dist = dist_sim.predict(new_pred)
 
-        temp_sim = TemporalSimilarity(seasonalities=[7.0])
+        temp_sim = SeasonalSimilarity(seasonalities=[7.0])
         temp_sim.fit(y, y_pred)
         w_temp = temp_sim.predict(new_pred)
 
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="multiply",
         )
@@ -907,8 +907,8 @@ class TestCompositeSimilarityObserveRewind:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
@@ -919,38 +919,38 @@ class TestCompositeSimilarityObserveRewind:
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
 
-        n_dist_before = len(comp.similarities_[0]._X_observed)
-        n_temp_before = comp.similarities_[1]._features_observed.shape[0]
+        n_dist_before = len(comp.similarities_[0][1]._X_observed)
+        n_temp_before = comp.similarities_[1][1]._features_observed.shape[0]
 
         comp.observe(y.tail(1), y_pred.tail(1))
 
-        assert len(comp.similarities_[0]._X_observed) == n_dist_before + 1
-        assert comp.similarities_[1]._features_observed.shape[0] == n_temp_before + 1
+        assert len(comp.similarities_[0][1]._X_observed) == n_dist_before + 1
+        assert comp.similarities_[1][1]._features_observed.shape[0] == n_temp_before + 1
 
     def test_rewind_restores_sub_similarities(self, composite_data):
         y, y_pred = composite_data
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
         )
         comp.fit(y, y_pred)
 
-        n_dist_before = len(comp.similarities_[0]._X_observed)
-        n_temp_before = comp.similarities_[1]._features_observed.shape[0]
+        n_dist_before = len(comp.similarities_[0][1]._X_observed)
+        n_temp_before = comp.similarities_[1][1]._features_observed.shape[0]
 
         comp.observe(y.tail(1), y_pred.tail(1))
         comp.rewind(y.tail(1), y_pred.tail(1))
 
-        assert len(comp.similarities_[0]._X_observed) == n_dist_before
-        assert comp.similarities_[1]._features_observed.shape[0] == n_temp_before
+        assert len(comp.similarities_[0][1]._X_observed) == n_dist_before
+        assert comp.similarities_[1][1]._features_observed.shape[0] == n_temp_before
 
 
 class TestCompositeSimilarityProperties:
@@ -959,8 +959,8 @@ class TestCompositeSimilarityProperties:
     def test_clone(self):
         comp = CompositeSimilarity(
             similarities=[
-                DistanceSimilarity(metric="euclidean"),
-                TemporalSimilarity(seasonalities=[7.0]),
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
             ],
             combination="mean",
             weights=[0.3, 0.7],
@@ -972,7 +972,7 @@ class TestCompositeSimilarityProperties:
 
     def test_get_params(self):
         comp = CompositeSimilarity(
-            similarities=[DistanceSimilarity(), TemporalSimilarity(seasonalities=[7.0])],
+            similarities=[("dist", DistanceSimilarity()), ("seasonal", SeasonalSimilarity(seasonalities=[7.0]))],
             combination="multiply",
         )
         params = comp.get_params()
@@ -1002,8 +1002,8 @@ class TestCompositeSimilarityIntegration:
             conformity_scorer=AbsoluteResidual(),
             similarity=CompositeSimilarity(
                 similarities=[
-                    DistanceSimilarity(metric="euclidean"),
-                    TemporalSimilarity(seasonalities=[7.0]),
+                    ("dist", DistanceSimilarity(metric="euclidean")),
+                    ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
                 ],
                 combination="multiply",
             ),
@@ -1016,14 +1016,14 @@ class TestCompositeSimilarityIntegration:
         assert len(non_time_cols) >= 2
 
 
-class TestTemporalSimilaritySingleTimestamp:
-    """Tests for TemporalSimilarity with a single observation."""
+class TestSeasonalSimilaritySingleTimestamp:
+    """Tests for SeasonalSimilarity with a single observation."""
 
     def test_fit_single_timestamp(self):
         """Test fit with a single timestamp sets interval_td_ to zero."""
         y = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]})
         y_pred = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.1]})
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
         assert sim.interval_td_ == timedelta(0)
 
@@ -1031,9 +1031,136 @@ class TestTemporalSimilaritySingleTimestamp:
         """Test predict works after fitting with a single timestamp (zero interval)."""
         y = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]})
         y_pred = pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.1]})
-        sim = TemporalSimilarity(seasonalities=[7.0])
+        sim = SeasonalSimilarity(seasonalities=[7.0])
         sim.fit(y, y_pred)
 
         weights = sim.predict(y_pred)
         assert weights.shape == (1, 1)
         assert np.all(np.isfinite(weights))
+
+
+class TestCompositeSimilarityComposition:
+    """Real-composition behaviour: nested param addressing and clean rejection."""
+
+    def _comp(self):
+        return CompositeSimilarity(
+            similarities=[
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+            ]
+        )
+
+    def test_nested_param_addressable(self):
+        params = self._comp().get_params(deep=True)
+        assert "dist__metric" in params
+        assert "seasonal__seasonalities" in params
+
+    def test_nested_param_settable(self):
+        comp = self._comp()
+        comp.set_params(dist__metric="cosine")
+        assert dict(comp.similarities)["dist"].metric == "cosine"
+
+    def test_clone_roundtrips(self):
+        comp = self._comp()
+        cloned = clone(comp)
+        assert isinstance(cloned, CompositeSimilarity)
+        assert dict(cloned.similarities)["dist"].metric == "euclidean"
+
+    def test_bare_list_rejected(self):
+        comp = CompositeSimilarity(similarities=[DistanceSimilarity(), SeasonalSimilarity(seasonalities=[7.0])])
+        with pytest.raises(ValueError, match="name, similarity"):
+            comp.fit(
+                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
+                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
+            )
+
+
+class TestDistanceSimilarityMetricParamsClone:
+    """metric_params init-mutation fix: stored verbatim, clone round-trips."""
+
+    def test_default_round_trips_as_none(self):
+        sim = DistanceSimilarity()
+        assert sim.metric_params is None
+        assert clone(sim).get_params() == sim.get_params()
+
+    def test_seasonal_default_round_trips_as_none(self):
+        sim = SeasonalSimilarity(seasonalities=[7.0])
+        assert sim.metric_params is None
+        assert clone(sim).get_params()["metric_params"] is None
+
+
+class TestSimilarityTuningThroughForecaster:
+    """Sub-similarity params are tunable through SplitConformalForecaster."""
+
+    def _data(self):
+        n = 160
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(0)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        return pl.DataFrame({"time": dates, "value": values})
+
+    def test_set_params_through_forecaster(self):
+        from yohou.interval import SplitConformalForecaster
+
+        f = SplitConformalForecaster(
+            similarity=CompositeSimilarity(
+                similarities=[
+                    ("dist", DistanceSimilarity()),
+                    ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+                ]
+            )
+        )
+        assert "similarity__dist__metric" in f.get_params(deep=True)
+        f.set_params(similarity__dist__metric="cosine")
+        assert dict(f.similarity.similarities)["dist"].metric == "cosine"
+
+    def test_grid_search_over_similarity_param(self):
+        from yohou.interval import SplitConformalForecaster
+        from yohou.metrics import EmpiricalCoverage
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import SeasonalNaive
+
+        y = self._data()
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=40,
+            similarity=DistanceSimilarity(),
+        )
+        search = GridSearchCV(
+            scf,
+            param_grid={"similarity__metric": ["euclidean", "cityblock"]},
+            scoring=EmpiricalCoverage(coverage_rates=[0.95]),
+            cv=2,
+        )
+        search.fit(y, forecasting_horizon=1)
+        assert search.best_params_["similarity__metric"] in ("euclidean", "cityblock")
+
+
+class TestSimilarityNumericalStability:
+    """Regression: large distances must not overflow exp() or produce NaN weights."""
+
+    def test_to_weights_large_distances_finite(self):
+        from yohou.interval.base import BaseSimilarity
+
+        # Distances large enough that exp(+max) would overflow without stabilisation.
+        distances = np.array([[0.0, 500.0, 1000.0], [800.0, 0.0, 1600.0]])
+        w = BaseSimilarity._to_weights(distances)
+        assert np.all(np.isfinite(w))
+        assert np.all(w >= 0)
+        assert np.all(w.sum(axis=1) < 1.0)
+        # Closest (distance 0) keeps the largest weight in each row.
+        assert w[0, 0] == w[0].max()
+        assert w[1, 1] == w[1].max()
+
+    def test_distance_similarity_large_values_no_overflow(self):
+        import warnings
+
+        dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(20)]
+        y = pl.DataFrame({"time": dates, "value": [float(i) for i in range(20)]})
+        # Predictions spanning a large magnitude range -> large pairwise distances.
+        y_pred = pl.DataFrame({"time": dates, "value": [float(i) * 1000.0 for i in range(20)]})
+        sim = DistanceSimilarity().fit(y, y_pred)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            w = sim.predict(y_pred.tail(1))
+        assert np.all(np.isfinite(w))
