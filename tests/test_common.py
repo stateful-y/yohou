@@ -14,15 +14,21 @@ from sklearn.base import clone
 
 from conftest import run_checks
 from yohou.base import BaseForecaster, BaseTransformer
+from yohou.interval.base import BaseSimilarity
 from yohou.metrics.base import BaseScorer
 from yohou.model_selection.split import BaseSplitter
 from yohou.testing import (
+    _yield_composition_contract_checks,
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
+    _yield_yohou_similarity_checks,
     _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
+    _yield_yohou_weighter_checks,
 )
+from yohou.utils._compat import _BaseComposition
 from yohou.utils.discovery import all_estimators
+from yohou.weighting import BaseWeighter
 
 # These classes require special init args and can't be default-constructed
 # or need composition with inner estimators, so we exclude them from the
@@ -374,3 +380,156 @@ class TestClassProbaScorerCommon:
             instance.fit(y_truth)
 
         run_checks(instance, _yield_yohou_scorer_checks(instance, y_truth, y_pred))
+
+
+def _weighter_key() -> pl.Series:
+    """Five daily datetimes used as the weighter key fixture."""
+    return pl.Series("time", [datetime(2024, 1, d) for d in range(1, 6)])
+
+
+def _weighter_instances() -> dict[str, object]:
+    """Representative *working* weighter instances keyed by class name.
+
+    ``TableWeighter`` and ``CompositeWeighter`` are default-constructible but
+    cannot operate with default args, so concrete fixtures are supplied.
+    """
+    from yohou.weighting import (
+        CompositeWeighter,
+        ExponentialDecayWeighter,
+        LinearDecayWeighter,
+        LookupWeighter,
+        SeasonalEmphasisWeighter,
+        TableWeighter,
+    )
+
+    key = _weighter_key()
+    frame = pl.DataFrame({"time": key, "weight": [0.1, 0.2, 0.3, 0.2, 0.2]})
+    return {
+        "ExponentialDecayWeighter": ExponentialDecayWeighter(half_life=2),
+        "LinearDecayWeighter": LinearDecayWeighter(),
+        "SeasonalEmphasisWeighter": SeasonalEmphasisWeighter(seasonality=2),
+        "LookupWeighter": LookupWeighter(),
+        "TableWeighter": TableWeighter(frame=frame, on="time"),
+        "CompositeWeighter": CompositeWeighter([
+            ("decay", ExponentialDecayWeighter(half_life=2)),
+            ("lin", LinearDecayWeighter(max_steps=3)),
+        ]),
+    }
+
+
+class TestWeighterCommon:
+    """Run systematic checks on all discovered weighters."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in all_estimators() if issubclass(c, BaseWeighter)],
+        ids=[n for n, c in all_estimators() if issubclass(c, BaseWeighter)],
+    )
+    def test_weighter_checks(self, name, cls):
+        """Run all applicable check-generator checks for a weighter."""
+        instances = _weighter_instances()
+        assert name in instances, f"No representative instance registered for weighter {name}"
+        weighter = instances[name]
+        run_checks(weighter, _yield_yohou_weighter_checks(weighter, _weighter_key()))
+
+
+def _similarity_calibration() -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Calibration ``(y, y_pred)`` frames for similarity tests (21 daily rows)."""
+    dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(21)]
+    y = pl.DataFrame({"time": dates, "value": [float(i) for i in range(21)]})
+    y_pred = pl.DataFrame({"time": dates, "value": [float(i) + 0.5 for i in range(21)]})
+    return y, y_pred
+
+
+def _similarity_instances() -> dict[str, object]:
+    """Representative *working* similarity instances keyed by class name."""
+    from yohou.interval.similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
+
+    return {
+        "DistanceSimilarity": DistanceSimilarity(),
+        "SeasonalSimilarity": SeasonalSimilarity(seasonalities=[7.0]),
+        "CompositeSimilarity": CompositeSimilarity([
+            ("dist", DistanceSimilarity()),
+            ("seas", SeasonalSimilarity(seasonalities=[7.0])),
+        ]),
+    }
+
+
+class TestSimilarityCommon:
+    """Run systematic checks on all discovered similarities."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in all_estimators() if issubclass(c, BaseSimilarity)],
+        ids=[n for n, c in all_estimators() if issubclass(c, BaseSimilarity)],
+    )
+    def test_similarity_checks(self, name, cls):
+        """Run all applicable check-generator checks for a similarity."""
+        instances = _similarity_instances()
+        assert name in instances, f"No representative instance registered for similarity {name}"
+        similarity = instances[name]
+        y_calib, y_pred_calib = _similarity_calibration()
+        run_checks(similarity, _yield_yohou_similarity_checks(similarity, y_calib, y_pred_calib))
+
+
+def _composition_descriptors() -> dict[str, dict]:
+    """Per-compositor descriptor (composition-attribute + representative components).
+
+    Covers every concrete ``_BaseComposition`` subclass across the weighter,
+    similarity, transformer, and forecaster families.
+    """
+    from yohou.interval.similarity import DistanceSimilarity, SeasonalSimilarity
+    from yohou.point import SeasonalNaive
+    from yohou.preprocessing import LagTransformer
+    from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
+
+    def two_forecasters() -> list:
+        return [("a", SeasonalNaive(seasonality=1)), ("b", SeasonalNaive(seasonality=1))]
+
+    return {
+        "CompositeWeighter": {
+            "attr": "weighters",
+            "components": [("decay", ExponentialDecayWeighter(half_life=2)), ("lin", LinearDecayWeighter(max_steps=3))],
+        },
+        "CompositeSimilarity": {
+            "attr": "similarities",
+            "components": [("dist", DistanceSimilarity()), ("seas", SeasonalSimilarity(seasonalities=[7.0]))],
+        },
+        "FeatureUnion": {
+            "attr": "transformer_list",
+            "components": [("a", LagTransformer(lag=[1])), ("b", LagTransformer(lag=[2]))],
+        },
+        "FeaturePipeline": {
+            "attr": "steps",
+            "components": [("a", LagTransformer(lag=[1])), ("b", LagTransformer(lag=[2]))],
+        },
+        "ColumnTransformer": {
+            "attr": "transformers",
+            "components": [("a", LagTransformer(lag=[1]), ["value"])],
+        },
+        "ColumnForecaster": {
+            "attr": "forecasters",
+            "components": [("a", SeasonalNaive(seasonality=1))],
+        },
+        "DecompositionPipeline": {"attr": "forecasters", "components": two_forecasters()},
+        "VotingPointForecaster": {"attr": "forecasters", "components": two_forecasters()},
+        "VotingIntervalForecaster": {"attr": "forecasters", "components": two_forecasters()},
+        "VotingClassProbaForecaster": {"attr": "forecasters", "components": two_forecasters()},
+    }
+
+
+class TestCompositionContractCommon:
+    """Run the data-free composition contract over every _BaseComposition compositor."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in all_estimators() if issubclass(c, _BaseComposition)],
+        ids=[n for n, c in all_estimators() if issubclass(c, _BaseComposition)],
+    )
+    def test_composition_contract(self, name, cls):
+        """Run clone + nested-param checks for a compositor."""
+        descriptors = _composition_descriptors()
+        assert name in descriptors, f"No composition descriptor registered for {name}"
+        descriptor = descriptors[name]
+        compositor = cls(**{descriptor["attr"]: descriptor["components"]})
+        run_checks(compositor, _yield_composition_contract_checks(compositor, descriptor))

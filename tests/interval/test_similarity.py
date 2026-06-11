@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import clone
 
 from yohou.interval.similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
 
@@ -48,46 +47,6 @@ def prediction_data():
 
 class TestDistanceSimilarityBasic:
     """Basic tests for DistanceSimilarity."""
-
-    def test_fit_returns_self(self, train_data):
-        """Test that fit returns the estimator."""
-        y, y_pred = train_data
-        sim = DistanceSimilarity()
-        result = sim.fit(y, y_pred)
-        assert result is sim
-
-    def test_predict_returns_ndarray(self, train_data, prediction_data):
-        """Test that predict returns a numpy array."""
-        y, y_pred = train_data
-        sim = DistanceSimilarity()
-        sim.fit(y, y_pred)
-        weights = sim.predict(prediction_data)
-        assert isinstance(weights, np.ndarray)
-
-    def test_predict_shape(self, train_data, prediction_data):
-        """Test that predict returns correct shape."""
-        y, y_pred = train_data
-        sim = DistanceSimilarity()
-        sim.fit(y, y_pred)
-        weights = sim.predict(prediction_data)
-        # Shape: (n_test_samples, n_train_samples)
-        assert weights.shape == (2, 8)
-
-    def test_weights_are_positive(self, train_data, prediction_data):
-        """Test that all weights are positive."""
-        y, y_pred = train_data
-        sim = DistanceSimilarity()
-        sim.fit(y, y_pred)
-        weights = sim.predict(prediction_data)
-        assert np.all(weights > 0)
-
-    def test_weights_are_finite(self, train_data, prediction_data):
-        """Test that all weights are finite."""
-        y, y_pred = train_data
-        sim = DistanceSimilarity()
-        sim.fit(y, y_pred)
-        weights = sim.predict(prediction_data)
-        assert np.all(np.isfinite(weights))
 
     def test_default_metric(self):
         """Test default metric is euclidean."""
@@ -195,37 +154,6 @@ class TestDistanceSimilarityWithExogenous:
         assert weights.shape == (2, 8)
 
 
-class TestDistanceSimilarityProperties:
-    """Tests for properties and attributes."""
-
-    def test_clone(self):
-        """Test that DistanceSimilarity can be cloned."""
-        sim = DistanceSimilarity(metric="cityblock")
-        cloned = clone(sim)
-        assert cloned.metric == "cityblock"
-        assert cloned is not sim
-
-    def test_get_params(self):
-        """Test get_params returns expected parameters."""
-        sim = DistanceSimilarity(metric="cosine", metric_params={"p": 2})
-        params = sim.get_params()
-        assert params["metric"] == "cosine"
-        assert params["metric_params"] == {"p": 2}
-
-    def test_set_params(self):
-        """Test set_params updates parameters."""
-        sim = DistanceSimilarity()
-        sim.set_params(metric="cityblock")
-        assert sim.metric == "cityblock"
-
-    def test_tags(self):
-        """Test sklearn tags are set correctly."""
-        sim = DistanceSimilarity()
-        tags = sim.__sklearn_tags__()
-        assert tags.estimator_type == "similarity"
-        assert tags.requires_fit is True
-
-
 @pytest.fixture
 def daily_data():
     """Create 10 weeks of daily data with weekly seasonality."""
@@ -318,29 +246,6 @@ class TestDistanceSimilarityNullRejection:
 class TestSeasonalSimilarityBasic:
     """Basic tests for SeasonalSimilarity."""
 
-    def test_fit_returns_self(self, daily_data):
-        """Test that fit returns the estimator."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        result = sim.fit(y, y_pred)
-        assert result is sim
-
-    def test_predict_returns_ndarray(self, daily_data, daily_prediction_data):
-        """Test that predict returns a numpy array."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-        weights = sim.predict(daily_prediction_data)
-        assert isinstance(weights, np.ndarray)
-
-    def test_predict_shape(self, daily_data, daily_prediction_data):
-        """Test that predict returns correct shape."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-        weights = sim.predict(daily_prediction_data)
-        assert weights.shape == (1, 70)
-
     def test_predict_shape_multi_row(self, daily_data):
         """Test predict shape with multiple prediction rows."""
         y, y_pred = daily_data
@@ -351,30 +256,6 @@ class TestSeasonalSimilarityBasic:
         y_pred_new = pl.DataFrame({"time": dates, "value": [1.0, 2.0, 3.0]})
         weights = sim.predict(y_pred_new)
         assert weights.shape == (3, 70)
-
-    def test_weights_are_positive(self, daily_data, daily_prediction_data):
-        """Test that all weights are positive."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-        weights = sim.predict(daily_prediction_data)
-        assert np.all(weights > 0)
-
-    def test_weights_are_finite(self, daily_data, daily_prediction_data):
-        """Test that all weights are finite."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-        weights = sim.predict(daily_prediction_data)
-        assert np.all(np.isfinite(weights))
-
-    def test_weights_row_sum_less_than_one(self, daily_data, daily_prediction_data):
-        """Test that weight rows sum to less than 1 (uniform component reserved)."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-        weights = sim.predict(daily_prediction_data)
-        assert np.all(np.sum(weights, axis=1) < 1.0)
 
     def test_empty_seasonalities_raises(self, daily_data):
         """Test that empty seasonalities raises ValueError."""
@@ -524,39 +405,6 @@ class TestSeasonalSimilarityObserve:
 
 class TestSeasonalSimilarityProperties:
     """Tests for properties and sklearn compatibility."""
-
-    def test_clone(self):
-        """Test that SeasonalSimilarity can be cloned."""
-        sim = SeasonalSimilarity(seasonalities=[7.0, 365.25], metric="cityblock")
-        cloned = clone(sim)
-        assert cloned.seasonalities == [7.0, 365.25]
-        assert cloned.metric == "cityblock"
-        assert cloned is not sim
-
-    def test_get_params(self):
-        """Test get_params returns expected parameters."""
-        sim = SeasonalSimilarity(
-            seasonalities=[7.0],
-            harmonics={7.0: [1, 2]},
-            metric="cosine",
-        )
-        params = sim.get_params()
-        assert params["seasonalities"] == [7.0]
-        assert params["harmonics"] == {7.0: [1, 2]}
-        assert params["metric"] == "cosine"
-
-    def test_set_params(self):
-        """Test set_params updates parameters."""
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.set_params(metric="cityblock")
-        assert sim.metric == "cityblock"
-
-    def test_tags(self):
-        """Test sklearn tags are set correctly."""
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        tags = sim.__sklearn_tags__()
-        assert tags.estimator_type == "similarity"
-        assert tags.requires_fit is True
 
     def test_auto_detect_interval(self, daily_data):
         """Test that interval is auto-detected from timestamps."""
@@ -709,80 +557,6 @@ def composite_data():
 class TestCompositeSimilarityBasic:
     """Core fit/predict behaviour."""
 
-    def test_fit_returns_self(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-        )
-        result = comp.fit(y, y_pred)
-        assert result is comp
-
-    def test_predict_returns_ndarray(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-        )
-        comp.fit(y, y_pred)
-        new_pred = y_pred.tail(1)
-        weights = comp.predict(new_pred)
-        assert isinstance(weights, np.ndarray)
-
-    def test_predict_shape(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-        )
-        comp.fit(y, y_pred)
-        new_pred = y_pred.tail(3)
-        weights = comp.predict(new_pred)
-        assert weights.shape == (3, len(y_pred))
-
-    def test_weights_are_positive(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-        )
-        comp.fit(y, y_pred)
-        weights = comp.predict(y_pred.tail(1))
-        assert np.all(weights > 0)
-
-    def test_weights_are_finite(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-        )
-        comp.fit(y, y_pred)
-        weights = comp.predict(y_pred.tail(1))
-        assert np.all(np.isfinite(weights))
-
-    def test_row_sum_less_than_one_multiply(self, composite_data):
-        y, y_pred = composite_data
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-            combination="multiply",
-        )
-        comp.fit(y, y_pred)
-        weights = comp.predict(y_pred.tail(2))
-        assert np.all(weights.sum(axis=1) < 1.0)
-
     def test_mean_combination(self, composite_data):
         y, y_pred = composite_data
         comp = CompositeSimilarity(
@@ -796,48 +570,6 @@ class TestCompositeSimilarityBasic:
         weights = comp.predict(y_pred.tail(1))
         assert weights.shape == (1, len(y_pred))
         assert np.all(weights > 0)
-
-
-class TestCompositeSimilarityValidation:
-    """Parameter validation."""
-
-    def test_fewer_than_two_raises(self):
-        comp = CompositeSimilarity(similarities=[DistanceSimilarity()])
-        with pytest.raises(ValueError, match="at least 2"):
-            comp.fit(
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-            )
-
-    def test_none_similarities_raises(self):
-        comp = CompositeSimilarity(similarities=None)
-        with pytest.raises(ValueError, match="at least 2"):
-            comp.fit(
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-            )
-
-    def test_invalid_combination_raises(self):
-        comp = CompositeSimilarity(
-            similarities=[("a", DistanceSimilarity()), ("b", DistanceSimilarity())],
-            combination="invalid",
-        )
-        with pytest.raises(ValueError, match="combination"):
-            comp.fit(
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-            )
-
-    def test_weights_length_mismatch_raises(self):
-        comp = CompositeSimilarity(
-            similarities=[("a", DistanceSimilarity()), ("b", DistanceSimilarity())],
-            weights=[1.0, 2.0, 3.0],
-        )
-        with pytest.raises(ValueError, match="weights length"):
-            comp.fit(
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-            )
 
 
 class TestCompositeSimilarityWeights:
@@ -953,34 +685,6 @@ class TestCompositeSimilarityObserveRewind:
         assert comp.similarities_[1][1]._features_observed.shape[0] == n_temp_before
 
 
-class TestCompositeSimilarityProperties:
-    """sklearn estimator interface."""
-
-    def test_clone(self):
-        comp = CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ],
-            combination="mean",
-            weights=[0.3, 0.7],
-        )
-        cloned = clone(comp)
-        assert cloned.combination == "mean"
-        assert cloned.weights == [0.3, 0.7]
-        assert len(cloned.similarities) == 2
-
-    def test_get_params(self):
-        comp = CompositeSimilarity(
-            similarities=[("dist", DistanceSimilarity()), ("seasonal", SeasonalSimilarity(seasonalities=[7.0]))],
-            combination="multiply",
-        )
-        params = comp.get_params()
-        assert params["combination"] == "multiply"
-        assert params["weights"] is None
-        assert len(params["similarities"]) == 2
-
-
 class TestCompositeSimilarityIntegration:
     """Integration with SplitConformalForecaster."""
 
@@ -1037,56 +741,6 @@ class TestSeasonalSimilaritySingleTimestamp:
         weights = sim.predict(y_pred)
         assert weights.shape == (1, 1)
         assert np.all(np.isfinite(weights))
-
-
-class TestCompositeSimilarityComposition:
-    """Real-composition behaviour: nested param addressing and clean rejection."""
-
-    def _comp(self):
-        return CompositeSimilarity(
-            similarities=[
-                ("dist", DistanceSimilarity(metric="euclidean")),
-                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
-            ]
-        )
-
-    def test_nested_param_addressable(self):
-        params = self._comp().get_params(deep=True)
-        assert "dist__metric" in params
-        assert "seasonal__seasonalities" in params
-
-    def test_nested_param_settable(self):
-        comp = self._comp()
-        comp.set_params(dist__metric="cosine")
-        assert dict(comp.similarities)["dist"].metric == "cosine"
-
-    def test_clone_roundtrips(self):
-        comp = self._comp()
-        cloned = clone(comp)
-        assert isinstance(cloned, CompositeSimilarity)
-        assert dict(cloned.similarities)["dist"].metric == "euclidean"
-
-    def test_bare_list_rejected(self):
-        comp = CompositeSimilarity(similarities=[DistanceSimilarity(), SeasonalSimilarity(seasonalities=[7.0])])
-        with pytest.raises(ValueError, match="name, similarity"):
-            comp.fit(
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-                pl.DataFrame({"time": [datetime(2021, 1, 1)], "value": [1.0]}),
-            )
-
-
-class TestDistanceSimilarityMetricParamsClone:
-    """metric_params init-mutation fix: stored verbatim, clone round-trips."""
-
-    def test_default_round_trips_as_none(self):
-        sim = DistanceSimilarity()
-        assert sim.metric_params is None
-        assert clone(sim).get_params() == sim.get_params()
-
-    def test_seasonal_default_round_trips_as_none(self):
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        assert sim.metric_params is None
-        assert clone(sim).get_params()["metric_params"] is None
 
 
 class TestSimilarityTuningThroughForecaster:

@@ -9,8 +9,10 @@ from typing import Any
 
 import polars as pl
 
+from yohou.interval.similarity import CompositeSimilarity
 from yohou.model_selection import GridSearchCV
 from yohou.utils import inspect_panel
+from yohou.weighting.weighters import CompositeWeighter
 
 from .class_proba import (
     check_class_proba_classes_attribute,
@@ -24,6 +26,8 @@ from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
 )
+from .composite import _yield_composite_reducer_checks
+from .contract import _yield_estimator_contract_checks
 from .forecaster import (
     check_clone_preserves_forecaster_params,
     check_fit_predict_with_X_forecast,
@@ -92,6 +96,12 @@ from .search import (
     check_search_return_train_score,
     check_search_rewind_delegates,
 )
+from .similarity import (
+    check_similarity_methods_call_check_is_fitted,
+    check_similarity_metric_params_verbatim,
+    check_similarity_predict_matrix_shape,
+    check_similarity_to_weights_rows_reserve_mass,
+)
 from .splitter import (
     check_splitter_n_splits_consistency,
     check_splitter_non_overlapping_tests,
@@ -129,6 +139,14 @@ from .transformer import (
     check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
     check_transformers_unfitted_stateless,
+)
+from .weighter import (
+    check_weighter_compute_weights_alignment,
+    check_weighter_default_constructible,
+    check_weighter_fit_noop_returns_self,
+    check_weighter_resolved_array_validation,
+    check_weighter_tags_accessible_before_fit,
+    check_weighter_tags_static_after_fit,
 )
 
 
@@ -1290,3 +1308,85 @@ def _yield_yohou_search_checks(
                     "X_forecast": X_forecast_test,
                 },
             )
+
+
+def _yield_yohou_weighter_checks(
+    weighter,
+    key: pl.Series,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a weighter.
+
+    Yields the weighter-family behavioral checks, the shared sklearn
+    estimator-contract checks, and (for ``CompositeWeighter``) the reducer and
+    bare-list checks.
+
+    Parameters
+    ----------
+    weighter : BaseWeighter
+        Weighter instance.
+    key : pl.Series
+        Key series (datetime or integer) to weight.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    yield "check_weighter_compute_weights_alignment", check_weighter_compute_weights_alignment, {"key": key}
+    yield "check_weighter_fit_noop_returns_self", check_weighter_fit_noop_returns_self, {}
+    yield "check_weighter_resolved_array_validation", check_weighter_resolved_array_validation, {"key": key}
+    yield "check_weighter_default_constructible", check_weighter_default_constructible, {}
+    yield "check_weighter_tags_accessible_before_fit", check_weighter_tags_accessible_before_fit, {}
+    yield "check_weighter_tags_static_after_fit", check_weighter_tags_static_after_fit, {}
+
+    yield from _yield_estimator_contract_checks(weighter)
+
+    if isinstance(weighter, CompositeWeighter):
+        descriptor = {"attr": "weighters", "components": list(weighter.weighters)}
+        yield from _yield_composite_reducer_checks(weighter, descriptor, operate=lambda c: c.compute_weights(key))
+
+
+def _yield_yohou_similarity_checks(
+    similarity,
+    y_calib: pl.DataFrame,
+    y_pred_calib: pl.DataFrame,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a similarity measure.
+
+    Yields the similarity-family behavioral checks, the shared sklearn
+    estimator-contract checks, and (for ``CompositeSimilarity``) the reducer and
+    bare-list checks.
+
+    Parameters
+    ----------
+    similarity : BaseSimilarity
+        Similarity instance.
+    y_calib : pl.DataFrame
+        Calibration target frame (matching ``fit(y, y_pred, X_actual=None)``).
+    y_pred_calib : pl.DataFrame
+        Calibration prediction frame.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    calib = {"y_calib": y_calib, "y_pred_calib": y_pred_calib}
+    yield "check_similarity_predict_matrix_shape", check_similarity_predict_matrix_shape, calib
+    yield "check_similarity_to_weights_rows_reserve_mass", check_similarity_to_weights_rows_reserve_mass, calib
+    yield "check_similarity_metric_params_verbatim", check_similarity_metric_params_verbatim, {}
+    yield (
+        "check_similarity_methods_call_check_is_fitted",
+        check_similarity_methods_call_check_is_fitted,
+        {"y_pred_calib": y_pred_calib},
+    )
+
+    yield from _yield_estimator_contract_checks(similarity)
+
+    if isinstance(similarity, CompositeSimilarity):
+        descriptor = {"attr": "similarities", "components": list(similarity.similarities)}
+        yield from _yield_composite_reducer_checks(
+            similarity, descriptor, operate=lambda c: c.fit(y_calib, y_pred_calib)
+        )

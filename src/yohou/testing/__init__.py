@@ -53,6 +53,21 @@ from .common import (
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
 )
+from .composite import (
+    _yield_composite_reducer_checks,
+    check_composite_combination_validation,
+    check_composite_rejects_bare_list,
+    check_composite_weights_length_validation,
+)
+from .contract import (
+    _yield_composition_contract_checks,
+    _yield_estimator_contract_checks,
+    check_clone_preserves_params,
+    check_composition_clone_deep_clones_components,
+    check_composition_nested_param_addressable,
+    check_get_set_params_round_trip,
+    check_init_no_param_mutation,
+)
 from .forecaster import (
     check_clone_preserves_forecaster_params,
     check_fit_predict_with_X_forecast,
@@ -79,8 +94,10 @@ from .generators import (
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
     _yield_yohou_search_checks,
+    _yield_yohou_similarity_checks,
     _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
+    _yield_yohou_weighter_checks,
 )
 from .interval import (
     check_coverage_rates_parameter,
@@ -139,6 +156,12 @@ from .search import (
     check_search_return_train_score,
     check_search_rewind_delegates,
 )
+from .similarity import (
+    check_similarity_methods_call_check_is_fitted,
+    check_similarity_metric_params_verbatim,
+    check_similarity_predict_matrix_shape,
+    check_similarity_to_weights_rows_reserve_mass,
+)
 from .splitter import (
     check_splitter_n_splits_consistency,
     check_splitter_non_overlapping_tests,
@@ -175,6 +198,14 @@ from .transformer import (
     check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
     check_transformers_unfitted_stateless,
+)
+from .weighter import (
+    check_weighter_compute_weights_alignment,
+    check_weighter_default_constructible,
+    check_weighter_fit_noop_returns_self,
+    check_weighter_resolved_array_validation,
+    check_weighter_tags_accessible_before_fit,
+    check_weighter_tags_static_after_fit,
 )
 
 __all__ = [
@@ -282,11 +313,34 @@ __all__ = [
     "check_search_observe_delegates",
     "check_metadata_routing_default_request",
     "check_metadata_routing_get_metadata_routing",
+    "check_clone_preserves_params",
+    "check_get_set_params_round_trip",
+    "check_init_no_param_mutation",
+    "check_composition_nested_param_addressable",
+    "check_composition_clone_deep_clones_components",
+    "check_composite_rejects_bare_list",
+    "check_composite_combination_validation",
+    "check_composite_weights_length_validation",
+    "check_weighter_compute_weights_alignment",
+    "check_weighter_fit_noop_returns_self",
+    "check_weighter_resolved_array_validation",
+    "check_weighter_default_constructible",
+    "check_weighter_tags_accessible_before_fit",
+    "check_weighter_tags_static_after_fit",
+    "check_similarity_predict_matrix_shape",
+    "check_similarity_to_weights_rows_reserve_mass",
+    "check_similarity_metric_params_verbatim",
+    "check_similarity_methods_call_check_is_fitted",
+    "_yield_estimator_contract_checks",
+    "_yield_composition_contract_checks",
+    "_yield_composite_reducer_checks",
     "_yield_yohou_forecaster_checks",
     "_yield_yohou_transformer_checks",
     "_yield_yohou_splitter_checks",
     "_yield_yohou_scorer_checks",
     "_yield_yohou_search_checks",
+    "_yield_yohou_weighter_checks",
+    "_yield_yohou_similarity_checks",
     "_Registry",
     "assert_request_equal",
     "assert_request_is_empty",

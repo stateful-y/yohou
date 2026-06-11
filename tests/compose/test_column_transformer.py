@@ -547,3 +547,27 @@ class TestColumnTransformerTagsAggregation:
         )
         tags = ct.__sklearn_tags__()
         assert tags.input_tags.min_value is None or isinstance(tags.input_tags.min_value, int | float)
+
+
+class TestColumnTransformerNestedParams:
+    """Nested ``<name>__<param>`` get/set over the 3-tuple ``transformers`` form."""
+
+    def test_get_params_exposes_nested(self):
+        ct = ColumnTransformer(transformers=[("s", SimpleTransformer(add_constant=1.0), ["a"])])
+        params = ct.get_params(deep=True)
+        assert "s__add_constant" in params
+        assert params["s__add_constant"] == 1.0
+
+    def test_set_params_routes_nested(self):
+        ct = ColumnTransformer(transformers=[("s", SimpleTransformer(add_constant=1.0), ["a"])])
+        ct.set_params(s__add_constant=5.0)
+        assert {n: t for n, t, _ in ct.transformers}["s"].add_constant == 5.0
+
+    def test_replace_component_preserves_columns(self):
+        ct = ColumnTransformer(transformers=[("s", SimpleTransformer(), ["a"])])
+        # Replacing a whole component routes through the _transformers setter,
+        # which rebuilds the 3-tuple and preserves the original columns.
+        ct.set_params(s=StatelessTransformer())
+        assert len(ct.transformers[0]) == 3
+        assert ct.transformers[0][2] == ["a"]
+        assert isinstance(ct.transformers[0][1], StatelessTransformer)
