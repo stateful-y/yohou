@@ -854,3 +854,141 @@ class TestXForecastRouting:
         forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
         pred = forecaster.predict(forecasting_horizon=5)
         assert len(pred) == 5
+
+
+def _make_panel_contemporaneous_data(n: int = 120, seed: int = 0):
+    """Two-group panel where each group's target depends on its feature.
+
+    sales[g, t] = 3 * price[g, t] + noise, with `group__column` naming.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+        interval="1d",
+        eager=True,
+    )
+    y_cols = {"time": time}
+    x_cols = {"time": time}
+    for g, phase in (("s1", 0.0), ("s2", 1.5)):
+        price = 10.0 + 5.0 * np.sin(2 * np.pi * np.arange(n) / 7 + phase) + 0.05 * np.arange(n)
+        sales = 3.0 * price + rng.normal(0, 0.5, n)
+        y_cols[f"{g}__sales"] = sales
+        x_cols[f"{g}__price"] = price
+    return pl.DataFrame(y_cols), pl.DataFrame(x_cols)
+
+
+class TestHardening:
+    """Tests for review-hardening fixes (panel actual, state parity, merge, errors)."""
+
+    def test_panel_actual_builds_group_prefixed_step_columns(self):
+        """Panel + strategy='actual' + reduction target feeds the forecast (not empty)."""
+        from yohou.preprocessing import LagTransformer
+
+        y, X = _make_panel_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            feature_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            strategy="actual",
+        )
+        forecaster.fit(y[:100], X[:100], forecasting_horizon=3)
+
+        step_cols = forecaster.target_forecaster_._step_column_names_
+        assert step_cols, "panel strategy='actual' must not drop the feature forecast"
+        assert any(c.startswith("s1__price") for c in step_cols)
+        assert any(c.startswith("s2__price") for c in step_cols)
+
+    def test_observe_requires_x_actual(self):
+        """observe(y, X_actual=None) raises, keeping state parity."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        with pytest.raises(ValueError, match="requires X_actual"):
+            forecaster.observe(y[100:105], X_actual=None)
+
+    def test_observe_predict_requires_x_actual(self):
+        """observe_predict(y, X_actual=None) raises (delegates to observe)."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        with pytest.raises(ValueError, match="requires X_actual"):
+            forecaster.observe_predict(y[100:105], X_actual=None)
+
+    def test_rewind_requires_x_actual(self):
+        """rewind(y, X_actual=None) raises."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        with pytest.raises(ValueError, match="requires X_actual"):
+            forecaster.rewind(y[95:100], X_actual=None)
+
+    def test_observe_keeps_observed_time_parity(self):
+        """observe with aligned y + X_actual keeps feature/target observed_time_ equal."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        forecaster.observe(y[100:105], X_actual[100:105])
+        assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
+
+    def test_merge_forecasts_does_not_introduce_null_rows(self):
+        """_merge_forecasts keeps exactly the meta forecast's (vintage_time, time) rows."""
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+        )
+        t0 = datetime(2020, 1, 1)
+        meta = pl.DataFrame({
+            "vintage_time": [t0, t0],
+            "time": [t0 + timedelta(days=1), t0 + timedelta(days=2)],
+            "price": [1.0, 2.0],
+        })
+        # Caller forecast with one aligning row and one non-aligning row.
+        user = pl.DataFrame({
+            "vintage_time": [t0, t0],
+            "time": [t0 + timedelta(days=2), t0 + timedelta(days=99)],
+            "promo": [1.0, 0.0],
+        })
+        merged = forecaster._merge_forecasts(meta, user)
+        assert merged.height == 2  # no spurious row from the non-aligning user row
+        assert set(merged["time"].to_list()) == {t0 + timedelta(days=1), t0 + timedelta(days=2)}
+        assert set(merged.columns) == {"vintage_time", "time", "price", "promo"}
+
+    def test_rewind_short_series_actionable_error(self):
+        """strategy='rewind' on a too-short series raises an actionable error.
+
+        The feature forecaster fits on the 3 rows but the rewind guard
+        (len(X_actual) <= observation_horizon + 1) still fires.
+        """
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=2),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": [float(i) for i in range(3)]})
+        X_actual = pl.DataFrame({"time": time, "price": [float(10 + i) for i in range(3)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=SeasonalNaive(seasonality=2),
+            strategy="rewind",
+        )
+        with pytest.raises(ValueError, match="strategy='actual'"):
+            forecaster.fit(y, X_actual, forecasting_horizon=1)

@@ -144,6 +144,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
     - A caller-supplied ``X_forecast`` (external forecasts for other features) is
       merged with the meta's feature forecast on ``(vintage_time, time)``; a value
       column-name collision raises ``ValueError``. ``X_future`` is forwarded untouched.
+    - ``observe`` and ``rewind`` require ``X_actual`` (the feature forecaster needs new
+      feature observations to advance in step with the target); passing ``None`` raises.
+    - Cost: ``strategy="rewind"`` (default) and ``"predicted"`` build the in-sample
+      forecast with a row-by-row rolling ``observe_predict`` over the training span, so
+      ``fit`` time grows with the training length. ``strategy="actual"`` is the cheapest.
 
     See Also
     --------
@@ -295,9 +300,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
             )
             # The forecast output columns are the feature forecaster's fitted target
             # schema (read directly, without a predict call that would otherwise mutate
-            # nothing but pollute call-tracking and waste work).
+            # nothing but pollute call-tracking and waste work). local_y_schema_ holds
+            # the local (unprefixed) names, so compare panel columns by their
+            # group-stripped base name (`group__column` -> `column`).
+            local_schema = set(self.feature_forecaster_.local_y_schema_)
             forecast_cols = [
-                c for c in X_actual.columns if c != "time" and c in self.feature_forecaster_.local_y_schema_
+                c for c in X_actual.columns if c != "time" and (c.split("__", 1)[1] if "__" in c else c) in local_schema
             ]
             feature_forecast = self._actuals_as_forecast(X_actual.select(["time", *forecast_cols]), forecasting_horizon)
 
@@ -316,8 +324,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
             rewind_size = obs_horizon + 1
             if obs_horizon < 0 or len(X_actual) <= rewind_size:
                 raise ValueError(
-                    f"Cannot use strategy='rewind': observation_horizon={obs_horizon} "
-                    f"but len(X_actual)={len(X_actual)}. Need len(X_actual) > observation_horizon + 1 to rewind."
+                    f"Cannot use strategy='rewind' (the default): the feature forecaster's "
+                    f"observation_horizon={obs_horizon} requires len(X_actual) > observation_horizon + 1, "
+                    f"but len(X_actual)={len(X_actual)}. Provide more data, or use "
+                    f"strategy='actual' or strategy='predicted' for very short series."
                 )
             self.feature_forecaster_.rewind(y=X_actual[:rewind_size], X_actual=None)
             feature_forecast = self.feature_forecaster_.observe_predict(
@@ -475,7 +485,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 f"forecasted feature column(s) {sorted(collision)}. Rename the external "
                 "forecast columns or drop them from the feature block."
             )
-        return feature_forecast.join(user_X_forecast, on=["vintage_time", "time"], how="full", coalesce=True)
+        # Left join anchored on the meta forecast's (vintage_time, time) grid: the
+        # caller forecast contributes columns where its rows align and never adds
+        # rows of its own (which would be null in every feature column).
+        return feature_forecast.join(user_X_forecast, on=["vintage_time", "time"], how="left")
 
     def _predict_feature_forecast(
         self,
@@ -662,10 +675,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             New target observations with "time" column.
-        X_actual : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame
             New actual feature observations with a ``"time"`` column
-            aligned with ``y``. Forwarded to both the feature forecaster
-            and target forecaster.
+            aligned with ``y``. Required: the feature forecaster needs new
+            feature observations to advance in step with the target.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         X_future : pl.DataFrame or None, default=None
@@ -679,16 +692,28 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self
             Forecaster with new observations incorporated.
 
+        Raises
+        ------
+        ValueError
+            If ``X_actual`` is None.
+
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
-        # Observe new X_actual for feature forecaster (X_actual is y for feature forecaster)
-        if X_actual is not None:
-            self.feature_forecaster_.observe(
-                y=X_actual,
-                X_actual=None,
-                groups=groups,
+        if X_actual is None:
+            raise ValueError(
+                "ForecastedFeatureForecaster.observe requires X_actual. The feature "
+                "forecaster forecasts X_actual, so observing new y without the aligned "
+                "new X_actual would desynchronize the feature and target forecasters' "
+                "observation state."
             )
+
+        # Observe new X_actual for feature forecaster (X_actual is y for feature forecaster)
+        self.feature_forecaster_.observe(
+            y=X_actual,
+            X_actual=None,
+            groups=groups,
+        )
 
         # Observe new y for the target forecaster. X_actual is None because the
         # target consumes the features through X_forecast, not its lagged-history
@@ -717,9 +742,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target data to rewind to (last observation_horizon rows kept).
-        X_actual : pl.DataFrame or None, default=None
+        X_actual : pl.DataFrame
             Actual feature observations to restore the observation
-            state to. Must align with ``y``.
+            state to. Required and must align with ``y``.
         groups : list of str or None, default=None
             Group prefixes for panel data.
         X_future : pl.DataFrame or None, default=None
@@ -733,16 +758,28 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self
             Rewound forecaster.
 
+        Raises
+        ------
+        ValueError
+            If ``X_actual`` is None.
+
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
-        # Rewind feature forecaster (X_actual is y for feature forecaster)
-        if X_actual is not None:
-            self.feature_forecaster_.rewind(
-                y=X_actual,
-                X_actual=None,
-                groups=groups,
+        if X_actual is None:
+            raise ValueError(
+                "ForecastedFeatureForecaster.rewind requires X_actual. The feature "
+                "forecaster forecasts X_actual, so rewinding y without the aligned "
+                "X_actual would desynchronize the feature and target forecasters' "
+                "observation state."
             )
+
+        # Rewind feature forecaster (X_actual is y for feature forecaster)
+        self.feature_forecaster_.rewind(
+            y=X_actual,
+            X_actual=None,
+            groups=groups,
+        )
 
         # Rewind target forecaster. X_actual is None because the target consumes
         # the features through X_forecast, not its lagged-history channel.
