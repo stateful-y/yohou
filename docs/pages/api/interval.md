@@ -20,6 +20,8 @@ Interval forecasters for generating prediction intervals with uncertainty quanti
 | --- | --- |
 | [`BaseSimilarity`](generated/yohou.interval.base.BaseSimilarity.md) | Base class for similarity measures used in interval forecasting. |
 | [`DistanceSimilarity`](generated/yohou.interval.similarity.DistanceSimilarity.md) | Distance-based similarity using scipy metrics for weighting observations. |
+| [`SeasonalSimilarity`](generated/yohou.interval.similarity.SeasonalSimilarity.md) | Seasonal-phase similarity using Fourier features for weighting observations. |
+| [`CompositeSimilarity`](generated/yohou.interval.similarity.CompositeSimilarity.md) | Combines multiple named similarity measures into a single weight matrix. |
 
 ### Utilities
 

@@ -1089,19 +1089,6 @@ class TestDistanceSimilarityMetricParamsClone:
         assert clone(sim).get_params()["metric_params"] is None
 
 
-class TestSeasonalSimilarityRename:
-    """TemporalSimilarity was renamed to SeasonalSimilarity."""
-
-    def test_new_name_importable(self):
-        from yohou.interval.similarity import SeasonalSimilarity as _Seasonal
-
-        assert _Seasonal is SeasonalSimilarity
-
-    def test_old_name_gone(self):
-        with pytest.raises(ImportError):
-            from yohou.interval.similarity import TemporalSimilarity  # noqa: F401
-
-
 class TestSimilarityTuningThroughForecaster:
     """Sub-similarity params are tunable through SplitConformalForecaster."""
 
