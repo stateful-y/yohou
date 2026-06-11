@@ -4,12 +4,8 @@ Systematic validation functions for the ``BaseWeighter`` estimator family
 (time-axis weighters). All check functions raise AssertionError on failure.
 """
 
-try:
-    import polars as pl
-except ImportError as e:
-    raise ImportError("polars is required for yohou.testing module. Install with: uv sync --group tests") from e
-
 import numpy as np
+import polars as pl
 
 from yohou.weighting.weighters import BaseWeighter, _resolve_weighter_to_array
 

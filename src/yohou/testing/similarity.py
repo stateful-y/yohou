@@ -5,12 +5,8 @@ Systematic validation functions for the ``BaseSimilarity`` estimator family
 AssertionError on failure.
 """
 
-try:
-    import polars as pl
-except ImportError as e:
-    raise ImportError("polars is required for yohou.testing module. Install with: uv sync --group tests") from e
-
 import numpy as np
+import polars as pl
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 

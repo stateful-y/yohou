@@ -265,30 +265,6 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         "verbose_feature_names_out": ["boolean"],
     }
 
-    @property
-    def _transformers(self) -> list[tuple[str, Any]]:
-        """Expose the ``(name, transformer)`` pairs for ``_BaseComposition``.
-
-        ``transformers`` holds ``(name, transformer, columns)`` 3-tuples, but
-        ``_BaseComposition`` expects ``(name, estimator)`` 2-tuples. This adapter
-        drops ``columns`` so nested ``<name>__<param>`` access works, mirroring
-        scikit-learn's own ``ColumnTransformer``.
-        """
-        try:
-            return [(name, trans) for name, trans, _ in self.transformers]
-        except (TypeError, ValueError):
-            return cast("list[tuple[str, Any]]", self.transformers)
-
-    @_transformers.setter
-    def _transformers(self, value: list[tuple[str, Any]]) -> None:
-        """Write back ``(name, transformer)`` pairs, preserving ``columns``."""
-        try:
-            self.transformers = [
-                (name, trans, col) for (name, trans), (_, _, col) in zip(value, self.transformers, strict=True)
-            ]
-        except (TypeError, ValueError):
-            self.transformers = cast("list[tuple[str, Any, Any]]", value)
-
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """Get parameters for this estimator.
 
@@ -363,16 +339,26 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         return tags
 
     @property
-    def _transformers(self) -> list[tuple[str, Any, Any]]:
-        """List of (name, fitted_transformer, column) tuples.
+    def _transformers(self) -> list[tuple[str, Any]]:
+        """List of ``(name, transformer)`` pairs for ``_BaseComposition``.
+
+        ``transformers`` holds ``(name, transformer, columns)`` 3-tuples;
+        ``_BaseComposition`` (and hence nested ``<name>__<param>`` get/set) needs
+        ``(name, transformer)`` 2-tuples. Delegates to scikit-learn's own
+        ``ColumnTransformer`` getter/setter, which drops and restores ``columns``.
 
         Returns
         -------
-        transformers : list[tuple[str, Any, Any]]
-            The fitted transformers.
+        transformers : list[tuple[str, Any]]
+            The ``(name, transformer)`` pairs.
 
         """
         return sklearn_ColumnTransformer._transformers.fget(self)  # ty: ignore[invalid-argument-type]
+
+    @_transformers.setter
+    def _transformers(self, value: list[tuple[str, Any]]) -> None:
+        """Write back ``(name, transformer)`` pairs, preserving ``columns``."""
+        sklearn_ColumnTransformer._transformers.fset(self, value)  # ty: ignore[invalid-argument-type]
 
     def _iter(
         self,
