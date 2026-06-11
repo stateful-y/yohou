@@ -177,39 +177,32 @@ provide it, the child simply does not receive it (no error).
 
 ## Putting It Together
 
-A complete example showing fit-time weights reaching the estimator, with no
-`sample_weight` ever passed by hand:
+On every nested call the three pieces combine: each consumer's **request**
+declares what it wants, the router's `get_metadata_routing()` defines the
+**table**, and `process_routing()` performs the **dispatch**. The clearest way to
+see them work as a unit is to follow the one parameter that travels this
+machinery in everyday use: the `sample_weight` a reduction forecaster forwards to
+its wrapped estimator. The forecaster drives the dispatch; the caller supplies no
+metadata.
 
-```python
-from sklearn.linear_model import Ridge
-from yohou.point import PointReductionForecaster
-from yohou.weighting import ExponentialDecayWeighter
-from yohou.metrics import MeanAbsoluteError
-from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
-
-# Fit-time weighting is configured with a weighter, not routed as metadata.
-forecaster = PointReductionForecaster(
-    estimator=Ridge(),
-    time_weighter=ExponentialDecayWeighter(half_life=30),
-)
-
-search = GridSearchCV(
-    forecaster=forecaster,
-    param_grid={"observation_horizon": [5, 10]},
-    cv=ExpandingWindowSplitter(n_splits=3),
-    scoring=MeanAbsoluteError(),
-)
-
-# No sample_weight argument: the forecaster computes it from its time_weighter.
-search.fit(y=train, forecasting_horizon=7)
+```text
+forecaster.fit(y, forecasting_horizon=7)         ← caller passes no metadata kwarg
+      │
+      │  forecaster resolves its time_weighter → sample_weight array
+      │  estimator.set_fit_request(sample_weight=True)        (the request)
+      ▼
+process_routing(self, "fit", sample_weight=…)                (the dispatch)
+      │  consults the routing table from get_metadata_routing()
+      ▼
+Ridge.fit(X_tab, y_tab, sample_weight=…)                     (arrives at the consumer)
 ```
 
-On each fit, the forecaster resolves its `time_weighter` into a `sample_weight`
-array, wires the request on its wrapped estimator internally, and forwards the
-weights through the routing machinery so they reach `Ridge.fit()` and shape the
-learned coefficients. The user-facing knob is the weighter on `__init__`, and to
-vary it during search you tune the weighter's parameters directly
-(`time_weighter__half_life`). See [Weighting](weighting.md).
+The same dispatch carries `coverage_rates` to an interval forecaster's
+`predict_interval` and `groups` to a panel forecaster's `predict`; only the key
+and the method differ.
+
+For the full request API and routing edge cases, see
+[scikit-learn's metadata routing guide](https://scikit-learn.org/stable/metadata_routing.html).
 
 ## Connections
 
