@@ -382,11 +382,6 @@ class TestClassProbaScorerCommon:
         run_checks(instance, _yield_yohou_scorer_checks(instance, y_truth, y_pred))
 
 
-# ---------------------------------------------------------------------------
-# Weighter family
-# ---------------------------------------------------------------------------
-
-
 def _weighter_key() -> pl.Series:
     """Five daily datetimes used as the weighter key fixture."""
     return pl.Series("time", [datetime(2024, 1, d) for d in range(1, 6)])
@@ -438,11 +433,6 @@ class TestWeighterCommon:
         run_checks(weighter, _yield_yohou_weighter_checks(weighter, _weighter_key()))
 
 
-# ---------------------------------------------------------------------------
-# Similarity family
-# ---------------------------------------------------------------------------
-
-
 def _similarity_calibration() -> tuple[pl.DataFrame, pl.DataFrame]:
     """Calibration ``(y, y_pred)`` frames for similarity tests (21 daily rows)."""
     dates = [datetime(2021, 1, 1) + timedelta(days=i) for i in range(21)]
@@ -480,11 +470,6 @@ class TestSimilarityCommon:
         similarity = instances[name]
         y_calib, y_pred_calib = _similarity_calibration()
         run_checks(similarity, _yield_yohou_similarity_checks(similarity, y_calib, y_pred_calib))
-
-
-# ---------------------------------------------------------------------------
-# Composition contract (every _BaseComposition compositor)
-# ---------------------------------------------------------------------------
 
 
 def _composition_descriptors() -> dict[str, dict]:

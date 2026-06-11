@@ -60,11 +60,6 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Estimator-contract checks (sklearn contract)
-# ---------------------------------------------------------------------------
-
-
 def check_clone_preserves_params(estimator) -> None:
     """Check ``clone()`` preserves shallow params and freshens nested estimators.
 
@@ -222,11 +217,6 @@ def _yield_estimator_contract_checks(
     yield "check_clone_preserves_params", check_clone_preserves_params, {}
     yield "check_get_set_params_round_trip", check_get_set_params_round_trip, {}
     yield "check_init_no_param_mutation", check_init_no_param_mutation, {}
-
-
-# ---------------------------------------------------------------------------
-# Composition-contract checks (data-free part of the _BaseComposition contract)
-# ---------------------------------------------------------------------------
 
 
 def _first_named_component(compositor, attr: str) -> tuple[str, BaseEstimator]:

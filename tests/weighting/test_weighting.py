@@ -36,11 +36,6 @@ def steps() -> pl.Series:
     return pl.Series("forecasting_step", [1, 2, 3])
 
 
-# ---------------------------------------------------------------------------
-# Legacy-equivalence golden values (formerly the factory functions)
-# ---------------------------------------------------------------------------
-
-
 def test_exponential_decay_matches_legacy_values(times: pl.Series) -> None:
     """ExponentialDecayWeighter reproduces the old exponential_decay_weight output."""
     weights = ExponentialDecayWeighter(half_life=1).compute_weights(times).to_list()
@@ -73,11 +68,6 @@ def test_seasonal_emphasis_matches_legacy_values() -> None:
     assert weights == pytest.approx([1.0, 1.0, 1.0, 2.0])
 
 
-# ---------------------------------------------------------------------------
-# ExponentialDecayWeighter: scale handling (thread C1')
-# ---------------------------------------------------------------------------
-
-
 def test_exponential_scale_inferred_elapsed_for_datetime(times: pl.Series) -> None:
     """Datetime keys default to elapsed scale."""
     w = ExponentialDecayWeighter(half_life=1)
@@ -108,11 +98,6 @@ def test_exponential_timedelta_elapsed_ok(times: pl.Series) -> None:
     """A timedelta half_life is valid with elapsed scale."""
     weights = ExponentialDecayWeighter(half_life=timedelta(days=1), scale="elapsed").compute_weights(times)
     assert weights.to_list() == pytest.approx([0.25, 0.5, 1.0])
-
-
-# ---------------------------------------------------------------------------
-# LookupWeighter / TableWeighter (thread A3)
-# ---------------------------------------------------------------------------
 
 
 def test_lookup_default_applies_to_missing_keys(steps: pl.Series) -> None:
@@ -156,11 +141,6 @@ def test_table_weighter_panel_group_column(times: pl.Series) -> None:
     assert weights == pytest.approx([1.0, 2.0, 3.0])
 
 
-# ---------------------------------------------------------------------------
-# CompositeWeighter (thread D)
-# ---------------------------------------------------------------------------
-
-
 def test_composite_multiplies_components(times: pl.Series) -> None:
     """CompositeWeighter multiplies component outputs element-wise."""
     a = ExponentialDecayWeighter(half_life=2)
@@ -174,11 +154,6 @@ def test_base_weighter_is_abstract() -> None:
     """BaseWeighter cannot be instantiated directly."""
     with pytest.raises(TypeError):
         BaseWeighter()  # type: ignore[abstract]
-
-
-# ---------------------------------------------------------------------------
-# _resolve_weighter_to_array + validation helpers
-# ---------------------------------------------------------------------------
 
 
 def test_normalize_weights_sums_to_n() -> None:
@@ -211,11 +186,6 @@ def test_combine_weight_vectors_zero_product_raises() -> None:
         _combine_weight_vectors(np.array([1.0, 0.0]), np.array([0.0, 1.0]), n=2)
 
 
-# ---------------------------------------------------------------------------
-# Single-element key short-circuits
-# ---------------------------------------------------------------------------
-
-
 def test_linear_decay_single_key_returns_one() -> None:
     """A length-1 key yields weight 1.0 (no rank range to decay over)."""
     weights = LinearDecayWeighter().compute_weights(pl.Series("time", [datetime(2024, 1, 1)])).to_list()
@@ -226,11 +196,6 @@ def test_seasonal_emphasis_single_key_returns_one() -> None:
     """A length-1 key yields weight 1.0 (no phase to emphasize)."""
     weights = SeasonalEmphasisWeighter(seasonality=7).compute_weights(pl.Series("time", [datetime(2024, 1, 1)]))
     assert weights.to_list() == pytest.approx([1.0])
-
-
-# ---------------------------------------------------------------------------
-# TableWeighter error/branch paths
-# ---------------------------------------------------------------------------
 
 
 def test_table_weighter_none_frame_raises(times: pl.Series) -> None:
@@ -260,22 +225,12 @@ def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
         TableWeighter(frame=frame, on="time").compute_weights(times, group_name="C")
 
 
-# ---------------------------------------------------------------------------
-# CompositeWeighter get_params / set_params edge paths
-# ---------------------------------------------------------------------------
-
-
 def test_composite_set_params_replaces_weighters_list() -> None:
     """set_params replaces the whole weighters list."""
     w = CompositeWeighter([("decay", ExponentialDecayWeighter(1))])
     new = [("lin", LinearDecayWeighter(2))]
     w.set_params(weighters=new)
     assert w.weighters is new
-
-
-# ---------------------------------------------------------------------------
-# _resolve_weighter_to_array contract checks
-# ---------------------------------------------------------------------------
 
 
 def test_resolve_weighter_to_array_rejects_non_series(times: pl.Series) -> None:
@@ -298,11 +253,6 @@ def test_resolve_weighter_to_array_rejects_mismatched_length(times: pl.Series) -
 
     with pytest.raises(ValueError, match="expected 3 rows"):
         _resolve_weighter_to_array(_BadLength(), times)
-
-
-# ---------------------------------------------------------------------------
-# CompositeWeighter combination = "mean" and per-component weights
-# ---------------------------------------------------------------------------
 
 
 def test_composite_mean_combination(times: pl.Series) -> None:
