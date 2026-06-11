@@ -293,8 +293,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 forecasting_horizon=forecasting_horizon,
                 **routed_params.feature_forecaster.fit,
             )
-            forecast_preview = self.feature_forecaster_.predict(forecasting_horizon=forecasting_horizon)
-            forecast_cols = [c for c in forecast_preview.columns if c not in ("vintage_time", "time")]
+            # The forecast output columns are the feature forecaster's fitted target
+            # schema (read directly, without a predict call that would otherwise mutate
+            # nothing but pollute call-tracking and waste work).
+            forecast_cols = [
+                c for c in X_actual.columns if c != "time" and c in self.feature_forecaster_.local_y_schema_
+            ]
             feature_forecast = self._actuals_as_forecast(X_actual.select(["time", *forecast_cols]), forecasting_horizon)
 
         elif self.strategy == "rewind":
