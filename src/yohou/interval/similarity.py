@@ -335,6 +335,13 @@ class SeasonalSimilarity(BaseSimilarity):
     non-negative and sums below 1, following the non-exchangeable conformal
     construction (Barber et al., 2023).
 
+    References
+    ----------
+    [1] Barber, R.F., Candes, E.J., Ramdas, A., & Tibshirani, R.J.
+        (2023). "Conformal prediction beyond exchangeability." Annals of
+        Statistics, 51(2), 816-845.
+        https://doi.org/10.1214/23-AOS2276
+
     See Also
     --------
     - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Value-based distance similarity.

@@ -164,7 +164,8 @@ or any metric supported by `scipy.spatial.distance.cdist`.
 
 The leading `1` in the denominator reserves uniform mass for the hypothetical test
 point, so each weight row is non-negative and sums to a value strictly below 1. This
-follows the non-exchangeable conformal construction of Barber et al. (2023): the test
+follows the non-exchangeable conformal construction of
+[Barber et al. (2023)](https://doi.org/10.1214/23-AOS2276): the test
 point, whose residual is unknown, is treated as one more calibration candidate that
 always holds a baseline share of the mass. That reserved share shrinks as more
 calibration points fall close to the prediction context, and grows when none do.
