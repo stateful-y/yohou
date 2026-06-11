@@ -15,7 +15,18 @@ __gallery__ = {
     "category": "tutorial",
     "companion": "/pages/tutorials/forecast-visualization/",
     "section": "visualization",
-    "api_references": ["ClassProbaReductionForecaster", "DecompositionPipeline", "PatternSeasonalityForecaster", "PointReductionForecaster", "PolynomialTrendForecaster", "SeasonalNaive", "SplitConformalForecaster", "plot_calibration", "plot_decomposition", "plot_time_weight"],
+    "api_references": [
+        "ClassProbaReductionForecaster",
+        "DecompositionPipeline",
+        "PatternSeasonalityForecaster",
+        "PointReductionForecaster",
+        "PolynomialTrendForecaster",
+        "SeasonalNaive",
+        "SplitConformalForecaster",
+        "plot_calibration",
+        "plot_decomposition",
+        "plot_time_weight",
+    ],
 }
 app = marimo.App(width="medium")
 
@@ -53,9 +64,9 @@ def _():
         PatternSeasonalityForecaster,
         PolynomialTrendForecaster,
     )
-    from yohou.utils.weighting import (
-        exponential_decay_weight,
-        linear_decay_weight,
+    from yohou.weighting import (
+        ExponentialDecayWeighter,
+        LinearDecayWeighter,
     )
 
     return (
@@ -68,11 +79,11 @@ def _():
         PolynomialTrendForecaster,
         SeasonalNaive,
         SplitConformalForecaster,
-        exponential_decay_weight,
+        ExponentialDecayWeighter,
         fetch_air_quality_classification,
         fetch_sunspot,
         fetch_tourism_monthly,
-        linear_decay_weight,
+        LinearDecayWeighter,
         pl,
         plot_calibration,
         plot_decomposition,
@@ -434,13 +445,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(exponential_decay_weight, linear_decay_weight, pl, y_train):
+def _(ExponentialDecayWeighter, LinearDecayWeighter, pl, y_train):
     _times = y_train["time"]
-    _exp_fn = exponential_decay_weight(half_life=24)
-    _lin_fn = linear_decay_weight()
+    _exp_fn = ExponentialDecayWeighter(half_life=24)
+    _lin_fn = LinearDecayWeighter()
 
-    exp_weight_df = pl.DataFrame({"time": _times, "time_weight": _exp_fn(_times)})
-    lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn(_times)})
+    exp_weight_df = pl.DataFrame({"time": _times, "time_weight": _exp_fn.compute_weights(_times)})
+    lin_weight_df = pl.DataFrame({"time": _times, "time_weight": _lin_fn.compute_weights(_times)})
     return exp_weight_df, lin_weight_df
 
 
@@ -472,7 +483,6 @@ def _(lin_weight_df, plot_time_weight):
     )
 
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -483,7 +493,7 @@ def _(mo):
         - [Visualize Forecasts](/pages/how-to/visualize-forecasts/) for related techniques
         """
     )
-    return
+
 
 if __name__ == "__main__":
     app.run()

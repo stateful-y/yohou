@@ -14,7 +14,7 @@ __gallery__ = {
     "category": "how-to",
     "section": "data-features",
     "companion": "/pages/how-to/handle-long-series/",
-    "api_references": ["LagTransformer", "Downsampler", "exponential_decay_weight"],
+    "api_references": ["LagTransformer", "Downsampler", "ExponentialDecayWeighter"],
 }
 app = marimo.App(width="medium")
 
@@ -80,10 +80,9 @@ def _(mo):
 def _(Ridge, data):
     from yohou.compose import FeaturePipeline
     from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import train_test_split
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-
-    from yohou.model_selection import train_test_split
 
     y_train, y_test = train_test_split(data, test_size=24)
 
@@ -94,9 +93,7 @@ def _(Ridge, data):
     pred_full = fc_full.predict(forecasting_horizon=24)
 
     # Limited history: keep only the last 120 observations
-    pipe_limited = FeaturePipeline(
-        [("lags", LagTransformer(lag=[1, 6, 12]))]
-    )
+    pipe_limited = FeaturePipeline([("lags", LagTransformer(lag=[1, 6, 12]))])
     fc_limited = PointReductionForecaster(estimator=Ridge(), feature_transformer=pipe_limited)
     fc_limited.fit(y_train.tail(120), forecasting_horizon=24)
     pred_limited = fc_limited.predict(forecasting_horizon=24)
@@ -113,20 +110,20 @@ def _(mo):
     ## 3. Weight Recent Errors with Exponential Decay
 
     Instead of discarding old data entirely, weight recent observations
-    more heavily. [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/) halves the weight every
+    more heavily. [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) halves the weight every
     `half_life` steps.
     """)
 
 
 @app.cell
 def _():
-    from yohou.utils.weighting import exponential_decay_weight, linear_decay_weight
+    from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
 
     # Exponential decay: weight halves every 120 steps
-    exp_weight = exponential_decay_weight(half_life=120)
+    exp_weight = ExponentialDecayWeighter(half_life=120)
 
     # Linear decay: weight drops to 0 at max_steps ago
-    lin_weight = linear_decay_weight(max_steps=240)
+    lin_weight = LinearDecayWeighter(max_steps=240)
 
     print(f"Exponential weight function: {exp_weight}")
     print(f"Linear weight function:      {lin_weight}")
@@ -152,7 +149,6 @@ def _():
     print(f"Downsampler config: interval={downsampler.interval}, aggregation={downsampler.aggregation}")
 
 
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(
@@ -163,7 +159,7 @@ def _(mo):
         - [Clean and Resample Time Series](/pages/how-to/clean-and-resample/) for related techniques
         """
     )
-    return
+
 
 if __name__ == "__main__":
     app.run()

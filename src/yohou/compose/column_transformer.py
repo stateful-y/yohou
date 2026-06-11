@@ -280,7 +280,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Parameter names mapped to their values.
 
         """
-        return _BaseComposition._get_params(self, attr="transformers", deep=deep)
+        return _BaseComposition._get_params(self, attr="_transformers", deep=deep)
 
     def set_params(self, **params: Any) -> "ColumnTransformer":
         """Set the parameters of this estimator.
@@ -296,7 +296,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             ColumnTransformer instance.
 
         """
-        _BaseComposition._set_params(self, attr="transformers", **params)
+        _BaseComposition._set_params(self, attr="_transformers", **params)
         return self
 
     def __sklearn_tags__(self) -> Tags:
@@ -339,16 +339,26 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         return tags
 
     @property
-    def _transformers(self) -> list[tuple[str, Any, Any]]:
-        """List of (name, fitted_transformer, column) tuples.
+    def _transformers(self) -> list[tuple[str, Any]]:
+        """List of ``(name, transformer)`` pairs for ``_BaseComposition``.
+
+        ``transformers`` holds ``(name, transformer, columns)`` 3-tuples;
+        ``_BaseComposition`` (and hence nested ``<name>__<param>`` get/set) needs
+        ``(name, transformer)`` 2-tuples. Delegates to scikit-learn's own
+        ``ColumnTransformer`` getter/setter, which drops and restores ``columns``.
 
         Returns
         -------
-        transformers : list[tuple[str, Any, Any]]
-            The fitted transformers.
+        transformers : list[tuple[str, Any]]
+            The ``(name, transformer)`` pairs.
 
         """
         return sklearn_ColumnTransformer._transformers.fget(self)  # ty: ignore[invalid-argument-type]
+
+    @_transformers.setter
+    def _transformers(self, value: list[tuple[str, Any]]) -> None:
+        """Write back ``(name, transformer)`` pairs, preserving ``columns``."""
+        sklearn_ColumnTransformer._transformers.fset(self, value)  # ty: ignore[invalid-argument-type]
 
     def _iter(
         self,

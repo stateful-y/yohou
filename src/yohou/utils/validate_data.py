@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from typing import TYPE_CHECKING, Literal, overload
 
 import polars as pl
@@ -32,7 +31,6 @@ __all__ = [
     "validate_plotting_params",
     "validate_scorer_data",
     "validate_splitter_data",
-    "validate_time_weight",
     "validate_transformer_data",
 ]
 
@@ -235,103 +233,6 @@ if TYPE_CHECKING:
     from yohou.model_selection import BaseSplitter
 
 
-def validate_time_weight(
-    time_weight: Callable | pl.DataFrame | None,
-    y: pl.DataFrame,
-    groups: list[str] | None = None,
-) -> None:
-    """Validate time_weight parameter for forecasters and scorers.
-
-    Parameters
-    ----------
-    time_weight : callable, pl.DataFrame, or None
-        Time weighting specification to validate.
-    y : pl.DataFrame
-        Target time series with "time" column.
-    groups : list of str or None
-        Panel group names if panel data.
-
-    Raises
-    ------
-    ValueError
-        If time_weight validation fails.
-
-    See Also
-    --------
-    - [`validate_forecaster_data`][yohou.utils.validate_data.validate_forecaster_data] : Validate forecaster input data.
-    - [`validate_scorer_data`][yohou.utils.validate_data.validate_scorer_data] : Validate scorer input data.
-
-    """
-    if time_weight is None:
-        return
-
-    if callable(time_weight):
-        # Callable validation is done via validate_callable_signature
-        # in the actual processing methods
-        return
-
-    # DataFrame validation
-    if not isinstance(time_weight, pl.DataFrame):
-        raise ValueError(f"time_weight must be callable, pl.DataFrame, or None, got {type(time_weight).__name__}")
-
-    # Must have time column
-    if "time" not in time_weight.columns:
-        raise ValueError("time_weight DataFrame must have 'time' column")
-
-    # Check for weight columns
-    weight_cols = [c for c in time_weight.columns if c != "time"]
-    if not weight_cols:
-        raise ValueError(
-            "time_weight DataFrame must have at least one weight column "
-            "('weight' for global data or '{group}_weight' for panel data)"
-        )
-
-    # Validate weight column naming
-    if groups is None:
-        # Global data: must have "weight" column
-        if "weight" not in time_weight.columns:
-            raise ValueError("time_weight DataFrame for global data must have 'weight' column")
-        weight_cols_to_check = ["weight"]
-    else:
-        # Panel data: check for group-specific or global weight columns
-        expected_group_cols = {f"{group}_weight" for group in groups}
-        has_group_specific = any(col in time_weight.columns for col in expected_group_cols)
-        has_global = "weight" in time_weight.columns
-
-        if not has_group_specific and not has_global:
-            raise ValueError(
-                f"time_weight DataFrame for panel data must have either "
-                f"group-specific columns {sorted(expected_group_cols)} "
-                f"or global 'weight' column"
-            )
-
-        # Collect all weight columns to validate
-        weight_cols_to_check = [c for c in weight_cols if c.endswith("_weight") or c == "weight"]
-
-    # Validate weight values (non-negative, finite, non-zero sum)
-    for col in weight_cols_to_check:
-        if col not in time_weight.columns:
-            continue
-
-        weights = time_weight[col]
-
-        # Check for NaN
-        if weights.is_null().any():
-            raise ValueError(f"Weight column '{col}' contains NaN values")
-
-        # Check for negative values
-        if (weights < 0).any():
-            raise ValueError(f"Weight column '{col}' contains negative values")
-
-        # Check for infinite values
-        if weights.is_infinite().any():
-            raise ValueError(f"Weight column '{col}' contains infinite values")
-
-        # Check for all-zero weights
-        if weights.sum() == 0:
-            raise ValueError(f"Weight column '{col}' sums to zero")
-
-
 def _compute_forecasting_step(
     time: pl.Series,
     vintage_time: pl.Series,
@@ -531,7 +432,6 @@ def validate_scorer_data(
     See Also
     --------
     - [`BaseScorer`][yohou.metrics.base.BaseScorer] : Base class for all scorers.
-    - [`validate_time_weight`][yohou.utils.validate_data.validate_time_weight] : Validate time weighting parameters.
 
     """
     # Runtime validation: enforce parameter requirements for each context
@@ -972,7 +872,6 @@ def validate_forecaster_data(
     See Also
     --------
     - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Base class for all forecasters.
-    - [`validate_time_weight`][yohou.utils.validate_data.validate_time_weight] : Validate time weighting parameters.
     - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """

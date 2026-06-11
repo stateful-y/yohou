@@ -4,7 +4,7 @@ template: api-submodule.html
 
 # yohou.utils
 
-Validation, panel data, weighting, tags, discovery, and other utility functions.
+Validation, panel data, tags, discovery, and other utility functions.
 
 ### Discovery
 
@@ -41,7 +41,6 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`validate_plotting_data`](generated/yohou.utils.validate_data.validate_plotting_data.md) | Validate a DataFrame for plotting and resolve columns. |
 | [`validate_plotting_params`](generated/yohou.utils.validate_data.validate_plotting_params.md) | Validate common plotting function parameters. |
 | [`validate_search_data`](generated/yohou.utils.validation.validate_search_data.md) | Validate input data for hyperparameter search (GridSearchCV, RandomizedSearchCV). |
-| [`validate_time_weight`](generated/yohou.utils.validate_data.validate_time_weight.md) | Validate time_weight parameter for forecasters and scorers. |
 | [`validate_column_names`](generated/yohou.utils.validation.validate_column_names.md) | Validate that \_\_ separator is used only for panel data group names. |
 
 ### Time series validation
@@ -57,21 +56,6 @@ Validation, panel data, weighting, tags, discovery, and other utility functions.
 | [`check_X_actual_required`](generated/yohou.utils.validation.check_X_actual_required.md) | Validate X_actual is provided when required for recursive prediction. |
 | [`check_forecasting_horizon_positive`](generated/yohou.utils.validation.check_forecasting_horizon_positive.md) | Validate forecasting horizon is positive. |
 | [`check_scorer_column_selection`](generated/yohou.utils.validation.check_scorer_column_selection.md) | Subselect columns based on scorer configuration. |
-
-### Weighting
-
-| Name | Description |
-| --- | --- |
-| [`exponential_decay_weight`](generated/yohou.utils.weighting.exponential_decay_weight.md) | Generate exponential decay weights giving more weight to recent times. |
-| [`linear_decay_weight`](generated/yohou.utils.weighting.linear_decay_weight.md) | Generate linear decay weights giving more weight to recent times. |
-| [`seasonal_emphasis_weight`](generated/yohou.utils.weighting.seasonal_emphasis_weight.md) | Generate weights emphasizing specific seasonal positions. |
-| [`compose_weights`](generated/yohou.utils.weighting.compose_weights.md) | Compose multiple weight functions by multiplication. |
-| [`validate_callable_signature`](generated/yohou.utils.weighting.validate_callable_signature.md) | Validate that callable has valid signature for time weighting. |
-| [`normalize_weights`](generated/yohou.utils.weighting.normalize_weights.md) | Normalize weights so they sum to the number of elements. |
-| [`validate_weight_array`](generated/yohou.utils.weighting.validate_weight_array.md) | Validate a resolved weight array for NaN, negatives, infinities, and all-zero. |
-| [`resolve_dict_weights`](generated/yohou.utils.weighting.resolve_dict_weights.md) | Map a ``{key: weight}`` dict to an aligned numpy array. |
-| [`combine_weight_vectors`](generated/yohou.utils.weighting.combine_weight_vectors.md) | Combine weight vectors multiplicatively and normalize. |
-| [`resolve_weight_to_array`](generated/yohou.utils.weighting.resolve_weight_to_array.md) | Resolve a weight specification (callable, DataFrame, or dict) to a numpy array. |
 
 ### Time intervals
 

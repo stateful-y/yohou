@@ -171,9 +171,16 @@ def _fetch_dataset(
     suffix = "" if n_series is None else f"_n{n_series}"
     parquet_path = os.path.join(dataset_dir, f"{dataset_name}{suffix}.parquet")
 
+    frame = None
     if os.path.exists(parquet_path):
-        frame = pl.read_parquet(parquet_path)
-    else:
+        try:
+            frame = pl.read_parquet(parquet_path)
+        except (pl.exceptions.ComputeError, OSError):
+            # The cache is corrupt or was caught mid-write by a concurrent
+            # fetch.  Discard it and fall through to re-download below.
+            frame = None
+
+    if frame is None:
         if not download_if_missing:
             msg = f"Data not found and download_if_missing=False. Expected: {parquet_path}"
             raise OSError(msg)
@@ -196,7 +203,11 @@ def _fetch_dataset(
             n_series=n_series,
         )
 
-        frame.write_parquet(parquet_path)
+        # Write atomically so concurrent readers never observe a partial
+        # file: write to a unique temp path, then rename into place.
+        tmp_path = f"{parquet_path}.{os.getpid()}.tmp"
+        frame.write_parquet(tmp_path)
+        os.replace(tmp_path, parquet_path)
 
     feature_names = [c for c in frame.columns if c != "time"]
 

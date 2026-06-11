@@ -9,6 +9,7 @@ import pytest
 from sklearn.base import BaseEstimator
 
 from yohou.point import PointReductionForecaster
+from yohou.weighting import TableWeighter
 
 
 def _has_nan(data) -> bool:
@@ -183,14 +184,15 @@ class TestNanHandlingDrop:
     def test_sample_weight_aligned_after_nan_removal(self):
         """4.6: sample_weight is filtered in lockstep with dropped rows."""
         y = _make_y_with_nan(30, nan_positions=[10])
+        time_weight = pl.DataFrame({"time": y["time"], "weight": [1.0] * len(y)})
         forecaster = PointReductionForecaster(
             estimator=_RecordingEstimator(),
             nan_handling="drop",
+            time_weighter=TableWeighter(frame=time_weight, on="time"),
         )
-        time_weight = pl.DataFrame({"time": y["time"], "weight": [1.0] * len(y)})
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            forecaster.fit(y=y, forecasting_horizon=2, time_weight=time_weight)
+            forecaster.fit(y=y, forecasting_horizon=2)
 
         est = forecaster.estimator_
         sw = est.fit_kwargs_.get("sample_weight")

@@ -15,7 +15,16 @@ __gallery__ = {
     "category": "how-to",
     "section": "forecasting-models",
     "companion": "/pages/how-to/time-weighting/",
-    "api_references": ["PointReductionForecaster", "compose_weights", "exponential_decay_weight", "linear_decay_weight", "plot_score_per_step", "plot_score_summary", "plot_time_weight", "seasonal_emphasis_weight"],
+    "api_references": [
+        "PointReductionForecaster",
+        "CompositeWeighter",
+        "ExponentialDecayWeighter",
+        "LinearDecayWeighter",
+        "plot_score_per_step",
+        "plot_score_summary",
+        "plot_time_weight",
+        "SeasonalEmphasisWeighter",
+    ],
 }
 app = marimo.App(width="medium")
 
@@ -58,11 +67,11 @@ def _():
     from yohou.plotting import plot_forecast, plot_score_per_step, plot_score_summary, plot_time_weight
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
-    from yohou.utils.weighting import (
-        compose_weights,
-        exponential_decay_weight,
-        linear_decay_weight,
-        seasonal_emphasis_weight,
+    from yohou.weighting import (
+        ExponentialDecayWeighter,
+        LinearDecayWeighter,
+        CompositeWeighter,
+        SeasonalEmphasisWeighter,
     )
 
     return (
@@ -70,16 +79,16 @@ def _():
         MeanAbsoluteError,
         PointReductionForecaster,
         Ridge,
-        compose_weights,
-        exponential_decay_weight,
+        CompositeWeighter,
+        ExponentialDecayWeighter,
         fetch_sunspot,
-        linear_decay_weight,
+        LinearDecayWeighter,
         pl,
         plot_forecast,
         plot_score_per_step,
         plot_score_summary,
         plot_time_weight,
-        seasonal_emphasis_weight,
+        SeasonalEmphasisWeighter,
         train_test_split,
     )
 
@@ -116,42 +125,42 @@ def _(mo):
 
     | Function | Behaviour |
     |---|---|
-    | `exponential_decay_weight(half_life)` | Halves weight every `half_life` steps from the most recent time |
-    | `linear_decay_weight(max_steps)` | Linear ramp from 0 (oldest) to 1 (newest) |
-    | `seasonal_emphasis_weight(seasonality, emphasis)` | Multiplies weight by `emphasis` for times matching the seasonal phase |
+    | `ExponentialDecayWeighter(half_life)` | Halves weight every `half_life` steps from the most recent time |
+    | `LinearDecayWeighter(max_steps)` | Linear ramp from 0 (oldest) to 1 (newest) |
+    | `SeasonalEmphasisWeighter(seasonality, emphasis)` | Multiplies weight by `emphasis` for times matching the seasonal phase |
 
     Let's visualise each one on our training data.
     """)
 
 
 @app.cell
-def _(exponential_decay_weight, linear_decay_weight, pl, plot_time_weight, seasonal_emphasis_weight, y_train):
+def _(ExponentialDecayWeighter, LinearDecayWeighter, pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
     _times = y_train.get_column("time")
 
     # Build a DataFrame with each weight as a column
     weight_df = pl.DataFrame({
         "time": _times,
-        "time_weight": exponential_decay_weight(half_life=365)(_times).to_list(),
+        "time_weight": ExponentialDecayWeighter(half_life=365).compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df, title="Exponential Decay (half_life=365 days)")
 
 
 @app.cell
-def _(linear_decay_weight, pl, plot_time_weight, y_train):
+def _(LinearDecayWeighter, pl, plot_time_weight, y_train):
     _times = y_train.get_column("time")
     weight_df_linear = pl.DataFrame({
         "time": _times,
-        "time_weight": linear_decay_weight(max_steps=None)(_times).to_list(),
+        "time_weight": LinearDecayWeighter(max_steps=None).compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df_linear, title="Linear Decay (full range)")
 
 
 @app.cell
-def _(pl, plot_time_weight, seasonal_emphasis_weight, y_train):
+def _(pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
     _times = y_train.get_column("time")
     weight_df_seasonal = pl.DataFrame({
         "time": _times,
-        "time_weight": seasonal_emphasis_weight(seasonality=12, emphasis=3.0)(_times).to_list(),
+        "time_weight": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0).compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df_seasonal, title="Seasonal Emphasis (period=12, emphasis=3x)")
 
@@ -161,22 +170,22 @@ def _(mo):
     mo.md(r"""
     ## 3. Composing Weights
 
-    [`compose_weights`](/pages/api/generated/yohou.utils.weighting.compose_weights/) multiplies outputs of multiple weight functions. This lets
+    [`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/) multiplies outputs of multiple weight functions. This lets
     you combine, for example, exponential recency with seasonal emphasis:
     """)
 
 
 @app.cell
-def _(compose_weights, exponential_decay_weight, pl, plot_time_weight, seasonal_emphasis_weight, y_train):
-    composed_fn = compose_weights(
-        exponential_decay_weight(half_life=365),
-        seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
-    )
+def _(CompositeWeighter, ExponentialDecayWeighter, pl, plot_time_weight, SeasonalEmphasisWeighter, y_train):
+    composed_fn = CompositeWeighter([
+        ("decay", ExponentialDecayWeighter(half_life=365)),
+        ("seasonal", SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)),
+    ])
 
     _times = y_train.get_column("time")
     weight_df_composed = pl.DataFrame({
         "time": _times,
-        "time_weight": composed_fn(_times).to_list(),
+        "time_weight": composed_fn.compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df_composed, title="Composed: Exponential Decay + Seasonal Emphasis")
 
@@ -199,7 +208,7 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    exponential_decay_weight,
+    ExponentialDecayWeighter,
     forecasting_horizon,
     plot_forecast,
     y_test,
@@ -215,11 +224,11 @@ def _(
     fc_weighted = PointReductionForecaster(
         estimator=Ridge(),
         feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        time_weighter=ExponentialDecayWeighter(half_life=365),
     )
     fc_weighted.fit(
         y_train,
         forecasting_horizon=forecasting_horizon,
-        time_weight=exponential_decay_weight(half_life=365),
     )
     pred_weighted = fc_weighted.predict(forecasting_horizon=forecasting_horizon)
 
@@ -266,7 +275,7 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    exponential_decay_weight,
+    ExponentialDecayWeighter,
     forecasting_horizon,
     mo,
     y_test,
@@ -279,7 +288,7 @@ def _(
         "max_weight_step",
         "min_weight_step",
     ]
-    _weight_fn = exponential_decay_weight(half_life=365)
+    _weight_fn = ExponentialDecayWeighter(half_life=365)
     _mae = MeanAbsoluteError()
     _mae.fit(y_train)
 
@@ -288,12 +297,12 @@ def _(
         _fc = PointReductionForecaster(
             estimator=Ridge(),
             feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            time_weighter=_weight_fn,
+            sample_weight_alignment=_align,
         )
         _fc.fit(
             y_train,
             forecasting_horizon=forecasting_horizon,
-            time_weight=_weight_fn,
-            sample_weight_alignment=_align,
         )
         _pred = _fc.predict(forecasting_horizon=forecasting_horizon)
         _score = _mae.score(y_test, _pred)
@@ -318,19 +327,19 @@ def _(
     MeanAbsoluteError,
     PointReductionForecaster,
     Ridge,
-    exponential_decay_weight,
+    ExponentialDecayWeighter,
     forecasting_horizon,
-    linear_decay_weight,
+    LinearDecayWeighter,
     plot_score_summary,
-    seasonal_emphasis_weight,
+    SeasonalEmphasisWeighter,
     y_test,
     y_train,
 ):
     _weight_configs = {
         "Uniform": None,
-        "Exp. Decay (365d)": exponential_decay_weight(half_life=365),
-        "Linear Decay": linear_decay_weight(max_steps=None),
-        "Seasonal (12)": seasonal_emphasis_weight(seasonality=12, emphasis=3.0),
+        "Exp. Decay (365d)": ExponentialDecayWeighter(half_life=365),
+        "Linear Decay": LinearDecayWeighter(max_steps=None),
+        "Seasonal (12)": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
     }
 
     _y_preds = {}
@@ -338,11 +347,9 @@ def _(
         _fc = PointReductionForecaster(
             estimator=Ridge(),
             feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            time_weighter=_wfn,
         )
-        _fit_kwargs = {"forecasting_horizon": forecasting_horizon}
-        if _wfn is not None:
-            _fit_kwargs["time_weight"] = _wfn
-        _fc.fit(y_train, **_fit_kwargs)
+        _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
         _y_preds[_label] = _fc.predict(forecasting_horizon=forecasting_horizon)
 
     plot_score_summary(
@@ -351,8 +358,6 @@ def _(
         _y_preds,
         title="Weight Function Comparison (MAE)",
     )
-
-
 
 
 @app.cell(hide_code=True)
@@ -365,7 +370,7 @@ def _(mo):
         - [Build Reduction Forecasters](/pages/how-to/build-reduction-forecasters/) for related techniques
         """
     )
-    return
+
 
 if __name__ == "__main__":
     app.run()

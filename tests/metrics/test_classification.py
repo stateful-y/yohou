@@ -24,6 +24,7 @@ from yohou.metrics.classification import (
     ROCAuC,
 )
 from yohou.testing import _yield_yohou_scorer_checks
+from yohou.weighting import TableWeighter
 
 
 @pytest.fixture
@@ -514,14 +515,10 @@ class TestRankingCombinedWeights:
             "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
             "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
         })
-        scorer = ROCAuC()
+        weight_frame = pl.DataFrame({"time": dates, "weight": [1.0, 2.0, 1.0, 2.0, 1.0]})
+        scorer = ROCAuC(time_weighter=TableWeighter(frame=weight_frame, on="time"))
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-
-        def custom_weight(y):
-            return pl.Series("weight", [1.0, 2.0, 1.0, 2.0, 1.0])
-
-        score = scorer.score(y_true, y_pred, time_weight=custom_weight)
+        score = scorer.score(y_true, y_pred)
         assert isinstance(score, float)
 
     def test_ranking_dict_weights_ignored(self):

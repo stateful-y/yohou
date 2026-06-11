@@ -50,6 +50,7 @@ from yohou.testing.metadata_routing import (
     check_recorded_metadata,
     record_metadata,
 )
+from yohou.weighting import TableWeighter
 
 
 class ConsumingTransformer(BaseTransformer):
@@ -721,8 +722,10 @@ class TestTimeWeightConversion:
         forecaster = PointReductionForecaster(
             estimator=Ridge(alpha=0.0, fit_intercept=False),
             feature_transformer=LagTransformer(lag=1),
+            time_weighter=TableWeighter(frame=time_weight, on="time"),
+            sample_weight_alignment=alignment,
         )
-        forecaster.fit(y, forecasting_horizon=1, time_weight=time_weight, sample_weight_alignment=alignment)
+        forecaster.fit(y, forecasting_horizon=1)
 
         # Get fitted coefficients
         fitted_coef = forecaster.estimator_.coef_[0]
@@ -791,12 +794,16 @@ class TestTimeWeightConversion:
         coef_no_weight = f1.estimator_.coef_.copy()
 
         # Fit with uniform time_weight
-        f2 = PointReductionForecaster(Ridge(alpha=0.1), feature_transformer=LagTransformer(lag=[1, 2]))
         time_weight_uniform = pl.DataFrame({
             "time": y["time"],
             "weight": np.ones(n),
         })
-        f2.fit(y, forecasting_horizon=1, time_weight=time_weight_uniform)
+        f2 = PointReductionForecaster(
+            Ridge(alpha=0.1),
+            feature_transformer=LagTransformer(lag=[1, 2]),
+            time_weighter=TableWeighter(frame=time_weight_uniform, on="time"),
+        )
+        f2.fit(y, forecasting_horizon=1)
         coef_uniform_weight = f2.estimator_.coef_.copy()
 
         # Coefficients should be identical (uniform weight = no weight)
@@ -842,8 +849,12 @@ class TestTimeWeightConversion:
             "time": y["time"],
             "weight": time_weight_values,
         })
-        f2 = PointReductionForecaster(Ridge(alpha=0.0), feature_transformer=LagTransformer(lag=1))
-        f2.fit(y, forecasting_horizon=1, time_weight=time_weight)
+        f2 = PointReductionForecaster(
+            Ridge(alpha=0.0),
+            feature_transformer=LagTransformer(lag=1),
+            time_weighter=TableWeighter(frame=time_weight, on="time"),
+        )
+        f2.fit(y, forecasting_horizon=1)
         coef_decay = f2.estimator_.coef_[0]
 
         # With strong decay, coefficient should be higher (closer to new regime)
