@@ -8,6 +8,7 @@ import numpy as np
 import polars as pl
 from scipy.spatial.distance import cdist
 from sklearn.base import clone
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils._compat import _BaseComposition
 
@@ -218,6 +219,7 @@ class DistanceSimilarity(BaseSimilarity):
         self
 
         """
+        check_is_fitted(self, "_X_observed")
         X_features = self._get_X(y_pred, X_actual)
 
         self._X_observed = pl.concat([self._X_observed, X_features])
@@ -277,6 +279,7 @@ class DistanceSimilarity(BaseSimilarity):
             Similarity weight matrix.
 
         """
+        check_is_fitted(self, "_X_observed")
         X_features = self._get_X(y_pred, X_actual)
 
         XA = X_features.select(pl.exclude("time")).to_numpy()
@@ -499,6 +502,7 @@ class SeasonalSimilarity(BaseSimilarity):
         self
 
         """
+        check_is_fitted(self, "first_time_")
         new_features = self._extract_features(y_pred["time"])
         self._features_observed = np.vstack([self._features_observed, new_features])
         return self
@@ -553,6 +557,7 @@ class SeasonalSimilarity(BaseSimilarity):
             Weight matrix of shape ``(n_predictions, n_calibration)``.
 
         """
+        check_is_fitted(self, "first_time_")
         new_features = self._extract_features(y_pred["time"])
 
         distances: np.ndarray = cdist(
@@ -757,6 +762,7 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
         self
 
         """
+        check_is_fitted(self, "similarities_")
         for _name, sim in self.similarities_:
             sim.observe(y=y, y_pred=y_pred, X_actual=X_actual)
         return self
@@ -808,6 +814,7 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
             ``(n_predictions, n_calibration)``.
 
         """
+        check_is_fitted(self, "similarities_")
         alphas = self._resolved_weights()
         weight_matrices = [sim.predict(y_pred=y_pred, X_actual=X_actual) for _name, sim in self.similarities_]
 

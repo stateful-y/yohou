@@ -265,6 +265,30 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         "verbose_feature_names_out": ["boolean"],
     }
 
+    @property
+    def _transformers(self) -> list[tuple[str, Any]]:
+        """Expose the ``(name, transformer)`` pairs for ``_BaseComposition``.
+
+        ``transformers`` holds ``(name, transformer, columns)`` 3-tuples, but
+        ``_BaseComposition`` expects ``(name, estimator)`` 2-tuples. This adapter
+        drops ``columns`` so nested ``<name>__<param>`` access works, mirroring
+        scikit-learn's own ``ColumnTransformer``.
+        """
+        try:
+            return [(name, trans) for name, trans, _ in self.transformers]
+        except (TypeError, ValueError):
+            return cast("list[tuple[str, Any]]", self.transformers)
+
+    @_transformers.setter
+    def _transformers(self, value: list[tuple[str, Any]]) -> None:
+        """Write back ``(name, transformer)`` pairs, preserving ``columns``."""
+        try:
+            self.transformers = [
+                (name, trans, col) for (name, trans), (_, _, col) in zip(value, self.transformers, strict=True)
+            ]
+        except (TypeError, ValueError):
+            self.transformers = cast("list[tuple[str, Any, Any]]", value)
+
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         """Get parameters for this estimator.
 
@@ -280,7 +304,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Parameter names mapped to their values.
 
         """
-        return _BaseComposition._get_params(self, attr="transformers", deep=deep)
+        return _BaseComposition._get_params(self, attr="_transformers", deep=deep)
 
     def set_params(self, **params: Any) -> "ColumnTransformer":
         """Set the parameters of this estimator.
@@ -296,7 +320,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             ColumnTransformer instance.
 
         """
-        _BaseComposition._set_params(self, attr="transformers", **params)
+        _BaseComposition._set_params(self, attr="_transformers", **params)
         return self
 
     def __sklearn_tags__(self) -> Tags:
