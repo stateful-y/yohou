@@ -7,6 +7,7 @@ import polars as pl
 from sklearn.metrics import average_precision_score, roc_auc_score
 
 from yohou.metrics.base import BaseClassProbaScorer, BaseHardLabelScorer, BaseRankingScorer
+from yohou.weighting import BaseWeighter
 
 __all__ = [
     "Accuracy",
@@ -242,6 +243,9 @@ class FBetaScore(BaseHardLabelScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ):
         super().__init__(
             average=average,
@@ -249,6 +253,9 @@ class FBetaScore(BaseHardLabelScorer):
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.beta = beta
 
@@ -338,6 +345,9 @@ class Accuracy(BaseHardLabelScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             average="micro",
@@ -345,6 +355,9 @@ class Accuracy(BaseHardLabelScorer):
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_metric_from_counts(self, counts: pl.DataFrame) -> pl.DataFrame:

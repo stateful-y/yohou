@@ -57,20 +57,20 @@ pipeline.observation_horizon  # 14
 
 Limiting history is a binary cutoff. Time weighting is a softer alternative
 that keeps all data but gives more importance to recent errors during model
-selection. Pass an
-[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/)
+selection. Construct an
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
 or
-[`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/)
-function to scorers and forecasters:
+[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/)
+and pass it to the `time_weighter` slot of scorers and forecasters:
 
 ```python
-from yohou.utils.weighting import exponential_decay_weight
+from yohou.weighting import ExponentialDecayWeighter
 
-weight_fn = exponential_decay_weight(half_life=365)
+weighter = ExponentialDecayWeighter(half_life=365)
 ```
 
-See [Use Time Weighting](time-weighting.md) for full recipes on passing
-weights to scorers, forecasters, and search objects.
+See [Use Time Weighting](time-weighting.md) for full recipes on configuring
+weighters on scorers and forecasters and tuning them via search.
 
 ## Downsampling to a Lower Frequency
 
@@ -130,7 +130,7 @@ from yohou.preprocessing.resampling import Downsampler
 from yohou.stationarity import SeasonalDifferencing
 from yohou.preprocessing import LagTransformer
 from yohou.compose import FeaturePipeline
-from yohou.utils.weighting import exponential_decay_weight
+from yohou.weighting import ExponentialDecayWeighter
 from yohou.metrics import MeanAbsoluteError
 
 # 1. Downsample hourly data to daily
@@ -143,12 +143,9 @@ pipeline = FeaturePipeline([
 ])
 
 # 3. Evaluate with exponential decay (half-life of one year)
-scorer = MeanAbsoluteError()
+scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
 scorer.fit(y_train)
-score = scorer.score(
-    y_test, y_pred,
-    time_weight=exponential_decay_weight(half_life=365),
-)
+score = scorer.score(y_test, y_pred)
 ```
 
 ## See Also

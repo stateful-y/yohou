@@ -22,6 +22,7 @@ from yohou.metrics import (
     SymmetricMeanAbsolutePercentageError,
 )
 from yohou.testing import _yield_yohou_scorer_checks
+from yohou.weighting import LookupWeighter, TableWeighter
 
 
 @pytest.fixture
@@ -1003,14 +1004,9 @@ class TestMAETimeWeight:
             "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
             "value": [11.0, 21.0, 31.0, 41.0, 51.0],
         })
-        mae = MeanAbsoluteError()
+        mae = MeanAbsoluteError(time_weighter=LookupWeighter(mapping={}, default=1.0))
         mae.fit(y_true)
-        mae.set_score_request(time_weight=True)
-
-        def constant_weight(y):
-            return pl.Series("weight", [1.0] * len(y))
-
-        score = mae.score(y_true, y_pred, time_weight=constant_weight)
+        score = mae.score(y_true, y_pred)
         assert score == pytest.approx(1.0, abs=1e-5)
 
     def test_mae_dataframe_time_weight(self):
@@ -1029,10 +1025,9 @@ class TestMAETimeWeight:
             "time": times,
             "weight": [1.0, 1.0, 1.0],
         })
-        mae = MeanAbsoluteError()
+        mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=weight_df, on="time"))
         mae.fit(y_true)
-        mae.set_score_request(time_weight=True)
-        score = mae.score(y_true, y_pred, time_weight=weight_df)
+        score = mae.score(y_true, y_pred)
         assert isinstance(score, float)
         assert score > 0
 

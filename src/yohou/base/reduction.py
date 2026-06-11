@@ -5,7 +5,6 @@ import contextlib
 import inspect
 import numbers
 import warnings
-from collections.abc import Callable
 from typing import Any, Literal
 from typing import cast as typing_cast
 
@@ -23,7 +22,8 @@ from yohou.base.forecaster import BaseForecaster
 from yohou.base.transformer import BaseTransformer
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
-from yohou.utils.weighting import combine_weight_vectors, resolve_weight_to_array
+from yohou.weighting import BaseWeighter
+from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter_to_array
 
 __all__ = ["BaseReductionForecaster"]
 
@@ -111,6 +111,17 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "nan_handling": [StrOptions({"drop", "pass"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
+        "time_weighter": [BaseWeighter, None],
+        "vintage_weighter": [BaseWeighter, None],
+        "sample_weight_alignment": [
+            StrOptions({
+                "first_step",
+                "mean_step",
+                "weighted_mean_step",
+                "max_weight_step",
+                "min_weight_step",
+            })
+        ],
     }
 
     def __init__(
@@ -124,6 +135,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
+        time_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
+        sample_weight_alignment: str = "first_step",
     ):
         BaseForecaster.__init__(
             self,
@@ -138,6 +152,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self.step_feature_alignment = step_feature_alignment
         self.nan_handling = nan_handling
         self.n_jobs = n_jobs
+        self.time_weighter = time_weighter
+        self.vintage_weighter = vintage_weighter
+        self.sample_weight_alignment = sample_weight_alignment
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -165,34 +182,28 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _process_fit_weights(
         self,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
-        time_weight: Callable | pl.DataFrame | dict | None,
-        sample_weight_alignment: str,
         forecasting_horizon: int,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
     ) -> np.ndarray | None:
-        """Convert time_weight and vintage_weight to sklearn sample_weight.
+        """Convert ``time_weighter``/``vintage_weighter`` to sklearn sample_weight.
+
+        Reads the constructor-resident ``self.time_weighter``,
+        ``self.vintage_weighter``, and ``self.sample_weight_alignment``.
 
         Parameters
         ----------
         y_t : pl.DataFrame or dict[str, pl.DataFrame]
             Transformed target time series (global or panel data).
-        time_weight : callable, pl.DataFrame, dict, or None
-            Time weighting specification.
-        sample_weight_alignment : str
-            Strategy for aligning time weights to tabularized samples.
         forecasting_horizon : int
             Number of forecast steps (determines tabularization window).
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
 
         Returns
         -------
         np.ndarray or None
             Sample weights array matching tabularized data rows, or None if
-            both time_weight and vintage_weight are None.
+            both ``time_weighter`` and ``vintage_weighter`` are None.
 
         """
-        if time_weight is None and vintage_weight is None:
+        if self.time_weighter is None and self.vintage_weighter is None:
             return None
 
         if self.groups_ is None:
@@ -200,11 +211,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             assert isinstance(y_t, pl.DataFrame)
             sample_weights, _ = self._compute_sample_weights_one(
                 y_t=y_t,
-                time_weight=time_weight,
-                sample_weight_alignment=sample_weight_alignment,
                 forecasting_horizon=forecasting_horizon,
                 group_name=None,
-                vintage_weight=vintage_weight,
             )
         else:
             # Panel data: y_t is dict, stack weights
@@ -214,11 +222,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 y_t_local = y_t[panel_group_name]
                 weights_local, _ = self._compute_sample_weights_one(
                     y_t=y_t_local,
-                    time_weight=time_weight,
-                    sample_weight_alignment=sample_weight_alignment,
                     forecasting_horizon=forecasting_horizon,
                     group_name=panel_group_name,
-                    vintage_weight=vintage_weight,
                 )
                 sample_weights_list.append(weights_local)
             sample_weights = np.concatenate(sample_weights_list)
@@ -228,33 +233,23 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     def _compute_sample_weights_one(
         self,
         y_t: pl.DataFrame,
-        time_weight: Callable | pl.DataFrame | dict | None,
-        sample_weight_alignment: str,
         forecasting_horizon: int,
         group_name: str | None,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Compute sample weights for one time series (global or local).
 
-        Resolves ``time_weight`` (with alignment strategy) and
-        ``vintage_weight`` (direct lookup), combines them
+        Resolves ``self.time_weighter`` (with alignment strategy) and
+        ``self.vintage_weighter`` (direct lookup), combines them
         multiplicatively, and normalizes so ``sum = n_samples``.
 
         Parameters
         ----------
         y_t : pl.DataFrame
             Transformed target time series with "time" column.
-        time_weight : callable, pl.DataFrame, dict, or None
-            Time weighting specification.
-        sample_weight_alignment : str
-            Strategy for aligning time weights to tabularized samples.
         forecasting_horizon : int
             Number of forecast steps.
         group_name : str or None
-            Panel group name (for panel-aware callables), or None for global data.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification. Resolved via direct lookup
-            at observation time (no alignment strategy).
+            Panel group name (for panel-aware weighters), or None for global data.
 
         Returns
         -------
@@ -265,15 +260,16 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """
         n_samples = len(y_t) - forecasting_horizon
         time_series = y_t["time"]
+        sample_weight_alignment = self.sample_weight_alignment
 
-        # Resolve time_weight with alignment strategy
+        # Resolve time_weighter with alignment strategy
         tw_aligned = None
-        if time_weight is not None:
-            weights_array = resolve_weight_to_array(
-                time_weight,
+        if self.time_weighter is not None:
+            weights_array = _resolve_weighter_to_array(
+                self.time_weighter,
                 time_series,
-                join_column="time",
                 group_name=group_name,
+                name="time weight",
             )
 
             if sample_weight_alignment == "first_step":
@@ -309,20 +305,20 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     f"'max_weight_step', or 'min_weight_step'."
                 )
 
-        # Resolve vintage_weight via direct lookup (no alignment)
+        # Resolve vintage_weighter via direct lookup (no alignment)
         vw_aligned = None
-        if vintage_weight is not None:
-            vw_array = resolve_weight_to_array(
-                vintage_weight,
+        if self.vintage_weighter is not None:
+            vw_array = _resolve_weighter_to_array(
+                self.vintage_weighter,
                 time_series,
-                join_column="time",
                 group_name=group_name,
+                name="vintage weight",
             )
             # Direct lookup: sample i's vintage is time_series[i]
             vw_aligned = vw_array[:n_samples]
 
         # Combine and normalize
-        sample_weights = combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
+        sample_weights = _combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
         if sample_weights is None:  # pragma: no cover
             # Both were None (shouldn't reach here since caller checks)
             sample_weights = np.ones(n_samples)
@@ -402,9 +398,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         forecasting_horizon: StrictInt,
-        time_weight: Callable | pl.DataFrame | dict | None = None,
-        sample_weight_alignment: str = "first_step",
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
     ) -> BaseEstimator | list[BaseEstimator]:
@@ -412,6 +405,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         Routes to `_estimator_fit_multi_output`, `_estimator_fit_direct`,
         or `_estimator_fit_dir_rec` based on ``self.reduction_strategy``.
+        Sample weighting is read from the constructor-resident
+        ``self.time_weighter`` / ``self.vintage_weighter``.
 
         Parameters
         ----------
@@ -421,12 +416,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Transformed feature matrix.
         forecasting_horizon : int
             Number of steps to forecast.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Time weighting function, DataFrame, or dict to weight samples.
-        sample_weight_alignment : str, default="first_step"
-            Strategy for aligning time weights to tabularized samples.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
         estimator_params : dict or None
             Additional parameters to pass to the estimator's set_params method.
         estimator_fit_params : dict or None
@@ -451,9 +440,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 y_t,
                 X_t,
                 forecasting_horizon,
-                time_weight=time_weight,
-                sample_weight_alignment=sample_weight_alignment,
-                vintage_weight=vintage_weight,
                 estimator_params=estimator_params,
                 estimator_fit_params=estimator_fit_params,
             )
@@ -462,9 +448,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 y_t,
                 X_t,
                 forecasting_horizon,
-                time_weight=time_weight,
-                sample_weight_alignment=sample_weight_alignment,
-                vintage_weight=vintage_weight,
                 estimator_params=estimator_params,
                 estimator_fit_params=estimator_fit_params,
             )
@@ -472,9 +455,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             y_t,
             X_t,
             forecasting_horizon,
-            time_weight=time_weight,
-            sample_weight_alignment=sample_weight_alignment,
-            vintage_weight=vintage_weight,
             estimator_params=estimator_params,
             estimator_fit_params=estimator_fit_params,
         )
@@ -530,12 +510,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         self,
         X_tab: pl.DataFrame,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
-        time_weight: Callable | pl.DataFrame | dict | None,
-        sample_weight_alignment: str,
         forecasting_horizon: int,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
     ) -> np.ndarray | None:
         """Validate training data and compute sample weights.
+
+        Reads constructor-resident weighters via :meth:`_process_fit_weights`.
 
         Parameters
         ----------
@@ -543,14 +522,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Feature matrix.
         y_t : pl.DataFrame or dict[str, pl.DataFrame]
             Transformed target (for weight computation).
-        time_weight : callable, pl.DataFrame, dict, or None
-            Time weighting specification.
-        sample_weight_alignment : str
-            Alignment strategy for time weights.
         forecasting_horizon : int
             Number of forecast steps.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
 
         Returns
         -------
@@ -572,10 +545,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             )
         return self._process_fit_weights(
             y_t=y_t,
-            time_weight=time_weight,
-            sample_weight_alignment=sample_weight_alignment,
             forecasting_horizon=forecasting_horizon,
-            vintage_weight=vintage_weight,
         )
 
     def _apply_nan_handling(
@@ -786,9 +756,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         forecasting_horizon: StrictInt,
-        time_weight: Callable | pl.DataFrame | dict | None = None,
-        sample_weight_alignment: str = "first_step",
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
     ) -> BaseEstimator:
@@ -805,12 +772,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Transformed feature matrix.
         forecasting_horizon : int
             Number of steps to forecast.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Time weighting function, DataFrame, or dict to weight samples.
-        sample_weight_alignment : str, default="first_step"
-            Strategy for aligning time weights to tabularized samples.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
         estimator_params : dict or None
             Additional parameters to pass to the estimator's set_params method.
         estimator_fit_params : dict or None
@@ -831,10 +792,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sample_weight = self._validate_and_prepare_fit(
             X_tab,
             y_t,
-            time_weight,
-            sample_weight_alignment,
             forecasting_horizon,
-            vintage_weight=vintage_weight,
         )
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         return self._fit_single_estimator(
@@ -894,9 +852,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         forecasting_horizon: StrictInt,
-        time_weight: Callable | pl.DataFrame | dict | None = None,
-        sample_weight_alignment: str = "first_step",
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
     ) -> list[BaseEstimator]:
@@ -914,12 +869,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Transformed feature matrix.
         forecasting_horizon : int
             Number of steps to forecast.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Time weighting function, DataFrame, or dict to weight samples.
-        sample_weight_alignment : str, default="first_step"
-            Strategy for aligning time weights to tabularized samples.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
         estimator_params : dict or None
             Additional parameters to pass to each estimator's set_params.
         estimator_fit_params : dict or None
@@ -939,10 +888,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sample_weight = self._validate_and_prepare_fit(
             X_tab,
             y_t,
-            time_weight,
-            sample_weight_alignment,
             forecasting_horizon,
-            vintage_weight=vintage_weight,
         )
 
         y_columns = (
@@ -981,9 +927,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         forecasting_horizon: StrictInt,
-        time_weight: Callable | pl.DataFrame | dict | None = None,
-        sample_weight_alignment: str = "first_step",
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
     ) -> list[BaseEstimator]:
@@ -1002,12 +945,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Transformed feature matrix.
         forecasting_horizon : int
             Number of steps to forecast.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Time weighting function, DataFrame, or dict to weight samples.
-        sample_weight_alignment : str, default="first_step"
-            Strategy for aligning time weights to tabularized samples.
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Vintage weighting specification.
         estimator_params : dict or None
             Additional parameters to pass to each estimator's set_params.
         estimator_fit_params : dict or None
@@ -1027,10 +964,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sample_weight = self._validate_and_prepare_fit(
             X_tab,
             y_t,
-            time_weight,
-            sample_weight_alignment,
             forecasting_horizon,
-            vintage_weight=vintage_weight,
         )
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         assert isinstance(y_tab, pl.DataFrame)

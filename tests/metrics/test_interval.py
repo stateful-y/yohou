@@ -19,6 +19,7 @@ from yohou.metrics import (
 )
 from yohou.metrics.interval import _trapezoidal_weights
 from yohou.testing import _yield_yohou_scorer_checks
+from yohou.weighting import LookupWeighter
 
 
 @pytest.fixture
@@ -796,14 +797,12 @@ class TestIntervalMultiVintageCoverage:
         y_true, y_pred = multi_vintage_interval_data
         vt1 = datetime(2019, 12, 31)
         vt2 = datetime(2019, 12, 30)
-        scorer = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise", "componentwise"])
-        scorer.fit(y_true)
-        scorer.set_score_request(vintage_weight=True)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight={vt1: 2.0, vt2: 1.0},
+        scorer = EmpiricalCoverage(
+            aggregation_method=["stepwise", "vintagewise", "componentwise"],
+            vintage_weighter=LookupWeighter(mapping={vt1: 2.0, vt2: 1.0}),
         )
+        scorer.fit(y_true)
+        result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
         assert "coverage_rate" in result.columns
 

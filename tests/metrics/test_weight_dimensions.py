@@ -8,6 +8,7 @@ import pytest
 
 from yohou.metrics import IntervalScore, MeanAbsoluteError
 from yohou.metrics.point import MeanDirectionalAccuracy, MedianAbsoluteError, R2Score
+from yohou.weighting import LookupWeighter, TableWeighter
 
 
 @pytest.fixture()
@@ -168,7 +169,9 @@ class TestStepWeight:
 
         mae_equal = MeanAbsoluteError()
         mae_equal.fit(y_train)
-        result_equal = mae_equal.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
+        result_equal = mae_equal.set_params(step_weighter=LookupWeighter(mapping={1: 1.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         np.testing.assert_allclose(result_default, result_equal, atol=1e-10)
 
@@ -184,7 +187,9 @@ class TestStepWeight:
 
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         np.testing.assert_allclose(result, 1.25, atol=1e-10)
 
@@ -205,7 +210,9 @@ class TestStepWeight:
 
         mae_weighted = MeanAbsoluteError()
         mae_weighted.fit(y_train)
-        result_weighted = mae_weighted.score(y_true, y_pred, step_weight={1: 10.0})
+        result_weighted = mae_weighted.set_params(step_weighter=LookupWeighter(mapping={1: 10.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         # Without vintage_time, step_weight is a no-op
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
@@ -218,7 +225,9 @@ class TestStepWeight:
             aggregation_method=["stepwise", "vintagewise"],
         )
         mae.fit(y_train)
-        result = mae.score(y_true, y_pred, step_weight={1: 1.0, 2: 0.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0, 2: 0.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         # step_weight 0 for step 2 means only step 1 counts
         # stepwise+vintagewise collapses all rows, result is a 1-row DataFrame
@@ -230,7 +239,9 @@ class TestStepWeight:
         mae = MeanAbsoluteError()
         mae.fit(y_train)
         # Should accept step_weight in score()
-        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
         np.testing.assert_allclose(result, 1.25, atol=1e-10)
 
 
@@ -264,7 +275,9 @@ class TestCombinedWeights:
             components={"a": 2.0, "b": 1.0},
         )
         mae.fit(y_train_mv)
-        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         # a errors: 2, 2; b errors: 10, 10
         # Col-weighted per row: (2*2 + 10*1)/3 = 14/3, (2*2 + 10*1)/3 = 14/3
@@ -297,15 +310,16 @@ class TestVintageWeight:
 
         mae_equal = MeanAbsoluteError()
         mae_equal.fit(y_train)
-        result_equal = mae_equal.score(
-            y_true,
-            y_pred,
-            vintage_weight={
-                base: 1.0,
-                base + timedelta(days=1): 1.0,
-                base + timedelta(days=2): 1.0,
-            },
-        )
+        result_equal = mae_equal.set_params(
+            vintage_weighter=LookupWeighter(
+                mapping={
+                    base: 1.0,
+                    base + timedelta(days=1): 1.0,
+                    base + timedelta(days=2): 1.0,
+                },
+                default=1.0,
+            )
+        ).score(y_true, y_pred)
 
         np.testing.assert_allclose(result_default, result_equal, atol=1e-10)
 
@@ -360,15 +374,16 @@ class TestVintageWeight:
 
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(
-            y_true_diff,
-            y_pred_diff,
-            vintage_weight={
-                base: 0.0,
-                base + timedelta(days=1): 1.0,
-                base + timedelta(days=2): 1.0,
-            },
-        )
+        result = mae.set_params(
+            vintage_weighter=LookupWeighter(
+                mapping={
+                    base: 0.0,
+                    base + timedelta(days=1): 1.0,
+                    base + timedelta(days=2): 1.0,
+                },
+                default=1.0,
+            )
+        ).score(y_true_diff, y_pred_diff)
 
         np.testing.assert_allclose(result, 1.5, atol=1e-10)
 
@@ -389,7 +404,9 @@ class TestVintageWeight:
 
         mae_weighted = MeanAbsoluteError()
         mae_weighted.fit(y_train)
-        result_weighted = mae_weighted.score(y_true, y_pred, vintage_weight={datetime(2024, 1, 1): 10.0})
+        result_weighted = mae_weighted.set_params(
+            vintage_weighter=LookupWeighter(mapping={datetime(2024, 1, 1): 10.0}, default=1.0)
+        ).score(y_true, y_pred)
 
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
@@ -398,15 +415,16 @@ class TestVintageWeight:
         y_true, y_pred = multi_vintage_data
         mae = MeanAbsoluteError()
         mae.fit(y_train)
-        result = mae.score(
-            y_true,
-            y_pred,
-            vintage_weight={
-                datetime(2024, 1, 10): 1.0,
-                datetime(2024, 1, 11): 1.0,
-                datetime(2024, 1, 12): 1.0,
-            },
-        )
+        result = mae.set_params(
+            vintage_weighter=LookupWeighter(
+                mapping={
+                    datetime(2024, 1, 10): 1.0,
+                    datetime(2024, 1, 11): 1.0,
+                    datetime(2024, 1, 12): 1.0,
+                },
+                default=1.0,
+            )
+        ).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_step_and_vintage_weight_combined(self, y_train, multi_vintage_data):
@@ -417,20 +435,23 @@ class TestVintageWeight:
         # Use only step_weight
         mae_step = MeanAbsoluteError()
         mae_step.fit(y_train)
-        result_step = mae_step.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        result_step = mae_step.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         # Use only vintage_weight (equal)
         mae_vintage = MeanAbsoluteError()
         mae_vintage.fit(y_train)
-        result_vintage = mae_vintage.score(
-            y_true,
-            y_pred,
-            vintage_weight={
-                base: 1.0,
-                base + timedelta(days=1): 1.0,
-                base + timedelta(days=2): 1.0,
-            },
-        )
+        result_vintage = mae_vintage.set_params(
+            vintage_weighter=LookupWeighter(
+                mapping={
+                    base: 1.0,
+                    base + timedelta(days=1): 1.0,
+                    base + timedelta(days=2): 1.0,
+                },
+                default=1.0,
+            )
+        ).score(y_true, y_pred)
 
         # Equal vintage weights shouldn't change from default
         mae_default = MeanAbsoluteError()
@@ -538,7 +559,9 @@ class TestNoContextDimFallback:
         # No vintage_time -> no forecasting_step in context
         mae = MeanAbsoluteError()
         mae.fit(y_true)
-        result = mae.score(y_true, y_pred, step_weight={1: 3.0, 2: 1.0})
+        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
         # Should still produce a valid scalar
         assert isinstance(result, float)
         # Same as default since weights can't be applied
@@ -558,7 +581,9 @@ class TestNoContextDimFallback:
         })
         mae = MeanAbsoluteError()
         mae.fit(y_true)
-        result = mae.score(y_true, y_pred, vintage_weight={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0})
+        result = mae.set_params(
+            vintage_weighter=LookupWeighter(mapping={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0}, default=1.0)
+        ).score(y_true, y_pred)
         assert isinstance(result, float)
         mae_default = MeanAbsoluteError()
         mae_default.fit(y_true)
@@ -613,28 +638,26 @@ class TestCombineRowWeightsBranches:
             "value": [float(i) for i in range(10)],
         })
 
-        mae_both = MeanAbsoluteError()
-        mae_both.fit(y_train)
-        result_both = mae_both.score(
-            y_true,
-            y_pred,
-            step_weight={1: 2.0, 2: 1.0},
-            vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
+        mae_both = MeanAbsoluteError(
+            step_weighter=LookupWeighter(mapping={1: 2.0, 2: 1.0}),
+            vintage_weighter=LookupWeighter(mapping={base: 3.0, base + timedelta(days=1): 1.0}),
         )
+        mae_both.fit(y_train)
+        result_both = mae_both.score(y_true, y_pred)
         assert isinstance(result_both, float)
 
         # Should differ from step-only and vintage-only
         mae_step = MeanAbsoluteError()
         mae_step.fit(y_train)
-        result_step = mae_step.score(y_true, y_pred, step_weight={1: 2.0, 2: 1.0})
+        result_step = mae_step.set_params(step_weighter=LookupWeighter(mapping={1: 2.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         mae_vin = MeanAbsoluteError()
         mae_vin.fit(y_train)
-        result_vin = mae_vin.score(
-            y_true,
-            y_pred,
-            vintage_weight={base: 3.0, base + timedelta(days=1): 1.0},
-        )
+        result_vin = mae_vin.set_params(
+            vintage_weighter=LookupWeighter(mapping={base: 3.0, base + timedelta(days=1): 1.0}, default=1.0)
+        ).score(y_true, y_pred)
 
         # Combined should differ from each individual
         assert not np.isclose(result_both, result_step, atol=1e-10)
@@ -729,14 +752,9 @@ class TestIntervalTimeWeight:
         scorer.fit(interval_train)
         default = scorer.score(y_true, y_pred)
 
-        scorer_tw = IntervalScore()
+        scorer_tw = IntervalScore(time_weighter=LookupWeighter(mapping={}, default=1.0))
         scorer_tw.fit(interval_train)
-        scorer_tw.set_score_request(time_weight=True)
-        weighted = scorer_tw.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series("w", [1.0] * len(t)),
-        )
+        weighted = scorer_tw.score(y_true, y_pred)
 
         np.testing.assert_allclose(weighted, default, atol=1e-10)
 
@@ -756,15 +774,11 @@ class TestIntervalTimeWeight:
         scorer.fit(interval_train)
         default = scorer.score(y_true, y_pred)
 
-        scorer_tw = IntervalScore()
-        scorer_tw.fit(interval_train)
-        scorer_tw.set_score_request(time_weight=True)
         # Weight the outlier timestep heavily
-        weighted = scorer_tw.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series("w", [1.0, 10.0, 1.0][: len(t)]),
-        )
+        tw_frame = pl.DataFrame({"time": times, "weight": [1.0, 10.0, 1.0]})
+        scorer_tw = IntervalScore(time_weighter=TableWeighter(frame=tw_frame, on="time"))
+        scorer_tw.fit(interval_train)
+        weighted = scorer_tw.score(y_true, y_pred)
 
         assert not np.isclose(weighted, default, atol=1e-10)
 
@@ -798,7 +812,9 @@ class TestIntervalStepWeight:
 
         scorer_sw = IntervalScore()
         scorer_sw.fit(interval_train)
-        result = scorer_sw.score(y_true, y_pred, step_weight={1: 5.0, 2: 1.0})
+        result = scorer_sw.set_params(step_weighter=LookupWeighter(mapping={1: 5.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         assert isinstance(result, float)
         assert not np.isclose(result, default, atol=1e-10)
@@ -810,11 +826,9 @@ class TestIntervalStepWeight:
 
         scorer = IntervalScore()
         scorer.fit(interval_train)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight={base: 5.0, base + timedelta(days=1): 1.0},
-        )
+        result = scorer.set_params(
+            vintage_weighter=LookupWeighter(mapping={base: 5.0, base + timedelta(days=1): 1.0}, default=1.0)
+        ).score(y_true, y_pred)
 
         assert isinstance(result, float)
 
@@ -828,7 +842,9 @@ class TestIntervalStepWeight:
 
         scorer_eq = IntervalScore()
         scorer_eq.fit(interval_train)
-        result = scorer_eq.score(y_true, y_pred, step_weight={1: 1.0, 2: 1.0})
+        result = scorer_eq.set_params(step_weighter=LookupWeighter(mapping={1: 1.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         np.testing.assert_allclose(result, default, atol=1e-10)
 
@@ -894,14 +910,10 @@ class TestIntervalPanelTimeWeight:
         scorer.fit(y_train)
         default = scorer.score(y_true, y_pred)
 
-        scorer_tw = IntervalScore()
+        tw_frame = pl.DataFrame({"time": times, "weight": [1.0, 10.0, 1.0]})
+        scorer_tw = IntervalScore(time_weighter=TableWeighter(frame=tw_frame, on="time"))
         scorer_tw.fit(y_train)
-        scorer_tw.set_score_request(time_weight=True)
-        weighted = scorer_tw.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series("w", [1.0, 10.0, 1.0][: len(t)]),
-        )
+        weighted = scorer_tw.score(y_true, y_pred)
 
         assert isinstance(weighted, float)
         assert not np.isclose(weighted, default, atol=1e-10)
@@ -942,7 +954,9 @@ class TestIntervalMultiRateStepWeight:
 
         scorer_sw = IntervalScore()
         scorer_sw.fit(y_train)
-        result = scorer_sw.score(y_true, y_pred, step_weight={1: 5.0, 2: 1.0})
+        result = scorer_sw.set_params(step_weighter=LookupWeighter(mapping={1: 5.0, 2: 1.0}, default=1.0)).score(
+            y_true, y_pred
+        )
 
         assert isinstance(result, float)
         assert not np.isclose(result, default, atol=1e-10)
@@ -979,21 +993,15 @@ def two_vintage_point_data():
 class TestRejectWeights:
     """Pattern 2 scorers reject time_weight/step_weight via _reject_weights."""
 
-    def test_r2_rejects_time_weight(self, point_data):
-        """R2Score.score() rejects time_weight via _reject_weights."""
-        y_true, y_pred = point_data
-        scorer = R2Score()
-        scorer.fit(y_true)
-        with pytest.raises(TypeError, match="does not support sample weights"):
-            scorer.score(y_true, y_pred, time_weight=lambda ts: pl.Series([1.0] * len(ts)))
+    def test_r2_rejects_time_weighter(self):
+        """R2Score does not accept a time_weighter constructor argument."""
+        with pytest.raises(TypeError):
+            R2Score(time_weighter=LookupWeighter(mapping={}, default=1.0))
 
-    def test_mda_rejects_step_weight(self, point_data):
-        """MeanDirectionalAccuracy.score() rejects step_weight."""
-        y_true, y_pred = point_data
-        scorer = MeanDirectionalAccuracy()
-        scorer.fit(y_true)
-        with pytest.raises(TypeError, match="does not support sample weights"):
-            scorer.score(y_true, y_pred, step_weight=lambda ts: pl.Series([1.0] * len(ts)))
+    def test_mda_rejects_step_weighter(self):
+        """MeanDirectionalAccuracy does not accept a step_weighter constructor argument."""
+        with pytest.raises(TypeError):
+            MeanDirectionalAccuracy(step_weighter=LookupWeighter(mapping={}, default=1.0))
 
 
 class TestResolveVintageWeightToContext:
@@ -1004,14 +1012,11 @@ class TestResolveVintageWeightToContext:
         y_true, y_pred = two_vintage_point_data
         scorer = R2Score()
         scorer.fit(y_true)
-        scorer.set_score_request(vintage_weight=True)
 
         score_plain = scorer.score(y_true, y_pred)
-        score_weighted = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight=lambda vt: pl.Series([2.0, 1.0] * (len(vt) // 2 + 1))[: len(vt)],
-        )
+        weighted_scorer = R2Score(vintage_weighter=LookupWeighter(mapping={}, default=2.0))
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
         assert isinstance(score_plain, float)
         assert isinstance(score_weighted, float)
 
@@ -1028,11 +1033,10 @@ class TestResolveVintageWeightToContext:
         y_true, y_pred = two_vintage_point_data
         scorer = MedianAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(vintage_weight=True)
 
-        score_weighted = scorer.score(
-            y_true,
-            y_pred,
-            vintage_weight={datetime(2023, 12, 31): 2.0, datetime(2023, 12, 30): 1.0},
-        )
+        score_weighted = scorer.set_params(
+            vintage_weighter=LookupWeighter(
+                mapping={datetime(2023, 12, 31): 2.0, datetime(2023, 12, 30): 1.0}, default=1.0
+            )
+        ).score(y_true, y_pred)
         assert isinstance(score_weighted, float)

@@ -14,6 +14,7 @@ from yohou.metrics import (
     MeanAbsoluteScaledError,
     RootMeanSquaredScaledError,
 )
+from yohou.weighting import TableWeighter
 
 
 @pytest.fixture()
@@ -122,10 +123,10 @@ class TestTimeWeightMisalignment:
             "time": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
             "weight": [1.0, 2.0],
         })
-        mae = MeanAbsoluteError()
+        mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
         mae.fit(y_train)
         with pytest.raises(ValueError, match="no values for times"):
-            mae.score(y_true, y_pred, time_weight=tw)
+            mae.score(y_true, y_pred)
 
     def test_partial_misalignment_shows_missing(self, y_train):
         y_true = pl.DataFrame({
@@ -141,10 +142,10 @@ class TestTimeWeightMisalignment:
             "time": [datetime(2024, 1, 11)],
             "weight": [1.0],
         })
-        mae = MeanAbsoluteError()
+        mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
         mae.fit(y_train)
         with pytest.raises(ValueError, match="no values for times"):
-            mae.score(y_true, y_pred, time_weight=tw)
+            mae.score(y_true, y_pred)
 
     def test_zero_sum_weights_shows_message(self, y_train):
         y_true = pl.DataFrame({
@@ -159,10 +160,10 @@ class TestTimeWeightMisalignment:
             "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
             "weight": [0.0, 0.0],
         })
-        mae = MeanAbsoluteError()
+        mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
         mae.fit(y_train)
         with pytest.raises(ValueError, match="All weights are zero"):
-            mae.score(y_true, y_pred, time_weight=tw)
+            mae.score(y_true, y_pred)
 
 
 class TestZeroScaleWarning:

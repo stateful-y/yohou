@@ -85,15 +85,51 @@ The helper [`check_cv`](/pages/api/generated/yohou.model_selection.split.check_c
 
 ## Time-Weighted Scoring
 
-Not all test errors deserve equal attention. A forecast that performed well last month but poorly six months ago may still be the right choice for production. Yohou scorers accept a `time_weight` parameter through sklearn's metadata routing that assigns different importance to each test-set time step.
+Not all test errors deserve equal attention. A forecast that performed well last month but poorly six months ago may still be the right choice for production. Yohou scorers carry their weighting as a constructor parameter: pass a weighter to `time_weighter` to assign different importance to each test-set time step.
 
-Three built-in weight factories produce callables that map a datetime `pl.Series` to a weight `pl.Series`:
+Three built-in weighters map a key `pl.Series` to a weight `pl.Series`:
 
-- [`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
-- [`seasonal_emphasis_weight`](/pages/api/generated/yohou.utils.weighting.seasonal_emphasis_weight/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
-- [`linear_decay_weight`](/pages/api/generated/yohou.utils.weighting.linear_decay_weight/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+- [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
+- [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
+- [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
 
-During cross-validation, the weights are routed to the scorer automatically through metadata routing, requiring no manual plumbing.
+Because the weighting lives on the scorer instance, a weighted scorer is a self-contained cross-validation objective; there is no per-call weight argument to route:
+
+```python
+from yohou.metrics import MeanAbsoluteError
+from yohou.weighting import ExponentialDecayWeighter
+
+scoring = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=90))
+```
+
+### Weighters Are Tunable Hyperparameters
+
+Constructor-residence has a second payoff: a weighter's settings become ordinary searchable hyperparameters, addressed with the `__` syntax. You can tune the recency half-life (or the decay basis) alongside the model's own parameters, and the search clones and varies them directly (no metadata routing involved):
+
+```python
+from sklearn.linear_model import Ridge
+from yohou.point import PointReductionForecaster
+from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
+from yohou.weighting import ExponentialDecayWeighter
+
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=ExponentialDecayWeighter(half_life=365),
+)
+
+search = GridSearchCV(
+    forecaster,
+    param_grid={
+        "estimator__alpha": [0.1, 1.0, 10.0],
+        "time_weighter__half_life": [90, 180, 365],
+        "time_weighter__scale": ["elapsed", "position"],
+    },
+    cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
+)
+search.fit(y, forecasting_horizon=14)
+```
+
+See [How to Use Time Weighting](../how-to/time-weighting.md) for the full set of weighter classes and tuning recipes.
 
 ## Cross-Validation
 

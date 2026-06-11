@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from conftest import run_checks
 from yohou.point import PointReductionForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
+from yohou.weighting import LookupWeighter, TableWeighter
 
 LENGTH = 22
 
@@ -1204,8 +1205,8 @@ class TestPanelTimeWeight:
             return pl.Series("weight", [1.0] * len(t))
 
         f = PointReductionForecaster()
-        f.set_fit_request(time_weight=True)
-        f.fit(y[:50], forecasting_horizon=3, time_weight=constant_weight)
+        f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
+        f.fit(y[:50], forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns
@@ -1219,8 +1220,8 @@ class TestPanelTimeWeight:
             "weight": [1.0] * len(y_train),
         })
         f = PointReductionForecaster()
-        f.set_fit_request(time_weight=True)
-        f.fit(y_train, forecasting_horizon=3, time_weight=weight_df)
+        f.set_params(time_weighter=TableWeighter(frame=weight_df, on="time"))
+        f.fit(y_train, forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
 
@@ -1388,8 +1389,8 @@ class TestPipelineSampleWeightRouting:
         """Pipeline with Ridge final step accepts time_weight."""
         pipe = Pipeline([("scaler", StandardScaler()), ("ridge", Ridge())])
         f = PointReductionForecaster(estimator=pipe)
-        f.set_fit_request(time_weight=True)
-        f.fit(simple_series, forecasting_horizon=3, time_weight=self._constant_weight)
+        f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
+        f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns
@@ -1405,16 +1406,15 @@ class TestPipelineSampleWeightRouting:
                 return np.zeros(X.shape[0])
 
         pipe = Pipeline([("scaler", StandardScaler()), ("noweight", NoWeightEstimator())])
-        f = PointReductionForecaster(estimator=pipe)
-        f.set_fit_request(time_weight=True)
+        f = PointReductionForecaster(estimator=pipe, time_weighter=LookupWeighter(mapping={}, default=1.0))
         with pytest.raises(ValueError, match="NoWeightEstimator"):
-            f.fit(simple_series, forecasting_horizon=3, time_weight=self._constant_weight)
+            f.fit(simple_series, forecasting_horizon=3)
 
     def test_plain_ridge_with_time_weight(self, simple_series):
         """Plain Ridge estimator with time_weight works (regression guard)."""
         f = PointReductionForecaster(estimator=Ridge())
-        f.set_fit_request(time_weight=True)
-        f.fit(simple_series, forecasting_horizon=3, time_weight=self._constant_weight)
+        f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
+        f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns
@@ -1429,8 +1429,8 @@ class TestPipelineSampleWeightRouting:
             ("ridge", Ridge()),
         ])
         f = PointReductionForecaster(estimator=pipe)
-        f.set_fit_request(time_weight=True)
-        f.fit(simple_series, forecasting_horizon=3, time_weight=self._constant_weight)
+        f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
+        f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns

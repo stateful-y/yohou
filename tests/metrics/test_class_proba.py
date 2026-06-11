@@ -10,6 +10,7 @@ from sklearn.exceptions import NotFittedError
 from conftest import run_checks as _run_checks_base
 from yohou.metrics import Accuracy, BrierScore, LogLoss, RankedProbabilityScore
 from yohou.testing import _yield_yohou_scorer_checks
+from yohou.weighting import LinearDecayWeighter
 
 
 @pytest.fixture
@@ -280,11 +281,9 @@ class TestTimeWeight:
         scorer.fit(y_true)
         score_unweighted = scorer.score(y_true, y_pred)
         # Use linearly increasing weights so result differs from equal weights
-        score_weighted = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
+        weighted_scorer = scorer.__class__(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
         assert isinstance(score_weighted, float)
         assert score_weighted > 0
         assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
@@ -295,11 +294,9 @@ class TestTimeWeight:
         scorer = BrierScore()
         scorer.fit(y_true)
         score_unweighted = scorer.score(y_true, y_pred)
-        score_weighted = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
+        weighted_scorer = scorer.__class__(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
         assert isinstance(score_weighted, float)
         assert score_weighted > 0
         assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
@@ -324,11 +321,9 @@ class TestTimeWeight:
         scorer.fit(y_true)
         score_unweighted = scorer.score(y_true, y_pred)
         assert score_unweighted == pytest.approx(0.6)
-        score_weighted = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
+        weighted_scorer = scorer.__class__(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
         assert isinstance(score_weighted, float)
         assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any, Literal, cast
 
 import polars as pl
@@ -12,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 
 from yohou.base import BaseReductionForecaster, BaseTransformer
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.weighting import BaseWeighter
 
 from .base import BaseClassProbaForecaster
 
@@ -61,6 +61,17 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     n_jobs : int or None, default=None
         Number of jobs to run in parallel for the ``"direct"`` strategy.
         ``None`` means 1. ``-1`` means using all processors.
+    time_weighter : BaseWeighter or None, default=None
+        Per-timestep training-sample weighter (e.g.
+        [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter]).
+        Its parameters are tunable via search. If None, samples are unweighted.
+    vintage_weighter : BaseWeighter or None, default=None
+        Per-vintage training-sample weighter, combined multiplicatively with
+        ``time_weighter``. If None, no vintage weighting is applied.
+    sample_weight_alignment : {"first_step", "mean_step", "weighted_mean_step", \
+"max_weight_step", "min_weight_step"}, default="first_step"
+        Strategy for converting ``time_weighter`` weights to sklearn
+        ``sample_weight`` across forecast horizons.
 
     Attributes
     ----------
@@ -134,6 +145,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        time_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
+        sample_weight_alignment: str = "first_step",
     ) -> None:
         BaseReductionForecaster.__init__(
             self,
@@ -144,6 +158,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
+            time_weighter=time_weighter,
+            vintage_weighter=vintage_weighter,
+            sample_weight_alignment=sample_weight_alignment,
         )
 
         BaseClassProbaForecaster.__init__(
@@ -160,9 +177,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt = 1,
-        time_weight: Callable | pl.DataFrame | dict | None = None,
-        vintage_weight: Callable | pl.DataFrame | dict | None = None,
-        sample_weight_alignment: str = "first_step",
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -184,21 +198,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
-        time_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-timestep weights for fitting.  Accepts a callable
-            ``f(time_series) -> pl.Series``, a panel-aware callable
-            ``f(time_series, group_name) -> pl.Series``, a DataFrame
-            with ``"time"`` and ``"weight"`` columns, or a
-            ``{datetime_or_str: float}`` dict (``"*"`` key sets default).
-        vintage_weight : callable, pl.DataFrame, dict, or None, default=None
-            Per-vintage weights for fitting.  Same formats as
-            ``time_weight``.  Resolved via direct lookup at observation
-            time (no alignment strategy). Combined multiplicatively
-            with ``time_weight``.
-        sample_weight_alignment : str, default="first_step"
-            Strategy for converting ``time_weight`` to sklearn
-            ``sample_weight`` across forecast horizons. Does not apply
-            to ``vintage_weight`` (which uses direct lookup).
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
@@ -251,9 +250,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             y_t,
             X_t,
             forecasting_horizon,
-            time_weight=time_weight,
-            sample_weight_alignment=sample_weight_alignment,
-            vintage_weight=vintage_weight,
             estimator_fit_params=params,
         )
 

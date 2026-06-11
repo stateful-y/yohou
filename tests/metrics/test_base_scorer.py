@@ -9,6 +9,32 @@ from sklearn.exceptions import NotFittedError
 
 from yohou.metrics import MeanAbsoluteError
 from yohou.metrics.base import BaseIntervalScorer, BasePointScorer, BaseScorer
+from yohou.weighting import BaseWeighter, LookupWeighter, TableWeighter
+
+
+class _CallableWeighter(BaseWeighter):
+    """Test helper: wrap a weight callable as a BaseWeighter."""
+
+    _parameter_constraints = {"fn": [callable]}
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def compute_weights(self, key, group_name=None):
+        import inspect
+
+        n_params = len(inspect.signature(self.fn).parameters)
+        result = self.fn(key) if n_params == 1 else self.fn(key, group_name)
+        return result if isinstance(result, pl.Series) else pl.Series(result, dtype=pl.Float64)
+
+
+def _weighter(w, on="time"):
+    """Test helper: build a weighter from a callable, DataFrame, or dict."""
+    if isinstance(w, pl.DataFrame):
+        return TableWeighter(frame=w, on=on)
+    if isinstance(w, dict):
+        return LookupWeighter(mapping={k: v for k, v in w.items() if k != "*"}, default=w.get("*", 1.0))
+    return _CallableWeighter(w)
 
 
 class _DummyForecaster(BaseEstimator):
@@ -83,8 +109,7 @@ class TestTimeWeightCallable:
             n = len(time)
             return pl.Series("w", list(range(1, n + 1)), dtype=pl.Float64)
 
-        scorer.set_score_request(time_weight=True)
-        score_weighted = scorer.score(y_true, y_pred, time_weight=recent_emphasis)
+        score_weighted = scorer.set_params(time_weighter=_weighter(recent_emphasis, on="time")).score(y_true, y_pred)
 
         assert isinstance(score_plain, float)
         assert isinstance(score_weighted, float)
@@ -101,8 +126,7 @@ class TestTimeWeightCallable:
         def uniform(time: pl.Series) -> pl.Series:
             return pl.Series("w", [1.0] * len(time), dtype=pl.Float64)
 
-        scorer.set_score_request(time_weight=True)
-        score_uniform = scorer.score(y_true, y_pred, time_weight=uniform)
+        score_uniform = scorer.set_params(time_weighter=_weighter(uniform, on="time")).score(y_true, y_pred)
 
         assert score_plain == pytest.approx(score_uniform)
 
@@ -117,8 +141,7 @@ class TestTimeWeightCallable:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-        scorer.score(y_true, y_pred, time_weight=weight_fn)
+        scorer.set_params(time_weighter=_weighter(weight_fn, on="time")).score(y_true, y_pred)
 
         # For global data, group_name should be None
         assert received_groups == [None]
@@ -134,8 +157,7 @@ class TestTimeWeightCallable:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-        scorer.score(y_true, y_pred, time_weight=weight_fn)
+        scorer.set_params(time_weighter=_weighter(weight_fn, on="time")).score(y_true, y_pred)
 
         assert set(received_groups) == {"A", "B"}
 
@@ -157,8 +179,7 @@ class TestTimeWeightDataFrame:
             "weight": [0.1, 0.1, 0.1, 0.1, 10.0],
         })
 
-        scorer.set_score_request(time_weight=True)
-        score_weighted = scorer.score(y_true, y_pred, time_weight=tw_df)
+        score_weighted = scorer.set_params(time_weighter=_weighter(tw_df, on="time")).score(y_true, y_pred)
 
         assert isinstance(score_weighted, float)
         assert score_plain != score_weighted
@@ -177,8 +198,7 @@ class TestTimeWeightDataFrame:
             "weight": [1.0] * 5,
         })
 
-        scorer.set_score_request(time_weight=True)
-        score_uniform = scorer.score(y_true, y_pred, time_weight=tw_df)
+        score_uniform = scorer.set_params(time_weighter=_weighter(tw_df, on="time")).score(y_true, y_pred)
 
         assert score_plain == pytest.approx(score_uniform)
 
@@ -195,10 +215,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="NaN"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
+            scorer.set_params(time_weighter=_weighter(bad_weights, on="time")).score(y_true, y_pred)
 
     def test_negative_weights_raises(self, y_true_pred_pair):
         """Negative weight values should raise ValueError."""
@@ -209,10 +228,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="negative"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
+            scorer.set_params(time_weighter=_weighter(bad_weights, on="time")).score(y_true, y_pred)
 
     def test_infinite_weights_raises(self, y_true_pred_pair):
         """Infinite weight values should raise ValueError."""
@@ -223,10 +241,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="infinite"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
+            scorer.set_params(time_weighter=_weighter(bad_weights, on="time")).score(y_true, y_pred)
 
     def test_zero_sum_weights_raises(self, y_true_pred_pair):
         """Weights that sum to zero should raise ValueError."""
@@ -237,10 +254,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="zero"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
+            scorer.set_params(time_weighter=_weighter(bad_weights, on="time")).score(y_true, y_pred)
 
     def test_wrong_length_callable_raises(self, y_true_pred_pair):
         """Callable returning wrong-length Series should raise ValueError."""
@@ -251,49 +267,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="weights"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
-
-    def test_non_series_return_raises(self, y_true_pred_pair):
-        """Callable not returning pl.Series should raise ValueError."""
-        y_true, y_pred = y_true_pred_pair
-
-        def bad_weights(time: pl.Series) -> list:
-            return [1.0] * len(time)
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-
-        with pytest.raises(ValueError, match="pl.Series"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
-
-    def test_invalid_type_raises(self, y_true_pred_pair):
-        """Non-callable, non-DataFrame time_weight should raise ValueError."""
-        y_true, y_pred = y_true_pred_pair
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-
-        with pytest.raises(ValueError, match="callable.*DataFrame.*None"):
-            scorer.score(y_true, y_pred, time_weight="invalid")
-
-    def test_three_param_callable_raises(self, y_true_pred_pair):
-        """Callable with 3 parameters should raise ValueError."""
-        y_true, y_pred = y_true_pred_pair
-
-        def bad_weights(time: pl.Series, group: str, extra: int) -> pl.Series:
-            return pl.Series("w", [1.0] * len(time))
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-
-        with pytest.raises(ValueError, match="1 parameter.*2 parameters.*got 3"):
-            scorer.score(y_true, y_pred, time_weight=bad_weights)
+            scorer.set_params(time_weighter=_weighter(bad_weights, on="time")).score(y_true, y_pred)
 
     def test_dataframe_missing_weight_column_raises(self, y_true_pred_pair):
         """DataFrame missing 'weight' column should raise ValueError."""
@@ -304,10 +280,9 @@ class TestTimeWeightValidation:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         with pytest.raises(ValueError, match="weight"):
-            scorer.score(y_true, y_pred, time_weight=tw_df)
+            scorer.set_params(time_weighter=_weighter(tw_df, on="time")).score(y_true, y_pred)
 
 
 class TestPanelGroupWeights:
@@ -418,26 +393,12 @@ class TestTimeWeightTwoParam:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-        scorer.score(y_true, y_pred, time_weight=panel_weight)
+        scorer.set_params(time_weighter=_weighter(panel_weight, on="time")).score(y_true, y_pred)
         assert len(received_groups) > 0
 
 
 class TestProcessTimeWeightsEdgeCases:
     """Tests for _process_time_weights edge cases."""
-
-    def test_callable_wrong_return_type_raises(self, y_true_pred_pair):
-        """Callable returning non-Series raises ValueError."""
-        y_true, y_pred = y_true_pred_pair
-
-        def bad_weight(time: pl.Series):
-            return [1.0] * len(time)
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
-        with pytest.raises(ValueError, match="must return pl.Series"):
-            scorer.score(y_true, y_pred, time_weight=bad_weight)
 
     def test_callable_wrong_length_raises(self, y_true_pred_pair):
         """Callable returning wrong length Series raises ValueError."""
@@ -448,9 +409,8 @@ class TestProcessTimeWeightsEdgeCases:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
         with pytest.raises(ValueError, match="weights.*rows"):
-            scorer.score(y_true, y_pred, time_weight=wrong_len_weight)
+            scorer.set_params(time_weighter=_weighter(wrong_len_weight, on="time")).score(y_true, y_pred)
 
 
 class TestValidateParametersEdgeCases:
@@ -979,7 +939,6 @@ class TestPreFilterZeroWeights:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(step_weight=True, vintage_weight=True)
 
         # step_weight zeros step 1 (rows 0, 2). vintage_weight zeros 2nd vintage (rows 2, 3).
         # zero_mask: [True, False, True, True]. Row 1 survives. NOT all zero.
@@ -989,32 +948,31 @@ class TestPreFilterZeroWeights:
         # time_weight zeros base+2 and base+3 (step-2 times), step_weight zeros step 1.
         scorer2 = MeanAbsoluteError()
         scorer2.fit(y_train)
-        scorer2.set_score_request(step_weight=True, time_weight=True)
 
         with pytest.raises(ValueError, match="All rows have zero weight"):
-            scorer2.score(
-                y_true,
-                y_pred,
-                step_weight={1: 0.0, 2: 1.0},
-                time_weight={
-                    base + timedelta(days=1): 1.0,
-                    base + timedelta(days=2): 0.0,
-                    base + timedelta(days=3): 0.0,
-                },
-            )
+            scorer2.set_params(
+                step_weighter=_weighter({1: 0.0, 2: 1.0}, on="forecasting_step"),
+                time_weighter=_weighter(
+                    {
+                        base + timedelta(days=1): 1.0,
+                        base + timedelta(days=2): 0.0,
+                        base + timedelta(days=3): 0.0,
+                    },
+                    on="time",
+                ),
+            ).score(y_true, y_pred)
 
     def test_panel_aware_callable_resolves_per_group(self, panel_y_true_pred_pair):
         """2-param callable produces a dict of per-group weight arrays."""
         y_true, y_pred = panel_y_true_pred_pair
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         def group_weight(time: pl.Series, group_name: str | None) -> pl.Series:
             val = 2.0 if group_name == "A" else 1.0
             return pl.Series("w", [val] * len(time), dtype=pl.Float64)
 
-        result = scorer.score(y_true, y_pred, time_weight=group_weight)
+        result = scorer.set_params(time_weighter=_weighter(group_weight, on="time")).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_panel_aware_dataframe_with_group_weight_cols(self, panel_y_true_pred_pair):
@@ -1028,9 +986,8 @@ class TestPreFilterZeroWeights:
         })
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
-        result = scorer.score(y_true, y_pred, time_weight=tw_df)
+        result = scorer.set_params(time_weighter=_weighter(tw_df, on="time")).score(y_true, y_pred)
         assert isinstance(result, float)
 
 
@@ -1076,8 +1033,7 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(step_weight=True)
-        result = scorer.score(y_true, y_pred, step_weight=step_wt)
+        result = scorer.set_params(step_weighter=_weighter(step_wt, on="forecasting_step")).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_panel_vintage_weight_dict_applied(self, panel_vintage_data):
@@ -1089,8 +1045,7 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(vintage_weight=True)
-        result = scorer.score(y_true, y_pred, vintage_weight=vintage_wt)
+        result = scorer.set_params(vintage_weighter=_weighter(vintage_wt, on="vintage_time")).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_panel_step_and_vintage_weight_combined(self, panel_vintage_data):
@@ -1105,8 +1060,10 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(step_weight=True, vintage_weight=True)
-        result = scorer.score(y_true, y_pred, step_weight=step_wt, vintage_weight=vintage_wt)
+        result = scorer.set_params(
+            step_weighter=_weighter(step_wt, on="forecasting_step"),
+            vintage_weighter=_weighter(vintage_wt, on="vintage_time"),
+        ).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_panel_zero_time_weight_dict_filters(self, panel_y_true_pred_pair):
@@ -1122,11 +1079,10 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
-        scorer.set_score_request(time_weight=True)
 
         # This should work (the 2-param callable is panel-aware → returns dict
         # internally, so zero-mask filtering must slice the dict)
-        result = scorer.score(y_true, y_pred, time_weight=tw_fn)
+        result = scorer.set_params(time_weighter=_weighter(tw_fn, on="time")).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_step_weight_zero_triggers_zero_mask(self, panel_vintage_data):
@@ -1134,8 +1090,9 @@ class TestApplyWeightsDict:
         y_train, y_true, y_pred = panel_vintage_data
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(step_weight=True)
-        result = scorer.score(y_true, y_pred, step_weight={1: 0.0, 2: 1.0})
+        result = scorer.set_params(step_weighter=_weighter({1: 0.0, 2: 1.0}, on="forecasting_step")).score(
+            y_true, y_pred
+        )
         assert isinstance(result, float)
 
     def test_zero_step_weight_slices_tw_dict(self, panel_vintage_data):
@@ -1147,13 +1104,9 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(time_weight=True, step_weight=True)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=tw_fn,
-            step_weight={1: 0.0, 2: 1.0},
-        )
+        result = scorer.set_params(
+            time_weighter=_weighter(tw_fn, on="time"), step_weighter=_weighter({1: 0.0, 2: 1.0}, on="forecasting_step")
+        ).score(y_true, y_pred)
         assert isinstance(result, float)
 
     def test_zero_tw_slices_sw_and_vw_dicts(self, panel_vintage_data):
@@ -1173,12 +1126,9 @@ class TestApplyWeightsDict:
 
         scorer = MeanAbsoluteError()
         scorer.fit(y_train)
-        scorer.set_score_request(time_weight=True, step_weight=True, vintage_weight=True)
-        result = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=tw_fn,
-            step_weight=sw_fn,
-            vintage_weight=vw_fn,
-        )
+        result = scorer.set_params(
+            time_weighter=_weighter(tw_fn, on="time"),
+            step_weighter=_weighter(sw_fn, on="forecasting_step"),
+            vintage_weighter=_weighter(vw_fn, on="vintage_time"),
+        ).score(y_true, y_pred)
         assert isinstance(result, float)

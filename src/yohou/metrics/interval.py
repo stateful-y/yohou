@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 
 from yohou.utils._compat import StrOptions
+from yohou.weighting import BaseWeighter
 
 from .base import BaseIntervalScorer
 
@@ -170,6 +171,9 @@ class EmpiricalCoverage(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -180,6 +184,9 @@ class EmpiricalCoverage(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -275,6 +282,9 @@ class MeanIntervalWidth(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -285,6 +295,9 @@ class MeanIntervalWidth(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -383,6 +396,9 @@ class IntervalScore(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -393,6 +409,9 @@ class IntervalScore(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -519,6 +538,9 @@ class PinballLoss(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -529,6 +551,9 @@ class PinballLoss(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):

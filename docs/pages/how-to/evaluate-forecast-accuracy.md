@@ -191,18 +191,23 @@ interval forecasting workflow.
 
 ## 7. Apply Time Weighting
 
-Weight recent errors more heavily using
-[`exponential_decay_weight`](/pages/api/generated/yohou.utils.weighting.exponential_decay_weight/):
+Weight recent errors more heavily by constructing the scorer with an
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/).
+Weighting is a constructor parameter, so it is part of the scorer's
+configuration rather than a per-call argument:
 
 ```python
-from yohou.utils.weighting import exponential_decay_weight
+from yohou.metrics import MeanAbsoluteError
+from yohou.weighting import ExponentialDecayWeighter
 
-weight_fn = exponential_decay_weight(half_life=365)
-weighted_mae = scorer.score(y_test, y_pred, time_weight=weight_fn)
+weighted_scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
+weighted_mae = weighted_scorer.score(y_test, y_pred)
 ```
 
-See [Time Weighting](time-weighting.md) for the full guide on weight
-functions.
+Because the weighter lives on `__init__`, its parameters are tunable
+(`time_weighter__half_life`) and the weighted scorer can be used directly
+as a cross-validation objective. See [Time Weighting](time-weighting.md)
+for the full guide.
 
 ## 8. Evaluate Classification Forecasts
 
