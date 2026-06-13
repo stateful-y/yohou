@@ -249,7 +249,9 @@ All composition forecasters propagate the three parameters to their children:
   time the feature forecaster produces a forecast that is passed to the target
   forecaster as `X_forecast` (merged with any caller-supplied `X_forecast`), so
   the forecasted features become step columns the target consumes. `X_future`
-  is forwarded to the target unchanged.
+  is forwarded to the target unchanged. Its `feature_stride` parameter sets how
+  often the feature forecaster regenerates this forecast (every step by default),
+  for cases where the feature model is too expensive to re-run on every step.
 
 - **VotingForecaster** passes all three parameters to every ensemble member.
 

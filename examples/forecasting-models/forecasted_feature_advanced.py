@@ -311,6 +311,53 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 6. feature_stride: Refresh the Feature Forecast Less Often
+
+    When the feature forecaster is expensive and cannot be re-run every step in
+    production, set `feature_stride` to the refresh cadence. The feature forecast is
+    regenerated every `feature_stride` steps and reused in between, both at fit and at
+    serve, so the target trains on features of the same age it sees in production.
+    `feature_stride` takes effect through `observe_predict` (rolling), not a bare
+    `predict`.
+    """)
+
+
+@app.cell
+def _(
+    ForecastedFeatureForecaster,
+    LagTransformer,
+    PointReductionForecaster,
+    Ridge,
+    X_actual_test,
+    X_actual_train,
+    horizon,
+    y_test,
+    y_train,
+):
+    ff_stride = ForecastedFeatureForecaster(
+        target_forecaster=PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=LagTransformer(lag=[1, 3]),
+        ),
+        feature_forecaster=PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=LagTransformer(lag=[1, 3]),
+        ),
+        strategy="rewind",
+        feature_stride=2,  # regenerate the feature forecast every 2 steps
+    )
+    ff_stride.fit(y_train, X_actual_train, forecasting_horizon=horizon)
+    # Rolling walk-forward over the test set: observe_predict refreshes the feature
+    # forecast every 2 steps and reuses it in between.
+    y_pred_stride = ff_stride.observe_predict(y_test, X_actual_test, stride=horizon)
+    print(f"feature_stride=2 rolling observe_predict: {y_pred_stride['vintage_time'].n_unique()} vintages")
+    y_pred_stride.head()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Next Steps
 
     - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/data-features/pipeline_composition/)

@@ -42,8 +42,14 @@ class TestSystematicChecks:
                 target_forecaster=PointReductionForecaster(estimator=Ridge()),
                 feature_forecaster=PointReductionForecaster(estimator=Ridge()),
             ),
+            # With feature_stride > 1 (feature forecast refreshed every 2 steps)
+            ForecastedFeatureForecaster(
+                target_forecaster=PointReductionForecaster(estimator=Ridge()),
+                feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+                feature_stride=2,
+            ),
         ],
-        ids=["point_naive", "predicted_policy", "reduction"],
+        ids=["point_naive", "predicted_policy", "reduction", "feature_stride"],
     )
     def test_forecasted_feature_forecaster_systematic_checks(self, forecaster, y_X_factory):
         """Run systematic checks on ForecastedFeatureForecaster meta-forecaster.
@@ -443,9 +449,11 @@ class TestUpdateReset:
         )
         forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
-        # observe_predict in one call
-        y_pred = forecaster.observe_predict(y[80:85], X_actual[80:85])
-        assert len(y_pred) == 5
+        # observe_predict rolls over the block: an initial prediction plus one per
+        # stride-sized slice, producing multiple vintages (not a single end-of-block one).
+        y_pred = forecaster.observe_predict(y[80:90], X_actual[80:90], stride=5)
+        assert y_pred["vintage_time"].n_unique() > 1
+        assert "sales" in y_pred.columns
 
 
 class TestMethodAvailability:
@@ -992,3 +1000,177 @@ class TestHardening:
         )
         with pytest.raises(ValueError, match="strategy='actual'"):
             forecaster.fit(y, X_actual, forecasting_horizon=1)
+
+
+def _make_fs_data(n: int = 140, seed: int = 0):
+    """Univariate series where the target depends on a future feature value."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    time = pl.datetime_range(
+        start=datetime(2020, 1, 1),
+        end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+        interval="1d",
+        eager=True,
+    )
+    price = 10.0 + 5.0 * np.sin(2 * np.pi * np.arange(n) / 7) + 0.05 * np.arange(n)
+    sales = 3.0 * price + rng.normal(0, 0.5, n)
+    return (
+        pl.DataFrame({"time": time, "sales": sales}),
+        pl.DataFrame({"time": time, "price": price}),
+    )
+
+
+def _reduction_fff(strategy="rewind", feature_stride=1):
+    from yohou.preprocessing import LagTransformer
+
+    return ForecastedFeatureForecaster(
+        target_forecaster=PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+        feature_forecaster=PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+        strategy=strategy,
+        feature_stride=feature_stride,
+        split_ratio=0.5,
+    )
+
+
+class TestFeatureStride:
+    """Tests for the feature_stride cadence parameter."""
+
+    def test_default_is_one(self):
+        forecaster = _reduction_fff()
+        assert forecaster.feature_stride == 1
+
+    @pytest.mark.parametrize("strategy", ["actual", "predicted", "rewind"])
+    def test_fit_feature_stride_extends_feature_horizon_no_nan(self, strategy):
+        """feature_stride>1 fits a Ridge target without NaN; feature horizon is H+F-1."""
+        y, X = _make_fs_data()
+        H, F = 5, 3
+        forecaster = _reduction_fff(strategy=strategy, feature_stride=F)
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=H)
+        # feature forecaster fit at the extended horizon
+        assert forecaster.feature_forecaster_.fit_forecasting_horizon_ == H + F - 1
+        # target trained with full H step columns (no cadence-induced nulls -> Ridge ok)
+        assert len(forecaster.target_forecaster_._step_column_names_) == H
+
+    def test_fit_vintages_spaced_by_feature_stride(self):
+        """The in-sample feature forecast (actual strategy) has vintages on the F grid."""
+        y, X = _make_fs_data()
+        F = 4
+        forecaster = _reduction_fff(strategy="actual", feature_stride=F)
+        forecaster.fit(y[:120], X[:120], forecasting_horizon=5)
+        feat = forecaster._actuals_as_forecast(X[:120].select("time", "price"), 5 + F - 1, F)
+        vintages = feat["vintage_time"].unique().sort()
+        # consecutive vintages are F steps apart
+        gaps = vintages.diff().drop_nulls().dt.total_days().unique().to_list()
+        assert gaps == [F]
+
+    def test_serve_rolling_multi_vintage_at_feature_stride(self):
+        """observe_predict at feature_stride>1 rolls and clears the buffer afterward."""
+        y, X = _make_fs_data()
+        forecaster = _reduction_fff(strategy="rewind", feature_stride=3)
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+        pred = forecaster.observe_predict(y[110:130], X[110:130], stride=5)
+        assert pred["vintage_time"].n_unique() > 1
+        # buffer state is cleaned up
+        assert getattr(forecaster, "_feature_forecast_buffer_", None) is None
+
+    def test_feature_stride_changes_predictions(self):
+        """feature_stride>1 (reused aging forecast) yields different serve output than F=1."""
+        y, X = _make_fs_data()
+        fc1 = _reduction_fff(strategy="rewind", feature_stride=1)
+        fc3 = _reduction_fff(strategy="rewind", feature_stride=3)
+        fc1.fit(y[:110], X[:110], forecasting_horizon=5)
+        fc3.fit(y[:110], X[:110], forecasting_horizon=5)
+        p1 = fc1.observe_predict(y[110:130], X[110:130], stride=5)
+        p3 = fc3.observe_predict(y[110:130], X[110:130], stride=5)
+        assert not p1["sales"].equals(p3["sales"])
+
+    def test_non_exogenous_target_uses_base_loop(self):
+        """A requires_exogenous=False target uses the base loop even at feature_stride>1."""
+        y, X = _make_fs_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy="rewind",
+            feature_stride=3,
+        )
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+        pred = forecaster.observe_predict(y[110:130], X[110:130], stride=5)
+        assert pred["vintage_time"].n_unique() > 1
+        assert getattr(forecaster, "_feature_forecast_buffer_", None) is None
+
+    def test_panel_feature_stride(self):
+        """feature_stride>1 works on panel data with an exogenous target."""
+        from yohou.preprocessing import LagTransformer
+
+        y, X = _make_panel_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            feature_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            strategy="rewind",
+            feature_stride=3,
+        )
+        forecaster.fit(y[:100], X[:100], forecasting_horizon=3)
+        assert forecaster.target_forecaster_._step_column_names_
+        pred = forecaster.observe_predict(y[100:115], X[100:115], stride=3)
+        assert pred["vintage_time"].n_unique() > 1
+
+    def test_invalid_feature_stride_rejected(self):
+        """feature_stride < 1 is rejected by parameter validation."""
+        y, X = _make_fs_data()
+        forecaster = _reduction_fff(feature_stride=0)
+        with pytest.raises((ValueError, Exception)):
+            forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+
+    def test_short_series_for_feature_stride_raises_actionably(self):
+        """A feature_stride too large for the data raises an error naming feature_stride."""
+        y, X = _make_fs_data()
+        # H + feature_stride - 1 >= len(X) is guarded with an actionable message.
+        forecaster = _reduction_fff(feature_stride=20)
+        with pytest.raises(ValueError, match="feature_stride"):
+            forecaster.fit(y[:18], X[:18], forecasting_horizon=5)
+
+    @pytest.mark.parametrize("variant", ["observe_predict", "observe_predict_interval"])
+    def test_observe_predict_variants_roll(self, variant):
+        """Point and interval observe_predict produce rolling multi-vintage output."""
+        from yohou.interval import IntervalReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        y, X = _make_fs_data()
+        if variant == "observe_predict":
+            target = PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2]))
+        else:
+            target = IntervalReductionForecaster(feature_transformer=LagTransformer(lag=[1, 2]))
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=target,
+            feature_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+        pred = getattr(forecaster, variant)(y[110:125], X[110:125], stride=5)
+        assert pred["vintage_time"].n_unique() > 1
+
+    def test_cross_val_predict_rolls_per_origin(self):
+        """cross_val_predict on an FFF yields rolling per-origin blocks (a split column)."""
+        from yohou.model_selection import SlidingWindowSplitter, cross_val_predict
+
+        y, X = _make_fs_data(n=160)
+        forecaster = _reduction_fff(strategy="rewind")
+        splitter = SlidingWindowSplitter(train_size=60, test_size=15, n_splits=2)
+        preds = cross_val_predict(
+            forecaster,
+            y,
+            X_actual=X,
+            forecasting_horizon=5,
+            cv=splitter,
+            predict_stride=5,
+        )
+        # one fold-tagged frame with multiple vintages per fold (rolling, not single-shot)
+        assert "split" in preds.columns
+        assert preds["vintage_time"].n_unique() > 2

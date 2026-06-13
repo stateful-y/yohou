@@ -179,6 +179,31 @@ needs new feature observations to advance in step with the target. See
 [About Exogenous Features](../explanation/exogenous-features.md) for how the
 `X_forecast` step columns and predict-time override work internally.
 
+### Refresh the feature forecast less often than you predict
+
+If the feature forecaster is expensive and you cannot re-run it every step in
+production (for example you refresh it daily while predicting hourly), set
+`feature_stride` to that refresh cadence. The feature forecast is then regenerated
+every `feature_stride` steps and reused in between, both at fit and at serve, so the
+target trains on features of the same age it sees in production:
+
+```python
+fff = ForecastedFeatureForecaster(
+    target_forecaster=price_forecaster,
+    feature_forecaster=temperature_forecaster,
+    strategy="rewind",
+    feature_stride=24,  # regenerate the feature forecast every 24 steps
+)
+fff.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=H)
+
+# Walk forward: observe_predict regenerates the feature forecast every 24 steps
+results = fff.observe_predict(y=y_test, X_actual=X_actual_test, stride=H)
+```
+
+`feature_stride` takes effect only through `observe_predict` (a bare `predict`
+always produces a single fresh forecast). The default `feature_stride=1` regenerates
+the forecast at every step.
+
 ## Update Observations with Exogenous Data
 
 In a walk-forward loop, `observe_predict()` atomically observes new data

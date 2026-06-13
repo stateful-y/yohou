@@ -173,6 +173,23 @@ probability predictions, those methods become available on the composite. The fe
 forecaster always produces point predictions regardless. A target with
 `requires_exogenous=False` (such as a naive forecaster) ignores the feature forecast.
 
+### Two cadences and feature_stride
+
+`ForecastedFeatureForecaster` has two independent cadences. The target predict
+cadence is the `stride` argument to `observe_predict` (how often the target
+forecasts as you walk forward). The feature forecast cadence is the `feature_stride`
+constructor parameter (how often the feature forecaster regenerates its forecast).
+The default `feature_stride=1` regenerates the forecast at every step.
+
+Set `feature_stride > 1` when the feature forecaster cannot be re-run every step in
+production, for example an expensive feature model refreshed daily while the target
+predicts hourly. The same `feature_stride` is applied at fit and at serve, so the
+target trains on features of the same vintage age it consumes in production. To keep
+the forecast covering the target's horizon `H` even when a vintage is up to
+`feature_stride - 1` steps old, the feature forecaster is fit and rolled at horizon
+`H + feature_stride - 1`. `feature_stride > 1` takes effect only when serving through
+`observe_predict` (a bare `predict` always produces a single fresh forecast).
+
 For the data-shaping perspective on exogenous features (the three types `X_actual`,
 `X_future`, `X_forecast`, and step-indexed columns), see
 [Exogenous Features](exogenous-features.md).
@@ -234,7 +251,9 @@ forecaster observes the `X_actual` columns as its target, and the target forecas
 observes `y` (the feature forecast is regenerated through `X_forecast` at predict
 time, so the target does not observe features through its own `X_actual` channel).
 Because the feature forecaster must advance in step with the target, `observe` and
-`rewind` require `X_actual` and raise a `ValueError` if it is omitted.
+`rewind` require `X_actual` and raise a `ValueError` if it is omitted. `observe_predict`
+rolls over the data one `stride`-sized slice at a time, predicting at each origin, and
+regenerates the feature forecast every `feature_stride` steps.
 
 **[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)** dispatches `observe()` to each group's clone
 with only the rows belonging to that group. Each group maintains independent
