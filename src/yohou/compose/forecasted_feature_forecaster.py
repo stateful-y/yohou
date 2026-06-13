@@ -581,10 +581,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         if not getattr(self, "_target_requires_exogenous_", True):
             return None
-        # During a feature_stride>1 rolling serve, the loop supplies a reused
-        # multi-vintage buffer (refreshed every feature_stride steps) so the target
-        # consumes an aging vintage via as-of selection instead of a fresh forecast.
-        buffer = getattr(self, "_feature_forecast_buffer_", None)
+        # During a feature_stride>1 rolling serve, the loop holds a single reused
+        # vintage (refreshed every feature_stride steps) so the target consumes an
+        # aging vintage via as-of selection instead of a fresh forecast.
+        buffer = getattr(self, "_feature_forecast_buffer", None)
         if buffer is not None:
             return self._merge_forecasts(buffer, user_X_forecast)
         feature_forecast = self.feature_forecaster_.predict(
@@ -927,16 +927,18 @@ class ForecastedFeatureForecaster(BaseForecaster):
     ) -> pl.DataFrame:
         """Roll forward refreshing the feature forecast every feature_stride.
 
-        Maintains a growing multi-vintage buffer: a fresh feature-forecaster vintage
-        is appended only when the observation clock crosses a ``feature_stride``
-        boundary, otherwise the target reuses the current (aging) vintage via as-of
-        selection. The target predicts at the loop ``stride``. The buffer is exposed
-        to ``predict`` through ``_feature_forecast_buffer_`` so all of predict's
+        Holds a single (possibly aging) feature-forecaster vintage: it is replaced
+        with a fresh one only when the observation clock crosses a ``feature_stride``
+        boundary, otherwise the target reuses the current vintage via as-of
+        selection. Because the observation clock only advances, an older vintage can
+        never win the as-of join again, so one slot suffices (no unbounded concat).
+        The target predicts at the loop ``stride``. The buffer is exposed to
+        ``predict`` through ``_feature_forecast_buffer`` so all of predict's
         routing/merge logic is reused.
         """
         feature_stride = self.feature_stride
         feature_horizon = forecasting_horizon + feature_stride - 1
-        self._feature_forecast_buffer_ = self.feature_forecaster_.predict(
+        self._feature_forecast_buffer = self.feature_forecaster_.predict(
             forecasting_horizon=feature_horizon, groups=groups
         )
         try:
@@ -948,14 +950,17 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 self.observe(y=y_slice, X_actual=x_obs_slice, groups=groups, X_future=X_future, X_forecast=X_forecast)
                 steps_since_refresh += len(y_slice)
                 if steps_since_refresh >= feature_stride:
-                    new_vintage = self.feature_forecaster_.predict(forecasting_horizon=feature_horizon, groups=groups)
-                    self._feature_forecast_buffer_ = pl.concat([self._feature_forecast_buffer_, new_vintage])
+                    # The clock only moves forward, so the previous vintage can never
+                    # win the as-of join again: replace it rather than accumulate.
+                    self._feature_forecast_buffer = self.feature_forecaster_.predict(
+                        forecasting_horizon=feature_horizon, groups=groups
+                    )
                     steps_since_refresh = steps_since_refresh % feature_stride
                 y_pred_i = predict_fn(groups=groups, forecasting_horizon=forecasting_horizon, **predict_kwargs)
                 y_pred = pl.concat([y_pred, y_pred_i])
             return y_pred
         finally:
-            self._feature_forecast_buffer_ = None
+            self._feature_forecast_buffer = None
 
     @available_if(_target_forecaster_has("predict"))
     def observe_predict(

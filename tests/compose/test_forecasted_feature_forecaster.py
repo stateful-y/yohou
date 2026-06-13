@@ -127,8 +127,13 @@ class TestBasicFitPredict:
         with pytest.raises(ValueError, match="requires X_actual"):
             forecaster.fit(y[:30], X_actual=None, forecasting_horizon=5)
 
-    def test_predict_ignores_X(self):
-        """Test that X_actual columns already being forecasted are ignored."""
+    def test_predict_forwards_x_future(self):
+        """Known-ahead features passed via X_future are forwarded to the target.
+
+        ``predict`` no longer accepts ``X_actual`` (forecasted features flow through
+        the X_forecast channel); a genuinely known-ahead feature travels through
+        X_future and must be forwarded to the target without error.
+        """
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
@@ -150,53 +155,11 @@ class TestBasicFitPredict:
         )
         forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
-        # Passing X_actual with same columns as forecasted should use forecasted values
-        y_pred_with_X = forecaster.predict(forecasting_horizon=5)
-        y_pred_without_X = forecaster.predict(forecasting_horizon=5)
-
-        # Should produce same results since forecasted columns in X_actual are ignored
-        assert y_pred_with_X["sales"].to_list() == y_pred_without_X["sales"].to_list()
-
-    def test_predict_merges_known_ahead_features(self):
-        """Test that known-ahead features in X_actual are merged with forecasted features."""
-        from sklearn.linear_model import Ridge
-
-        from yohou.point import PointReductionForecaster
-
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=99),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({
-            "time": time,
-            "sales": list(range(100)),
-        })
-        # Features to forecast
-        X_forecast = pl.DataFrame({
-            "time": time,
-            "price": [10 + i % 5 for i in range(100)],
-        })
-
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=PointReductionForecaster(estimator=Ridge()),
-            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
-        )
-        # Fit with price only (will be forecasted)
-        forecaster.fit(y[:80], X_forecast[:80], forecasting_horizon=5)
-
-        # Predict with known-ahead holiday feature
-        # Note: The target forecaster wasn't trained with is_holiday, so this is
-        # just testing that the merging happens without error
-        pred_time = time[80:85]
-        _X_pred_known = pl.DataFrame({
-            "time": pred_time,
+        X_future = pl.DataFrame({
+            "time": time[80:85],
             "is_holiday": [1, 0, 0, 0, 0],
         })
-
-        # Should not raise - known-ahead features are merged
-        y_pred = forecaster.predict(forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5, X_future=X_future)
         assert len(y_pred) == 5
 
 
@@ -1072,7 +1035,7 @@ class TestFeatureStride:
         pred = forecaster.observe_predict(y[110:130], X[110:130], stride=5)
         assert pred["vintage_time"].n_unique() > 1
         # buffer state is cleaned up
-        assert getattr(forecaster, "_feature_forecast_buffer_", None) is None
+        assert getattr(forecaster, "_feature_forecast_buffer", None) is None
 
     def test_feature_stride_changes_predictions(self):
         """feature_stride>1 (reused aging forecast) yields different serve output than F=1."""
@@ -1097,7 +1060,7 @@ class TestFeatureStride:
         forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
         pred = forecaster.observe_predict(y[110:130], X[110:130], stride=5)
         assert pred["vintage_time"].n_unique() > 1
-        assert getattr(forecaster, "_feature_forecast_buffer_", None) is None
+        assert getattr(forecaster, "_feature_forecast_buffer", None) is None
 
     def test_panel_feature_stride(self):
         """feature_stride>1 works on panel data with an exogenous target."""
