@@ -675,7 +675,13 @@ class CalibrationError(BaseIntervalScorer):
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
-        """Compute per-row calibration error values."""
+        """Compute per-row in-interval indicators.
+
+        Calibration error is ``|empirical_coverage - rate|``; empirical coverage
+        is the mean of these indicators, formed during aggregation (see
+        ``_aggregate_scores``). The deviation is NOT applied per row here, because
+        ``mean(|indicator - rate|)`` is not ``|mean(indicator) - rate|``.
+        """
         frames = []
         for rate in coverage_rates:
             rate_data = {}
@@ -684,9 +690,43 @@ class CalibrationError(BaseIntervalScorer):
                 upper_col = f"{col}_upper_{rate}"
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
                     in_interval = (y_truth[col] >= y_pred[lower_col]) & (y_truth[col] <= y_pred[upper_col])
-                    rate_data[col] = (in_interval.cast(pl.Float64) - rate).abs()
+                    rate_data[col] = in_interval.cast(pl.Float64)
             frames.append(pl.DataFrame(rate_data).with_columns(pl.lit(rate).alias("coverage_rate")))
         return pl.concat(frames)
+
+    def _aggregate_scores(self, raw_scores, context=None):
+        """Form empirical coverage per rate, then ``|coverage - rate|``, then collapse rates.
+
+        Empirical coverage is a population statistic: the observation rows must be
+        collapsed into a coverage fraction *before* the absolute deviation is taken.
+        This reorders the base pipeline, which would otherwise collapse coverage
+        rates first and average per-row deviations, yielding ``mean(|indicator -
+        rate|)`` instead of ``|mean(indicator) - rate|``.
+        """
+        dims = self._normalize_agg_methods(self.aggregation_method, include_coveragewise=True)
+        collapse_rates = "coveragewise" in dims
+
+        # 1. Collapse observation rows (and components/groups/vintages) on the
+        #    indicators to form empirical coverage per rate, retaining coverage_rate.
+        collapsed = self._collapse_rows(raw_scores, context, dims)
+        coverage = self._aggregate_per_vintage_scores(collapsed, context)
+
+        # With the >= 2 coverage-rate guard, coverage is always a per-rate DataFrame.
+        if not isinstance(coverage, pl.DataFrame):
+            return coverage
+
+        # 2. Replace each coverage value with |coverage - rate|.
+        meta_names = {"coverage_rate", "forecasting_step", "vintage_time", "time"}
+        val_cols = [c for c in coverage.columns if c not in meta_names]
+        deviation = coverage.with_columns([(pl.col(c) - pl.col("coverage_rate")).abs().alias(c) for c in val_cols])
+
+        # 3. Collapse the coverage-rate dimension (weighted if coverage_rates is a dict).
+        if collapse_rates:
+            deviation = self._collapse_coverage_rates(deviation)
+            if deviation.shape == (1, 1):
+                return float(deviation.to_series()[0])
+
+        return deviation
 
     def score(  # type: ignore
         self, y_truth: pl.DataFrame, y_pred: pl.DataFrame, /, **params
