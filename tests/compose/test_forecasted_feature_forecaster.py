@@ -1137,3 +1137,98 @@ class TestFeatureStride:
         # one fold-tagged frame with multiple vintages per fold (rolling, not single-shot)
         assert "split" in preds.columns
         assert preds["vintage_time"].n_unique() > 2
+
+
+class _RecordingPredictFeatureForecaster(PointReductionForecaster):
+    """Feature forecaster that records whether predict received routed time_weight."""
+
+    def predict(self, forecasting_horizon=None, groups=None, time_weight=None, **kwargs):
+        self.__dict__.setdefault("_tw_seen", [])
+        self._tw_seen.append(time_weight is not None)
+        return super().predict(forecasting_horizon=forecasting_horizon, groups=groups, **kwargs)
+
+
+class _CountingObservePredictFeatureForecaster(PointReductionForecaster):
+    """Feature forecaster that counts observe_predict calls (rolling-forecast probe)."""
+
+    def observe_predict(self, *args, **kwargs):
+        self.__dict__["_op_calls"] = self.__dict__.get("_op_calls", 0) + 1
+        return super().observe_predict(*args, **kwargs)
+
+
+class TestFeatureForecasterMetadataRouting:
+    """The feature forecaster's predict metadata is honored regardless of feature_stride."""
+
+    @pytest.mark.parametrize("feature_stride", [1, 3])
+    def test_predict_metadata_routed_under_feature_stride(self, feature_stride):
+        """Routed predict-time metadata reaches the feature forecaster during a strided roll.
+
+        Before the fix, the feature_stride>1 buffer refresh used a bare predict() that
+        dropped routed metadata, while feature_stride==1 honored it. This pins parity.
+        """
+        import numpy as np
+
+        y, X = _make_fs_data()
+        feature_forecaster = _RecordingPredictFeatureForecaster(estimator=Ridge())
+        feature_forecaster.set_predict_request(time_weight=True)
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(estimator=Ridge()),
+            feature_forecaster=feature_forecaster,
+            feature_stride=feature_stride,
+        )
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+        # Isolate serve-time predicts (fit also predicts, without routed metadata).
+        forecaster.feature_forecaster_._tw_seen.clear()
+
+        time_weight = np.linspace(0.1, 1.0, 5)
+        forecaster.observe_predict(y[110:130], X[110:130], stride=5, time_weight=time_weight)
+
+        seen = forecaster.feature_forecaster_._tw_seen
+        assert seen, "feature forecaster predict was never called during the roll"
+        # Every serve-time feature-forecast generation received the routed metadata.
+        assert all(seen)
+
+
+class TestNonExogenousFitSkipsRollingForecast:
+    """A non-exogenous target skips the in-sample forecast but keeps parity and validation."""
+
+    @pytest.mark.parametrize("strategy", ["rewind", "predicted"])
+    def test_no_rolling_forecast_for_non_exogenous_target(self, strategy):
+        """The feature forecaster is not rolled (observe_predict) when the target ignores it."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=7),
+            feature_forecaster=_CountingObservePredictFeatureForecaster(estimator=Ridge()),
+            strategy=strategy,
+            split_ratio=0.6,
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        assert forecaster.feature_forecaster_.__dict__.get("_op_calls", 0) == 0
+
+    def test_parity_preserved_for_non_exogenous_target(self):
+        """Observed-time parity holds even though the rolling forecast is skipped."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=7),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
+
+    def test_predictions_match_bare_target(self):
+        """The target ignores the feature forecast, so predictions equal the bare target's."""
+        y, X_actual = _make_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=7),
+            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
+        meta_pred = forecaster.predict(forecasting_horizon=5)
+
+        bare = SeasonalNaive(seasonality=7)
+        bare.fit(y[:100], forecasting_horizon=5)
+        bare_pred = bare.predict(forecasting_horizon=5)
+
+        assert meta_pred["sales"].to_list() == bare_pred["sales"].to_list()

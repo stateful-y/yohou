@@ -767,3 +767,75 @@ class TestPanelExogenous:
         assert len(y_pred) == 5
         assert "group_a__value" in y_pred.columns
         assert "group_b__value" in y_pred.columns
+
+
+class TestStepColumnStripping:
+    """Pipeline-derived step columns are stripped before forwarding to components.
+
+    Otherwise a component re-deriving the same step columns from X_future/X_forecast
+    collides with the forwarded ones (DuplicateError).
+    """
+
+    @staticmethod
+    def _pipeline():
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        from yohou.point import PointReductionForecaster
+
+        return DecompositionPipeline([
+            ("a", PointReductionForecaster(estimator=HistGradientBoostingRegressor(max_iter=5))),
+            ("b", PointReductionForecaster(estimator=HistGradientBoostingRegressor(max_iter=5))),
+        ])
+
+    @staticmethod
+    def _time(n):
+        return pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+
+    def test_panel_global_x_future_no_collision(self):
+        """Panel data + a global (non-prefixed) X_future column does not raise DuplicateError."""
+        n = 120
+        time = self._time(n)
+        y = pl.DataFrame({
+            "time": time,
+            "store_1__sales": [10 + i * 0.5 for i in range(n)],
+            "store_2__sales": [20 + i * 0.3 for i in range(n)],
+        })
+        x_future = pl.DataFrame({"time": time, "is_holiday": [float(i % 7 == 0) for i in range(n)]})
+        pipe = self._pipeline()
+        pipe.fit(y, forecasting_horizon=1, X_future=x_future)
+        pred = pipe.predict(forecasting_horizon=1)
+        assert pred.height == 1
+        assert {"store_1__sales", "store_2__sales"}.issubset(pred.columns)
+
+    def test_panel_group_local_x_future_no_collision(self):
+        """Panel data + group-local (prefixed) X_future columns are stripped without collision."""
+        n = 120
+        time = self._time(n)
+        y = pl.DataFrame({
+            "time": time,
+            "store_1__sales": [10 + i * 0.5 for i in range(n)],
+            "store_2__sales": [20 + i * 0.3 for i in range(n)],
+        })
+        x_future = pl.DataFrame({
+            "time": time,
+            "store_1__promo": [float(i % 5 == 0) for i in range(n)],
+            "store_2__promo": [float(i % 3 == 0) for i in range(n)],
+        })
+        pipe = self._pipeline()
+        pipe.fit(y, forecasting_horizon=1, X_future=x_future)
+        assert pipe.predict(forecasting_horizon=1).height == 1
+
+    def test_standard_x_future_no_collision(self):
+        """Non-panel X_future step columns are stripped before forwarding (regression case)."""
+        n = 120
+        time = self._time(n)
+        y = pl.DataFrame({"time": time, "sales": [10 + i * 0.5 for i in range(n)]})
+        x_future = pl.DataFrame({"time": time, "is_holiday": [float(i % 7 == 0) for i in range(n)]})
+        pipe = self._pipeline()
+        pipe.fit(y, forecasting_horizon=1, X_future=x_future)
+        assert pipe.predict(forecasting_horizon=1).height == 1

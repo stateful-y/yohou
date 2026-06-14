@@ -369,9 +369,18 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # _pre_fit already merged the pipeline-level step columns into X_t, so strip
         # them before forwarding to avoid a name collision when a component derives
         # the same step columns again from the (also-forwarded) X_forecast/X_future.
+        # _step_column_names_ tracks step columns by their derived name, which is
+        # unprefixed for global (non-group) features. Under panel data those columns
+        # are distributed per group and become ``group__<feat>_step_h`` in the
+        # panel-wide X_t, so match on the group-stripped suffix too; otherwise the
+        # global step columns survive and collide with each component's re-derived ones.
         X_t_components = X_t
         if X_t is not None and self._step_column_names_:
-            drop_cols = [c for c in X_t.columns if c in self._step_column_names_]
+            drop_cols = [
+                c
+                for c in X_t.columns
+                if c in self._step_column_names_ or ("__" in c and c.split("__", 1)[1] in self._step_column_names_)
+            ]
             if drop_cols:
                 X_t_components = X_t.drop(drop_cols)
 
