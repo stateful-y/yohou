@@ -112,7 +112,7 @@ class TestForecasterObserveRewindChecks:
         forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
         # Should not raise
-        check_observe_extends_observations(forecaster, y[:30], y[30:40], X[:30], X[30:40])
+        check_observe_extends_observations(forecaster, y[30:40], X[30:40])
 
     def test_rewind_replaces_observations(self, y_X_factory):
         """Test check_rewind_replaces_observations passes for valid forecaster."""
@@ -121,7 +121,7 @@ class TestForecasterObserveRewindChecks:
         forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
         # Should not raise
-        check_rewind_replaces_observations(forecaster, y[:30], y[20:40], X[:30], X[20:40])
+        check_rewind_replaces_observations(forecaster, y[20:40], X[20:40])
 
     def test_rewind_propagates_to_transformers(self, y_X_factory):
         """Test check_rewind_propagates_to_transformers passes for valid forecaster."""
@@ -132,7 +132,7 @@ class TestForecasterObserveRewindChecks:
         forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
         # Should not raise
-        check_rewind_propagates_to_transformers(forecaster, y[:30], y[20:40], X[:30], X[20:40])
+        check_rewind_propagates_to_transformers(forecaster, y[20:40], X[20:40])
 
 
 class TestForecasterCloneAndTagChecks:
@@ -208,9 +208,7 @@ class TestForecasterPanelObserveRewind:
         forecaster.fit(y.head(40), forecasting_horizon=3)
         check_observe_extends_observations(
             forecaster,
-            y.head(40),
             y.slice(40, 10),
-            None,
             None,
         )
 
@@ -221,9 +219,7 @@ class TestForecasterPanelObserveRewind:
         forecaster.fit(y.head(40), forecasting_horizon=3)
         check_rewind_replaces_observations(
             forecaster,
-            y.head(40),
             y.slice(20, 20),
-            None,
             None,
         )
 
@@ -316,7 +312,6 @@ class TestStepColumnChecks:
             forecaster,
             y[:50],
             X[:50],
-            y[50:60],
             X_future=X_future,
             forecasting_horizon=3,
         )
@@ -337,7 +332,6 @@ class TestStepColumnChecks:
             forecaster,
             y[:50],
             X[:50],
-            y[50:60],
             X_forecast=X_forecast,
             forecasting_horizon=3,
         )
@@ -357,7 +351,6 @@ class TestStepColumnChecks:
         forecaster.fit(y[:50], X[:50], forecasting_horizon=3, X_forecast=X_forecast)
         check_predict_X_forecast_override(
             forecaster,
-            y[50:60],
             X_forecast=X_forecast,
             forecasting_horizon=3,
         )

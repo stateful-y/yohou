@@ -591,9 +591,7 @@ class RollingStatisticsTransformer(BaseTransformer):
             return col.rolling_quantile(0.25, window_size=self.window_size)
         elif stat == "q75":
             return col.rolling_quantile(0.75, window_size=self.window_size)
-        else:
-            msg = f"Unknown statistic: {stat}"
-            raise ValueError(msg)
+        raise AssertionError("unreachable: statistic validated in _fit")
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform X by computing rolling statistics.

@@ -14,6 +14,7 @@ from sklearn.pipeline import Pipeline
 from yohou.base import BaseTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils._compat import StrOptions
+from yohou.utils.panel import get_group_df
 from yohou.utils.tags import Tags
 
 
@@ -179,7 +180,12 @@ class _BaseTrendForecaster(BasePointForecaster):
 
         # Panel data
         if groups is not None:
-            first_observed_time = dict.fromkeys(groups, y["time"][target_observation_horizon])
+            first_observed_time = {
+                group: get_group_df(df=y, group_name=group, schema=self.local_y_schema_)["time"][
+                    target_observation_horizon
+                ]
+                for group in groups
+            }
             self._first_observed_time |= first_observed_time
 
         # Non-panel data

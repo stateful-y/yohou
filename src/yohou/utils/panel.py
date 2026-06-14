@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable
 
 import polars as pl
+import polars.selectors as cs
 
 __all__ = [
     "dict_to_panel",
@@ -289,27 +290,17 @@ def select_panel_columns(
     if groups is None:
         return df
 
-    # Determine which columns to keep
-    cols_to_keep = ["time"]
+    # Columns belonging to a panel group start with "<group>__"; the regex stays
+    # in the polars engine and preserves the original column order on select.
+    panel_regex = "^(?:" + "|".join(re.escape(g) for g in groups) + ")__"
+    panel_selector = cs.matches(panel_regex)
 
-    for col in df.columns:
-        if col == "time":
-            continue
+    selector = cs.by_name("time") | panel_selector
+    if include_global:
+        # Global columns are the non-time columns that match no group prefix.
+        selector = selector | (cs.all() - cs.by_name("time") - panel_selector)
 
-        # Check if this column belongs to any panel group
-        is_panel = False
-        for group_prefix in groups:
-            if col.startswith(f"{group_prefix}__"):
-                is_panel = True
-                break
-
-        if is_panel:
-            cols_to_keep.append(col)
-        elif include_global:
-            # Global column (doesn't match any group prefix)
-            cols_to_keep.append(col)
-
-    return df.select(cols_to_keep)
+    return df.select(selector)
 
 
 def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.DataFrame | None:

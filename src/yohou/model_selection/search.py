@@ -332,7 +332,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
     _parameter_constraints: dict = {
         "forecaster": [HasMethods(["fit", "predict"])],
-        "scoring": [None, callable, dict],
+        "scoring": [callable, dict],
         "n_jobs": [numbers.Integral, None],
         "refit": ["boolean", str, callable],
         "cv": [numbers.Integral, HasMethods(["split", "get_n_splits"]), None],

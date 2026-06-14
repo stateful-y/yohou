@@ -258,6 +258,35 @@ class TestUpdateReset:
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
+    def test_rewind_threads_residuals_through_components(self, daily_data):
+        """Rewind seeds each component with its residual stage, not full y.
+
+        Under the residual-threading contract, the second component is rewound
+        on (target - first component's prediction), so its observed buffer must
+        differ from the first component's buffer, which is rewound on the full
+        target. A regression that seeds every component with the full target
+        would make these buffers identical.
+        """
+        forecaster = DecompositionPipeline([
+            ("level", SeasonalNaive(seasonality=1)),
+            ("seasonality", SeasonalNaive(seasonality=7)),
+        ])
+        forecaster.fit(daily_data[:30], forecasting_horizon=5)
+        forecaster.observe(daily_data[30:40])
+        forecaster.rewind(daily_data[20:40])
+
+        named = dict(forecaster.forecasters_)
+        level_observed = named["level"]._y_observed
+        seasonality_observed = named["seasonality"]._y_observed
+        assert level_observed is not None
+        assert seasonality_observed is not None
+
+        level_vals = level_observed.select(pl.exclude("time")).to_numpy()
+        seasonality_vals = seasonality_observed.select(pl.exclude("time")).to_numpy()
+
+        # The seasonality component sees residuals, not the raw target.
+        assert not (level_vals == seasonality_vals).all()
+
     def test_observation_horizon(self, daily_data):
         """Test observation_horizon property."""
         forecaster = DecompositionPipeline([

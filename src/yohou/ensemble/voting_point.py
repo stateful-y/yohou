@@ -312,7 +312,9 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         X_forecast : pl.DataFrame or None, default=None
             External forecasts.
         **params : dict
-            Metadata routing parameters.
+            Metadata routing parameters. Routed to each child through the
+            ``predict`` routing namespace (there is no separate
+            ``observe_predict`` mapping).
 
         Returns
         -------

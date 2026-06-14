@@ -19,7 +19,7 @@ class TestPointChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise
-        check_point_prediction_structure(forecaster, y[:40], X[:40])
+        check_point_prediction_structure(forecaster, y[:40])
 
     def test_check_point_prediction_structure_different_horizon(self, y_X_factory):
         """Test check validates prediction with different horizon."""
@@ -28,7 +28,7 @@ class TestPointChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise - check uses its own horizon internally
-        check_point_prediction_structure(forecaster, y[:40], X[:40])
+        check_point_prediction_structure(forecaster, y[:40])
 
     def test_check_point_prediction_types(self):
         """Test check_point_prediction_types passes for valid point forecaster."""

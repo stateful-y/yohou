@@ -18,9 +18,7 @@ import polars as pl
 from yohou.utils import inspect_panel
 
 
-def check_class_proba_prediction_structure(
-    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_prediction_structure(forecaster, y_test: pl.DataFrame) -> None:
     """Check class-probability predictions have correct column structure.
 
     Validates that ``predict_class_proba`` output contains ``"vintage_time"``
@@ -33,8 +31,6 @@ def check_class_proba_prediction_structure(
         Fitted class-probability forecaster instance.
     y_test : pl.DataFrame
         Test target data.
-    X_actual_test : pl.DataFrame or None, default=None
-        Test features.
 
     Raises
     ------
@@ -68,9 +64,7 @@ def check_class_proba_prediction_structure(
                 assert col_name in y_pred.columns, f"Missing probability column: {col_name}"
 
 
-def check_class_proba_prediction_bounds(
-    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_prediction_bounds(forecaster, y_test: pl.DataFrame) -> None:
     """Check all probability values are in [0, 1].
 
     Parameters
@@ -79,8 +73,6 @@ def check_class_proba_prediction_bounds(
         Fitted class-probability forecaster instance.
     y_test : pl.DataFrame
         Test target data.
-    X_actual_test : pl.DataFrame or None, default=None
-        Test features.
 
     Raises
     ------
@@ -102,9 +94,7 @@ def check_class_proba_prediction_bounds(
         assert max_val <= 1.0, f"Probability column {col} has values > 1 (max={max_val})"
 
 
-def check_class_proba_prediction_sums(
-    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame) -> None:
     """Check probabilities sum to approximately 1.0 per row per target.
 
     Parameters
@@ -113,8 +103,6 @@ def check_class_proba_prediction_sums(
         Fitted class-probability forecaster instance.
     y_test : pl.DataFrame
         Test target data.
-    X_actual_test : pl.DataFrame or None, default=None
-        Test features.
 
     Raises
     ------
@@ -215,9 +203,7 @@ def check_class_proba_classes_attribute(forecaster) -> None:
         )
 
 
-def check_class_proba_predict_returns_labels(
-    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
-) -> None:
+def check_class_proba_predict_returns_labels(forecaster, y_test: pl.DataFrame) -> None:
     """Check predict() returns argmax class labels, not probabilities.
 
     Validates that ``predict()`` returns a DataFrame with string class labels
@@ -229,8 +215,6 @@ def check_class_proba_predict_returns_labels(
         Fitted class-probability forecaster instance.
     y_test : pl.DataFrame
         Test target data.
-    X_actual_test : pl.DataFrame or None, default=None
-        Test features.
 
     Raises
     ------

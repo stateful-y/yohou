@@ -888,11 +888,13 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         Notes
         -----
-        Unlike ``observe``, ``rewind`` seeds every component forecaster with
-        the same full target ``y_t`` (in transformed space), not the
-        per-component residuals. This is intentional: ``rewind`` resets
-        observation state to a reference window rather than decomposing a new
-        signal.
+        Like ``observe``, ``rewind`` threads the decomposition residuals
+        through the component forecasters: each component is rewound on the
+        residual stream at its stage (the transformed target minus the sum of
+        all preceding components' predictions), mirroring what each component
+        was fitted on. The difference from ``observe`` is only that ``rewind``
+        resets each component's observation buffer to a reference window rather
+        than appending to it.
 
         """
         check_is_fitted(self, ["forecasters_", "groups_"])
@@ -917,9 +919,64 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         else:
             X_t = X_actual
 
-        # Rewind all forecasters
+        # Rewind all forecasters, threading residuals through each stage so
+        # every component is rewound on the signal it was fitted on (the
+        # transformed target minus preceding components' predictions), not the
+        # full target. Predictions for the residuals are computed on a deepcopy
+        # (mirroring fit) so the real forecaster's buffer is left in the rewound
+        # state, not the observe-predict state.
+        residuals = y_t
         for _, forecaster in self.forecasters_:
-            forecaster.rewind(y_t, X_actual=X_t, X_future=X_future, X_forecast=X_forecast)
+            forecaster.rewind(residuals, X_actual=X_t, X_future=X_future, X_forecast=X_forecast)
+
+            forecaster_pred = deepcopy(forecaster)
+            forecaster_observation_horizon = forecaster_pred.observation_horizon
+            if forecaster_pred.feature_transformer is not None:
+                ft_ = forecaster_pred.feature_transformer_
+                if isinstance(ft_, dict):
+                    feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
+                else:
+                    feature_observation_horizon = ft_.observation_horizon + 1
+                forecaster_observation_horizon = max(forecaster_observation_horizon, feature_observation_horizon)
+
+            if not forecaster_observation_horizon:
+                rewind_time = add_interval(residuals["time"][0], interval=forecaster_pred.interval_, n=-1)
+                y_rewind = pl.DataFrame(
+                    {col: [rewind_time] if col == "time" else [None] for col in y_t.columns},
+                    schema=y_t.schema,
+                )
+                X_rewind = None
+                if X_t is not None:
+                    X_rewind = pl.DataFrame(
+                        {col: [rewind_time] if col == "time" else [None] for col in X_t.columns},
+                        schema=X_t.schema,
+                    )
+            else:
+                y_rewind = residuals[:forecaster_observation_horizon]
+                X_rewind = X_t[:forecaster_observation_horizon] if X_t is not None else None
+
+            forecaster_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast)
+
+            residuals_remaining = residuals[forecaster_observation_horizon:]
+            X_remaining = X_t[forecaster_observation_horizon:] if X_t is not None else None
+            y_pred = forecaster_pred.observe_predict(
+                y=residuals_remaining,
+                X_actual=X_remaining,
+                forecasting_horizon=forecaster.fit_forecasting_horizon_,
+                X_future=X_future,
+                X_forecast=X_forecast,
+            )
+
+            aligned = residuals.join(
+                y_pred.select(~cs.by_name("vintage_time")),
+                on="time",
+                how="inner",
+                suffix="_pred",
+            )
+            target_cols = [c for c in residuals.columns if c != "time"]
+            residuals = aligned.select(
+                [pl.col("time")] + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
+            )
 
         # Rewind base class observation buffers
         self._y_observed = y_t

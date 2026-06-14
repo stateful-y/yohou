@@ -114,7 +114,12 @@ class BoxCoxTransformer(BaseTransformer):
 
     Notes
     -----
-    Box-Cox requires strictly positive input data.
+    Box-Cox requires strictly positive input data: ``x + offset`` must be
+    greater than zero for every value. The ``min_value`` input tag reports
+    ``-offset`` as the exclusive lower bound (``0.0`` when ``offset == 0.0``);
+    supplying exactly ``-offset`` produces a non-positive argument (e.g.
+    ``log(0) = -inf`` when ``lmbda == 0``), so callers must ensure strict
+    positivity.
 
     References
     ----------
@@ -172,8 +177,11 @@ class BoxCoxTransformer(BaseTransformer):
         """
         tags = super().__sklearn_tags__()
         assert tags.input_tags is not None
-        # Box-Cox requires positive data (after offset)
-        tags.input_tags.min_value = -self.offset if self.offset > 0.0 else 0.0
+        # Box-Cox requires strictly positive ``x + offset``, so the smallest
+        # admissible input is the exclusive lower bound ``-offset`` (which is
+        # ``0.0`` when ``offset == 0.0``). The bound is exclusive: feeding
+        # exactly ``-offset`` yields a non-positive argument to the transform.
+        tags.input_tags.min_value = -self.offset
         return tags
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
@@ -933,38 +941,30 @@ class ASinhTransformer(BaseTransformer):
         self.median_: dict[str, float] = {}
         self.mad_: dict[str, float] = {}
 
-        for col in X_numeric.columns:
-            col_data = X_numeric.get_column(col)
-            median_val = col_data.median()
-            # Cast to float for numeric operations (polars median returns numeric type)
-            self.median_[col] = (
-                float(median_val) if median_val is not None else 0.0  # ty: ignore[invalid-argument-type]
-            )
+        if X_numeric.columns:
+            # Per-column median in a single pass.
+            median_row = X_numeric.select(pl.all().median()).row(0, named=True)
+            self.median_ = {col: (float(val) if val is not None else 0.0) for col, val in median_row.items()}
 
-            # Compute MAD: median(|X - median(X)|) * scale
-            abs_dev = (col_data - self.median_[col]).abs()
-            mad_val = abs_dev.median()
-            mad_scaled = (
-                float(mad_val) * self.scale if mad_val is not None else 1.0  # ty: ignore[invalid-argument-type]
-            )
-
-            # Avoid division by zero
-            self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0
+            # MAD: median(|X - median(X)|) * scale, computed for all columns at once.
+            mad_row = X_numeric.select(
+                (pl.col(col) - self.median_[col]).abs().median().alias(col) for col in X_numeric.columns
+            ).row(0, named=True)
+            for col, mad_val in mad_row.items():
+                mad_scaled = float(mad_val) * self.scale if mad_val is not None else 1.0
+                # Avoid division by zero
+                self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform the input time series."""
         time = X.select(cs.by_name("time"))
         X_numeric = X.select(~cs.by_name("time"))
 
-        # Apply asinh((X - median) / MAD) for each column
-        transformed_cols = []
-        for col in X_numeric.columns:
-            col_data = X_numeric.get_column(col).to_numpy()
-            normalized = (col_data - self.median_[col]) / self.mad_[col]
-            transformed = pl.Series(panel_aware_prefix(col, "asinh"), np.arcsinh(normalized))
-            transformed_cols.append(transformed)
-
-        X_t = pl.DataFrame(transformed_cols)
+        # Apply asinh((X - median) / MAD) across all columns in one pass.
+        X_t = X_numeric.select(
+            ((pl.col(col) - self.median_[col]) / self.mad_[col]).arcsinh().alias(panel_aware_prefix(col, "asinh"))
+            for col in X_numeric.columns
+        )
         X_t = pl.concat([time, X_t], how="horizontal")
 
         return X_t

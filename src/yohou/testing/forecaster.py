@@ -11,6 +11,8 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
+from .contract import _safe_equal, check_clone_preserves_params
+
 __all__ = [
     "check_clone_preserves_forecaster_params",
     "check_fit_predict_with_X_forecast",
@@ -36,6 +38,56 @@ __all__ = [
 ]
 
 
+def _assert_observed_time_consistent(forecaster, phase: str) -> None:
+    """Assert ``observed_time_`` matches the last time in the observation buffers.
+
+    Shared precondition for the observe/rewind buffer checks: before the
+    mutating call, the forecaster's ``observed_time_`` must equal the last
+    ``"time"`` value held in ``_y_observed`` and ``_X_t_observed``. Handles
+    both panel (dict-valued buffers) and non-panel (frame-valued) layouts, and
+    tolerates ``None`` group buffers (``observation_horizon == 0``).
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Fitted forecaster instance, inspected before observe()/rewind().
+    phase : str
+        Either ``"observe"`` or ``"rewind"``, used only in assertion messages.
+
+    Raises
+    ------
+    AssertionError
+        If ``observed_time_`` disagrees with a buffer's last time.
+
+    """
+    observed_time = forecaster.observed_time_
+
+    if forecaster._y_observed is not None:
+        if isinstance(forecaster._y_observed, dict):
+            first_group = next(iter(forecaster._y_observed.keys()))
+            first_group_y = forecaster._y_observed[first_group]
+            if first_group_y is not None:
+                assert observed_time[first_group] == first_group_y["time"][-1], (
+                    f"observed_time_ should match last time in _y_observed before {phase}()"
+                )
+        else:
+            assert observed_time == forecaster._y_observed["time"][-1], (
+                f"observed_time_ should match last time in _y_observed before {phase}()"
+            )
+
+    if forecaster._X_t_observed is not None:
+        if isinstance(forecaster._X_t_observed, dict):
+            first_group = next(iter(forecaster._X_t_observed.keys()))
+            if forecaster._X_t_observed[first_group] is not None:
+                assert observed_time[first_group] == forecaster._X_t_observed[first_group]["time"][-1], (
+                    f"observed_time_ should match last time in _X_t_observed before {phase}()"
+                )
+        else:
+            assert observed_time == forecaster._X_t_observed["time"][-1], (
+                f"observed_time_ should match last time in _X_t_observed before {phase}()"
+            )
+
+
 def check_fit_sets_forecaster_attributes(
     forecaster,
     y: pl.DataFrame,
@@ -46,9 +98,12 @@ def check_fit_sets_forecaster_attributes(
 ) -> None:
     """Check fit() sets required forecaster attributes.
 
-    Validates that fit() creates all required attributes for forecasters including
-    fit_forecasting_horizon_, interval_, groups_, local_y_schema_,
-    observation buffers, and transformer references.
+    Verifies that fit() fully initializes the stateful lifecycle so that
+    observe(), rewind(), and predict() can be called immediately afterward:
+    the horizon and schema attributes that downstream calls read, the
+    observation buffers that observe()/rewind() mutate, and the fitted
+    transformer references when transformers are configured. The specific
+    attribute names and the step-column contract live in the assertions below.
 
     Parameters
     ----------
@@ -215,9 +270,7 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_actual_test: 
 
 def check_observe_extends_observations(
     forecaster,
-    y_train: pl.DataFrame,
     y_observe: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
     X_actual_observe: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -228,12 +281,8 @@ def check_observe_extends_observations(
     ----------
     forecaster : BaseForecaster
         Fitted forecaster instance
-    y_train : pl.DataFrame
-        Original training data
     y_observe : pl.DataFrame
         New data for update
-    X_actual_train : pl.DataFrame, optional
-        Features for training
     X_actual_observe : pl.DataFrame, optional
         Features for update
     X_future : pl.DataFrame, optional
@@ -250,41 +299,8 @@ def check_observe_extends_observations(
     # Store original buffer length
     original_observed_time = forecaster.observed_time_
 
-    # Handle both panel (dict) and non-panel (DataFrame or scalar) data
-    if forecaster._y_observed is not None:
-        if isinstance(forecaster._y_observed, dict):
-            # Panel data: observed_time_ is a dict
-            # Check the first group as a representative
-            first_group = next(iter(forecaster._y_observed.keys()))
-            first_group_y = forecaster._y_observed[first_group]
-            # _y_observed[group] can be None when observation_horizon == 0
-            if first_group_y is not None:
-                original_y_observed_last_time = first_group_y["time"][-1]
-                assert original_observed_time[first_group] == original_y_observed_last_time, (
-                    "observed_time_ should match last time in _y_observed before observe()"
-                )
-        else:
-            # Non-panel data: observed_time_ is a scalar
-            original_y_observed_last_time = forecaster._y_observed["time"][-1]
-            assert original_observed_time == original_y_observed_last_time, (
-                "observed_time_ should match last time in _y_observed before observe()"
-            )
-
-    if forecaster._X_t_observed is not None:
-        if isinstance(forecaster._X_t_observed, dict):
-            # Panel data
-            first_group = next(iter(forecaster._X_t_observed.keys()))
-            if forecaster._X_t_observed[first_group] is not None:
-                original_X_t_observed_last_time = forecaster._X_t_observed[first_group]["time"][-1]
-                assert original_observed_time[first_group] == original_X_t_observed_last_time, (
-                    "observed_time_ should match last time in _X_t_observed before observe()"
-                )
-        else:
-            # Non-panel data
-            original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-            assert original_observed_time == original_X_t_observed_last_time, (
-                "observed_time_ should match last time in _X_t_observed before observe()"
-            )
+    # Precondition: observed_time_ agrees with the observation buffers.
+    _assert_observed_time_consistent(forecaster, "observe")
 
     # Update with new data
     forecaster.observe(y_observe, X_actual_observe, X_future=X_future, X_forecast=X_forecast)
@@ -341,9 +357,7 @@ def check_observe_extends_observations(
 
 def check_rewind_replaces_observations(
     forecaster,
-    y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
     X_actual_reset: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -354,12 +368,8 @@ def check_rewind_replaces_observations(
     ----------
     forecaster : BaseForecaster
         Fitted forecaster instance
-    y_train : pl.DataFrame
-        Original training data
     y_reset : pl.DataFrame
         New data for reset
-    X_actual_train : pl.DataFrame, optional
-        Features for training
     X_actual_reset : pl.DataFrame, optional
         Features for reset
     X_future : pl.DataFrame, optional
@@ -373,43 +383,8 @@ def check_rewind_replaces_observations(
         If observation buffers are not replaced correctly
 
     """
-    # Store original buffer length
-    original_observed_time = forecaster.observed_time_
-
-    # Handle both panel (dict) and non-panel (DataFrame or scalar) data
-    if forecaster._y_observed is not None:
-        if isinstance(forecaster._y_observed, dict):
-            # Panel data
-            first_group = next(iter(forecaster._y_observed.keys()))
-            first_group_y = forecaster._y_observed[first_group]
-            # _y_observed[group] can be None when observation_horizon == 0
-            if first_group_y is not None:
-                original_y_observed_last_time = first_group_y["time"][-1]
-                assert original_observed_time[first_group] == original_y_observed_last_time, (
-                    "observed_time_ should match last time in _y_observed before rewind()"
-                )
-        else:
-            # Non-panel data
-            original_y_observed_last_time = forecaster._y_observed["time"][-1]
-            assert original_observed_time == original_y_observed_last_time, (
-                "observed_time_ should match last time in _y_observed before rewind()"
-            )
-
-    if forecaster._X_t_observed is not None:
-        if isinstance(forecaster._X_t_observed, dict):
-            # Panel data
-            first_group = next(iter(forecaster._X_t_observed.keys()))
-            if forecaster._X_t_observed[first_group] is not None:
-                original_X_t_observed_last_time = forecaster._X_t_observed[first_group]["time"][-1]
-                assert original_observed_time[first_group] == original_X_t_observed_last_time, (
-                    "observed_time_ should match last time in _X_t_observed before rewind()"
-                )
-        else:
-            # Non-panel data
-            original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
-            assert original_observed_time == original_X_t_observed_last_time, (
-                "observed_time_ should match last time in _X_t_observed before rewind()"
-            )
+    # Precondition: observed_time_ agrees with the observation buffers.
+    _assert_observed_time_consistent(forecaster, "rewind")
 
     # Reset to new data
     forecaster.rewind(y_reset, X_actual_reset, X_future=X_future, X_forecast=X_forecast)
@@ -465,9 +440,7 @@ def check_rewind_replaces_observations(
 
 def check_rewind_propagates_to_transformers(
     forecaster,
-    y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
     X_actual_reset: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -481,12 +454,8 @@ def check_rewind_propagates_to_transformers(
     ----------
     forecaster : BaseForecaster
         Fitted forecaster instance with transformers
-    y_train : pl.DataFrame
-        Original training data
     y_reset : pl.DataFrame
         New data for reset
-    X_actual_train : pl.DataFrame, optional
-        Features for training
     X_actual_reset : pl.DataFrame, optional
         Features for reset
     X_future : pl.DataFrame, optional
@@ -637,8 +606,12 @@ def check_prediction_types_property(forecaster) -> None:
 def check_clone_preserves_forecaster_params(forecaster) -> None:
     """Check sklearn's clone() preserves init parameters.
 
-    Enhanced version that handles nested estimators and meta-forecasters like
-    DecompositionPipeline and ColumnForecaster with list of (name, estimator) tuples.
+    Delegates the shallow-param and nested-estimator contract to the shared,
+    family-agnostic ``check_clone_preserves_params`` (which uses ``_safe_equal``
+    and so tolerates DataFrame/array-valued params whose ``==`` is not a bool).
+    Adds the forecaster-specific check for ``(name, estimator, columns)``
+    3-tuples (e.g. ``ColumnForecaster``): the trailing ``columns`` element must
+    survive clone unchanged.
 
     Parameters
     ----------
@@ -651,110 +624,25 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
         If cloned forecaster has different parameters
 
     """
-    forecaster_clone = clone(forecaster)
+    check_clone_preserves_params(forecaster)
 
-    # Get parameters
+    forecaster_clone = clone(forecaster)
     original_params = forecaster.get_params(deep=False)
     cloned_params = forecaster_clone.get_params(deep=False)
 
-    # Check same parameter keys
-    assert set(original_params.keys()) == set(cloned_params.keys()), (
-        f"clone() should have same parameter keys, got {set(cloned_params.keys())} vs {set(original_params.keys())}"
-    )
-
-    # Check parameter values (for nested estimators, check type)
-    for key in original_params:
-        orig_val = original_params[key]
+    for key, orig_val in original_params.items():
         cloned_val = cloned_params[key]
-
-        # For None values
-        if orig_val is None:
-            assert cloned_val is None, f"Parameter {key}: expected None, got {cloned_val}"
-        # For list of (name, estimator) tuples (meta-estimators like DecompositionPipeline, FeaturePipeline)
-        elif isinstance(orig_val, list) and len(orig_val) > 0 and isinstance(orig_val[0], tuple):
-            assert isinstance(cloned_val, list), f"Parameter {key}: expected list, got {type(cloned_val)}"
-            assert len(orig_val) == len(cloned_val), f"Parameter {key}: different lengths"
-
-            for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val, strict=False)):
-                assert isinstance(orig_item, tuple), f"Parameter {key}[{i}]: expected tuple"
-                assert isinstance(cloned_item, tuple), f"Parameter {key}[{i}]: expected tuple"
-                assert len(orig_item) in (2, 3), (
-                    f"Parameter {key}[{i}]: expected (name, estimator) or (name, estimator, columns) tuple, got length {len(orig_item)}"
-                )
-                assert len(cloned_item) == len(orig_item), (
-                    f"Parameter {key}[{i}]: clone tuple length {len(cloned_item)} != original {len(orig_item)}"
+        if not (isinstance(orig_val, list) and orig_val and isinstance(orig_val[0], tuple)):
+            continue
+        for i, (orig_item, cloned_item) in enumerate(zip(orig_val, cloned_val, strict=True)):
+            if not (isinstance(orig_item, tuple) and isinstance(cloned_item, tuple)):
+                continue
+            if len(orig_item) == 3 and len(cloned_item) == 3:
+                orig_cols, cloned_cols = orig_item[-1], cloned_item[-1]
+                assert _safe_equal(orig_cols, cloned_cols), (
+                    f"Parameter {key}[{i}] columns: {cloned_cols!r} != {orig_cols!r}"
                 )
 
-                orig_name, orig_est = orig_item[0], orig_item[1]
-                cloned_name, cloned_est = cloned_item[0], cloned_item[1]
-
-                # Names should match exactly
-                assert orig_name == cloned_name, f"Parameter {key}[{i}]: different names {cloned_name} != {orig_name}"
-
-                # Estimators should be different instances but same type
-                assert type(orig_est) is type(cloned_est), (
-                    f"Parameter {key}[{i}] estimator: different types {type(cloned_est)} vs {type(orig_est)}"
-                )
-                assert orig_est is not cloned_est, (
-                    f"Parameter {key}[{i}] estimator: should be cloned, not same instance"
-                )
-
-                # Check estimator params match
-                if hasattr(orig_est, "get_params"):
-                    orig_est_params = orig_est.get_params(deep=True)  # ty: ignore[call-non-callable]
-                    cloned_est_params = cloned_est.get_params(deep=True)  # ty: ignore[unresolved-attribute]
-                    for param_key in orig_est_params:
-                        orig_param = orig_est_params.get(param_key)
-                        cloned_param = cloned_est_params.get(param_key)
-                        if hasattr(orig_param, "get_params"):
-                            assert type(orig_param) is type(cloned_param), (
-                                f"Parameter {key}[{i}]__{param_key}: different types"
-                            )
-                        elif orig_param != cloned_param:
-                            assert orig_param == cloned_param, (
-                                f"Parameter {key}[{i}]__{param_key}: {cloned_param} != {orig_param}"
-                            )
-
-                # For 3-tuples (name, estimator, columns), compare the columns element
-                if len(orig_item) == 3:
-                    orig_cols = orig_item[2]
-                    cloned_cols = cloned_item[2]
-                    assert orig_cols == cloned_cols, f"Parameter {key}[{i}] columns: {cloned_cols} != {orig_cols}"
-        elif isinstance(orig_val, type):
-            assert orig_val is cloned_val, (
-                f"Parameter {key}: class type should be preserved by clone, got {cloned_val} vs {orig_val}"
-            )
-        # For estimator instances, check type and params (recursively)
-        elif hasattr(orig_val, "get_params"):
-            assert type(orig_val) is type(cloned_val), (
-                f"Parameter {key}: different types {type(cloned_val)} vs {type(orig_val)}"
-            )
-            # Use deep=True to get all nested params, compare them
-            orig_deep_params = orig_val.get_params(deep=True)
-            cloned_deep_params = cloned_val.get_params(deep=True)
-
-            # Compare only primitive values and types (not object instances)
-            for param_key in orig_deep_params:
-                orig_param = orig_deep_params.get(param_key)
-                cloned_param = cloned_deep_params.get(param_key)
-
-                # Skip comparing estimator instances themselves, just check types
-                if hasattr(orig_param, "get_params"):
-                    assert type(orig_param) is type(cloned_param), f"Parameter {key}__{param_key}: different types"
-                elif orig_param != cloned_param:
-                    assert orig_param == cloned_param, f"Parameter {key}__{param_key}: {cloned_param} != {orig_param}"
-        # For other values, direct comparison
-        else:
-            try:
-                are_equal = bool(orig_val == cloned_val)
-            except Exception:
-                are_equal = False
-            if not are_equal:
-                # Fall back to type comparison for objects that don't define __eq__
-                # (e.g., PyTorch modules, neuralforecast loss functions).
-                assert type(orig_val) is type(cloned_val), f"Parameter {key}: {cloned_val} != {orig_val}"
-
-    # Check they are different objects
     assert forecaster_clone is not forecaster, "clone() should create new instance"
 
 
@@ -949,8 +837,6 @@ def check_forecaster_methods_call_check_is_fitted(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None = None,
     forecasting_horizon: int = 3,
-    X_future: pl.DataFrame | None = None,
-    X_forecast: pl.DataFrame | None = None,
 ) -> None:
     """Check all forecaster methods (except fit) raise NotFittedError when unfitted.
 
@@ -968,12 +854,6 @@ def check_forecaster_methods_call_check_is_fitted(
         Training/test features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
-    X_future : pl.DataFrame, optional
-        Known-future features, accepted for signature compatibility with the
-        check harness; the not-fitted contract is exercised without them
-    X_forecast : pl.DataFrame, optional
-        External forecast features, accepted for signature compatibility with
-        the check harness; the not-fitted contract is exercised without them
 
     Raises
     ------
@@ -1104,7 +984,6 @@ def check_fit_predict_with_X_future(
     forecaster,
     y_train: pl.DataFrame,
     X_actual_train: pl.DataFrame | None,
-    y_test: pl.DataFrame,
     X_future: pl.DataFrame,
     forecasting_horizon: int = 3,
 ) -> None:
@@ -1121,8 +1000,6 @@ def check_fit_predict_with_X_future(
         Training target data.
     X_actual_train : pl.DataFrame or None
         Training features.
-    y_test : pl.DataFrame
-        Test target data.
     X_future : pl.DataFrame
         Known-future features with ``"time"`` column.
     forecasting_horizon : int, default=3
@@ -1158,7 +1035,6 @@ def check_fit_predict_with_X_forecast(
     forecaster,
     y_train: pl.DataFrame,
     X_actual_train: pl.DataFrame | None,
-    y_test: pl.DataFrame,
     X_forecast: pl.DataFrame,
     forecasting_horizon: int = 3,
 ) -> None:
@@ -1175,8 +1051,6 @@ def check_fit_predict_with_X_forecast(
         Training target data.
     X_actual_train : pl.DataFrame or None
         Training features.
-    y_test : pl.DataFrame
-        Test target data.
     X_forecast : pl.DataFrame
         External forecasts in tidy format.
     forecasting_horizon : int, default=3
@@ -1210,7 +1084,6 @@ def check_fit_predict_with_X_forecast(
 
 def check_predict_X_forecast_override(
     forecaster,
-    y_test: pl.DataFrame,
     X_forecast: pl.DataFrame,
     forecasting_horizon: int = 3,
 ) -> None:
@@ -1223,8 +1096,6 @@ def check_predict_X_forecast_override(
     ----------
     forecaster : BaseForecaster
         Fitted forecaster instance (fitted with X_forecast).
-    y_test : pl.DataFrame
-        Test target data.
     X_forecast : pl.DataFrame
         External forecasts for override.
     forecasting_horizon : int, default=3
@@ -1434,7 +1305,10 @@ def check_requires_exogenous_warns_on_X_future_X_forecast(
     """Check that a forecaster with requires_exogenous=False warns when X_future/X_forecast provided.
 
     Forecasters with ``requires_exogenous=False`` should emit a UserWarning
-    when X_future or X_forecast is passed to fit().
+    when X_future or X_forecast is passed to fit(). The check always calls
+    ``fit`` with ``X_actual=None`` (it exercises only the step-feature path),
+    and any UserWarning emitted during that call satisfies the contract; the
+    warning need not specifically mention X_future or X_forecast.
 
     Parameters
     ----------

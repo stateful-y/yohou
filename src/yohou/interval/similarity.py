@@ -159,13 +159,16 @@ class DistanceSimilarity(BaseSimilarity):
         else:
             result = y_pred
 
-        for col in result.columns:
-            if col == "time":
-                continue
-            series = result[col]
-            if series.null_count() > 0 or series.cast(pl.Float64, strict=False).is_nan().sum() > 0:
+        value_cols = [col for col in result.columns if col != "time"]
+        if value_cols:
+            bad_mask = result.select(
+                (pl.col(col).is_null() | pl.col(col).cast(pl.Float64, strict=False).is_nan()).any().alias(col)
+                for col in value_cols
+            )
+            bad_cols = [col for col in value_cols if bad_mask[col][0]]
+            if bad_cols:
                 raise ValueError(
-                    f"Column '{col}' contains null or NaN values. DistanceSimilarity requires complete data."
+                    f"Column '{bad_cols[0]}' contains null or NaN values. DistanceSimilarity requires complete data."
                 )
         return result
 
@@ -306,9 +309,11 @@ class SeasonalSimilarity(BaseSimilarity):
 
     Parameters
     ----------
-    seasonalities : list of float
+    seasonalities : list of float or None, default=None
         Seasonal periods in time steps (e.g. ``[7.0, 365.25]`` for
-        weekly and yearly cycles on daily data).
+        weekly and yearly cycles on daily data). ``None`` is accepted at
+        construction but invalid; passing ``None`` raises ``ValueError``
+        at ``fit`` time, so a list must be provided before fitting.
     harmonics : dict mapping float to list of int, or None, default=None
         Harmonics to include per seasonality period. Keys must match
         entries in ``seasonalities``. Each value is a list of positive

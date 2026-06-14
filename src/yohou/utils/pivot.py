@@ -6,9 +6,39 @@ from datetime import timedelta
 
 import polars as pl
 
-from yohou.utils.validation import add_interval
+from yohou.utils.validation import parse_interval
 
 __all__ = ["window_forecasts", "window_futures"]
+
+_POLARS_OFFSET_UNITS: dict[str, tuple[int, str]] = {
+    "d": (1, "d"),
+    "h": (1, "h"),
+    "m": (1, "m"),
+    "s": (1, "s"),
+    "w": (1, "w"),
+    "mo": (1, "mo"),
+    "q": (3, "mo"),
+    "y": (1, "y"),
+    "ms": (1, "ms"),
+    "us": (1, "us"),
+    "ns": (1, "ns"),
+}
+
+
+def _target_time_expr(base_col: str, step_col: str, interval: str | timedelta) -> pl.Expr:
+    """Return an expression for ``base + step * interval`` over a DataFrame.
+
+    Mirrors :func:`yohou.utils.validation.add_interval` in vectorized form,
+    including the calendar-aware semantics of ``offset_by`` for month, quarter,
+    and year units (day-of-month clamping and leap-year handling).
+    """
+    if isinstance(interval, timedelta):
+        return pl.col(base_col) + pl.duration(microseconds=int(interval.total_seconds() * 1_000_000)) * pl.col(step_col)
+
+    multiplier, unit = parse_interval(interval)
+    scale, polars_unit = _POLARS_OFFSET_UNITS[unit]
+    total = (pl.col(step_col) * (multiplier * scale)).cast(pl.String) + pl.lit(polars_unit)
+    return pl.col(base_col).dt.offset_by(total)
 
 
 def window_futures(
@@ -97,15 +127,7 @@ def window_futures(
         msg = f"No value columns found. DataFrame has only '{time_col}'. At least one value column is required."
         raise ValueError(msg)
 
-    # Build a lookup mapping from time → row values
-    # Join approach: create a tidy representation with vintage_time, then pivot.
-    rows: list[dict] = []
-    for obs_time in observation_times.to_list():
-        for step in range(1, forecasting_horizon + 1):
-            target_time = add_interval(obs_time, interval, n=step)
-            rows.append({"vintage_time": obs_time, "time": target_time, "_step": step})
-
-    if not rows:
+    if observation_times.is_empty():
         # No observation times: return empty frame with correct schema
         cols = {"time": pl.Series([], dtype=observation_times.dtype)}
         for col in value_cols:
@@ -113,7 +135,15 @@ def window_futures(
                 cols[f"{col}_step_{step}"] = pl.Series([], dtype=X_future[col].dtype)
         return pl.DataFrame(cols)
 
-    lookup = pl.DataFrame(rows)
+    # Build a lookup table as the cross product of observation times and steps,
+    # then compute each target time with a vectorized calendar-aware expression.
+    steps = pl.DataFrame({"_step": range(1, forecasting_horizon + 1)})
+    lookup = (
+        pl
+        .DataFrame({"vintage_time": observation_times})
+        .join(steps, how="cross")
+        .with_columns(_target_time_expr("vintage_time", "_step", interval).alias("time"))
+    )
 
     # Join lookup with X_future on time to get values at each target time
     joined = lookup.join(
@@ -259,28 +289,20 @@ def window_forecasts(
     )
     # matched has columns: time, _vintage (the matched vintage or null)
 
-    # Build lookup rows: for each (obs_time, matched_vintage), target times T+1..T+H
-    rows: list[dict] = []
-    for obs_time, vintage in zip(
-        matched["time"].to_list(),
-        matched["_vintage"].to_list(),
-        strict=True,
-    ):
-        if vintage is None:
-            continue
-        for step in range(1, forecasting_horizon + 1):
-            target_time = add_interval(obs_time, interval, n=step)
-            rows.append({
-                "_obs_time": obs_time,
-                vintage_col: vintage,
-                time_col: target_time,
-                "_step": step,
-            })
-
-    if not rows:
+    # Build lookup table: for each (obs_time, matched_vintage), target times
+    # T+1..T+H. Drop observation times with no matching vintage, then take the
+    # cross product with steps and compute target times in a vectorized pass.
+    matched_with_vintage = matched.filter(pl.col("_vintage").is_not_null())
+    if matched_with_vintage.is_empty():
         return _null_result()
 
-    lookup = pl.DataFrame(rows)
+    steps = pl.DataFrame({"_step": range(1, forecasting_horizon + 1)})
+    lookup = (
+        matched_with_vintage
+        .rename({"time": "_obs_time", "_vintage": vintage_col})
+        .join(steps, how="cross")
+        .with_columns(_target_time_expr("_obs_time", "_step", interval).alias(time_col))
+    )
 
     # Join lookup with X_forecast to get values at each target time from the matched vintage
     joined = lookup.join(

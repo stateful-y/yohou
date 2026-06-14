@@ -14,6 +14,23 @@ import polars as pl
 from sklearn.utils import Bunch
 
 
+def _forecast_index_grid(n_samples: int, forecasting_horizon: int) -> tuple[np.ndarray, np.ndarray]:
+    """Build vintage and target index arrays for X_forecast construction.
+
+    Reproduces, in vectorized form, the row order of the nested loop over
+    vintage indices ``i in range(forecasting_horizon, n_samples)`` and steps
+    ``step in range(1, forecasting_horizon + 1)``, keeping only pairs whose
+    target index ``i + step`` stays within the sample range. The row order is
+    preserved so downstream RNG draws stay numerically identical.
+    """
+    vintage = np.arange(forecasting_horizon, n_samples)
+    steps = np.arange(1, forecasting_horizon + 1)
+    vintage_grid = np.repeat(vintage, forecasting_horizon)
+    target_grid = vintage_grid + np.tile(steps, vintage.shape[0])
+    keep = target_grid < n_samples
+    return vintage_grid[keep], target_grid[keep]
+
+
 def make_exogenous_regression(
     *,
     n_samples: int = 200,
@@ -117,19 +134,15 @@ def make_exogenous_regression(
     X_actual = pl.DataFrame({"time": times, "temperature": actual_temp})
     X_future = pl.DataFrame({"time": times, "is_holiday": holidays})
 
-    forecast_rows: list[dict[str, object]] = []
-    for i in range(forecasting_horizon, n_samples):
-        for step in range(1, forecasting_horizon + 1):
-            if i + step < n_samples:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "wx_temp": float(actual_temp[i + step] + forecast_bias + rng.normal(0, 0.3)),
-                })
+    vintage_idx, target_idx = _forecast_index_grid(n_samples, forecasting_horizon)
+    wx_noise = rng.normal(0, 0.3, vintage_idx.shape[0])
     X_forecast = pl.DataFrame(
-        forecast_rows,
+        {
+            "vintage_time": times.gather(vintage_idx),
+            "time": times.gather(target_idx),
+            "wx_temp": actual_temp[target_idx] + forecast_bias + wx_noise,
+        },
         schema={"vintage_time": times.dtype, "time": times.dtype, "wx_temp": pl.Float64},
-        orient="row",
     )
 
     frame = y.join(X_actual, on="time").join(X_future, on="time")
@@ -272,19 +285,15 @@ def make_exogenous_classification(
     X_actual = pl.DataFrame({"time": times, "pollutant": pollutant})
     X_future = pl.DataFrame({"time": times, "is_weekend": is_weekend})
 
-    forecast_rows: list[dict[str, object]] = []
-    for i in range(forecasting_horizon, n_samples):
-        for step in range(1, forecasting_horizon + 1):
-            if i + step < n_samples:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "pollutant_forecast": float(pollutant[i + step] + forecast_bias + rng.normal(0, 2.0)),
-                })
+    vintage_idx, target_idx = _forecast_index_grid(n_samples, forecasting_horizon)
+    pollutant_noise = rng.normal(0, 2.0, vintage_idx.shape[0])
     X_forecast = pl.DataFrame(
-        forecast_rows,
+        {
+            "vintage_time": times.gather(vintage_idx),
+            "time": times.gather(target_idx),
+            "pollutant_forecast": pollutant[target_idx] + forecast_bias + pollutant_noise,
+        },
         schema={"vintage_time": times.dtype, "time": times.dtype, "pollutant_forecast": pl.Float64},
-        orient="row",
     )
 
     frame = y.join(X_actual, on="time").join(X_future, on="time")

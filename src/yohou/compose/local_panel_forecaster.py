@@ -802,14 +802,18 @@ class LocalPanelForecaster(BaseForecaster):
     ) -> pl.DataFrame:
         """Reassemble per-group predictions into a panel DataFrame.
 
-        Extracts time columns from the first group, prefixes all other
-        columns with ``<group_name>__``, and concatenates horizontally.
+        Prefixes each group's value columns with ``<group_name>__`` and
+        joins the per-group frames on their time keys (``"time"`` and,
+        when present, ``"vintage_time"``). Joining on the time keys (rather
+        than concatenating horizontally by position) guarantees that values
+        are aligned by timestamp; a group with a misaligned time grid
+        surfaces as nulls instead of silently corrupted associations.
 
         Parameters
         ----------
         group_predictions : dict of str to pl.DataFrame
             Mapping from group name to prediction DataFrame. Each
-            DataFrame must have the same time index.
+            DataFrame must share the same time keys.
 
         Returns
         -------
@@ -817,22 +821,38 @@ class LocalPanelForecaster(BaseForecaster):
             Panel predictions with prefixed columns.
 
         """
-        all_preds: list[pl.DataFrame] = []
-        time_col: pl.DataFrame | None = None
+        result: pl.DataFrame | None = None
 
         for group_name, df in group_predictions.items():
-            if time_col is None:
-                time_cols = [c for c in ["time", "vintage_time"] if c in df.columns]
-                if time_cols:
-                    time_col = df.select(time_cols)
-
+            time_cols = [c for c in ["time", "vintage_time"] if c in df.columns]
             non_time = [c for c in df.columns if c not in ("time", "vintage_time")]
-            prefixed = df.select(non_time).rename({c: f"{group_name}__{c}" for c in non_time})
-            all_preds.append(prefixed)
+            prefixed = df.rename({c: f"{group_name}__{c}" for c in non_time})
 
-        result = pl.concat(all_preds, how="horizontal")
-        if time_col is not None:
-            result = pl.concat([time_col, result], how="horizontal")
+            if result is None:
+                result = prefixed
+            elif time_cols:
+                if result.height != prefixed.height:
+                    raise ValueError(
+                        f"Group '{group_name}' produced {prefixed.height} predictions, "
+                        f"but a previous group produced {result.height}. "
+                        "Per-group prediction time grids must align to form a panel."
+                    )
+                result = result.join(prefixed, on=time_cols, how="full", coalesce=True)
+                if result.height != prefixed.height:
+                    raise ValueError(
+                        f"Group '{group_name}' has a time grid that does not align with "
+                        "the other groups. Per-group prediction time grids must match "
+                        "to form a panel."
+                    )
+            else:
+                result = pl.concat([result, prefixed], how="horizontal")
+
+        if result is None:
+            return pl.DataFrame()
+
+        sort_cols = [c for c in ["vintage_time", "time"] if c in result.columns]
+        if sort_cols:
+            result = result.sort(sort_cols)
 
         return result
 

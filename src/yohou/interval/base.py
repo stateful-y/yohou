@@ -116,17 +116,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
         return tags
 
-    @property
-    def discarded_time_stamps(self) -> None:
-        """Get discarded timestamps (placeholder property).
-
-        Returns
-        -------
-        None
-
-        """
-        return None
-
     @abc.abstractmethod
     def fit(
         self,

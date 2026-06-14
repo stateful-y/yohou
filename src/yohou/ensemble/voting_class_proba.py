@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from numbers import Integral
 from typing import Literal
 
@@ -23,6 +22,47 @@ from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _rai
 from ._base import _BaseEnsembleForecaster
 
 __all__ = ["VotingClassProbaForecaster"]
+
+
+def _majority_vote(predictions: list[pl.DataFrame], target_col: str) -> list:
+    """Compute the per-row majority vote with lexicographic tie-break.
+
+    For each row, counts the votes contributed by every forecaster's
+    ``target_col`` and returns the most frequent label; ties are broken by
+    choosing the lexicographically smallest label. This is the vectorised
+    equivalent of a per-row ``Counter`` loop and preserves the same tie-break.
+
+    Parameters
+    ----------
+    predictions : list of pl.DataFrame
+        Per-forecaster prediction frames, each containing ``target_col``.
+    target_col : str
+        Name of the column carrying each forecaster's predicted label.
+
+    Returns
+    -------
+    list
+        One winning label per row, in row order.
+
+    """
+    n_rows = len(predictions[0])
+    votes = pl.DataFrame({
+        str(forecaster_idx): pred[target_col] for forecaster_idx, pred in enumerate(predictions)
+    }).with_row_index("__row__")
+
+    tallies = (
+        votes
+        .unpivot(index="__row__", value_name="__label__")
+        .group_by("__row__", "__label__")
+        .len("__count__")
+        .sort(["__row__", "__count__", "__label__"], descending=[False, True, False])
+        .group_by("__row__", maintain_order=True)
+        .first()
+        .sort("__row__")
+    )
+
+    winners_by_row = dict(zip(tallies["__row__"].to_list(), tallies["__label__"].to_list(), strict=True))
+    return [winners_by_row[row_idx] for row_idx in range(n_rows)]
 
 
 class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecaster, _BaseComposition):
@@ -453,15 +493,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         result = time_df.clone()
         for target_col in target_cols:
             class_labels = self.classes_[target_col]
-            n_rows = len(predictions[0])
 
-            winners = []
-            for row_idx in range(n_rows):
-                votes = [pred[target_col][row_idx] for pred in predictions]
-                vote_counts = Counter(votes)
-                max_count = max(vote_counts.values())
-                candidates = sorted(label for label, count in vote_counts.items() if count == max_count)
-                winners.append(candidates[0])
+            winners = _majority_vote(predictions, target_col)
 
             for label in class_labels:
                 col_name = f"{target_col}_proba_{label}"
@@ -610,15 +643,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         result = time_df.clone()
         for target_col in target_cols:
-            n_rows = len(predictions[0])
-            winners = []
-            for row_idx in range(n_rows):
-                votes = [pred[target_col][row_idx] for pred in predictions]
-                vote_counts = Counter(votes)
-                max_count = max(vote_counts.values())
-                candidates = sorted(label for label, count in vote_counts.items() if count == max_count)
-                winners.append(candidates[0])
-
+            winners = _majority_vote(predictions, target_col)
             result = result.with_columns(pl.Series(name=target_col, values=winners))
 
         return result

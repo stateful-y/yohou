@@ -20,7 +20,7 @@ class TestPanelChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise
-        check_panel_data(forecaster, y[:40], X[:40])
+        check_panel_data(forecaster, y[:40])
 
     def test_check_panel_data_non_panel(self, y_X_factory):
         """Test check handles non-panel data correctly."""
@@ -31,7 +31,7 @@ class TestPanelChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise - check handles non-panel case
-        check_panel_data(forecaster, y[:40], X[:40])
+        check_panel_data(forecaster, y[:40])
 
     def test_check_panel_single_group(self, y_X_factory):
         """Test check_panel_single_group passes for valid panel forecaster."""
@@ -42,7 +42,7 @@ class TestPanelChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise
-        check_panel_single_group(forecaster, y[:40], X[:40])
+        check_panel_single_group(forecaster, y[:40])
 
     def test_check_panel_invalid_group_raises(self, y_X_factory):
         """Test check_panel_invalid_group_raises passes for valid panel forecaster."""
@@ -53,4 +53,4 @@ class TestPanelChecks:
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
         # Should not raise
-        check_panel_invalid_group_raises(forecaster, y[:40], X[:40])
+        check_panel_invalid_group_raises(forecaster, y[:40])

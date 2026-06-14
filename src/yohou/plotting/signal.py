@@ -117,7 +117,6 @@ def plot_phase(
     """
     use_degrees = angle_unit == "degree"
     unit = "degrees" if use_degrees else "radians"
-    validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
@@ -125,6 +124,7 @@ def plot_phase(
         groups = []
 
     if groups is not None:
+        validate_plotting_data(df)
         _panel_cols = resolve_panel_columns(df, groups, columns)
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()
@@ -324,7 +324,6 @@ def plot_spectrum(
     [`plot_phase`][yohou.plotting.plot_phase] : Plot phase spectrum.
     """
     # Validate inputs
-    validate_plotting_data(df)
     validate_plotting_params(width=width, height=height)
 
     # Auto-detect panel data
@@ -332,6 +331,7 @@ def plot_spectrum(
         groups = []
 
     if groups is not None:
+        validate_plotting_data(df)
         _panel_cols = resolve_panel_columns(df, groups, columns)
         _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
         _legend_tracker = LegendTracker()

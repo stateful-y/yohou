@@ -263,17 +263,18 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
         ACF values from lag 0 to *max_lags* inclusive.
 
     """
-    mean_val = series.mean()
-    centered = series - mean_val
+    centered = series.to_numpy().astype(float)
+    centered = centered - centered.mean()
     denominator = float((centered**2).sum())
-    acf_values: list[float] = []
-    for lag in range(max_lags + 1):
-        if lag == 0:
-            acf_values.append(1.0)
-        else:
-            numerator = float((centered[:-lag] * centered[lag:]).sum())
-            acf_values.append(numerator / denominator if denominator != 0 else 0.0)
-    return acf_values
+    n = centered.shape[0]
+    # Full autocovariance via numpy correlation; the second half holds the
+    # non-negative lags starting at lag 0.
+    autocov = np.correlate(centered, centered, mode="full")[n - 1 : n + max_lags]
+    if denominator == 0:
+        return [1.0] + [0.0] * max_lags
+    acf = (autocov / denominator).tolist()
+    acf[0] = 1.0
+    return acf
 
 
 def _compute_pacf(

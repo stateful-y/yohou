@@ -314,11 +314,18 @@ class _BaseEnsembleForecaster:
         self.local_y_schema_ = dict(first_forecaster.local_y_schema_)
         self.local_X_actual_schema_ = getattr(first_forecaster, "local_X_actual_schema_", None)
         self.shared_X_actual_schema_ = getattr(first_forecaster, "shared_X_actual_schema_", None)
-        self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_actual_schema_
+        self.local_y_t_schema_ = getattr(first_forecaster, "local_y_t_schema_", self.local_y_schema_)
+        # The transformed feature schema/buffer must reflect the post-pipeline
+        # space, which only the child knows; the raw X_actual is not a valid
+        # stand-in when a child wraps a feature transformer. Mirror the child's
+        # transformed state so the contract attributes are accurate. The
+        # ensemble itself never reads these on any predict path (predict,
+        # observe, and rewind all delegate to the children), so they exist
+        # solely to satisfy the BaseForecaster fitted-attribute contract.
+        self.local_X_t_schema_ = getattr(first_forecaster, "local_X_t_schema_", self.local_X_actual_schema_)
         self._y_observed = y
         self._X_observed = X_actual
-        self._X_t_observed = X_actual
+        self._X_t_observed = getattr(first_forecaster, "_X_t_observed", X_actual)
 
     def _compute_effective_weights(self) -> None:
         """Compute effective weights for surviving forecasters.

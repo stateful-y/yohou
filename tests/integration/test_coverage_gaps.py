@@ -4,7 +4,6 @@ Covers uncovered branches in:
 - base/forecaster.py: _tags merging into input_tags/target_tags/top-level
 - base/forecaster.py: observation_horizon pre-fit and with dict transformers
 - model_selection/split.py: _tags merging into input_tags/top-level
-- interval/base.py: BaseSimilarity.discarded_time_stamps
 - interval/base.py: BaseIntervalForecaster concrete fit()
 - class_proba/base.py: BaseClassProbaForecaster concrete fit()
 """
@@ -17,7 +16,6 @@ import numpy as np
 import polars as pl
 
 from yohou.interval.base import BaseIntervalForecaster
-from yohou.interval.similarity import DistanceSimilarity
 from yohou.point.base import BasePointForecaster
 from yohou.utils.tags import Tags
 
@@ -187,14 +185,6 @@ class TestSplitterTagMerging:
         assert tags.input_tags is not None
         assert tags.input_tags.allow_nan is True
         assert tags.non_deterministic is True
-
-
-class TestSimilarityDiscardedTimestamps:
-    """BaseSimilarity.discarded_time_stamps returns None."""
-
-    def test_returns_none(self):
-        sim = DistanceSimilarity()
-        assert sim.discarded_time_stamps is None
 
 
 class _MinimalIntervalForecaster(BaseIntervalForecaster):

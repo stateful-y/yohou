@@ -430,6 +430,18 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         pl.DataFrame
             Probability DataFrame with ``{target}_proba_{class}`` columns.
 
+        Notes
+        -----
+        ``classes_`` is the *globally merged* class set across every panel
+        group (see ``fit``); each group's underlying sklearn classifier may
+        have been trained on a subset of those classes, so its
+        ``predict_proba`` can return fewer columns than ``len(classes_)``.
+        When a global class index has no corresponding column from the
+        estimator (``c_idx >= len(step_proba)``), its probability is filled
+        with ``0.0``: the class was unseen by this group, so it carries zero
+        mass. This is expected reconciliation, not data loss, and keeps the
+        per-group output aligned to the shared global class layout.
+
         """
         assert self.local_y_t_schema_ is not None
         y_cols = list(self.local_y_t_schema_.keys())
@@ -465,6 +477,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
                         if c_idx < len(step_proba):
                             result_data[col_name].append(float(step_proba[c_idx]))
                         else:
+                            # Global class unseen by this group's estimator; zero mass.
                             result_data[col_name].append(0.0)
         else:
             # Single-output classifier or single-target: proba shape (1, n_classes)
@@ -512,6 +525,14 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         -------
         pl.DataFrame
             Single-row probability DataFrame.
+
+        Notes
+        -----
+        As in ``_predict_proba_and_reshape``, a global class index without a
+        matching column from the estimator (``c_idx >= len(step_proba)``) is
+        filled with ``0.0``. This reconciles a group whose estimator saw only
+        a subset of the globally merged ``classes_``; the unseen class
+        correctly carries zero mass rather than being dropped.
 
         """
         assert self.local_y_t_schema_ is not None

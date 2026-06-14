@@ -11,7 +11,7 @@ from .panel import (
     select_panel_columns,
 )
 from .pivot import window_futures
-from .polars import cast, get_numeric_columns
+from .polars import cast, get_categorical_columns, get_numeric_columns
 from .tabularization import tabularize
 from .tags import (
     CLASS_PROBA,
@@ -84,6 +84,7 @@ __all__ = [
     "check_sufficient_rows",
     "check_time_column",
     "dict_to_panel",
+    "get_categorical_columns",
     "get_group_df",
     "get_numeric_columns",
     "inspect_panel",

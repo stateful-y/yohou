@@ -554,7 +554,10 @@ def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
     return max(methods, key=lambda m: _RESPONSE_METHOD_PRIORITY[m])
 
 
-# Backward-compat shims for yohou-optuna <= 0.1.0a1
+# Intentional backward-compat shims for yohou-optuna <= 0.1.0a1. These thin
+# wrappers over _get_response_methods are not used elsewhere in the main source
+# tree, but they are a public-facing compatibility surface relied on by the
+# yohou-optuna integration and its tests, so they are kept deliberately.
 def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
     """Check if any scorer requires interval predictions."""
     return "predict_interval" in _get_response_methods(scorer)
@@ -740,9 +743,12 @@ def _predict(
     # observe_predict produces overlapping prediction windows when the last
     # observation chunk is smaller than stride. Deduplicate (keeping the most
     # recently informed prediction) and sort so downstream scorers receive a
-    # clean, monotonically increasing time column.
+    # clean, monotonically increasing time column. Deduplicate on the full
+    # vintage key so rows that differ only in vintage_time are preserved.
     # TODO: Address this formally in scorers
-    return y_pred.unique(subset=["time"], keep="last").sort("time")
+    dedup_subset = ["vintage_time", "time"] if "vintage_time" in y_pred.columns else ["time"]
+    sort_cols = [col for col in ("time", "vintage_time") if col in y_pred.columns]
+    return y_pred.unique(subset=dedup_subset, keep="last").sort(sort_cols)
 
 
 def _score(

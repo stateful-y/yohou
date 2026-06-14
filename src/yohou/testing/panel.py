@@ -34,7 +34,7 @@ def _column_present(field: str, columns: list[str]) -> bool:
     return any(col.startswith(f"{field}_lower_") or col.startswith(f"{field}_upper_") for col in columns)
 
 
-def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_data(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning with panel data predicts all groups by default.
 
     Validates that when panel_group=None (default), predictions are
@@ -46,8 +46,6 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------
@@ -71,7 +69,7 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
                 )
 
 
-def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_single_group(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning filters to specified panel group.
 
     Validates that when panel_group is specified, predictions are
@@ -83,8 +81,6 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------
@@ -111,7 +107,7 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
             )
 
 
-def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame) -> None:
     """Check that an invalid group name raises ValueError.
 
     Validates error handling when ``groups`` specifies group names that
@@ -123,8 +119,6 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------

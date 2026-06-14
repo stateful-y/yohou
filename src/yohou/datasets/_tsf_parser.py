@@ -339,27 +339,21 @@ def _build_panel_different_starts(
     value_column_name: str,
 ) -> pl.DataFrame:
     """Build panel DataFrame when series have different start timestamps."""
-    all_times: set[datetime] = set()
-    series_time_map: list[tuple[str, dict[datetime, float | None]]] = []
-
+    per_series: list[pl.DataFrame] = []
     for s in series_list:
         col_name = _panel_column_name(s, value_column_name)
         start = s["start_timestamp"]
         n = len(s["values"])
-        times = _generate_time_index(start, n, polars_freq).to_list()
-        time_val_map = dict(zip(times, s["values"], strict=True))
-        all_times.update(times)
-        series_time_map.append((col_name, time_val_map))
+        time_col = _generate_time_index(start, n, polars_freq).cast(pl.Datetime("us"))
+        per_series.append(
+            pl.DataFrame({"time": time_col, col_name: pl.Series(col_name, s["values"], dtype=pl.Float64)})
+        )
 
-    sorted_times = sorted(all_times)
-    time_col = pl.Series("time", sorted_times, dtype=pl.Datetime("us"))
+    result = per_series[0]
+    for frame in per_series[1:]:
+        result = result.join(frame, on="time", how="full", coalesce=True)
 
-    columns: dict[str, pl.Series] = {"time": time_col}
-    for col_name, time_val_map in series_time_map:
-        vals = [time_val_map.get(t) for t in sorted_times]
-        columns[col_name] = pl.Series(col_name, vals, dtype=pl.Float64)
-
-    return pl.DataFrame(columns)
+    return result.sort("time")
 
 
 def _build_panel_no_timestamp(
