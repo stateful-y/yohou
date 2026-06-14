@@ -47,8 +47,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         - ``"soft"``: weighted average of class probabilities.
         - ``"hard"``: majority vote of argmax predictions. Ties are
-          broken deterministically by choosing the first class in sorted
-          order (via ``numpy.argmax``).
+          broken deterministically by choosing the lexicographically first
+          tied class (via Python ``sorted``).
     weights : list of float or None, default=None
         Per-forecaster weights. Raw values are passed to
         ``numpy.average`` which normalizes internally. Only used with
@@ -66,8 +66,11 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         Mapping from target column to sorted class labels.
     n_classes_ : dict of str to int
         Number of classes per target column.
-    label_to_code_ : dict of str to dict of str to float
+    label_to_code_ : dict of str to dict of str to int
         Mapping from target column to label-to-code dict.
+    weights_ : list of float or None
+        Effective per-forecaster weights after removing forecasters that
+        failed to fit. ``None`` when no weights were supplied.
 
     Examples
     --------
@@ -272,7 +275,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Produce aggregated probability forecasts for one step.
+        """Produce aggregated probability forecasts for one fit-horizon block.
+
+        Required by the abstract base class. ``predict_class_proba`` is
+        overridden to dispatch directly, so this delegates to the same
+        soft/hard helpers to keep a single voting implementation. The earlier
+        standalone body redundantly called every child's ``predict_class_proba``
+        before also calling ``predict`` on the hard path (predicting twice).
 
         Parameters
         ----------
@@ -287,56 +296,9 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Aggregated probability predictions.
 
         """
-        predictions = []
-        for _name, forecaster in self.forecasters_:
-            y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
-                groups=groups,
-                **params,
-            )
-            predictions.append(y_proba)
-
-        time_df = predictions[0].select(["vintage_time", "time"])
-        proba_cols = [c for c in predictions[0].columns if c not in ("vintage_time", "time")]
-
         if self.method == "soft":
-            agg_exprs = []
-            for col in proba_cols:
-                values = np.column_stack([pred[col].to_numpy() for pred in predictions])
-                if self.weights_ is not None:
-                    aggregated = np.average(values, axis=1, weights=self.weights_)
-                else:
-                    aggregated = np.mean(values, axis=1)
-                agg_exprs.append(pl.Series(name=col, values=aggregated))
-            return time_df.with_columns(agg_exprs)
-
-        # Hard voting: majority vote converted to one-hot probabilities
-        # Collect argmax predictions from each forecaster
-        hard_predictions = []
-        for _name, forecaster in self.forecasters_:
-            y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
-                groups=groups,
-                **params,
-            )
-            hard_predictions.append(y_pred)
-
-        target_cols = [c for c in hard_predictions[0].columns if c not in ("vintage_time", "time")]
-        result = time_df.clone()
-        for target_col in target_cols:
-            class_labels = self.classes_[target_col]
-            n_rows = len(hard_predictions[0])
-            winners = []
-            for row_idx in range(n_rows):
-                votes = [pred[target_col][row_idx] for pred in hard_predictions]
-                vote_counts = Counter(votes)
-                max_count = max(vote_counts.values())
-                candidates = sorted(label for label, count in vote_counts.items() if count == max_count)
-                winners.append(candidates[0])
-            for label in class_labels:
-                col_name = f"{target_col}_proba_{label}"
-                proba_values = [1.0 if w == label else 0.0 for w in winners]
-                result = result.with_columns(pl.Series(name=col_name, values=proba_values))
-
-        return result
+            return self._soft_vote_predict_class_proba(groups=groups, **params)
+        return self._hard_vote_predict_class_proba(groups=groups, **params)
 
     def predict_class_proba(  # ty: ignore[invalid-method-override]
         self,

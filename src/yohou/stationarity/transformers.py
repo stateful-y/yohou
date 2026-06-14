@@ -23,6 +23,70 @@ __all__ = [
 ]
 
 
+def _inverse_seasonal_diff(
+    transformer: BaseTransformer,
+    X_t: pl.DataFrame,
+    X_p: pl.DataFrame | None,
+    seasonality: int,
+) -> pl.DataFrame:
+    """Reverse seasonal differencing via a seasonal cumulative sum.
+
+    Shared by :class:`SeasonalDifferencing` and
+    :class:`AbsoluteSeasonalReturn`, whose forward transforms (and thus
+    inverses) are identical seasonal differences.
+
+    Parameters
+    ----------
+    transformer : BaseTransformer
+        The calling transformer, used for data validation and to read
+        ``feature_names_in_`` / ``observation_horizon``.
+    X_t : pl.DataFrame
+        Transformed (differenced) series to invert.
+    X_p : pl.DataFrame or None
+        Prior context rows needed to seed the reconstruction.
+    seasonality : int
+        Seasonal lag of the differencing.
+
+    Returns
+    -------
+    pl.DataFrame
+        The reconstructed (level) series.
+
+    """
+    X_t, X_p = validate_transformer_data(
+        transformer,
+        X=X_t,
+        reset=False,
+        inverse=True,
+        X_p=X_p,
+        observation_horizon=transformer.observation_horizon,
+        stateful=True,
+    )
+
+    time = X_t.select(cs.by_name("time"))
+    X_t.columns = X_p.columns
+    X = pl.concat([X_p, X_t])
+
+    # Get the columns and their dtypes (excluding "time")
+    X_no_time = X.select(~cs.by_name("time"))
+    cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
+
+    def inverse_diff_col(series: pl.Series) -> pl.Series:
+        """Reverse seasonal differencing for a single series."""
+        arr = series.to_numpy().copy()
+        for i in range(len(X_p), len(arr)):
+            arr[i] += arr[i - seasonality]
+        return pl.Series(arr)
+
+    X = X_no_time.with_columns([
+        pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
+    ])[len(X_p) :]
+    X.columns = transformer.feature_names_in_
+    X = pl.concat([time, X], how="horizontal")
+
+    return X
+
+
 class BoxCoxTransformer(BaseTransformer):
     r"""Box-Cox power transformation time series transformer.
 
@@ -354,39 +418,7 @@ class SeasonalDifferencing(BaseTransformer):
 
     def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Inverse-transform the time series."""
-        X_t, X_p = validate_transformer_data(
-            self,
-            X=X_t,
-            reset=False,
-            inverse=True,
-            X_p=X_p,
-            observation_horizon=self.observation_horizon,
-            stateful=True,
-        )
-
-        time = X_t.select(cs.by_name("time"))
-        X_t.columns = X_p.columns
-        X = pl.concat([X_p, X_t])
-
-        # Get the columns and their dtypes (excluding "time")
-        X_no_time = X.select(~cs.by_name("time"))
-        cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
-
-        def inverse_diff_col(series: pl.Series) -> pl.Series:
-            """Reverse seasonal differencing for a single series."""
-            # Convert to numpy for in-place mutation
-            arr = series.to_numpy().copy()
-            for i in range(len(X_p), len(arr)):
-                arr[i] += arr[i - self.seasonality]
-            return pl.Series(arr)
-
-        X = X_no_time.with_columns([
-            pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
-        ])[len(X_p) :]
-        X.columns = self.feature_names_in_
-        X = pl.concat([time, X], how="horizontal")
-
-        return X
+        return _inverse_seasonal_diff(self, X_t, X_p, self.seasonality)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
@@ -559,7 +591,7 @@ class SeasonalReturn(BaseTransformer):
 
     Parameters
     ----------
-    seasonality : int > 1, default=1
+    seasonality : int >= 1, default=1
         Seasonality lag for computing returns.
 
     offset : float >= 0.0, default=0.0
@@ -717,7 +749,7 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
     Parameters
     ----------
-    seasonality : int > 1, default=1
+    seasonality : int >= 1, default=1
         Seasonality lag for computing differences.
 
     offset : float >= 0.0, default=0.0
@@ -791,39 +823,13 @@ class AbsoluteSeasonalReturn(BaseTransformer):
         return X_t
 
     def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
-        """Inverse-transform the time series."""
-        X_t, X_p = validate_transformer_data(
-            self,
-            X=X_t,
-            reset=False,
-            inverse=True,
-            X_p=X_p,
-            observation_horizon=self.observation_horizon,
-            stateful=True,
-        )
+        """Inverse-transform the time series.
 
-        time = X_t.select(cs.by_name("time"))
-        X_t.columns = X_p.columns
-        X = pl.concat([X_p, X_t])
-
-        # Get the columns and their dtypes (excluding "time")
-        X_no_time = X.select(~cs.by_name("time"))
-        cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
-
-        def inverse_diff_col(series: pl.Series) -> pl.Series:
-            """Reverse seasonal differencing for a single series."""
-            arr = series.to_numpy().copy()
-            for i in range(len(X_p), len(arr)):
-                arr[i] += arr[i - self.seasonality]
-            return pl.Series(arr)
-
-        X = X_no_time.with_columns([
-            pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
-        ])[len(X_p) :]
-        X.columns = self.feature_names_in_
-        X = pl.concat([time, X], how="horizontal")
-
-        return X
+        The reconstruction is the seasonal cumulative sum, identical to
+        :class:`SeasonalDifferencing`, so it reuses the shared
+        :func:`_inverse_seasonal_diff` helper.
+        """
+        return _inverse_seasonal_diff(self, X_t, X_p, self.seasonality)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.

@@ -339,8 +339,9 @@ def plot_residuals(
     height : int | None, default=None
         Plot height in pixels.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets. ``"figure"`` creates a
-        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``.
+        Enable plotly-resampler for large datasets. ``True`` creates a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``;
+        ``False`` or ``None`` uses a plain ``go.Figure``.
     marker_size : float, default=4
         Marker size for scatter plots.
     marker_opacity : float, default=0.6
@@ -832,16 +833,20 @@ def plot_calibration(
 
     >>> import polars as pl
     >>> import numpy as np
+    >>> from datetime import datetime, timedelta
     >>> from yohou.plotting import plot_calibration
 
     >>> # Create sample data
     >>> n = 100
-    >>> y_truth = pl.DataFrame({"y": np.random.randn(n)})
+    >>> rng = np.random.default_rng(0)
+    >>> times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+    >>> y_truth = pl.DataFrame({"time": times, "y": rng.standard_normal(n)})
     >>> y_pred_int = pl.DataFrame({
-    ...     "y_upper_0.9": np.random.randn(n) + 1.65,
-    ...     "y_lower_0.9": np.random.randn(n) - 1.65,
-    ...     "y_upper_0.95": np.random.randn(n) + 1.96,
-    ...     "y_lower_0.95": np.random.randn(n) - 1.96,
+    ...     "time": times,
+    ...     "y_upper_0.9": rng.standard_normal(n) + 1.65,
+    ...     "y_lower_0.9": rng.standard_normal(n) - 1.65,
+    ...     "y_upper_0.95": rng.standard_normal(n) + 1.96,
+    ...     "y_lower_0.95": rng.standard_normal(n) - 1.96,
     ... })
 
     >>> # Plot calibration
@@ -1323,7 +1328,7 @@ def _compute_componentwise_scores(
     if len(score_columns) == 1:
         score_values = scores_df[score_columns[0]]
     else:
-        score_values = scores_df.select(score_columns).mean().transpose().to_series()
+        score_values = scores_df.select(score_columns).mean_horizontal()
 
     keep_cols = ["time"]
     if "vintage_time" in scores_df.columns:
@@ -1422,9 +1427,9 @@ def plot_score_time_series(
     connect_gaps : bool, default=False
         Whether to connect gaps in the data with lines.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
+        Enable plotly-resampler for large datasets.  ``True`` creates a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``;
+        ``False`` or ``None`` uses a plain ``go.Figure``.
     line_width : float, default=2.0
         Width of score lines.
     line_dash : str, default="solid"
@@ -1444,7 +1449,9 @@ def plot_score_time_series(
     TypeError
         If y_truth or y_pred is not a Polars DataFrame.
     ValueError
-        If DataFrames are empty or missing required columns.
+        If DataFrames are empty or missing required columns, if *scorer*
+        is a dict (multi-scorer) and panel data is detected in *y_truth*,
+        or if *scorer* is a dict and ``facet_by="vintage"``.
 
     Examples
     --------
@@ -2101,7 +2108,8 @@ def plot_score_distribution(
                     if cn in ("time", "vintage_time")
                     or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
                 ]
-                y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
+                has_group_col = any(cn not in ("time", "vintage_time") for cn in gp_cols)
+                y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if has_group_col else y_pred_m
             _render(pfig, y_truth_g, y_pred_dict_g, colors, first_cw, show_legend and g_idx == 0, row=r, col=c_i)
 
         first_scorer = next(iter(scorer_dict.values()))
@@ -2664,7 +2672,8 @@ def plot_score_per_step(
                     if cn in ("time", "vintage_time")
                     or (cn.startswith(f"{gname}__") and (_col_filter is None or _member_name(cn) in _col_filter))
                 ]
-                y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if len(gp_cols) > 2 else y_pred_m
+                has_group_col = any(cn not in ("time", "vintage_time") for cn in gp_cols)
+                y_pred_dict_g[mname] = y_pred_m.select(gp_cols) if has_group_col else y_pred_m
             _render_horizon(
                 pfig,
                 y_truth_g,

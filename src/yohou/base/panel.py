@@ -713,9 +713,12 @@ class BasePanelForecaster:
         """
         # For panel data, all groups share the same time progression
         # Use the first group's observed_time_ as reference
-        first_group_name = list(self.observed_time_.keys())[0]
+        first_group_name = next(iter(self.observed_time_))
         observed_time_value = self.observed_time_[first_group_name]
 
+        # interval_ may be a non-uniform string offset (e.g. "1mo"), so steps
+        # are advanced one at a time via add_interval rather than a vectorised
+        # datetime_range that assumes a fixed timedelta.
         predicted_times = [add_interval(observed_time_value, self.interval_, n=n) for n in range(1, len(y_pred) + 1)]
 
         time = pl.DataFrame({"vintage_time": [observed_time_value] * len(y_pred), "time": predicted_times})

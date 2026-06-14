@@ -62,11 +62,8 @@ def cast(
 
         if target_dtype.is_integer():
             exprs.append(pl.col(col).round().cast(target_dtype).alias(col))
-        elif not target_dtype.is_numeric():
-            # Non-numeric types (Categorical, Enum, String, Boolean, etc.)
-            # are cast directly without rounding.
-            exprs.append(pl.col(col).cast(target_dtype).alias(col))
         else:
+            # Floats and non-numeric types are cast directly without rounding.
             exprs.append(pl.col(col).cast(target_dtype).alias(col))
 
     return df.with_columns(exprs)
@@ -104,19 +101,7 @@ def get_numeric_columns(df: pl.DataFrame, exclude: list[str] | None = None) -> l
 
     """
     exclude = exclude or []
-    numeric_types = [
-        pl.Int8,
-        pl.Int16,
-        pl.Int32,
-        pl.Int64,
-        pl.UInt8,
-        pl.UInt16,
-        pl.UInt32,
-        pl.UInt64,
-        pl.Float32,
-        pl.Float64,
-    ]
-    return [col for col in df.columns if any(df[col].dtype == dtype for dtype in numeric_types) and col not in exclude]
+    return [col for col in df.columns if df.schema[col].is_numeric() and col not in exclude]
 
 
 def is_categorical_dtype(dtype: pl.DataType) -> bool:

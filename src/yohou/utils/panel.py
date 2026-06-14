@@ -8,7 +8,6 @@ import polars as pl
 __all__ = [
     "dict_to_panel",
     "get_group_df",
-    "inspect_locality",
     "inspect_panel",
     "panel_aware_prefix",
     "panel_aware_rename",
@@ -376,15 +375,30 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
     if data is None or isinstance(data, pl.DataFrame):
         return data
 
+    # Reject empty dicts before the all-None check: an empty dict satisfies
+    # all(...) vacuously, which would otherwise mask it as an all-None input.
+    if not data:
+        raise ValueError("Cannot convert empty dict to panel DataFrame")
+
     if all(v is None for v in data.values()):
         return None
 
     # Convert dict of DataFrames to single DataFrame with prefixed columns
-    if not data:
-        raise ValueError("Cannot convert empty dict to panel DataFrame")
-
     # Start with the first group to get the time column
     first_group_name = next(iter(data))
+    reference_times = data[first_group_name].get_column("time")
+    reference_set = set(reference_times.to_list())
+
+    # All groups must share an identical time axis; an inner join would
+    # otherwise silently drop timestamps not present in every group.
+    misaligned = [name for name, df in data.items() if set(df.get_column("time").to_list()) != reference_set]
+    if misaligned:
+        raise ValueError(
+            f"dict_to_panel requires every group to share an identical 'time' axis, "
+            f"but these groups differ from group '{first_group_name}': {misaligned}. "
+            f"Align the group time columns (e.g. resample or reindex) before assembling the panel."
+        )
+
     result = data[first_group_name].select("time")
 
     # Add each group's columns with prefixes
@@ -514,6 +528,3 @@ def panel_aware_suffix(col: str, suffix: str) -> str:
 
     """
     return panel_aware_rename(col, lambda member: f"{member}_{suffix}")
-
-
-inspect_locality = inspect_panel

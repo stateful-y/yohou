@@ -131,8 +131,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         How to handle columns not assigned to any forecaster:
 
         - ``"drop"``: Unassigned columns are excluded from predictions.
-        - ``"passthrough"``: Unassigned columns are excluded from predictions
-          (same as ``"drop"``).
+        - ``"passthrough"``: Accepted as an alias of ``"drop"``; unassigned
+          columns are excluded from predictions. Note this differs from
+          sklearn's ``ColumnTransformer``, where ``"passthrough"`` carries
+          columns through unchanged: a forecaster cannot pass observed
+          columns through as future predictions, so both strings drop them.
         - estimator: A ``BaseForecaster`` instance used to forecast the
           unassigned columns.
 
@@ -144,6 +147,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     verbose_feature_names_out : bool, default=False
         If True, prefix output column names with the forecaster name
         (e.g., 'sales_forecaster__sales'). If False, keep original column names.
+        This default differs from `ColumnTransformer` (which defaults to
+        ``verbose_feature_names_out=True``): the forecaster side preserves
+        original column names by default, while the transformer side prefixes
+        by default for feature clarity.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -205,7 +212,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
       ``remainder``: dropped, or forecasted by an estimator
     - Forecasters are fitted in parallel when ``n_jobs > 1``
     - Predictions are concatenated in the order: forecasters, then remainder
-    - All forecasters receive the same exogenous features X_actual
+    - All forecasters (including the remainder) receive the same exogenous
+      inputs: ``X_actual``, ``X_future``, and ``X_forecast``
 
     """
 
@@ -532,8 +540,21 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         if self.remainder_forecaster_ is not None and hasattr(self.remainder_forecaster_, "local_y_schema_"):
             self.local_y_schema_.update(self.remainder_forecaster_.local_y_schema_)
 
-        self.local_X_actual_schema_ = getattr(first_forecaster, "local_X_actual_schema_", None)
-        self.shared_X_actual_schema_ = getattr(first_forecaster, "shared_X_actual_schema_", None)
+        # X_actual schemas are merged across all forecasters; since every
+        # forecaster receives the same X_actual these are consistent, but
+        # merging avoids discarding schema seen by later forecasters.
+        all_forecasters = [f for _, f, _ in self.forecasters_]
+        if self.remainder_forecaster_ is not None:
+            all_forecasters.append(self.remainder_forecaster_)
+        self.local_X_actual_schema_ = None
+        self.shared_X_actual_schema_ = None
+        for forecaster in all_forecasters:
+            local_schema = getattr(forecaster, "local_X_actual_schema_", None)
+            if local_schema is not None:
+                self.local_X_actual_schema_ = {**(self.local_X_actual_schema_ or {}), **local_schema}
+            shared_schema = getattr(forecaster, "shared_X_actual_schema_", None)
+            if shared_schema is not None:
+                self.shared_X_actual_schema_ = {**(self.shared_X_actual_schema_ or {}), **shared_schema}
 
         # Set transformed schema attributes (no transformation for meta-forecaster)
         self.local_y_t_schema_ = self.local_y_schema_
@@ -588,6 +609,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         predictions: list[pl.DataFrame] = []
         time_columns: pl.DataFrame | None = None
+        time_col_names: list[str] = []
 
         # Predict with each forecaster
         for name, forecaster, _cols in self.forecasters_:
@@ -603,10 +625,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
             # Store time columns from first prediction
             if time_columns is None:
-                time_columns = y_pred.select(["vintage_time", "time"])
-                predictions.append(y_pred.select(~cs.by_name("vintage_time", "time")))
+                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
+                time_columns = y_pred.select(time_col_names)
+                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
             else:
-                predictions.append(y_pred.select(~cs.by_name("vintage_time", "time")))
+                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
 
         # Predict with remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
@@ -619,7 +642,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 X_forecast=X_forecast,
                 **remainder_params.predict,
             )
-            predictions.append(y_pred_remainder.select(~cs.by_name("vintage_time", "time")))
+            predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
 
         # Concatenate all predictions with time columns
         assert time_columns is not None
@@ -669,7 +692,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_remainder = y.select(["time"] + self.remainder_cols_)
             self.remainder_forecaster_.observe(y_remainder, X_actual, groups, X_future=X_future, X_forecast=X_forecast)
 
-        # Observe observed data
+        # Bookkeeping only: this meta-forecaster delegates bounded buffering
+        # to its child forecasters, so _y_observed/_X_observed are not used for
+        # prediction and are intentionally not truncated here.
         assert isinstance(self._y_observed, pl.DataFrame)
         self._y_observed = pl.concat([self._y_observed, y])
         if X_actual is not None:

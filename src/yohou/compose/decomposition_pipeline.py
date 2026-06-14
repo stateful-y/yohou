@@ -774,6 +774,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         sklearn.exceptions.NotFittedError
             If the pipeline has not been fitted yet.
 
+        Notes
+        -----
+        If ``store_residuals=True``, the residuals computed for each component
+        during this call are appended to ``self.residuals_[name]``. When
+        ``store_residuals=False`` no residuals are accumulated.
+
         """
         check_is_fitted(self, ["forecasters_", "groups_"])
         y, X_actual, groups = validate_forecaster_data(
@@ -784,18 +790,19 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             groups=groups,
         )
 
-        # Observe transformers first
+        # Observe and transform in one atomic step: observe_transform uses the
+        # pre-observe state to transform, then updates the buffer.  A separate
+        # observe() then transform() would transform against post-observe state
+        # and yield empty output for stateful transformers (e.g. differencing).
         if self.target_transformer_ is not None:
             assert isinstance(self.target_transformer_, BaseTransformer)
-            self.target_transformer_.observe(y)
-            y_t = self.target_transformer_.transform(y)
+            y_t = self.target_transformer_.observe_transform(y)
         else:
             y_t = y
 
         if X_actual is not None and self.feature_transformer_ is not None:
             assert isinstance(self.feature_transformer_, BaseTransformer)
-            self.feature_transformer_.observe(X_actual)
-            X_t = self.feature_transformer_.transform(X_actual)
+            X_t = self.feature_transformer_.observe_transform(X_actual)
         else:
             X_t = X_actual
 
@@ -827,11 +834,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 [pl.col("time")] + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
             )
 
-            # Store residuals if requested
+            # Store residuals if requested. Initialize defensively: observe may
+            # run before any residuals were stored for this component (e.g. a
+            # forecaster added after fit, or store_residuals toggled on).
             if self.store_residuals:
-                self.residuals_[name] = pl.concat(
-                    [self.residuals_[name], residuals],
-                )
+                if not hasattr(self, "residuals_"):
+                    self.residuals_ = {}
+                prior = self.residuals_.get(name)
+                self.residuals_[name] = pl.concat([prior, residuals]) if prior is not None else residuals
 
         # Observe base class observation buffers
         self._y_observed = y_t
@@ -875,6 +885,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         ------
         sklearn.exceptions.NotFittedError
             If the pipeline has not been fitted yet.
+
+        Notes
+        -----
+        Unlike ``observe``, ``rewind`` seeds every component forecaster with
+        the same full target ``y_t`` (in transformed space), not the
+        per-component residuals. This is intentional: ``rewind`` resets
+        observation state to a reference window rather than decomposing a new
+        signal.
 
         """
         check_is_fitted(self, ["forecasters_", "groups_"])

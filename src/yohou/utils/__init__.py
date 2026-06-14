@@ -4,7 +4,6 @@ from .discovery import all_displays, all_estimators, all_functions
 from .panel import (
     dict_to_panel,
     get_group_df,
-    inspect_locality,
     inspect_panel,
     panel_aware_prefix,
     panel_aware_rename,
@@ -87,7 +86,6 @@ __all__ = [
     "dict_to_panel",
     "get_group_df",
     "get_numeric_columns",
-    "inspect_locality",
     "inspect_panel",
     "interval_to_timedelta",
     "panel_aware_prefix",

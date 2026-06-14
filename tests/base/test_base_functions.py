@@ -471,6 +471,33 @@ class TestRewindTransformersOne:
         assert X_t is not None
         assert len(X_t) == observation_horizon
 
+    def test_zero_observation_horizon(self, time_series_factory, SimpleTransformer):
+        """observation_horizon == 0 rewinds over all rows, not an empty slice.
+
+        With negative slicing, y[:-0] is empty and y[-0:] is the full frame,
+        which inverts the rewind/observe windows. The explicit split index keeps
+        the rewind window as the full frame and the observe window empty.
+        """
+        y = time_series_factory(length=20, n_components=2)
+        X_actual = make_exog_data(20, 3)
+
+        target_transformer = SimpleTransformer(observation_horizon=0, add_constant=10.0)
+        target_transformer.fit(y)
+
+        X_t = _rewind_transformers_one(
+            y=y,
+            X_actual=X_actual,
+            target_transformer=target_transformer,
+            feature_transformer=None,
+            observation_horizon=0,
+            target_as_feature="transformed",
+        )
+
+        # Zero horizon implies an empty observation window, not the full frame
+        # that the buggy y[-0:] slice would have produced.
+        assert X_t is not None
+        assert len(X_t) == 0
+
     def test_insufficient_data(self, time_series_factory, SimpleTransformer):
         """Test with insufficient data raises appropriate error."""
         y = time_series_factory(length=10, n_components=2)

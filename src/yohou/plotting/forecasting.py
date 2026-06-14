@@ -1382,8 +1382,7 @@ def _render_forecast_trace(
         if not has_point and not has_intervals:
             continue
 
-        if has_point:
-            assert pred_col is not None
+        if pred_col is not None:
             x_fc = m_pred["time"]
             y_fc = m_pred[pred_col]
             if show_transition and y_train is not None and col in y_train.columns:
@@ -2453,11 +2452,15 @@ def _clean_series(series: pl.Series) -> np.ndarray:
     """
     import warnings  # noqa: PLC0415
 
-    values = series.to_list()
-    clean = pl.Series(values).interpolate().forward_fill().backward_fill()
-    n_interpolated = sum(v is None or (isinstance(v, float) and np.isnan(v)) for v in values) - sum(
-        v is None or (isinstance(v, float) and np.isnan(v)) for v in clean.to_list()
-    )
+    def _n_missing(s: pl.Series) -> int:
+        """Count null and (for float columns) NaN entries in ``s``."""
+        n = s.null_count()
+        if s.dtype.is_float():
+            n += int(s.is_nan().fill_null(False).sum())
+        return n
+
+    clean = series.interpolate().forward_fill().backward_fill()
+    n_interpolated = _n_missing(series) - _n_missing(clean)
     if n_interpolated > 0:
         warnings.warn(
             f"Interpolated {n_interpolated} NaN value(s) before decomposition.",

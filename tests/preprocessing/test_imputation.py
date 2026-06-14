@@ -339,6 +339,22 @@ class TestTimeSeriesInterpolatorMethods:
         result = imputer.transform(df_with_nulls)
         assert result["val"].null_count() == 0
 
+    def test_nearest_selects_by_temporal_distance(self):
+        """method='nearest' splits an interior gap toward the closer anchor."""
+        from datetime import datetime
+
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        X = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "val": [1.0, None, None, None, 5.0],
+        })
+        result = SimpleTimeImputer(method="nearest").fit(X).transform(X)
+        # Must not collapse to an unconditional forward-fill.
+        assert result["val"].to_list() != [1.0, 1.0, 1.0, 1.0, 5.0]
+        # Points nearer the leading anchor take 1.0; nearer the trailing take 5.0.
+        assert result["val"].to_list() == [1.0, 1.0, 1.0, 5.0, 5.0]
+
     def test_fill_both(self, df_with_nulls):
         """method='fill_both' fills forward then backward."""
         from yohou.preprocessing.imputation import SimpleTimeImputer

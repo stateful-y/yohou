@@ -132,16 +132,16 @@ def check_class_proba_prediction_sums(
             for target_col, class_labels in forecaster.classes_.items():
                 proba_cols = [f"{group_prefix}__{target_col}_proba_{label}" for label in class_labels]
                 row_sums = y_pred.select(proba_cols).sum_horizontal()
-                for i, s in enumerate(row_sums):
-                    assert abs(s - 1.0) < 1e-6, (
-                        f"Probabilities for {group_prefix}__{target_col} at row {i} sum to {s}, expected ~1.0"
-                    )
+                max_err = (row_sums - 1.0).abs().max()
+                assert max_err < 1e-6, (
+                    f"Probabilities for {group_prefix}__{target_col} sum to at most {1.0 + max_err}, expected ~1.0"
+                )
     else:
         for target_col, class_labels in forecaster.classes_.items():
             proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
             row_sums = y_pred.select(proba_cols).sum_horizontal()
-            for i, s in enumerate(row_sums):
-                assert abs(s - 1.0) < 1e-6, f"Probabilities for {target_col} at row {i} sum to {s}, expected ~1.0"
+            max_err = (row_sums - 1.0).abs().max()
+            assert max_err < 1e-6, f"Probabilities for {target_col} sum to at most {1.0 + max_err}, expected ~1.0"
 
 
 def check_class_proba_prediction_types(forecaster) -> None:

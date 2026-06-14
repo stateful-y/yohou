@@ -120,7 +120,8 @@ class _BaseEnsembleForecaster:
         Raises
         ------
         ValueError
-            If names are not unique or tuples are malformed.
+            If names are not unique, tuples are malformed, names are not
+            strings, or forecasters are not ``BaseForecaster`` instances.
 
         """
         names = []
@@ -260,7 +261,7 @@ class _BaseEnsembleForecaster:
         Raises
         ------
         ValueError
-            If target column schemas differ across forecasters.
+            If target column names or dtypes differ across forecasters.
 
         """
         schemas = {}
@@ -270,11 +271,20 @@ class _BaseEnsembleForecaster:
 
         reference_name, reference_schema = next(iter(schemas.items()))
         for name, schema in schemas.items():
-            if schema != reference_schema:
+            if set(schema.keys()) != set(reference_schema.keys()):
                 raise ValueError(
                     f"Forecaster '{name}' predicts columns {set(schema.keys())} "
                     f"but '{reference_name}' predicts {set(reference_schema.keys())}. "
                     f"All base forecasters must predict the same target columns."
+                )
+            if schema != reference_schema:
+                mismatched = {
+                    col: (schema[col], reference_schema[col]) for col in schema if schema[col] != reference_schema[col]
+                }
+                raise ValueError(
+                    f"Forecaster '{name}' predicts column dtypes that differ from "
+                    f"'{reference_name}': {mismatched} (column: (this, reference)). "
+                    f"All base forecasters must predict the same target dtypes."
                 )
 
     def _derive_fitted_attributes(
@@ -320,6 +330,8 @@ class _BaseEnsembleForecaster:
         """
         if self.weights is not None:
             fitted_names = {name for name, _ in self.forecasters_}
+            # self.forecasters and self.weights always have equal length here
+            # (guaranteed by pre-fit validation); strict=True asserts that.
             self.weights_ = [
                 w for (name, _), w in zip(self.forecasters, self.weights, strict=True) if name in fitted_names
             ]
@@ -396,6 +408,11 @@ class _BaseEnsembleForecaster:
         -------
         pl.DataFrame
             Aggregated interval predictions.
+
+        Notes
+        -----
+        For the ``"envelope"`` strategy, columns whose names contain neither
+        ``"_lower_"`` nor ``"_upper_"`` fall back to mean aggregation.
 
         """
         time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]

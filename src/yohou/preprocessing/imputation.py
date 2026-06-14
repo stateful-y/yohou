@@ -14,6 +14,7 @@ from yohou.base import BaseTransformer
 from yohou.preprocessing.sklearn_base import SklearnTransformer
 from yohou.utils import Tags, validate_transformer_data
 from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
+from yohou.utils.validation import interval_to_timedelta
 
 __all__ = [
     "SeasonalImputer",
@@ -44,6 +45,9 @@ class SimpleImputer(SklearnTransformer):
     missing_values : int, float, str, or np.nan, default=np.nan
         The placeholder for missing values. All occurrences of missing_values
         will be imputed.
+    copy : bool, default=True
+        Passed through to sklearn's SimpleImputer to control whether a copy of
+        X is created. If False, imputation may be done in-place where possible.
 
     Attributes
     ----------
@@ -150,7 +154,9 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     >>> X_imputed["value"].null_count()
     0
 
-    With a lag transformer (window-based KNN):
+    With a lag transformer the imputation happens in the projected lag space,
+    so the output contains the lag columns (``value_lag_1``, ``value_lag_2``,
+    ``value_lag_3``), not the original ``value`` column:
 
     >>> from yohou.preprocessing import LagTransformer
     >>> X = pl.DataFrame({
@@ -164,7 +170,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     >>> imputer.fit(X)
     TransformedSpaceKNNImputer(...)
     >>> X_t = imputer.transform(X)
-    >>> X_t["value_lag_3"].null_count()
+    >>> X_t["value_lag_3"].null_count()  # null count in the lag-space output
     0
 
     See Also
@@ -244,14 +250,16 @@ class TransformedSpaceKNNImputer(BaseTransformer):
             self.transformer_ = deepcopy(self.transformer)
             self.transformer_.fit(X)
             X_projected = self.transformer_.transform(X)
-            # Inherit observation_horizon from the inner transformer
-            if hasattr(self.transformer_, "_observation_horizon"):
-                self._observation_horizon = self.transformer_.observation_horizon
         else:
             self.transformer_ = None
             X_projected = X
 
         BaseTransformer.fit(self, X, y, **params)
+
+        # Inherit observation_horizon from the inner transformer after the base
+        # fit, so it is not overwritten by BaseTransformer.fit's own sync step.
+        if self.transformer_ is not None:
+            self._observation_horizon = self.transformer_.observation_horizon
 
         # Fit sklearn KNNImputer on the (optionally transformed) data
         X_no_time = X_projected.select(~cs.by_name("time"))
@@ -449,8 +457,26 @@ class SimpleTimeImputer(BaseTransformer):
             elif self.method_ == "backward":
                 imputed = col.backward_fill(limit=self.limit)
             elif self.method_ == "nearest":
-                # Use forward then backward to get nearest
-                imputed = col.forward_fill().backward_fill()
+                # Fill each null with the value closest in time, comparing the
+                # distance to the previous and next known observations. Ties go
+                # to the trailing (forward) anchor.
+                known_time = pl.when(col.is_not_null()).then(pl.col("time")).otherwise(None)
+                prev_val = col.forward_fill(limit=self.limit)
+                next_val = col.backward_fill(limit=self.limit)
+                prev_time = known_time.forward_fill(limit=self.limit)
+                next_time = known_time.backward_fill(limit=self.limit)
+                imputed = (
+                    pl
+                    .when(col.is_not_null())
+                    .then(col)
+                    .when(prev_val.is_null())
+                    .then(next_val)
+                    .when(next_val.is_null())
+                    .then(prev_val)
+                    .when((next_time - pl.col("time")) < (pl.col("time") - prev_time))
+                    .then(next_val)
+                    .otherwise(prev_val)
+                )
             elif self.method_ == "fill_both":
                 # Forward fill then backward fill
                 imputed = col.forward_fill(limit=self.limit).backward_fill(limit=self.limit)
@@ -485,8 +511,10 @@ class SeasonalImputer(BaseTransformer):
     """Seasonal decomposition-based imputation for missing values.
 
     Imputes missing values by leveraging seasonal patterns in the data.
-    Missing values are replaced with the seasonally-adjusted expected value
-    based on the seasonal component estimated from non-missing data.
+    Missing values are replaced with the mean (or median) of the non-missing
+    observations that fall at the same position within each seasonal cycle.
+    This is simple modular averaging by season, not a trend/seasonal
+    decomposition.
 
     Parameters
     ----------
@@ -546,6 +574,20 @@ class SeasonalImputer(BaseTransformer):
         self.period = period
         self.fill_method = fill_method
 
+    def _season_index_expr(self) -> pl.Expr:
+        """Build a polars expression for the time-anchored season index.
+
+        The index counts whole sampling steps between each timestamp and the
+        first fitted timestamp, modulo ``period``. This keeps the seasonal
+        bucket of any timestamp stable regardless of where a transform slice
+        starts.
+        """
+        if self._step_seconds_ is None:
+            # Irregular interval: fall back to row position within the frame.
+            return pl.arange(0, pl.len()) % self.period
+        offset = (pl.col("time") - self._first_time_).dt.total_seconds() / self._step_seconds_
+        return (offset.round().cast(pl.Int64) % self.period).cast(pl.Int64)
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalImputer":
         """Fit the imputer by computing seasonal values.
@@ -569,33 +611,38 @@ class SeasonalImputer(BaseTransformer):
         X = validate_transformer_data(self, X=X, reset=True)
         BaseTransformer.fit(self, X, y, **params)
 
+        # Anchor the season index to the first observed timestamp so that
+        # transform on any sub-range of the series uses the same seasonal
+        # bucket as fit did for the same timestamps.
+        self._first_time_ = X["time"][0]
+        step = interval_to_timedelta(self.interval_)
+        self._step_seconds_ = step.total_seconds() if step is not None else None
+
         # Compute seasonal values for each column
         data_cols = [c for c in X.columns if c != "time"]
         self.seasonal_values_: dict[str, np.ndarray] = {}
 
         # Add season index
-        X_with_season = X.with_columns((pl.arange(0, len(X)) % self.period).alias("_season_idx"))
+        X_with_season = X.with_columns(self._season_index_expr().alias("_season_idx"))
+
+        # Aggregate all columns per season in a single grouped pass. Nulls and
+        # NaNs are excluded so empty seasons remain null (mapped to NaN below).
+        def _stat(col: str) -> pl.Expr:
+            """Per-season mean or median of ``col``, ignoring nulls and NaNs."""
+            expr = pl.col(col).fill_nan(None).drop_nulls()
+            return (expr.mean() if self.fill_method == "seasonal_mean" else expr.median()).alias(col)
+
+        season_stats = X_with_season.group_by("_season_idx").agg([_stat(c) for c in data_cols])
+
+        # Index aggregated rows by season for direct lookup.
+        stats_by_season = {row["_season_idx"]: row for row in season_stats.to_dicts()}
 
         for col_name in data_cols:
-            seasonal_vals = np.zeros(self.period)
-
+            seasonal_vals = np.full(self.period, np.nan)
             for season_idx in range(self.period):
-                season_data = (
-                    X_with_season
-                    .filter(pl.col("_season_idx") == season_idx)[col_name]
-                    .drop_nulls()
-                    .drop_nans()
-                    .to_numpy()
-                )
-
-                if len(season_data) > 0:
-                    if self.fill_method == "seasonal_mean":
-                        seasonal_vals[season_idx] = np.mean(season_data)
-                    else:  # seasonal_median
-                        seasonal_vals[season_idx] = np.median(season_data)
-                else:
-                    seasonal_vals[season_idx] = np.nan
-
+                row = stats_by_season.get(season_idx)
+                if row is not None and row[col_name] is not None:
+                    seasonal_vals[season_idx] = row[col_name]
             self.seasonal_values_[col_name] = seasonal_vals
 
         return self
@@ -617,6 +664,9 @@ class SeasonalImputer(BaseTransformer):
         # Get data columns
         data_cols = [c for c in X.columns if c != "time"]
 
+        # Time-anchored season index for each row of this slice.
+        season_idx_arr = X.select(self._season_index_expr().alias("_season_idx"))["_season_idx"].to_numpy()
+
         # Impute each column
         result_cols = {"time": X["time"]}
 
@@ -630,8 +680,7 @@ class SeasonalImputer(BaseTransformer):
 
                 # Replace with seasonal values
                 for i in np.where(null_mask)[0]:
-                    season_idx = i % self.period
-                    values[i] = seasonal_vals[season_idx]
+                    values[i] = seasonal_vals[season_idx_arr[i]]
 
             result_cols[col_name] = pl.Series(values)
 

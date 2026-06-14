@@ -21,6 +21,7 @@ from yohou.base.utils import _derive_step_columns
 from yohou.utils import (
     Tags,
     cast,
+    get_group_df,
     inspect_panel,
     validate_forecaster_data,
 )
@@ -74,9 +75,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     Notes
     -----
     ``observe()`` appends new observations to internal buffers **without
-    refitting** the model.  ``rewind()`` truncates buffers to the last
-    ``observation_horizon`` rows.  Together they enable streaming /
-    rolling-window evaluation.
+    refitting** the model.  ``rewind()`` rebuilds internal buffers from the
+    provided historical window, allowing state to be reset to any prior point
+    without refitting.  Together they enable streaming / rolling-window
+    evaluation.
 
     The ``forecasting_horizon`` is set at ``fit`` time but can be
     overridden at ``predict`` time.
@@ -601,14 +603,6 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             X_forecast=X_forecast,
         )
 
-        # Special handling for forecasters with no observation horizon
-        if self.observation_horizon == 0:  # pragma: no cover
-            # If there is no observation horizon, only check for time column presence
-            if "time" not in y.columns:
-                raise ValueError("y must contain 'time' column.")
-            if X_actual is not None and "time" not in X_actual.columns:
-                raise ValueError("X_actual must contain 'time' column.")
-
         # Dispatch to mixin methods
         if self.groups_ is None:
             BaseStandardForecaster._rewind_standard(self, y, X_actual, X_future=X_future, X_forecast=X_forecast)
@@ -796,8 +790,6 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             # Swap step columns in _X_t_observed
             if X_step_new is not None:
                 if isinstance(self._X_t_observed, dict):
-                    from yohou.utils.panel import get_group_df  # noqa: PLC0415
-
                     for group_name, group_df in self._X_t_observed.items():
                         cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
                         new_group_step = get_group_df(X_step_new, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
@@ -1063,7 +1055,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts ``fit_forecasting_horizon_`` steps from the observation horizon.
 
         Parameters
         ----------
@@ -1078,7 +1070,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Predicted time series.
 
         """
-        raise NotImplementedError(f"The forecaster of type {type(self)} does not implement_predict_one.")
+        raise NotImplementedError(f"The forecaster of type {type(self)} does not implement _predict_one.")
 
     def _predict(
         self,

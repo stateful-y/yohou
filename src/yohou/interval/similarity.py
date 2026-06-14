@@ -27,11 +27,16 @@ class DistanceSimilarity(BaseSimilarity):
     prediction intervals.
 
     The weight for the *i*-th historical observation given prediction
-    *j* is computed as:
+    *j* is computed with a numerically-stable softmax of negative
+    distances that reserves uniform mass for the (hypothetical) test
+    point over the calibration axis:
 
-    $$w_{ji} = \frac{\exp(-d(x_j, x_i))}{\sum_k \exp(-d(x_j, x_k))}$$
+    $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}
+    {1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
 
-    where *d* is the chosen distance metric.
+    where $d_{ji} = d(x_j, x_i)$ for the chosen distance metric. The
+    ``+1`` in the denominator reserves mass for the new test point
+    (Barber et al., 2023), so each row sums to strictly less than 1.
 
     Parameters
     ----------
@@ -190,8 +195,6 @@ class DistanceSimilarity(BaseSimilarity):
         """
         X_features = self._get_X(y_pred, X_actual)
         self._X_observed = X_features
-
-        self._n_discarded_indices = len(y_pred) - len(X_features)
 
         return self
 

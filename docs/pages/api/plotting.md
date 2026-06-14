@@ -15,6 +15,10 @@ Interactive time series visualization functions using Plotly. All plotting funct
 | [`plot_time_series`](generated/yohou.plotting.exploration.plot_time_series.md) | Plot basic line plots for one or more time series. |
 | [`plot_rolling_statistics`](generated/yohou.plotting.exploration.plot_rolling_statistics.md) | Plot rolling window statistics (mean, std, min, max, median, quantiles). |
 | [`plot_missing_data`](generated/yohou.plotting.exploration.plot_missing_data.md) | Visualize missing data patterns over time. |
+| [`plot_distribution`](generated/yohou.plotting.exploration.plot_distribution.md) | Plot the value distribution of one or more time series. |
+| [`plot_outliers`](generated/yohou.plotting.exploration.plot_outliers.md) | Highlight detected outliers over time. |
+| [`plot_resampling_comparison`](generated/yohou.plotting.exploration.plot_resampling_comparison.md) | Compare a time series before and after resampling. |
+| [`plot_seasonal_heatmap`](generated/yohou.plotting.diagnostics.plot_seasonal_heatmap.md) | Plot a heatmap of values across seasonal periods. |
 | [`plot_seasonality`](generated/yohou.plotting.diagnostics.plot_seasonality.md) | Plot seasonal overlay. |
 | [`plot_subseasonality`](generated/yohou.plotting.diagnostics.plot_subseasonality.md) | Plot seasonal subseries. |
 | [`plot_lag_scatter`](generated/yohou.plotting.diagnostics.plot_lag_scatter.md) | Plot scatter plots of y(t) vs y(t-lag) for analysing temporal dependencies. |
@@ -60,9 +64,20 @@ Interactive time series visualization functions using Plotly. All plotting funct
 
 | Name | Description |
 | --- | --- |
-| [`apply_default_layout`](generated/yohou.plotting._utils.apply_default_layout.md) | Apply default layout configuration to a figure. |
 | [`get_color_sequence`](generated/yohou.plotting._utils.get_color_sequence.md) | Get color sequence for plotting multiple series. |
 | [`palette_yohou`](generated/yohou.plotting._utils.palette_yohou.md) | Return the yohou color palette. |
 | [`resolve_color_palette`](generated/yohou.plotting._utils.resolve_color_palette.md) | Resolve a user-provided color palette or fall back to the default. |
-| [`facet_figure`](generated/yohou.plotting._utils.facet_figure.md) | Create a faceted subplot figure for panel data. |
 | [`resolve_panel_columns`](generated/yohou.plotting._utils.resolve_panel_columns.md) | Resolve which panel columns to plot. |
+| [`LINE_DASH_SEQUENCE`](generated/yohou.plotting._utils.LINE_DASH_SEQUENCE.md) | Default sequence of dash styles for distinguishing series. |
+| [`LegendTracker`](generated/yohou.plotting._utils.LegendTracker.md) | Track legend entries to deduplicate them across traces. |
+| [`PanelColorManager`](generated/yohou.plotting._utils.PanelColorManager.md) | Assign consistent colors to series across panel facets. |
+| [`RenderContext`](generated/yohou.plotting._utils.RenderContext.md) | Hold shared rendering state passed through plotting helpers. |
+| [`linked_legendgroup_kwargs`](generated/yohou.plotting._utils.linked_legendgroup_kwargs.md) | Build keyword arguments that link legend groups across subplots. |
+
+### Configuration
+
+| Name | Description |
+| --- | --- |
+| [`get_config`](generated/yohou.plotting._utils.get_config.md) | Return the current global plotting configuration. |
+| [`set_config`](generated/yohou.plotting._utils.set_config.md) | Set global plotting configuration options. |
+| [`config_context`](generated/yohou.plotting._utils.config_context.md) | Context manager for temporarily overriding plotting configuration. |

@@ -9,9 +9,10 @@ from sklearn.base import clone
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from conftest import SimpleTransformer, StatelessTransformer
+from conftest import SimpleTransformer, StatelessTransformer, run_checks
 from yohou.compose import ColumnTransformer
 from yohou.preprocessing.window import LagTransformer
+from yohou.testing import _yield_yohou_transformer_checks
 
 
 @pytest.fixture
@@ -571,3 +572,83 @@ class TestColumnTransformerNestedParams:
         assert len(ct.transformers[0]) == 3
         assert ct.transformers[0][2] == ["a"]
         assert isinstance(ct.transformers[0][1], StatelessTransformer)
+
+
+class TestColumnTransformerSystematicChecks:
+    """Run the generic transformer contract over representative configurations.
+
+    ColumnTransformer requires constructor arguments, so it is excluded from
+    the auto-discovered ``TestTransformerCommon`` suite in ``tests/test_common.py``
+    (it sits in ``_SKIP_COMMON``). This dedicated parametrization wires it into
+    ``_yield_yohou_transformer_checks`` so the data-driven transformer contract
+    actually runs against it.
+    """
+
+    @staticmethod
+    def _data(length: int = 100):
+        from datetime import datetime, timedelta
+
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+        return pl.DataFrame({
+            "time": time,
+            "a": [float(x) for x in range(length)],
+            "b": [float(x) * 10 for x in range(length)],
+            "c": [float(x) * 100 for x in range(length)],
+        })
+
+    @pytest.mark.parametrize(
+        "name,factory,extra_xfail",
+        [
+            (
+                "stateless-only",
+                lambda: ColumnTransformer(
+                    transformers=[("t1", StatelessTransformer(), ["a", "b"])],
+                    remainder="drop",
+                ),
+                set(),
+            ),
+            (
+                "stateful",
+                lambda: ColumnTransformer(
+                    transformers=[("t1", SimpleTransformer(observation_horizon=2, add_constant=1.0), ["a"])],
+                    remainder="drop",
+                ),
+                # The composition reassembles per-column outputs and does not
+                # drop warmup rows from the combined frame; only relevant when a
+                # component is stateful.
+                {"check_transform_drops_warmup_rows"},
+            ),
+            (
+                "passthrough-remainder",
+                lambda: ColumnTransformer(
+                    transformers=[("t1", SimpleTransformer(observation_horizon=0, add_constant=1.0), ["a"])],
+                    remainder="passthrough",
+                ),
+                set(),
+            ),
+        ],
+    )
+    def test_column_transformer_checks(self, name, factory, extra_xfail):
+        """Run the systematic transformer checks for a ColumnTransformer config."""
+        data = self._data()
+        X_train = data[:80]
+        X_test = data[80:]
+
+        transformer = clone(factory())
+        transformer.fit(X_train)
+
+        # ColumnTransformer computes observation_horizon dynamically from its
+        # components (a property) rather than storing _observation_horizon at
+        # fit, so check_fit_sets_attributes does not apply by design.
+        expected_failures = {"check_fit_sets_attributes"} | extra_xfail
+
+        run_checks(
+            transformer,
+            _yield_yohou_transformer_checks(transformer, X_train, None, X_test),
+            expected_failures=expected_failures,
+        )

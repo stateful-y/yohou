@@ -39,29 +39,6 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     _parameter_constraints: dict = {}
 
     @staticmethod
-    def _validate_no_nulls(df: pl.DataFrame, method_name: str) -> None:
-        """Raise if any column contains null or NaN values.
-
-        Parameters
-        ----------
-        df : pl.DataFrame
-            DataFrame to validate.
-        method_name : str
-            Name of the calling method (for the error message).
-
-        Raises
-        ------
-        ValueError
-            If any column contains null or NaN values.
-
-        """
-        null_cols = [col for col in df.columns if df[col].is_null().any()]
-        nan_cols = [col for col in df.select(cs.numeric()).columns if df[col].is_nan().any()]
-        bad_cols = sorted(set(null_cols + nan_cols))
-        if bad_cols:
-            raise ValueError(f"{method_name}() received data with null or NaN values in columns: {bad_cols}")
-
-    @staticmethod
     def _to_weights(
         distances: np.ndarray,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
@@ -354,7 +331,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in (0, 1],
+            If ``forecasting_horizon`` < 1, ``coverage_rates`` not in [0, 1],
             or if ``y`` / ``X_actual`` have invalid structure.
 
         """
@@ -622,7 +599,8 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             data.
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
-            ``forecasting_horizon``.
+            the forecasting horizon used at fit time
+            (``fit_forecasting_horizon_``).
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -643,7 +621,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             If the forecaster has not been fitted yet.
         ValueError
             If ``y`` / ``X_actual`` have invalid structure, ``coverage_rates`` not in
-            (0, 1], or ``groups`` contains names not seen during fit.
+            [0, 1], or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(self, ["groups_", "local_y_schema_", "fit_forecasting_horizon_"])
@@ -682,7 +660,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts `fit_forecasting_horizon_` steps from the observation horizon.
 
         Parameters
         ----------

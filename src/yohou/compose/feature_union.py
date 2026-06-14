@@ -451,6 +451,45 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         return observation_horizons
 
+    def _build_column_names(self, Xs: list[pl.DataFrame]) -> list[list[str]]:
+        """Compute per-transformer output column names.
+
+        Extracts each transformer's non-time output columns and, when
+        ``verbose_feature_names_out`` is True, prefixes them with the
+        transformer name. When False, raises if any output names collide.
+
+        Parameters
+        ----------
+        Xs : list of pl.DataFrame
+            Transformed outputs, one per transformer (each with a ``"time"``
+            column).
+
+        Returns
+        -------
+        list of list of str
+            Final column names for each transformer, in order.
+
+        """
+        transformer_names = [name for name, _, _ in self._iter()]
+        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+
+        if self.verbose_feature_names_out:
+            return [
+                [panel_aware_prefix(col, name) for col in cols]
+                for name, cols in zip(transformer_names, raw_column_names, strict=False)
+            ]
+
+        flat_names = [col for cols in raw_column_names for col in cols]
+        counts = Counter(flat_names)
+        duplicates = [name for name, count in counts.items() if count > 1]
+        if duplicates:
+            raise ValueError(
+                f"Duplicate feature names found: {duplicates}. "
+                "Either use transformers that produce unique names or set "
+                "verbose_feature_names_out=True to add transformer name prefixes."
+            )
+        return raw_column_names
+
     @property
     def observation_horizon(self) -> int:
         """Maximum observation horizon across all transformers.
@@ -611,27 +650,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         Xs, transformers = zip(*results, strict=False)
         self._update_transformer_list(transformers)
 
-        # Extract actual column names from each DataFrame (excluding time)
-        transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
-
-        # Apply prefixes if verbose_feature_names_out is True
-        if self.verbose_feature_names_out:
-            column_names = []
-            for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([panel_aware_prefix(col, name) for col in cols])
-        else:
-            column_names = raw_column_names
-            # Check for duplicates
-            flat_names = [col for cols in column_names for col in cols]
-            counts = Counter(flat_names)
-            duplicates = [name for name, count in counts.items() if count > 1]
-            if duplicates:
-                raise ValueError(
-                    f"Duplicate feature names found: {duplicates}. "
-                    "Either use transformers that produce unique names or set "
-                    "verbose_feature_names_out=True to add transformer name prefixes."
-                )
+        column_names = self._build_column_names(list(Xs))
 
         result = _hstack(
             list(Xs),
@@ -669,17 +688,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             time = X.select(cs.by_name("time"))
             return time
 
-        # Extract actual column names from each DataFrame (excluding time)
-        transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
-
-        # Apply prefixes if verbose_feature_names_out is True
-        if self.verbose_feature_names_out:
-            column_names = []
-            for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([panel_aware_prefix(col, name) for col in cols])
-        else:
-            column_names = raw_column_names
+        column_names = self._build_column_names(list(Xs))
 
         result = _hstack(
             Xs,
@@ -692,9 +701,10 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         """Observe and transform X in parallel for each transformer, concatenate results.
 
         This method atomically observes each transformer with new data and
-        transforms it in parallel. The transformation uses the pre-observe state,
-        then updates the memory. This is more efficient and correct than calling
-        observe() then transform() separately.
+        transforms it, concurrently when ``n_jobs != 1`` and sequentially
+        otherwise. The transformation uses the pre-observe state, then updates
+        the memory. This is more efficient and correct than calling observe()
+        then transform() separately.
 
         Parameters
         ----------
@@ -725,17 +735,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             time = X.select(cs.by_name("time"))
             return time
 
-        # Extract actual column names from each DataFrame (excluding time)
-        transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
-
-        # Apply prefixes if verbose_feature_names_out is True
-        if self.verbose_feature_names_out:
-            column_names = []
-            for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([panel_aware_prefix(col, name) for col in cols])
-        else:
-            column_names = raw_column_names
+        column_names = self._build_column_names(list(Xs))
 
         result = _hstack(
             Xs,
@@ -786,17 +786,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             time = X.select(cs.by_name("time"))
             return time
 
-        # Extract actual column names from each DataFrame (excluding time)
-        transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
-
-        # Apply prefixes if verbose_feature_names_out is True
-        if self.verbose_feature_names_out:
-            column_names = []
-            for name, cols in zip(transformer_names, raw_column_names, strict=False):
-                column_names.append([panel_aware_prefix(col, name) for col in cols])
-        else:
-            column_names = raw_column_names
+        column_names = self._build_column_names(list(Xs))
 
         result = _hstack(
             Xs,
@@ -828,7 +818,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
                 .add(caller="fit_transform", callee="fit_transform")
                 .add(caller="fit_transform", callee="fit")
                 .add(caller="fit_transform", callee="transform")
-                .add(caller="transform", callee="transform"),
+                .add(caller="transform", callee="transform")
+                .add(caller="observe_transform", callee="observe_transform")
+                .add(caller="rewind_transform", callee="rewind_transform"),
             )
 
         return router

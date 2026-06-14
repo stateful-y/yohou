@@ -81,9 +81,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
         - "predicted": Split data, fit the feature forecaster on the first portion,
           and train the target on a rolling forecast over the second portion.
           Requires more data but matches train and serve forecast quality.
-        - "rewind": Fit the feature forecaster on full data, rewind to the
-          observation horizon, then roll forward producing one vintage per origin
-          and train the target on that rolling forecast. Uses all data for feature
+        - "rewind": Fit the feature forecaster on full data, rewind to
+          ``observation_horizon + 1`` rows (the extra row covers the transform
+          step), then roll forward producing one vintage per origin and train
+          the target on that rolling forecast. Requires
+          ``len(X_actual) > observation_horizon + 1``. Uses all data for feature
           learning while matching train and serve forecast quality. This is the
           default: it has no train/serve mismatch.
     split_ratio : float, default=0.5
@@ -287,7 +289,19 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Raises
         ------
         ValueError
-            If X_actual is None (exogenous features are required).
+            If ``X_actual`` is None (exogenous features are required); if
+            ``forecasting_horizon < 1``; if ``strategy="rewind"`` and
+            ``len(X_actual) <= observation_horizon + 1``; or if
+            ``strategy="predicted"`` and the split leaves fewer than 2 rows
+            for either the feature-forecaster fit or the rolling forecast.
+
+        Notes
+        -----
+        When the target forecaster consumes exogenous features, its effective
+        training window starts at the first vintage the feature forecast
+        covers: ``y`` is filtered to ``time >= first_covered``. For
+        ``strategy="predicted"`` this excludes roughly the first
+        ``split_ratio`` fraction of ``y`` from target training.
 
         """
         if X_actual is None:
@@ -381,7 +395,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             obs_horizon = self.feature_forecaster_.observation_horizon
             # Need obs_horizon + 1 rows: obs_horizon for transformer memory + 1 for transform
             rewind_size = obs_horizon + 1
-            if obs_horizon < 0 or len(X_actual) <= rewind_size:
+            if len(X_actual) <= rewind_size:
                 raise ValueError(
                     f"Cannot use strategy='rewind' (the default): the feature forecaster's "
                     f"observation_horizon={obs_horizon} requires len(X_actual) > observation_horizon + 1, "
@@ -401,17 +415,21 @@ class ForecastedFeatureForecaster(BaseForecaster):
                 self.feature_forecaster_.observe(y=X_actual[rewind_size:], X_actual=None)
 
         else:  # strategy == "predicted"
-            n_split = int(len(y) * self.split_ratio)
+            # Split the feature series (X_actual) since that is what gets sliced
+            # for the feature forecaster below. Using len(X_actual) keeps the
+            # split point consistent across both portions even when X_actual and
+            # y differ in length.
+            n_split = int(len(X_actual) * self.split_ratio)
 
             if n_split < 2:
                 raise ValueError(
                     f"split_ratio={self.split_ratio} results in n_split={n_split}. "
-                    f"Increase split_ratio or provide more data (len(y)={len(y)})."
+                    f"Increase split_ratio or provide more data (len(X_actual)={len(X_actual)})."
                 )
-            if len(y) - n_split < 2:
+            if len(X_actual) - n_split < 2:
                 raise ValueError(
                     f"split_ratio={self.split_ratio} results in n_split={n_split}, "
-                    f"leaving only {len(y) - n_split} rows for target forecaster. "
+                    f"leaving only {len(X_actual) - n_split} rows for the feature forecast roll. "
                     f"Decrease split_ratio to leave at least 2 rows."
                 )
 
@@ -480,6 +498,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # Set observation buffers for observe/rewind
         self._y_observed = y
         self._X_t_observed = X_actual
+        # Expose observed_time_ per the fitted-forecaster contract; it tracks
+        # the end of the data this meta-forecaster has observed (full y).
+        self.observed_time_ = y["time"][-1]
 
         return self
 
@@ -808,6 +829,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
             X_forecast=X_forecast,
         )
 
+        # Advance the meta-forecaster's observed_time_ to the latest observation.
+        self.observed_time_ = y["time"][-1]
+
         return self
 
     def rewind(
@@ -872,6 +896,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        # Reset the meta-forecaster's observed_time_ to the rewind window end.
+        self.observed_time_ = y["time"][-1]
 
         return self
 

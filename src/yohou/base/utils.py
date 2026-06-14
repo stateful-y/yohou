@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+import warnings
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -241,9 +243,9 @@ def _rewind_transformers_one(
     Parameters
     ----------
     y : pl.DataFrame
-        New target observations.
+        Historical target time series to rewind state from.
     X_actual : pl.DataFrame or None
-        New features.
+        Historical feature observations to rewind state from.
     target_transformer : BaseTransformer or None
         Target transformer to rewind.
     feature_transformer : BaseTransformer or None
@@ -262,8 +264,18 @@ def _rewind_transformers_one(
     y_t = y
 
     if target_transformer is not None:
-        target_transformer.rewind(X=y[:-observation_horizon])
-        y_t = target_transformer.observe_transform(y[-observation_horizon:])
+        # Use an explicit split index rather than negative slicing: when
+        # observation_horizon == 0, y[:-0] is empty and y[-0:] is the full
+        # frame, which inverts the rewind/observe windows. len(y) - 0 == len(y)
+        # rewinds over all rows and leaves an empty observation window.
+        split = len(y) - observation_horizon
+        if split < 0:
+            raise ValueError(
+                f"observation_horizon={observation_horizon} exceeds the number of "
+                f"available rows ({len(y)}); not enough data to rewind."
+            )
+        target_transformer.rewind(X=y[:split])
+        y_t = target_transformer.observe_transform(y[split:])
 
     X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
 
@@ -297,7 +309,17 @@ def _rewind_transformers_one(
         # directly on them raises NotFittedError because their fit() does
         # not set the base-class fitted attributes.
         X_t_all = feature_transformer.rewind_transform(X_feat_in)
-        X_t = X_t_all.tail(1)
+        # Keep the row aligned to the most-recent observation timestamp rather
+        # than blindly taking the last row: when the feature transformer drops
+        # rows (its own observation_horizon), the surviving tail may not line up
+        # with the latest observation.
+        last_time = y["time"][-1]
+        if "time" in X_t_all.columns:
+            X_t = X_t_all.filter(pl.col("time") == last_time)
+            if X_t.is_empty():
+                X_t = X_t_all.tail(1)
+        else:
+            X_t = X_t_all.tail(1)
 
     return X_t
 
@@ -386,8 +408,6 @@ def _derive_step_columns(
 
         # Warn if any value column has step columns that are entirely null,
         # indicating the matched vintage(s) don't cover the full horizon.
-        import re  # noqa: PLC0415
-
         step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time" and re.search(r"_step_\d+$", c)]
         if step_cols_forecast:
             # Find the highest step number that has at least one non-null value
@@ -397,8 +417,6 @@ def _derive_step_columns(
                 if m and forecast_pivoted[c].null_count() < len(forecast_pivoted):
                     max_covered = max(max_covered, int(m.group(1)))
             if max_covered < forecasting_horizon:
-                import warnings  # noqa: PLC0415
-
                 warnings.warn(
                     f"X_forecast covers {max_covered} of {forecasting_horizon} "
                     f"forecast steps. The remaining step features will be null. "

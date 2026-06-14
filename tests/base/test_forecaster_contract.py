@@ -9,7 +9,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from sklearn.exceptions import NotFittedError
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import SimpleTransformer
@@ -26,26 +25,9 @@ class TestBaseForecasterFit:
         result = f.fit(y, forecasting_horizon=3)
         assert result is f
 
-    def test_fit_sets_forecasting_horizon(self, y_X_factory):
-        """Fit sets fit_forecasting_horizon_ attribute."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=5)
-        assert f.fit_forecasting_horizon_ == 5
-
-    def test_fit_sets_interval(self, y_X_factory):
-        """Fit sets interval_ from time series."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=1)
-        assert hasattr(f, "interval_")
-
-    def test_fit_sets_y_observed(self, y_X_factory):
-        """Fit sets _y_observed buffer."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=1)
-        assert hasattr(f, "_y_observed")
+    # The individual fitted attributes (fit_forecasting_horizon_, interval_,
+    # _y_observed) are exhaustively covered by check_fit_sets_forecaster_attributes
+    # in the TestForecasterCommon systematic suite (tests/test_common.py).
 
 
 class TestBaseForecasterPredict:
@@ -96,12 +78,9 @@ class TestBaseForecasterObserve:
         result = f.observe(y[50:])
         assert result is f
 
-    def test_observe_not_fitted_raises(self, y_X_factory):
-        """Observe before fit raises NotFittedError."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        with pytest.raises(NotFittedError):
-            f.observe(y)
+    # observe() before fit raising NotFittedError is covered by the observe()
+    # branch of check_forecaster_methods_call_check_is_fitted in the systematic
+    # suite (tests/test_common.py).
 
 
 class TestBaseForecasterRewind:
@@ -120,11 +99,11 @@ class TestBaseForecasterObservationHorizon:
     """Tests for observation_horizon property."""
 
     def test_horizon_after_fit(self, y_X_factory):
-        """Observation horizon is accessible after fit."""
+        """A PointReductionForecaster with no stateful transformer needs no buffer."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=0)
         f = PointReductionForecaster()
         f.fit(y, forecasting_horizon=1)
-        assert f.observation_horizon >= 0
+        assert f.observation_horizon == 0
 
     def test_horizon_includes_transformer(self, y_X_factory):
         """Observation horizon includes target transformer horizon."""
@@ -221,17 +200,30 @@ class TestBaseForecasterPanelObserve:
     """Tests for panel observe path."""
 
     def test_panel_observe(self, y_X_factory):
-        """Observe dispatches to panel observe when fitted on panel data."""
+        """Observe advances observed_time_ for every panel group."""
         y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
         f = PointReductionForecaster()
         f.fit(y[:50], forecasting_horizon=1)
+        observed_before = dict(f.observed_time_)
+
         result = f.observe(y[50:])
+
         assert result is f
+        last_time = y["time"][-1]
+        for group, before in observed_before.items():
+            assert f.observed_time_[group] > before
+            assert f.observed_time_[group] == last_time
 
     def test_panel_rewind(self, y_X_factory):
-        """Rewind dispatches to panel rewind when fitted on panel data."""
+        """Rewind rolls observed_time_ back to the rewind boundary per group."""
         y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
         f = PointReductionForecaster()
         f.fit(y[:50], forecasting_horizon=1)
+        f.observe(y[50:])
+
         result = f.rewind(y[:50])
+
         assert result is f
+        boundary = y[:50]["time"][-1]
+        for group_time in f.observed_time_.values():
+            assert group_time == boundary

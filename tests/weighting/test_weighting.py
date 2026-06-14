@@ -68,6 +68,19 @@ def test_seasonal_emphasis_matches_legacy_values() -> None:
     assert weights == pytest.approx([1.0, 1.0, 1.0, 2.0])
 
 
+def test_seasonal_emphasis_anchors_to_most_recent_unsorted() -> None:
+    """The emphasized phase is the most-recent timestamp's, regardless of order."""
+    # Most-recent timestamp (2024-01-09) is in the first position, not the last.
+    t = pl.Series(
+        "time",
+        [datetime(2024, 1, 9), datetime(2024, 1, 1), datetime(2024, 1, 2), datetime(2024, 1, 8)],
+    )
+    weights = SeasonalEmphasisWeighter(seasonality=7, emphasis=2.0).compute_weights(t).to_list()
+    # Phase is rank-based; with 4 distinct timestamps only the most-recent (rank 3,
+    # here in the first position) matches its own phase and is emphasized.
+    assert weights == pytest.approx([2.0, 1.0, 1.0, 1.0])
+
+
 def test_exponential_scale_inferred_elapsed_for_datetime(times: pl.Series) -> None:
     """Datetime keys default to elapsed scale."""
     w = ExponentialDecayWeighter(half_life=1)
@@ -275,6 +288,15 @@ def test_composite_mean_weighted_coefficients(times: pl.Series) -> None:
         .to_list()
     )
     assert got == pytest.approx(expected)
+
+
+def test_composite_mean_zero_coefficient_sum_raises(times: pl.Series) -> None:
+    """combination='mean' with zero-sum coefficients raises rather than returning zeros."""
+    a = ExponentialDecayWeighter(half_life=2)
+    b = SeasonalEmphasisWeighter(seasonality=2, emphasis=1.5)
+    weighter = CompositeWeighter([("a", a), ("b", b)], combination="mean", weights=[0.0, 0.0])
+    with pytest.raises(ValueError, match="sum to a nonzero value"):
+        weighter.compute_weights(times)
 
 
 def test_composite_multiply_exponents(times: pl.Series) -> None:

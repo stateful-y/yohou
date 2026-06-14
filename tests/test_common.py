@@ -67,7 +67,6 @@ _XFAIL_CHECKS: dict[str, set[str]] = {
         "check_inverse_transform_identity",
         "check_inverse_transform_round_trip",
         "check_inverse_observe_transform_identity",
-        "check_observe_transform_sequential_consistency",
     },
     "NumericalIntegrator": {
         "check_inverse_transform_identity",

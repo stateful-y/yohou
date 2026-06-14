@@ -44,12 +44,12 @@ class TestWeightedQuantile:
         result = weighted_quantile(x, q=0.5, weights=weights)
         assert isinstance(result, float)
 
-    def test_zero_weights_returns_inf(self):
-        """Test that all-zero weights returns infinity."""
+    def test_zero_weights_raises(self):
+        """Test that all-zero weights raise a descriptive ValueError."""
         x = np.array([1.0, 2.0, 3.0])
         weights = np.array([0.0, 0.0, 0.0])
-        result = weighted_quantile(x, q=0.1, weights=weights)
-        assert result == float("inf")
+        with pytest.raises(ValueError, match="sum to zero"):
+            weighted_quantile(x, q=0.1, weights=weights)
 
     def test_small_weights_normalizes(self):
         """Test that small (but non-zero) weights are normalized and produce a finite result."""

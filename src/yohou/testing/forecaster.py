@@ -236,6 +236,10 @@ def check_observe_extends_observations(
         Features for training
     X_actual_observe : pl.DataFrame, optional
         Features for update
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to observe()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to observe()
 
     Raises
     ------
@@ -358,6 +362,10 @@ def check_rewind_replaces_observations(
         Features for training
     X_actual_reset : pl.DataFrame, optional
         Features for reset
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to rewind()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to rewind()
 
     Raises
     ------
@@ -378,13 +386,13 @@ def check_rewind_replaces_observations(
             if first_group_y is not None:
                 original_y_observed_last_time = first_group_y["time"][-1]
                 assert original_observed_time[first_group] == original_y_observed_last_time, (
-                    "observed_time_ should match last time in _y_observed before observe()"
+                    "observed_time_ should match last time in _y_observed before rewind()"
                 )
         else:
             # Non-panel data
             original_y_observed_last_time = forecaster._y_observed["time"][-1]
             assert original_observed_time == original_y_observed_last_time, (
-                "observed_time_ should match last time in _y_observed before observe()"
+                "observed_time_ should match last time in _y_observed before rewind()"
             )
 
     if forecaster._X_t_observed is not None:
@@ -394,13 +402,13 @@ def check_rewind_replaces_observations(
             if forecaster._X_t_observed[first_group] is not None:
                 original_X_t_observed_last_time = forecaster._X_t_observed[first_group]["time"][-1]
                 assert original_observed_time[first_group] == original_X_t_observed_last_time, (
-                    "observed_time_ should match last time in _X_t_observed before observe()"
+                    "observed_time_ should match last time in _X_t_observed before rewind()"
                 )
         else:
             # Non-panel data
             original_X_t_observed_last_time = forecaster._X_t_observed["time"][-1]
             assert original_observed_time == original_X_t_observed_last_time, (
-                "observed_time_ should match last time in _X_t_observed before observe()"
+                "observed_time_ should match last time in _X_t_observed before rewind()"
             )
 
     # Reset to new data
@@ -481,6 +489,10 @@ def check_rewind_propagates_to_transformers(
         Features for training
     X_actual_reset : pl.DataFrame, optional
         Features for reset
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to rewind()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to rewind()
 
     Raises
     ------
@@ -560,6 +572,10 @@ def check_forecasting_horizon_validation(
         Training target data
     X_actual : pl.DataFrame, optional
         Training features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to fit()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to fit()
 
     Raises
     ------
@@ -952,6 +968,12 @@ def check_forecaster_methods_call_check_is_fitted(
         Training/test features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
+    X_future : pl.DataFrame, optional
+        Known-future features, accepted for signature compatibility with the
+        check harness; the not-fitted contract is exercised without them
+    X_forecast : pl.DataFrame, optional
+        External forecast features, accepted for signature compatibility with
+        the check harness; the not-fitted contract is exercised without them
 
     Raises
     ------
@@ -961,8 +983,9 @@ def check_forecaster_methods_call_check_is_fitted(
     """
     forecaster_clone = clone(forecaster)
 
-    # Determine if this is a point or interval forecaster
-    is_interval = hasattr(forecaster_clone, "predict_interval") and not hasattr(forecaster_clone, "predict")
+    # Determine if this is an interval forecaster. Only interval forecasters
+    # expose predict_interval(); point and class-proba forecasters do not.
+    is_interval = hasattr(forecaster_clone, "predict_interval")
 
     # Test that predict() or predict_interval() raises NotFittedError when unfitted
     try:

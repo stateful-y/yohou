@@ -29,6 +29,22 @@ Validation, panel data, tags, discovery, and other utility functions.
 | [`check_groups_exist`](generated/yohou.utils.validation.check_groups_exist.md) | Validate all requested panel groups exist in fitted forecaster. |
 | [`check_panel_groups_match`](generated/yohou.utils.validation.check_panel_groups_match.md) | Validate that y and X have matching panel group structures. |
 | [`check_panel_internal_consistency`](generated/yohou.utils.validation.check_panel_internal_consistency.md) | Validate that all panel groups in a DataFrame have the same local column structure. |
+| [`window_futures`](generated/yohou.utils.pivot.window_futures.md) | Window known-future feature values into per-vintage forecast horizons. |
+
+### Tags
+
+| Name | Description |
+| --- | --- |
+| [`Tags`](generated/yohou.utils.tags.Tags.md) | Container of estimator tags describing capabilities and requirements. |
+| [`ForecasterTags`](generated/yohou.utils.tags.ForecasterTags.md) | Tags specific to forecaster estimators. |
+| [`InputTags`](generated/yohou.utils.tags.InputTags.md) | Tags describing the input data an estimator accepts. |
+| [`TargetTags`](generated/yohou.utils.tags.TargetTags.md) | Tags describing the target an estimator supports. |
+| [`TransformerTags`](generated/yohou.utils.tags.TransformerTags.md) | Tags specific to transformer estimators. |
+| [`SplitterTags`](generated/yohou.utils.tags.SplitterTags.md) | Tags specific to cross-validation splitters. |
+| [`POINT`](generated/yohou.utils.tags.POINT.md) | Prediction-type constant for point forecasts. |
+| [`INTERVAL`](generated/yohou.utils.tags.INTERVAL.md) | Prediction-type constant for interval forecasts. |
+| [`POINT_INTERVAL`](generated/yohou.utils.tags.POINT_INTERVAL.md) | Prediction-type constant for combined point and interval forecasts. |
+| [`CLASS_PROBA`](generated/yohou.utils.tags.CLASS_PROBA.md) | Prediction-type constant for class-probability forecasts. |
 
 ### Data validation
 

@@ -281,7 +281,13 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         coverage_rates: list[float] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Not used - VotingIntervalForecaster overrides predict_interval directly.
+        """Raise; voting aggregates children's intervals via predict_interval.
+
+        The base ``predict`` pipeline routes single-step prediction through
+        ``_predict_one``. ``VotingIntervalForecaster`` bypasses that path by
+        overriding ``predict_interval`` (and ``predict``) to aggregate the
+        children's predictions directly, so this method is intentionally never
+        reached and only exists to satisfy the abstract base contract.
 
         Parameters
         ----------
@@ -465,7 +471,9 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
         **params : dict
-            Metadata routing parameters.
+            Metadata routing parameters. Routed to each child through the
+            ``predict`` routing namespace (there is no separate
+            ``observe_predict`` mapping).
 
         Returns
         -------

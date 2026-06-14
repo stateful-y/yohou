@@ -500,8 +500,6 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         refit_metric : str
             Name of the metric to use for refitting.
         """
-        refit_metric = "score"
-
         if self.scoring is None:
             raise ValueError("scoring parameter cannot be None")
 
@@ -858,7 +856,10 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                 n_candidates = len(candidate_params)
 
                 if self.verbose > 0:
-                    pass
+                    print(  # noqa: T201
+                        f"Fitting {n_splits} folds for each of {n_candidates} "
+                        f"candidates, totalling {n_candidates * n_splits} fits"
+                    )
 
                 out = parallel(
                     delayed(_fit_and_score)(
@@ -1193,11 +1194,11 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         _raise_for_params(params, self, "observe_predict")
         return self.best_forecaster_.observe_predict(
             y,
-            X_actual,
-            forecasting_horizon,
-            groups,
-            stride,
-            predict_transformed,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            groups=groups,
+            stride=stride,
+            predict_transformed=predict_transformed,
             X_future=X_future,
             X_forecast=X_forecast,
             **params,
@@ -1208,6 +1209,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: int | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
@@ -1228,6 +1230,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Actual feature observations with a ``"time"`` column aligned
             with ``y``. Sliced and observed incrementally at each step
             of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
         coverage_rates : list of float or None, default=None
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
@@ -1254,7 +1259,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         _raise_for_params(params, self, "observe_predict_interval")
         return self.best_forecaster_.observe_predict_interval(
             y,
-            X_actual,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
             groups=groups,
             X_future=X_future,
@@ -1397,7 +1403,8 @@ class GridSearchCV(BaseSearchCV):
 
     scoring : BaseScorer or dict of {str: BaseScorer}
         Strategy to evaluate the performance of the cross-validated model
-        on the test set.
+        on the test set.  Required; although the constructor default is
+        ``None``, passing ``None`` raises ``ValueError`` at ``fit`` time.
 
         If a single BaseScorer instance, the same scorer is used for all
         folds and stored in cv_results_ with key 'score'.
@@ -1796,7 +1803,8 @@ class RandomizedSearchCV(BaseSearchCV):
 
     scoring : BaseScorer or dict of {str: BaseScorer}
         Strategy to evaluate the performance of the cross-validated model
-        on the test set.
+        on the test set.  Required; although the constructor default is
+        ``None``, passing ``None`` raises ``ValueError`` at ``fit`` time.
 
         If a single BaseScorer instance, the same scorer is used for all
         folds and stored in cv_results_ with key 'score'.

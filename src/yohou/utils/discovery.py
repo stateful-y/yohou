@@ -245,7 +245,7 @@ def _is_checked_function(item: object) -> bool:
         return False
 
     mod = item.__module__
-    return not (not mod.startswith("yohou.") or mod.endswith("estimator_checks"))
+    return mod.startswith("yohou.") and not mod.endswith("estimator_checks")
 
 
 def all_functions() -> list[tuple[str, object]]:
@@ -283,7 +283,7 @@ def all_functions() -> list[tuple[str, object]]:
             except ImportError:
                 continue
             functions = inspect.getmembers(module, _is_checked_function)
-            functions = [(func.__name__, func) for name, func in functions if not name.startswith("_")]
+            functions = [(func.__name__, func) for _, func in functions]
             all_functions.extend(functions)
 
     # drop duplicates, sort for reproducibility

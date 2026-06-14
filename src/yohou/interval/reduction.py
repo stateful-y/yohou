@@ -261,8 +261,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     ) -> "IntervalReductionForecaster":
         """Fit the forecaster to historical data.
 
-        Tabularizes the time series, fits the wrapped sklearn estimator,
-        and calibrates prediction intervals from residuals.
+        Tabularizes the time series and fits a pair of quantile-regression
+        estimators (a lower and an upper quantile) for each coverage rate.
 
         Parameters
         ----------

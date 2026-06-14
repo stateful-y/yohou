@@ -31,7 +31,6 @@ Each function downloads data from [Monash/Zenodo](https://forecastingdata.org) (
 | --- | --- |
 | [`clear_data_home`](generated/yohou.datasets._fetchers.clear_data_home.md) | Delete all the content of the data home cache. |
 | [`get_data_home`](generated/yohou.datasets._fetchers.get_data_home.md) | Return the path of the yohou data directory. |
-| [`parse_tsf`](generated/yohou.datasets._tsf_parser.parse_tsf.md) | Parse a Monash `.tsf` file into a wide polars DataFrame. |
 
 ### Synthetic generators
 

@@ -224,7 +224,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for col in y.columns:
             if col == "time":
                 continue
-            base_col = col.split("__")[-1] if "__" in col else col
+            base_col = col.split("__", 1)[1] if "__" in col else col
             unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
             if base_col in self.classes_:
                 merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
@@ -273,7 +273,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for col in y.columns:
             if col == "time":
                 continue
-            base_col = col.split("__")[-1] if "__" in col else col
+            base_col = col.split("__", 1)[1] if "__" in col else col
             mapping = self.label_to_code_[base_col]
             # Cast to String first to handle Categorical/Enum/String uniformly,
             # then replace labels with integer codes.
@@ -420,7 +420,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         estimator : BaseEstimator
             Fitted classifier.
         X_tab : pl.DataFrame
-            Feature DataFrame of shape ``(1, n_features)``.
+            Feature DataFrame, typically of shape ``(1, n_features)`` at
+            predict time (the shape is a caller convention, not enforced here).
         panel_group_name : str or None
             Panel group prefix for column naming.
 
@@ -483,8 +484,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
                     if panel_group_name is not None:
                         col_name = f"{panel_group_name}__{col_name}"
                     result_data[col_name].append(float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0)
-                # If fh > 1, replicate (the recursive loop in predict_class_proba handles stepping)
-                # This branch should only be reached with fh=1 in multi-output mode.
+                # This branch builds a single row and is only reached with
+                # fh=1 in single-output mode; multi-step stepping is handled
+                # by the recursive loop in predict_class_proba.
 
         return pl.DataFrame(result_data)
 
@@ -501,7 +503,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         estimator : BaseEstimator
             Fitted single-step classifier.
         X_tab : pl.DataFrame
-            Feature DataFrame of shape ``(1, n_features)``.
+            Feature DataFrame, typically of shape ``(1, n_features)`` at
+            predict time (the shape is a caller convention, not enforced here).
         panel_group_name : str or None
             Panel group prefix for column naming.
 

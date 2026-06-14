@@ -9,6 +9,8 @@ Organized into three categories:
 3. Tag System Checks - Validate tag system correctness (3 functions)
 """
 
+import numpy as np
+
 try:
     import polars as pl
     import polars.selectors as cs
@@ -948,7 +950,6 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
                 X_p = None
 
             X_inv = transformer_clone.inverse_transform(X_trans, X_p)
-            X.tail(len(X_trans))
 
             for col, dtype in input_dtypes.items():
                 if col in X_inv.columns:
@@ -1001,12 +1002,18 @@ def check_fit_idempotent(transformer, X: pl.DataFrame, y: pl.DataFrame | None = 
 
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-5, abs_tol=1e-8)
 
-    # Check fitted attributes match
+    # Check fitted attributes match. Some transformers store array-valued
+    # attributes (e.g. feature_names_in_ as a numpy array), so compare
+    # element-wise rather than relying on a scalar ``==``.
     for attr in ["feature_names_in_", "n_features_in_", "_observation_horizon"]:
         if hasattr(transformer1, attr):
             val1 = getattr(transformer1, attr)
             val2 = getattr(transformer2, attr)
-            assert val1 == val2, f"Attribute '{attr}' differs after double fit: {val1} vs {val2}"
+            if isinstance(val1, np.ndarray) or isinstance(val2, np.ndarray):
+                equal = np.array_equal(np.asarray(val1), np.asarray(val2))
+            else:
+                equal = val1 == val2
+            assert equal, f"Attribute '{attr}' differs after double fit: {val1} vs {val2}"
 
 
 def check_inverse_transform_round_trip(

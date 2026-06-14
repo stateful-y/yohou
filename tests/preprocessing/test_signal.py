@@ -74,7 +74,6 @@ class TestIntegrateTransformer:
                     "check_inverse_transform_identity",
                     "check_inverse_transform_round_trip",
                     "check_inverse_observe_transform_identity",
-                    "check_observe_transform_sequential_consistency",
                 ],
             ),
         ],

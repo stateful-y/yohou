@@ -205,6 +205,10 @@ def check_coverage_rates_validation(
         Training target data
     X_actual : pl.DataFrame, optional
         Training features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to fit()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to fit()
 
     Raises
     ------

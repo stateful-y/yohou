@@ -42,7 +42,9 @@ class BaseStandardForecaster:
     groups_: None
     local_y_schema_: dict[str, pl.DataType]
     local_X_actual_schema_: dict[str, pl.DataType] | None
-    shared_X_actual_schema_: None
+    # Always None for standalone non-panel forecasters, but compositions
+    # (e.g. ColumnForecaster) may aggregate shared schemas from panel children.
+    shared_X_actual_schema_: dict[str, pl.DataType] | None
     observation_horizon: int
     observed_time_: datetime
     interval_: timedelta | str

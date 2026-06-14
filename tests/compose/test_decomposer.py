@@ -165,6 +165,24 @@ class TestResiduals:
         assert "value" in trend_residuals.columns
         assert len(trend_residuals) == 30
 
+    def test_store_residuals_then_observe_appends(self, daily_data):
+        """observe() appends to residuals_ without KeyError after fit."""
+        forecaster = DecompositionPipeline(
+            [
+                ("trend", PolynomialTrendForecaster(degree=1)),
+                ("seasonality", SeasonalNaive(seasonality=7)),
+            ],
+            store_residuals=True,
+        )
+        forecaster.fit(daily_data[:30], forecasting_horizon=5)
+        len_before = len(forecaster.residuals_["trend"])
+
+        forecaster.observe(daily_data[30:40])
+
+        assert "trend" in forecaster.residuals_
+        assert "seasonality" in forecaster.residuals_
+        assert len(forecaster.residuals_["trend"]) > len_before
+
 
 class TestTargetTransformer:
     """Tests for target transformer (e.g., multiplicative decomposition)."""

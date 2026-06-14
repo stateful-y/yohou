@@ -23,8 +23,9 @@ def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_h
         Column names for each DataFrame.
 
     observation_horizons : list of int
-        Observation horizon for each transformer (used for fallback when
-        ``"time"`` column is absent).
+        Observation horizon for each transformer. Accepted for API
+        consistency; currently unused because alignment is driven entirely
+        by the ``"time"`` column intersection.
 
     Returns
     -------
@@ -95,9 +96,10 @@ def _rewind_transform_one(
 ) -> pl.DataFrame:
     """Rewind and transform data using a single transformer.
 
-    Applies rewind_transform semantics: transforms from scratch without using
-    pre-existing memory, discards the first observation_horizon rows, and
-    rewinds the internal state with the input data.
+    Delegates to ``transformer.rewind_transform()``, which transforms from
+    scratch without using pre-existing memory, discards warmup rows, and
+    rewinds the internal state with the input data. This wrapper does not
+    perform the row-discarding itself.
 
     Parameters
     ----------

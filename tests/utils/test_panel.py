@@ -397,6 +397,16 @@ class TestDictToPanel:
         assert result["sales__store_1"].to_list() == [100, 110, 120]
         assert result["inventory__warehouse_1"].to_list() == [50, 55, 60]
 
+    def test_dict_to_panel_raises_on_misaligned_times(self):
+        """Non-overlapping group timestamps raise rather than being silently dropped."""
+        data_dict = {
+            "sales": pl.DataFrame({"time": [1, 2, 3], "store_1": [100, 110, 120]}),
+            "inventory": pl.DataFrame({"time": [2, 3, 4], "warehouse_1": [50, 55, 60]}),
+        }
+
+        with pytest.raises(ValueError, match="identical 'time' axis"):
+            dict_to_panel(data_dict)
+
     def test_dict_to_panel_dataframe_passthrough(self):
         """Test dict_to_panel returns DataFrame unchanged when given a DataFrame."""
         df = pl.DataFrame({"time": [1, 2, 3], "sales__store_1": [100, 110, 120], "sales__store_2": [150, 160, 170]})
@@ -445,10 +455,10 @@ class TestDictToPanel:
         assert result["time"].dtype == pl.Datetime
         assert result["time"].to_list() == time.to_list()
 
-    def test_dict_to_panel_empty_dict_returns_none(self):
-        """Test dict_to_panel returns None for empty dict (vacuous truth in all())."""
-        result = dict_to_panel({})
-        assert result is None
+    def test_dict_to_panel_empty_dict_raises(self):
+        """Test dict_to_panel raises on an empty dict rather than silently returning None."""
+        with pytest.raises(ValueError, match="empty dict"):
+            dict_to_panel({})
 
     def test_dict_to_panel_none_input_returns_none(self):
         """Test dict_to_panel returns None when input is None."""

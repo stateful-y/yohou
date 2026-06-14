@@ -10,8 +10,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
 from yohou.utils import tabularize, validate_transformer_data
-from yohou.utils._compat import Interval, _check_feature_names_in, _fit_context
-from yohou.utils.tags import Tags
+from yohou.utils._compat import Interval, _check_feature_names_in
 
 __all__ = [
     "ExponentialMovingAverage",
@@ -217,59 +216,21 @@ class MeanLagTransformer(BaseTransformer):
         "n_lags": [Interval(numbers.Integral, 1, None, closed="left")],
     }
 
+    _tags = {"stateful": True}
+
     def __init__(self, lag: StrictInt | list[StrictInt] = 1, n_lags: StrictInt = 1):
         self.lag = lag
         self.n_lags = n_lags
 
-    def __sklearn_tags__(self) -> Tags:
-        """Get estimator tags.
+    @property
+    def observation_horizon(self) -> int:  # noqa: D102
+        """Return the number of past observations needed."""
+        lags = self.lag if isinstance(self.lag, list) else [self.lag]
+        return max(lags) * self.n_lags
 
-        Returns
-        -------
-        Tags
-            Estimator tags with yohou-specific attributes.
-
-        """
-        tags = super().__sklearn_tags__()
-        assert tags.transformer_tags is not None
-        tags.transformer_tags.stateful = True
-        return tags
-
-    @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "MeanLagTransformer":
-        """Fit the transformer to input data.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility with yohou pipelines.
-
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        self
-            The fitted transformer instance.
-
-        Raises
-        ------
-        ValueError
-            If ``X`` has fewer rows than ``max(lags) * n_lags``.
-
-        """
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Fit the internal model."""
         self.lags_: list[int] = self.lag if isinstance(self.lag, list) else [self.lag]
-
-        self._observation_horizon = max(self.lags_) * self.n_lags
-        X = validate_transformer_data(self, X=X, reset=True)
-
-        BaseTransformer.fit(self, X, y, **params)
-
-        return self
 
     def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transform the input time series.
@@ -435,7 +396,6 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
         # Apply function over sliding windows
         kwargs = self.kw_args if self.kw_args is not None else {}
         results = []
-        time_values = []
 
         n_rows = len(X)
         for i in range(n_rows - self.window_size + 1):
@@ -452,13 +412,10 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
             else:
                 results.append({col: float(result) for col in data_cols})
 
-            # Time index is always the last point in the window
-            time_idx = i + self.window_size - 1
-            time_values.append(X["time"][time_idx])
-
-        # Build output DataFrame
+        # The output time is the last point of each window, i.e. a single slice
+        # of the original time column rather than per-iteration scalar lookups.
         result_df = pl.DataFrame(results)
-        time_df = pl.DataFrame({"time": time_values})
+        time_df = pl.DataFrame({"time": X["time"][self.window_size - 1 :]})
 
         return pl.concat([time_df, result_df], how="horizontal")
 

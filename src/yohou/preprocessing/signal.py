@@ -224,6 +224,37 @@ class NumericalFilter(BaseTransformer):
 
         return pl.DataFrame(result_cols)
 
+    def observe_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+        """Transform new data and update state without clearing filter delays.
+
+        The base ``observe_transform`` routes through ``rewind()``, which would
+        clear the filter delay state ``zi_`` and reintroduce chunk-boundary
+        transients. This override preserves ``zi_`` so streaming/chunked
+        processing continues seamlessly.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input time series with a ``"time"`` column (datetime) and one or
+            more numeric columns.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed time series with a ``"time"`` column and transformed
+            value columns.
+
+        """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
+
+        X_t = self.transform(X, **params)
+        # Update observed window without clearing the filter delay state.
+        self._update_X_observed(X)
+        return X_t
+
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
 
@@ -288,8 +319,9 @@ class NumericalIntegrator(BaseTransformer):
     **Statefulness**: The integrator maintains the last transformed value
     between transform calls via ``_X_t_observed_``. This enables accurate
     streaming integration where each chunk continues seamlessly from the
-    previous one. The last input values are stored in ``_X_observed`` for
-    proper trapezoid boundary calculation.
+    previous one. The last input values are stored in ``_last_X_value_`` for
+    proper trapezoid boundary calculation (this is a per-column last-input
+    buffer, distinct from the parent-class ``_X_observed`` observation window).
 
     Use ``rewind()`` to clear the integration state and start fresh.
 
@@ -381,9 +413,12 @@ class NumericalIntegrator(BaseTransformer):
         for col_name in data.columns:
             col_values = data[col_name].to_numpy()
 
-            # Handle chunk boundary with trapezoid rule
+            # Handle the single inter-chunk interval with the trapezoid rule.
+            # This bridge applies regardless of the intra-chunk integration
+            # order (trapezoid or simpson); a single interval has no Simpson
+            # form, so the trapezoidal half-step is the correct correction.
             boundary_integral = 0.0
-            if col_name in self._last_X_value_ and self.method == "cumulative_trapezoid":
+            if col_name in self._last_X_value_:
                 # Add half-step for proper boundary: 0.5 * (last + first) * dt
                 last_val = self._last_X_value_[col_name]
                 boundary_integral = 0.5 * (last_val + col_values[0]) * dt
@@ -434,29 +469,6 @@ class NumericalIntegrator(BaseTransformer):
         self._update_X_observed(X)
         return X_t
 
-    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> pl.DataFrame:
-        """Fit and transform in one step.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        """
-        self.fit(X, y)
-        return self.transform(X, **params)
-
     def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Differentiate to reverse integration.
 
@@ -465,7 +477,8 @@ class NumericalIntegrator(BaseTransformer):
         X_t : pl.DataFrame
             Integrated time series.
         X_p : pl.DataFrame or None
-            Not used for this stateless transformer.
+            Not used; the inverse is applied statically regardless of the
+            running integration state.
 
         Returns
         -------

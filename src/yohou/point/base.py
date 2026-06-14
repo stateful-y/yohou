@@ -21,7 +21,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     target_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
-        Transformer used to transform the target time series into features.
+        Transformer used to transform the feature time series (``X_actual``) into features.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -34,6 +34,11 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     Subclasses must implement ``_predict_one`` to produce point
     predictions for a single forecast step.  The ``forecaster_type``
     tag is set to ``POINT``.
+
+    Concrete naive forecasters (``SeasonalNaive``, ``MeanSeasonalNaive``)
+    fix ``target_transformer``, ``feature_transformer``, and
+    ``target_as_feature`` to ``None`` and do not expose them as constructor
+    parameters.
 
     See Also
     --------
@@ -187,7 +192,10 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
         ValueError
-            If ``groups`` contains names not seen during fit.
+            If ``groups`` contains names not seen during fit, or if
+            ``forecasting_horizon > fit_forecasting_horizon_`` and the
+            forecaster was fitted with ``X_forecast`` (recursive prediction
+            cannot re-derive vintage-dependent step columns across blocks).
 
         """
         check_is_fitted(
@@ -215,12 +223,12 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         def derive_observation_fn(forecaster, y_pred_step_inv):
             """Derive observation from inverse-transformed prediction."""
-            if self.groups_ is None:
-                y = y_pred_step_inv.select(["time"] + list(self.local_y_schema_.keys()))
+            if forecaster.groups_ is None:
+                y = y_pred_step_inv.select(["time"] + list(forecaster.local_y_schema_.keys()))
             else:
                 y_columns = ["time"]
-                for group_name in self.groups_:
-                    y_columns.extend([f"{group_name}__{col}" for col in self.local_y_schema_])
+                for group_name in forecaster.groups_:
+                    y_columns.extend([f"{group_name}__{col}" for col in forecaster.local_y_schema_])
                 y = y_pred_step_inv.select(y_columns)
             return y
 
@@ -274,17 +282,21 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             data.
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
-            ``forecasting_horizon``.
+            ``fit_forecasting_horizon_`` (the horizon used at fit time).
         predict_transformed : bool, default=False
             If ``True``, return predictions in the transformed space without
             applying inverse target transformation.
         X_future : pl.DataFrame or None, default=None
-            Known future features with a ``"time"`` column.
+            Known future features with a ``"time"`` column. Silently ignored
+            (with a ``UserWarning``) when the forecaster has
+            ``requires_exogenous=False``.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Vintage times do not need to align exactly with
             observation times; the latest vintage at or before each
             observation time is selected automatically (as-of matching).
+            Silently ignored (with a ``UserWarning``) when the forecaster
+            has ``requires_exogenous=False``.
         **params : dict
             Metadata to route to nested estimators.
 

@@ -66,8 +66,8 @@ def plot_phase(
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
-        group, ``"member"`` one per member.  ``None`` disables faceting.
-        Ignored for non-panel data.
+        group, ``"member"`` one per member.  ``None`` falls back to
+        ``"member"``.  Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
@@ -131,7 +131,7 @@ def plot_phase(
 
         def _render_phase(ctx: RenderContext) -> None:
             """Render phase spectrum for a single panel group."""
-            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            base = ctx.display_name
             y_arr = ctx.sub_df[base].to_numpy().astype(float)
             spectrum = np.fft.rfft(y_arr)
             freqs = np.fft.rfftfreq(len(y_arr))
@@ -177,7 +177,6 @@ def plot_phase(
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     _colors = resolve_color_palette(color_palette, len(plot_columns))
     _col_colors = dict(zip(plot_columns, _colors, strict=False))
-    unit = "degrees" if use_degrees else "radians"
 
     def _render_phase(ctx: RenderContext) -> None:
         """Render phase spectrum for one column into a subplot."""
@@ -251,8 +250,9 @@ def plot_spectrum(
 
     Creates a periodogram showing the power spectral density via FFT, useful
     for identifying dominant frequencies and periodic patterns in the data.
-    Hover text always includes the corresponding period (1/frequency) and
-    detected peaks are annotated with their period in sample units.
+    In non-panel mode, hover text includes the corresponding period
+    (1/frequency) and detected peaks are annotated with their period in
+    sample units; these enrichments are not applied to panel facets.
 
     Parameters
     ----------
@@ -266,8 +266,8 @@ def plot_spectrum(
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
-        group, ``"member"`` one per member.  ``None`` disables faceting.
-        Ignored for non-panel data.
+        group, ``"member"`` one per member.  ``None`` falls back to
+        ``"member"``.  Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
@@ -289,9 +289,11 @@ def plot_spectrum(
     line_width : float, default=2.0
         Width of the line traces.
     show_peaks : bool, default=False
-        Whether to annotate dominant frequency peaks.
+        Whether to annotate dominant frequency peaks. Only has an effect in
+        non-panel mode; ignored when faceting panel data.
     n_peaks : int, default=3
-        Number of peaks to annotate when ``show_peaks`` is True.
+        Number of peaks to annotate when ``show_peaks`` is True. Only has an
+        effect in non-panel mode.
 
     Returns
     -------
@@ -336,7 +338,7 @@ def plot_spectrum(
 
         def _render_periodogram(ctx: RenderContext) -> None:
             """Render spectral periodogram with optional log scaling for a single column."""
-            base = [c for c in ctx.sub_df.columns if c != "time"][0]
+            base = ctx.display_name
             y_arr = ctx.sub_df[base].to_numpy()
             freqs, psd = scipy_periodogram(y_arr)
             ctx.fig.add_trace(

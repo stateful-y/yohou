@@ -31,13 +31,24 @@ def weighted_quantile(x: npt.NDArray[np.float64], q: float, weights: npt.NDArray
     float
         The weighted quantile value.
 
+    Raises
+    ------
+    ValueError
+        If ``x`` and ``weights`` have different lengths, or if the weights
+        sum to zero (no calibration mass), which would otherwise yield an
+        undefined (infinite) quantile that silently corrupts interval bounds.
+
     """
     if len(x) != len(weights):
         raise ValueError(f"x and weights must have the same length, got {len(x)} and {len(weights)}")
 
     w_sum = np.sum(weights)
     if w_sum == 0:
-        return float("inf")
+        raise ValueError(
+            "weighted_quantile received weights that sum to zero; cannot compute a "
+            "weighted quantile. This usually means all similarity weights collapsed "
+            "to zero for the current prediction context."
+        )
 
     # Normalize so the weighted CDF reaches 1, making all quantile levels computable
     w_norm = weights / w_sum
