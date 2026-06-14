@@ -109,8 +109,11 @@ when multiple forecasters produce columns with the same name.
 [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) is a two-stage forecaster for scenarios where exogenous features (`X_actual`)
 are available during training but not at prediction time. It chains a
 `feature_forecaster` that predicts future feature values with a
-`target_forecaster` that uses those predicted features to forecast `y`. The class
-requires `X_actual` at fit time and raises a `ValueError` if it is not provided.
+`target_forecaster` that uses those forecasts to predict `y`. The feature forecast
+reaches the target through the `X_forecast` channel, where it becomes contemporaneous
+step columns (`feat_step_1 .. feat_step_H`), so it influences the prediction at every
+horizon step. The class requires `X_actual` at fit time and raises a `ValueError` if
+it is not provided.
 
 ```mermaid
 graph LR
@@ -123,7 +126,8 @@ graph LR
 
   subgraph predict
     direction TB
-    E["target_fcstr"] --> F["ŷ_pred"]
+    E["feature_fcstr"] -->|X_forecast| G["target_fcstr"]
+    G --> F["ŷ_pred"]
   end
 
   fit ~~~ predict
@@ -132,39 +136,59 @@ graph LR
 ### The distribution shift problem
 
 The core challenge is a training/prediction mismatch. At prediction time the
-target forecaster receives forecasted (imperfect) feature values, but during
-training the real feature values are available. Training on real features and
+target forecaster receives forecasted (imperfect) feature values, but perfect
+feature values are available during training. Training on perfect features and
 predicting with forecasted ones can degrade accuracy. The `strategy` parameter
-controls how this is handled.
+sets the quality of the in-sample feature forecast the target trains on; in every
+strategy that forecast is delivered to the target through `X_forecast`.
 
 ### Training strategies
 
-**`"actual"` (default)** fits the feature forecaster on the full `X_actual`, then
-fits the target forecaster on the full `y` with the real `X_actual`. This is the
-simplest approach but creates a distribution mismatch: the target forecaster
-trains on perfect features and predicts with imperfect ones.
+**`"rewind"` (default)** fits the feature forecaster on all data, rewinds it to the
+observation horizon, then rolls forward producing one forecast vintage per origin.
+The target trains on that rolling forecast, so it sees the same forecast quality at
+training as at prediction time, using all the data and avoiding a distribution
+mismatch.
 
 **`"predicted"`** splits the training data at position
-`int(len(y) * split_ratio)`. The feature forecaster trains on the first portion
-and predicts features for the second. The target forecaster then trains on the
-second portion using those predicted (imperfect) features. This avoids the
-distribution shift but sacrifices some training data. The `split_ratio`
+`int(len(y) * split_ratio)`. The feature forecaster trains on the first portion and
+rolls forward over the second, and the target trains on that rolling forecast. This
+avoids the distribution shift but sacrifices some training data. The `split_ratio`
 parameter (default `0.5`) controls the split point; setting it lower gives the
 target forecaster more training data at the cost of a less accurate feature
 forecaster.
 
-**`"rewind"`** fits the feature forecaster on all data, rewinds it to the
-observation horizon, then predicts features from the rewind point onward. The
-target forecaster trains on those predicted features. This approach uses all data
-for feature learning while still exposing the target forecaster to imperfect
-features, balancing data efficiency with distribution alignment.
+**`"actual"`** fits the feature forecaster on the full `X_actual` and trains the
+target on perfect-foresight features (the actual values windowed forward and labelled
+with a vintage). This is the simplest option and uses all data, but it creates a
+distribution mismatch: the target trains on perfect features and predicts with
+forecasted ones.
 
 ### Prediction capabilities
 
-`ForecastedFeatureForecaster` delegates all prediction calls to the target
-forecaster. If the target forecaster supports interval predictions or class
-probability predictions, those methods become available on the composite. The
-feature forecaster always produces point predictions regardless.
+At prediction time `ForecastedFeatureForecaster` calls the feature forecaster to
+produce the feature forecast and passes it to the target as `X_forecast`; the target
+then predicts `y`. If the target forecaster supports interval predictions or class
+probability predictions, those methods become available on the composite. The feature
+forecaster always produces point predictions regardless. A target with
+`requires_exogenous=False` (such as a naive forecaster) ignores the feature forecast.
+
+### Two cadences and feature_stride
+
+`ForecastedFeatureForecaster` has two independent cadences. The target predict
+cadence is the `stride` argument to `observe_predict` (how often the target
+forecasts as you walk forward). The feature forecast cadence is the `feature_stride`
+constructor parameter (how often the feature forecaster regenerates its forecast).
+The default `feature_stride=1` regenerates the forecast at every step.
+
+Set `feature_stride > 1` when the feature forecaster cannot be re-run every step in
+production, for example an expensive feature model refreshed daily while the target
+predicts hourly. The same `feature_stride` is applied at fit and at serve, so the
+target trains on features of the same vintage age it consumes in production. To keep
+the forecast covering the target's horizon `H` even when a vintage is up to
+`feature_stride - 1` steps old, the feature forecaster is fit and rolled at horizon
+`H + feature_stride - 1`. `feature_stride > 1` takes effect only when serving through
+`observe_predict` (a bare `predict` always produces a single fresh forecast).
 
 For the data-shaping perspective on exogenous features (the three types `X_actual`,
 `X_future`, `X_forecast`, and step-indexed columns), see
@@ -223,9 +247,13 @@ target columns. Calling `observe()` independently updates each column's model
 without cross-contamination.
 
 **[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)** chains observations in two stages. The feature
-forecaster observes `X_actual` columns as its target. The target forecaster then
-observes `y` together with the actual feature values. This maintains the
-two-stage contract at observation time, not just during initial fitting.
+forecaster observes the `X_actual` columns as its target, and the target forecaster
+observes `y` (the feature forecast is regenerated through `X_forecast` at predict
+time, so the target does not observe features through its own `X_actual` channel).
+Because the feature forecaster must advance in step with the target, `observe` and
+`rewind` require `X_actual` and raise a `ValueError` if it is omitted. `observe_predict`
+rolls over the data one `stride`-sized slice at a time, predicting at each origin, and
+regenerates the feature forecast every `feature_stride` steps.
 
 **[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)** dispatches `observe()` to each group's clone
 with only the rows belonging to that group. Each group maintains independent

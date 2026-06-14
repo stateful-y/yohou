@@ -142,14 +142,16 @@ pipeline.fit(
 ### ForecastedFeatureForecaster
 
 Use `ForecastedFeatureForecaster` when you want Yohou to forecast the
-exogenous feature itself. `X_actual` trains both the feature forecaster
-(as its target) and provides lag features for the target forecaster.
-`X_future` and `X_forecast` pass through to the target forecaster directly.
+exogenous feature itself. `X_actual` trains the feature forecaster (as its
+target); its forecast then reaches the target forecaster through the
+`X_forecast` channel as contemporaneous step columns. `X_future` passes
+through to the target forecaster directly.
 
-The `strategy` parameter controls what `X_actual` the target forecaster
-trains on: `"actual"` uses real values, `"predicted"` and `"rewind"` use
-the feature forecaster's predictions so the target learns from inputs
-similar to what it sees at predict time.
+The `strategy` parameter controls the quality of the in-sample feature
+forecast the target trains on: `"actual"` uses perfect-foresight (real)
+values, while `"predicted"` and `"rewind"` use the feature forecaster's
+rolling predictions so the target learns from inputs similar to what it sees
+at predict time.
 
 ```python
 from yohou.compose import ForecastedFeatureForecaster
@@ -170,10 +172,37 @@ fff.fit(
 pred = fff.predict(X_future=holidays)
 ```
 
-At predict time only the target forecaster runs: it uses its stored
-observation window for X_actual lag features, so the feature forecaster
-is not called again. See [About Exogenous Features](../explanation/exogenous-features.md)
-for how the observation window and predict-time override work internally.
+At predict time the feature forecaster runs first to forecast the exogenous
+features, and that forecast is passed to the target forecaster as `X_forecast`.
+Note that `observe` and `rewind` require `X_actual`, since the feature forecaster
+needs new feature observations to advance in step with the target. See
+[About Exogenous Features](../explanation/exogenous-features.md) for how the
+`X_forecast` step columns and predict-time override work internally.
+
+### Refresh the feature forecast less often than you predict
+
+If the feature forecaster is expensive and you cannot re-run it every step in
+production (for example you refresh it daily while predicting hourly), set
+`feature_stride` to that refresh cadence. The feature forecast is then regenerated
+every `feature_stride` steps and reused in between, both at fit and at serve, so the
+target trains on features of the same age it sees in production:
+
+```python
+fff = ForecastedFeatureForecaster(
+    target_forecaster=price_forecaster,
+    feature_forecaster=temperature_forecaster,
+    strategy="rewind",
+    feature_stride=24,  # regenerate the feature forecast every 24 steps
+)
+fff.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=H)
+
+# Walk forward: observe_predict regenerates the feature forecast every 24 steps
+results = fff.observe_predict(y=y_test, X_actual=X_actual_test, stride=H)
+```
+
+`feature_stride` takes effect only through `observe_predict` (a bare `predict`
+always produces a single fresh forecast). The default `feature_stride=1` regenerates
+the forecast at every step.
 
 ## Update Observations with Exogenous Data
 

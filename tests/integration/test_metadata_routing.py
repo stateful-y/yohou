@@ -621,9 +621,13 @@ class TestForecasterFitTimeWeightRouting:
         target_forecaster = ConsumingForecaster(registry=registry).set_fit_request(time_weight=True)
         feature_forecaster = ConsumingForecaster(registry=registry).set_fit_request(time_weight=True)
 
+        # strategy="actual" isolates fit-time routing: each child's fit is called
+        # exactly once and no rolling observe_predict runs (which would record
+        # extra predict/observe calls in the registry).
         chained = ForecastedFeatureForecaster(
             target_forecaster=target_forecaster,
             feature_forecaster=feature_forecaster,
+            strategy="actual",
         )
 
         y = pl.DataFrame({

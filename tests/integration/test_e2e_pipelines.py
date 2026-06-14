@@ -909,9 +909,10 @@ class TestFeatureForecastedPipeline:
         y_pred2 = forecaster.predict(forecasting_horizon=10)
         assert len(y_pred2) == 10
 
-        # Observe_predict
+        # Observe_predict now rolls over the block (initial prediction plus one per
+        # stride-sized slice), producing multiple vintages.
         y_pred3 = forecaster.observe_predict(df_y[310:320], df_X[310:320], forecasting_horizon=10)
-        assert len(y_pred3) == 10
+        assert y_pred3["vintage_time"].n_unique() > 1
 
     def test_pipeline_d_strategy_comparison(self):
         """Pipeline D: Compare 'actual' vs 'predicted' strategies."""

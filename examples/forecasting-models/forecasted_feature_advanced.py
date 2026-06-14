@@ -108,8 +108,11 @@ def _(mo):
     mo.md(r"""
     ## 2. Strategy: "actual"
 
-    The target forecaster is trained on actual feature values. At
-    prediction time, you must provide X_actual (or use the default forecast).
+    The target is trained on perfect-foresight features (actual values
+    windowed forward). At prediction time the feature forecaster supplies the
+    forecast automatically through the target's `X_forecast` channel, so you do
+    not pass features to `predict`. This is simple but creates a train/serve
+    mismatch (perfect at train, forecasted at serve).
     """)
 
 
@@ -144,8 +147,10 @@ def _(mo):
     mo.md(r"""
     ## 3. Strategy: "predicted"
 
-    Both fit and predict use the feature forecaster's predictions.
-    This avoids train-test leakage.
+    The target trains on a rolling forecast of the features over a held-out
+    portion, so it sees the same forecast quality at fit as at predict (no
+    train/serve mismatch). In every strategy the forecast reaches the target
+    through `X_forecast`; the strategies differ only in the forecast's quality.
     """)
 
 
@@ -301,6 +306,53 @@ def _(
         _rows.append({"split_ratio": _ratio, "MAE": round(_mae, 3)})
 
     mo.ui.table(pl.DataFrame(_rows))
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. feature_stride: Refresh the Feature Forecast Less Often
+
+    When the feature forecaster is expensive and cannot be re-run every step in
+    production, set `feature_stride` to the refresh cadence. The feature forecast is
+    regenerated every `feature_stride` steps and reused in between, both at fit and at
+    serve, so the target trains on features of the same age it sees in production.
+    `feature_stride` takes effect through `observe_predict` (rolling), not a bare
+    `predict`.
+    """)
+
+
+@app.cell
+def _(
+    ForecastedFeatureForecaster,
+    LagTransformer,
+    PointReductionForecaster,
+    Ridge,
+    X_actual_test,
+    X_actual_train,
+    horizon,
+    y_test,
+    y_train,
+):
+    ff_stride = ForecastedFeatureForecaster(
+        target_forecaster=PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=LagTransformer(lag=[1, 3]),
+        ),
+        feature_forecaster=PointReductionForecaster(
+            estimator=Ridge(alpha=1.0),
+            feature_transformer=LagTransformer(lag=[1, 3]),
+        ),
+        strategy="rewind",
+        feature_stride=2,  # regenerate the feature forecast every 2 steps
+    )
+    ff_stride.fit(y_train, X_actual_train, forecasting_horizon=horizon)
+    # Rolling walk-forward over the test set: observe_predict refreshes the feature
+    # forecast every 2 steps and reuses it in between.
+    y_pred_stride = ff_stride.observe_predict(y_test, X_actual_test, stride=horizon)
+    print(f"feature_stride=2 rolling observe_predict: {y_pred_stride['vintage_time'].n_unique()} vintages")
+    y_pred_stride.head()
+    return
 
 
 @app.cell(hide_code=True)

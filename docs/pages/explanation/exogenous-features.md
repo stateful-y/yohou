@@ -245,11 +245,13 @@ All composition forecasters propagate the three parameters to their children:
   forecaster after trend/seasonality removal.
 
 - **ForecastedFeatureForecaster** uses `X_actual` as the target for the
-  feature forecaster (training it to predict the exogenous series), then
-  passes `X_future` and `X_forecast` through to the target forecaster. At
-  predict time, only the target forecaster is called: it uses its stored
-  observation window for `X_actual` features, and `X_future`/`X_forecast`
-  override step columns as usual.
+  feature forecaster (training it to predict the exogenous series). At predict
+  time the feature forecaster produces a forecast that is passed to the target
+  forecaster as `X_forecast` (merged with any caller-supplied `X_forecast`), so
+  the forecasted features become step columns the target consumes. `X_future`
+  is forwarded to the target unchanged. Its `feature_stride` parameter sets how
+  often the feature forecaster regenerates this forecast (every step by default),
+  for cases where the feature model is too expensive to re-run on every step.
 
 - **VotingForecaster** passes all three parameters to every ensemble member.
 

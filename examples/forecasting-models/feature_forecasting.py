@@ -321,9 +321,10 @@ def _(mo):
     effort and adds noise.
 
     The trick: use a [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) as the `feature_forecaster` that
-    only forecasts `nsw_demand` and **drops** the calendar columns.  At
-    predict time, pass the known calendar values via `X_actual` so they are merged
-    back in for the target forecaster.
+    only forecasts `nsw_demand` and **drops** the calendar columns.  Pass the
+    known calendar values via `X_future` at both fit and predict, so the target
+    forecaster builds step columns for them and uses the known future values
+    directly (no forecasting needed).
     """)
 
 
@@ -363,9 +364,18 @@ def _(
         strategy="actual",
     )
 
-    ff_known.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+    # Known-ahead calendar features travel through the X_future channel at both
+    # fit and predict (the target builds step columns for them at fit, then
+    # consumes the known future values at predict).
+    X_known_train = X_actual_train.select("time", "day_of_week", "month")
+    ff_known.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_known_train,
+    )
 
-    # Pass known calendar features via X_actual at predict time
+    # Pass known calendar features via X_future at predict time
     X_known = X_actual_test.select("time", "day_of_week", "month")
     y_pred_known = ff_known.predict(forecasting_horizon=forecasting_horizon, X_future=X_known)
 
