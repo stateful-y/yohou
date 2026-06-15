@@ -126,7 +126,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     def fit(self, y_train: pl.DataFrame, *, forecaster=None, **params) -> BaseScorer:
         """Fit the scorer on training data.
 
-        Validates ``groups`` and ``component_names`` against
+        Validates ``groups`` and ``components`` against
         training data.  Stores training data statistics for scaled metrics
         (e.g., MASE).  Subclasses should override to add type-specific
         parameter validation.
@@ -151,11 +151,11 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         Raises
         ------
         ValueError
-            If ``groups`` or ``component_names`` contain names not
+            If ``groups`` or ``components`` contain names not
             present in ``y_train``.
 
         """
-        # Validate base parameters (groups, component_names)
+        # Validate base parameters (groups, components)
         self._validate_parameters(y_train=y_train)
 
         # Validate input structure without aligning (single dataframe)
@@ -1263,7 +1263,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         """Fit the scorer on training data.
 
         Validates ``aggregation_method``, ``groups``, and
-        ``component_names``.
+        ``components``.
 
         Parameters
         ----------
@@ -1285,7 +1285,7 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         ------
         ValueError
             If ``aggregation_method`` contains invalid values, or if
-            ``groups`` / ``component_names`` are not found in
+            ``groups`` / ``components`` are not found in
             ``y_train``.
 
         """
@@ -1502,7 +1502,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         """Fit the scorer on training data.
 
         Validates ``coverage_rates``, ``aggregation_method``,
-        ``groups``, and ``component_names``.
+        ``groups``, and ``components``.
 
         Parameters
         ----------
@@ -1524,7 +1524,7 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         ------
         ValueError
             If ``coverage_rates`` are invalid, ``aggregation_method`` contains
-            invalid values, or if ``groups`` / ``component_names``
+            invalid values, or if ``groups`` / ``components``
             are not found in ``y_train``.
 
         """
@@ -1765,7 +1765,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         """Fit the scorer on training data.
 
         Validates ``aggregation_method``, ``groups``, and
-        ``component_names``.
+        ``components``.
 
         Parameters
         ----------
@@ -1787,7 +1787,7 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         ------
         ValueError
             If ``aggregation_method`` contains invalid values, or if
-            ``groups`` / ``component_names`` are not found in
+            ``groups`` / ``components`` are not found in
             ``y_train``.
 
         """

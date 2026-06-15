@@ -444,6 +444,89 @@ class TestCalibrationError:
         assert "calibration_error" in df.columns
         assert len(df) == len(y_true)
 
+    def test_calibration_error_matches_coverage_deviation(self):
+        """Score equals mean over rates of |empirical_coverage - rate|.
+
+        Five timesteps, identical interval [0, 2] at both rates; three of five
+        truths fall inside, so empirical coverage is 0.6 at each rate.
+        CalibError = (|0.6 - 0.5| + |0.6 - 0.9|) / 2 = 0.2. The buggy per-row
+        formula mean(|indicator - rate|) returns 0.46 instead.
+        """
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+        y_true = pl.DataFrame({"time": times, "value": [1.0, 1.0, 1.0, 100.0, 100.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "value_lower_0.5": [0.0] * 5,
+            "value_upper_0.5": [2.0] * 5,
+            "value_lower_0.9": [0.0] * 5,
+            "value_upper_0.9": [2.0] * 5,
+        })
+        error = CalibrationError(coverage_rates=[0.5, 0.9])
+        error.fit(y_true)
+        score = error.score(y_true, y_pred)
+
+        assert score == pytest.approx(0.2)
+
+    def test_calibration_error_perfect_calibration_is_zero(self):
+        """Empirical coverage equal to the nominal rate at every rate yields exactly 0.
+
+        Ten timesteps with nested intervals: [0, 4.5] covers 5/10 (rate 0.5) and
+        [0, 8.5] covers 9/10 (rate 0.9), so coverage matches nominal at both rates.
+        """
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(10)]
+        y_true = pl.DataFrame({"time": times, "value": [float(i) for i in range(10)]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 10,
+            "time": times,
+            "value_lower_0.5": [0.0] * 10,
+            "value_upper_0.5": [4.5] * 10,
+            "value_lower_0.9": [0.0] * 10,
+            "value_upper_0.9": [8.5] * 10,
+        })
+        error = CalibrationError(coverage_rates=[0.5, 0.9])
+        error.fit(y_true)
+
+        assert error.score(y_true, y_pred) == pytest.approx(0.0)
+
+    def test_calibration_error_per_component_coverage(self):
+        """Components retained: each component's error uses its own empirical coverage.
+
+        Component ``a`` is covered in 3/5 rows (coverage 0.6 -> error 0.2);
+        component ``b`` is covered in all 5 rows (coverage 1.0 -> error
+        (|1 - 0.5| + |1 - 0.9|) / 2 = 0.3). Aggregation collapses every
+        dimension except components.
+        """
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+        y_true = pl.DataFrame({
+            "time": times,
+            "a": [1.0, 1.0, 1.0, 100.0, 100.0],
+            "b": [1.0, 1.0, 1.0, 1.0, 1.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "a_lower_0.5": [0.0] * 5,
+            "a_upper_0.5": [2.0] * 5,
+            "a_lower_0.9": [0.0] * 5,
+            "a_upper_0.9": [2.0] * 5,
+            "b_lower_0.5": [0.0] * 5,
+            "b_upper_0.5": [2.0] * 5,
+            "b_lower_0.9": [0.0] * 5,
+            "b_upper_0.9": [2.0] * 5,
+        })
+        error = CalibrationError(
+            aggregation_method=["stepwise", "vintagewise", "groupwise", "coveragewise"],
+            coverage_rates=[0.5, 0.9],
+        )
+        error.fit(y_true)
+        df = error.score(y_true, y_pred)
+
+        assert isinstance(df, pl.DataFrame)
+        row = df.to_dicts()[0]
+        assert row["a"] == pytest.approx(0.2)
+        assert row["b"] == pytest.approx(0.3)
+
 
 class TestPanelData:
     def test_panel_data_coverage_with_panel_data(self):

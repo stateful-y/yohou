@@ -278,7 +278,7 @@ class RootMeanSquaredError(BasePointScorer):
     Attributes
     ----------
     lower_is_better : bool
-        Always True for MSE.
+        Always True for RMSE.
 
     Examples
     --------
@@ -1098,11 +1098,6 @@ class MedianAbsoluteError(BasePointScorer):
         float or pl.DataFrame
             Aggregated median absolute error.
 
-        Raises
-        ------
-        TypeError
-            If time_weight or step_weight are passed (median is not weight-compatible).
-
         """
         check_is_fitted(self, ["_is_fitted"])
 
@@ -1366,11 +1361,6 @@ class R2Score(BasePointScorer):
         float or pl.DataFrame
             R² score. 1.0 for perfect predictions, 0.0 for mean-level predictions.
 
-        Raises
-        ------
-        TypeError
-            If time_weight or step_weight are passed.
-
         """
         check_is_fitted(self, ["_is_fitted"])
 
@@ -1537,11 +1527,6 @@ class MeanDirectionalAccuracy(BasePointScorer):
         -------
         float or pl.DataFrame
             MDA score between 0 and 1. 1.0 for perfect directional prediction.
-
-        Raises
-        ------
-        TypeError
-            If time_weight or step_weight are passed.
 
         """
         check_is_fitted(self, ["_is_fitted"])
