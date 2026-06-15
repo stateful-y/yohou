@@ -8,6 +8,7 @@ from typing import Literal
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
+from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
@@ -310,6 +311,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         return self
 
+    @staticmethod
+    def _routed_for(routed_params: Bunch | None, name: str, callee: str) -> dict:
+        """Per-forecaster routed metadata for one callee, or empty if none."""
+        if routed_params is None:
+            return {}
+        return getattr(routed_params.get(name, Bunch(**{callee: {}})), callee, {})
+
     def _predict_class_proba_one(
         self,
         groups: list[str],
@@ -336,9 +344,11 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Aggregated probability predictions.
 
         """
+        _raise_for_params(params, self, "predict_class_proba")
+        routed_params = process_routing(self, "predict_class_proba", **params)
         if self.method == "soft":
-            return self._soft_vote_predict_class_proba(groups=groups, **params)
-        return self._hard_vote_predict_class_proba(groups=groups, **params)
+            return self._soft_vote_predict_class_proba(groups=groups, routed_params=routed_params)
+        return self._hard_vote_predict_class_proba(groups=groups, routed_params=routed_params)
 
     def predict_class_proba(  # ty: ignore[invalid-method-override]
         self,
@@ -374,6 +384,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         check_is_fitted(self, ["forecasters_", "classes_"])
+        _raise_for_params(params, self, "predict_class_proba")
+        routed_params = process_routing(self, "predict_class_proba", **params)
 
         if self.method == "soft":
             return self._soft_vote_predict_class_proba(
@@ -381,14 +393,14 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
-                **params,
+                routed_params=routed_params,
             )
         return self._hard_vote_predict_class_proba(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             X_future=X_future,
             X_forecast=X_forecast,
-            **params,
+            routed_params=routed_params,
         )
 
     def _soft_vote_predict_class_proba(
@@ -397,7 +409,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        **params,
+        routed_params: Bunch | None = None,
     ) -> pl.DataFrame:
         """Soft vote: weighted average of class probabilities.
 
@@ -421,13 +433,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         predictions = []
-        for _name, forecaster in self.forecasters_:
+        for name, forecaster in self.forecasters_:
             y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
-                **params,
+                **self._routed_for(routed_params, name, "predict_class_proba"),
             )
             predictions.append(y_proba)
 
@@ -453,7 +465,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        **params,
+        routed_params: Bunch | None = None,
     ) -> pl.DataFrame:
         """Hard vote: majority vote converted to one-hot probabilities.
 
@@ -477,13 +489,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         predictions = []
-        for _name, forecaster in self.forecasters_:
+        for name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
-                **params,
+                **self._routed_for(routed_params, name, "predict"),
             )
             predictions.append(y_pred)
 
@@ -537,6 +549,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         check_is_fitted(self, ["forecasters_", "classes_"])
+        _raise_for_params(params, self, "predict")
+        routed_params = process_routing(self, "predict", **params)
 
         if self.method == "hard":
             return self._hard_vote_predict(
@@ -544,15 +558,15 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
-                **params,
+                routed_params=routed_params,
             )
 
-        y_proba = self.predict_class_proba(
+        y_proba = self._soft_vote_predict_class_proba(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             X_future=X_future,
             X_forecast=X_forecast,
-            **params,
+            routed_params=routed_params,
         )
         return self._ensemble_argmax_from_proba(y_proba)
 
@@ -604,7 +618,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        **params,
+        routed_params: Bunch | None = None,
     ) -> pl.DataFrame:
         """Hard vote: majority vote of argmax predictions.
 
@@ -628,13 +642,13 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         predictions = []
-        for _name, forecaster in self.forecasters_:
+        for name, forecaster in self.forecasters_:
             y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
-                **params,
+                **self._routed_for(routed_params, name, "predict"),
             )
             predictions.append(y_pred)
 
@@ -665,7 +679,9 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
                 method_mapping=MethodMapping()
                 .add(caller="fit", callee="fit")
                 .add(caller="predict", callee="predict")
-                .add(caller="predict_class_proba", callee="predict_class_proba"),
+                .add(caller="predict", callee="predict_class_proba")
+                .add(caller="predict_class_proba", callee="predict_class_proba")
+                .add(caller="predict_class_proba", callee="predict"),
             )
 
         return router

@@ -421,6 +421,31 @@ class TestVotingClassProbaPanelData:
         assert len(proba_cols) > 0
 
 
+class TestVotingClassProbaRouting:
+    """Metadata-routing guards on predict and predict_class_proba."""
+
+    @pytest.mark.parametrize("method", ["soft", "hard"])
+    def test_predict_rejects_unrouted_metadata(self, class_proba_y_X_factory, method):
+        """predict/predict_class_proba reject metadata no child requested.
+
+        Regression for the 2026-06-15 QA finding: these methods accepted
+        ``**params`` labelled as routing metadata but never called
+        ``_raise_for_params``/``process_routing``, so a stray param was passed
+        through to children unchecked instead of being validated.
+        """
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[("dt_1", _make_class_proba_forecaster()), ("dt_2", _make_class_proba_forecaster())],
+            method=method,
+        )
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+
+        with pytest.raises(TypeError, match="not routed"):
+            forecaster.predict(forecasting_horizon=3, sample_weight=[1.0] * 3)
+        with pytest.raises(TypeError, match="not routed"):
+            forecaster.predict_class_proba(forecasting_horizon=3, sample_weight=[1.0] * 3)
+
+
 class TestVotingClassProbaErrorHandling:
     """Tests for error handling behavior."""
 

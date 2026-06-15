@@ -98,7 +98,9 @@ def _observe_transform_one(
 
     if weight is None:
         return X_transformed
-    return X_transformed * weight
+    # Scale only feature columns: multiplying the whole DataFrame would cast the
+    # mandatory datetime "time" column to f64, violating the data contract.
+    return X_transformed.with_columns(cs.exclude("time") * weight)
 
 
 def _rewind_transform_one(
@@ -145,4 +147,6 @@ def _rewind_transform_one(
 
     if weight is None:
         return X_transformed
-    return X_transformed * weight
+    # Scale only feature columns: multiplying the whole DataFrame would cast the
+    # mandatory datetime "time" column to f64, violating the data contract.
+    return X_transformed.with_columns(cs.exclude("time") * weight)

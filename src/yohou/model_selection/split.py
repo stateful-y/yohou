@@ -338,11 +338,12 @@ class ExpandingWindowSplitter(BaseSplitter):
             raise ValueError(f"test_size={test_size} should be less than the number of samples={n_samples}.")
 
         first_test_start = n_samples - n_splits * test_size
-        if first_test_start < 0:
+        if first_test_start < 1:
             raise ValueError(
                 f"Cannot create n_splits={n_splits} non-overlapping test windows of "
                 f"test_size={test_size} from n_samples={n_samples}: this needs at least "
-                f"{n_splits * test_size} samples for the test windows alone. "
+                f"{n_splits * test_size + 1} samples (the test windows alone need "
+                f"{n_splits * test_size}, leaving none for the first fold's training set). "
                 f"Reduce n_splits or test_size, or provide more data."
             )
 
@@ -851,6 +852,12 @@ def train_test_split(
             msg = f"test_size as a float must be in (0.0, 1.0), got {test_size}."
             raise ValueError(msg)
         n_test = max(1, round(n_samples * test_size))
+        if n_test >= n_samples:
+            msg = (
+                f"test_size={test_size} rounds to {n_test} test samples, which leaves no "
+                f"training samples ({n_samples} total). Use a smaller test_size."
+            )
+            raise ValueError(msg)
     elif isinstance(test_size, int):
         if test_size < 1 or test_size >= n_samples:
             msg = f"test_size as an int must be in [1, {n_samples - 1}], got {test_size}."

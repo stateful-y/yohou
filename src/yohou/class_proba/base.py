@@ -393,7 +393,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         for col in y_obs.columns:
             if col in ("vintage_time", "time"):
                 continue
-            mapping = self.label_to_code_[col]
+            # For panel columns like "group_0__weather", extract "weather":
+            # label_to_code_ is keyed by base (unprefixed) target names.
+            base_col = col.split("__", 1)[1] if "__" in col else col
+            mapping = self.label_to_code_[base_col]
             exprs.append(pl.col(col).cast(pl.String).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
         return y_obs.with_columns(exprs)
 

@@ -95,6 +95,20 @@ class TestExpandingWindowBasic:
         with pytest.raises(ValueError, match="non-overlapping test windows"):
             list(splitter.split(y))
 
+    def test_expanding_window_all_test_no_train_raises(self, y_X_factory):
+        """The boundary n_samples == n_splits * test_size must not yield an empty train.
+
+        Regression for the 2026-06-15 QA finding: the guard was
+        ``first_test_start < 0``, so n_samples == n_splits * test_size (which
+        makes the first fold's training set empty) slipped through and yielded
+        a fold whose train index starts at 0.
+        """
+        y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
+
+        splitter = ExpandingWindowSplitter(n_splits=2, test_size=10)
+        with pytest.raises(ValueError, match="non-overlapping test windows"):
+            list(splitter.split(y))
+
     def test_expanding_window_split_count_matches_get_n_splits(self, y_X_factory):
         """split() yields exactly get_n_splits() folds, or raises (never silently fewer)."""
         y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)

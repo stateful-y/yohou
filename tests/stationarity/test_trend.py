@@ -233,3 +233,24 @@ class TestPolynomialTrendWithoutExogenous:
         forecaster = PolynomialTrendForecaster(degree=1)
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.requires_exogenous is False
+
+    def test_panel_rewind_uses_per_group_observation_horizon(self):
+        """Each panel group's rewind uses its own transformer horizon.
+
+        Regression for the 2026-06-15 QA finding: panel rewind read the
+        observation horizon from the first group's transformer
+        (``next(iter(...))``) and applied it to every group. With groups whose
+        transformers have different horizons, each group must use its own.
+        """
+        from yohou.stationarity import SeasonalDifferencing
+
+        forecaster = PolynomialTrendForecaster(degree=1, target_transformer=SeasonalDifferencing(seasonality=2))
+        # Simulate a fitted panel state with per-group transformers whose
+        # observation horizons (== seasonality) differ across groups.
+        forecaster.target_transformer_ = {
+            "g0": SeasonalDifferencing(seasonality=2),
+            "g1": SeasonalDifferencing(seasonality=5),
+        }
+
+        assert forecaster._group_target_observation_horizon("g0") == 2
+        assert forecaster._group_target_observation_horizon("g1") == 5

@@ -43,6 +43,26 @@ class TestFeatureUnionFitTransform:
         X_t = union.transform(X)
         assert "time" in X_t.columns
 
+    def test_weighted_observe_rewind_preserve_time_dtype(self, time_series_factory):
+        """Weighted observe/rewind keep the datetime "time" column.
+
+        Regression for the 2026-06-15 QA finding: the weighting path returned
+        ``X_transformed * weight``, which multiplied the whole DataFrame and
+        silently cast the datetime "time" column to f64.
+        """
+        X = time_series_factory(length=50)
+        union = FeatureUnion(
+            [("s1", SimpleTransformer(observation_horizon=0))],
+            transformer_weights={"s1": 2.0},
+        )
+        union.fit(X)
+
+        X_obs = union.observe_transform(X)
+        assert X_obs["time"].dtype == pl.Datetime
+
+        X_rew = union.rewind_transform(X)
+        assert X_rew["time"].dtype == pl.Datetime
+
     def test_horizontal_concat_two_transformers(self, time_series_factory):
         """Two transformers produce horizontally concatenated output."""
         X = time_series_factory(length=50, n_components=1)

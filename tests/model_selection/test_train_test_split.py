@@ -114,6 +114,20 @@ class TestTrainTestSplitValidation:
         with pytest.raises(ValueError, match="At least one array"):
             train_test_split(test_size=2)
 
+    def test_float_rounding_to_full_sample_raises(self):
+        """A float test_size rounding to n_samples must raise, not empty the train set.
+
+        Regression for the 2026-06-15 QA finding: ``round(n * 0.99)`` could equal
+        n_samples, leaving ``split_idx == 0`` and an empty training set returned
+        silently.
+        """
+        y = pl.DataFrame({
+            "time": pl.date_range(date(2020, 1, 1), date(2020, 1, 10), eager=True),
+            "v": list(range(10)),
+        })
+        with pytest.raises(ValueError, match="leaves no training samples"):
+            train_test_split(y, test_size=0.99)
+
     def test_mismatched_lengths_raises(self, y_daily):
         short = pl.DataFrame({"a": [1, 2, 3]})
         with pytest.raises(ValueError, match="same number of rows"):
