@@ -33,7 +33,6 @@ class TestHstack:
         result = _hstack(
             Xs=[time_df],
             column_names=[["a"]],
-            observation_horizons=[1],
         )
         assert result.shape == time_df.shape
         assert result.columns == ["time", "a"]
@@ -46,7 +45,6 @@ class TestHstack:
         result = _hstack(
             Xs=[time_df, df2],
             column_names=[["a"], ["b"]],
-            observation_horizons=[1, 1],
         )
         assert result.columns == ["time", "a", "b"]
         assert result.shape[0] == 10
@@ -68,7 +66,6 @@ class TestHstack:
         result = _hstack(
             Xs=[df1, df2],
             column_names=[["a"], ["b"]],
-            observation_horizons=[3, 1],
         )
         # Max horizon=3. df1 trimmed by 3-3=0 → 8 rows. df2 trimmed by 3-1=2 → 8 rows.
         assert result.shape[0] == 8
@@ -81,7 +78,6 @@ class TestHstack:
         result = _hstack(
             Xs=[time_df],
             column_names=[["renamed_a"]],
-            observation_horizons=[1],
         )
         assert "renamed_a" in result.columns
         assert "a" not in result.columns
@@ -96,7 +92,6 @@ class TestHstack:
         result = _hstack(
             Xs=[time_df, df2],
             column_names=[["a"], ["b"]],
-            observation_horizons=[1, 3],
         )
         # Max horizon=3. df1 trimmed by 3-1=2 → starts at row 2.
         expected_start = datetime(2021, 1, 3)

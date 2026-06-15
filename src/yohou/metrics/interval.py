@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import polars as pl
 
 from yohou.utils._compat import StrOptions
 from yohou.weighting import BaseWeighter
 
 from .base import BaseIntervalScorer
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = [
     "CalibrationError",
@@ -24,7 +19,7 @@ __all__ = [
 ]
 
 
-def _pinball_loss(tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.Expr | pl.Series | float:
+def _pinball_loss(tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.Expr | float:
     """Compute pinball (quantile) loss for a single quantile level.
 
     Parameters
@@ -38,12 +33,15 @@ def _pinball_loss(tau: float, y: pl.Series | float, q: pl.Series | float) -> pl.
 
     Returns
     -------
-    pl.Expr, pl.Series, or float
-        Pinball loss values.
+    pl.Expr or float
+        Pinball loss values. A ``pl.Expr`` when ``y`` is a ``pl.Series``
+        (the comparison and arithmetic build an expression), or a Python
+        float when ``y`` and ``q`` are scalars.
 
     """
     if isinstance(y, pl.Series):
         return pl.when(y >= q).then(tau * (y - q)).otherwise((1 - tau) * (q - y))
+    assert not isinstance(q, pl.Series)
     return tau * (y - q) if y >= q else (1 - tau) * (q - y)
 
 

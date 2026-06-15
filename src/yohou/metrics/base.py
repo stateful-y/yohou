@@ -611,19 +611,35 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             if isinstance(tw_resolved, np.ndarray):
                 zero_mask |= tw_resolved == 0.0
 
-        # Resolve step_weighter (silently ignored when forecasting_step unavailable)
+        # Resolve step_weighter
         sw_resolved = None
-        if step_weighter is not None and step_series is not None:
-            sw_resolved = _resolve_one(step_weighter, step_series, "step weight")
-            if isinstance(sw_resolved, np.ndarray):
-                zero_mask |= sw_resolved == 0.0
+        if step_weighter is not None:
+            if step_series is None:
+                warnings.warn(
+                    "step_weighter was provided but forecasting_step is unavailable in the "
+                    "scoring context; the step weights will have no effect.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sw_resolved = _resolve_one(step_weighter, step_series, "step weight")
+                if isinstance(sw_resolved, np.ndarray):
+                    zero_mask |= sw_resolved == 0.0
 
-        # Resolve vintage_weighter (silently ignored when vintage_time unavailable)
+        # Resolve vintage_weighter
         vw_resolved = None
-        if vintage_weighter is not None and vintage_series is not None:
-            vw_resolved = _resolve_one(vintage_weighter, vintage_series, "vintage weight")
-            if isinstance(vw_resolved, np.ndarray):
-                zero_mask |= vw_resolved == 0.0
+        if vintage_weighter is not None:
+            if vintage_series is None:
+                warnings.warn(
+                    "vintage_weighter was provided but vintage_time is unavailable in the "
+                    "scoring context; the vintage weights will have no effect.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                vw_resolved = _resolve_one(vintage_weighter, vintage_series, "vintage weight")
+                if isinstance(vw_resolved, np.ndarray):
+                    zero_mask |= vw_resolved == 0.0
 
         # Apply zero-mask filter
         if np.any(zero_mask):
@@ -634,11 +650,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
                     "Check that weight dicts/callables assign non-zero weights to at least some data."
                 )
 
-            from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
-
             y_truth = y_truth.filter(keep)
             y_pred = y_pred.filter(keep)
-            context = _ScoringContext(
+            context = ScoringContext(
                 time_values=[t for t, m in zip(context.time_values, keep.tolist(), strict=True) if m],
                 vintage_time=(context.vintage_time.filter(keep) if context.vintage_time is not None else None),
                 forecasting_step=(
@@ -1046,12 +1060,11 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             return result
 
         # Multi-vintage: group by vintage
-        vt_values = vintage_time.to_list()
         unique_vintages = vintage_time.unique(maintain_order=True).to_list()
 
         results: list[pl.DataFrame] = []
         for vt in unique_vintages:
-            mask = [v == vt for v in vt_values]
+            mask = vintage_time == vt
             yt_slice = y_truth.filter(mask)
             yp_slice = y_pred.filter(mask)
             row = compute_fn(yt_slice, yp_slice)
@@ -1875,14 +1888,12 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
             proba_data = y_pred.select(proba_cols)
             arr = proba_data.to_numpy()
             if not np.all(np.isfinite(arr)):
-                bad_cols = [c for c in proba_cols if not np.all(np.isfinite(y_pred[c].to_numpy()))]
+                bad_cols = [c for i, c in enumerate(proba_cols) if not np.all(np.isfinite(arr[:, i]))]
                 raise ValueError(
                     f"Probability columns contain NaN or infinite values: {bad_cols}. All probabilities must be finite."
                 )
             if np.any(arr < 0) or np.any(arr > 1):
-                bad_cols = [
-                    c for c in proba_cols if np.any(y_pred[c].to_numpy() < 0) or np.any(y_pred[c].to_numpy() > 1)
-                ]
+                bad_cols = [c for i, c in enumerate(proba_cols) if np.any(arr[:, i] < 0) or np.any(arr[:, i] > 1)]
                 raise ValueError(
                     f"Probability columns contain values outside [0, 1]: {bad_cols}. "
                     "All probabilities must be between 0 and 1."
@@ -2386,15 +2397,14 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
 
         # Per-vintage computation
         if vintage_time is not None and vintage_time.n_unique() > 1:
-            vt_values = vintage_time.to_list()
             unique_vintages = vintage_time.unique(maintain_order=True).to_list()
 
             vintage_results: list[pl.DataFrame] = []
             for vt in unique_vintages:
-                mask = [v == vt for v in vt_values]
+                mask = vintage_time == vt
                 yt_slice = y_truth.filter(mask)
                 yp_slice = y_pred.filter(mask)
-                sw_slice = sample_weight[mask] if sample_weight is not None else None
+                sw_slice = sample_weight[mask.to_numpy()] if sample_weight is not None else None
 
                 row_data: dict[str, list[float]] = {}
                 for target_col in target_cols:
@@ -2492,13 +2502,16 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
     def _resolve_combined_weights(
         tw: np.ndarray | dict[str, np.ndarray] | None,
         sw: np.ndarray | dict[str, np.ndarray] | None,
-        n: int,
+        n: int = 0,
     ) -> np.ndarray | None:
         """Combine resolved weight arrays into a single sample weight vector.
 
         For simplicity, ranking scorers use a single combined weight array.
         Dict (panel-aware) weights are not supported and are skipped
-        with a warning.
+        with a warning. ``n`` is the number of rows in the combined weight
+        vector; it is only used when at least one of ``tw``/``sw`` is
+        non-None, since an all-None input returns ``None`` without
+        allocating.
         """
         arrays = []
         for w in (tw, sw):

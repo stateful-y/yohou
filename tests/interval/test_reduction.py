@@ -715,9 +715,9 @@ class TestMultiStepPanelInterval:
                     assert f"{group}__{target}_upper_{cr}" in y_pred.columns
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("strategy", ["point", "mean"])
+    @pytest.mark.parametrize("strategy", ["mean"])
     def test_multi_step_interval_strategy(self, strategy, standard_splits):
-        """Multi-step interval prediction works with all derive strategies (no X_actual)."""
+        """Multi-step interval prediction works with bound-derived strategies (no X_actual)."""
         y_train, _y_test, X_actual_train, X_actual_test = standard_splits
         coverage_rates = [0.5]
         forecaster = IntervalReductionForecaster()
@@ -734,3 +734,22 @@ class TestMultiStepPanelInterval:
         )
 
         assert y_pred.shape[0] == 3
+
+    @pytest.mark.slow
+    def test_multi_step_interval_strategy_point_without_point_column_raises(self, standard_splits):
+        """strategy='point' raises when the forecaster emits no bare point column."""
+        y_train, _y_test, X_actual_train, X_actual_test = standard_splits
+        coverage_rates = [0.5]
+        forecaster = IntervalReductionForecaster()
+        forecaster.fit(
+            y=y_train,
+            forecasting_horizon=1,
+            coverage_rates=coverage_rates,
+        )
+
+        with pytest.raises(ValueError, match="strategy='point' requires a bare point column"):
+            forecaster.predict_interval(
+                forecasting_horizon=3,
+                coverage_rates=coverage_rates,
+                strategy="point",
+            )

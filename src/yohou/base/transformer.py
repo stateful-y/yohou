@@ -192,8 +192,6 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         if not hasattr(self, "_observation_horizon"):
             self._observation_horizon = 0
 
-        # Router transformers would call process_routing() in their fit function
-
         self._fit(X, y)
 
         # Sync _observation_horizon with the property after _fit() completes.

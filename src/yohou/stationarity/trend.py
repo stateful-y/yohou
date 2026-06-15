@@ -37,8 +37,9 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     Attributes
     ----------
-        Fitted sklearn Pipeline with a polynomial feature transformer and the provided
-        a clone of the `estimator` model.
+    estimator_ : Pipeline
+        Fitted sklearn Pipeline with a polynomial feature transformer and a
+        clone of the provided `estimator` model.
 
     Examples
     --------

@@ -489,6 +489,23 @@ class TestTimeIndexTransformerEdgeCases:
 
         assert X_t["time_index"][0] == 0
 
+    def test_single_row_transform_uses_step_index(self):
+        """A single-row transform chunk yields the correct step index, not raw seconds."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 11), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = TimeIndexTransformer()
+        transformer.fit(X)
+
+        last_row = X.tail(1)
+        X_t = transformer.transform(last_row)
+
+        # The step index of the last row (len(X) - 1), not the elapsed seconds.
+        expected_index = len(X) - 1
+        assert X_t["time_index"][0] == expected_index
+        # Sanity: it must not be the raw elapsed seconds (10 days * 86400).
+        assert X_t["time_index"][0] != expected_index * 86400
+
     def test_single_row_normalized(self):
         """Test normalized two-row produces 0 and 1."""
         X = pl.DataFrame({

@@ -327,7 +327,9 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
         strategy : {"mean", "median", "point"} or None, default=None
-            Ignored for ensemble forecasters.
+            Strategy each child uses to derive point predictions during
+            recursive multi-step forecasting. Forwarded unchanged to every
+            base forecaster's ``predict_interval``.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
         X_future : pl.DataFrame or None, default=None
@@ -361,6 +363,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             y_pred = forecaster.predict_interval(  # ty: ignore[unresolved-attribute]
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
+                strategy=strategy,
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,

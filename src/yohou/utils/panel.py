@@ -378,11 +378,16 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
     # Start with the first group to get the time column
     first_group_name = next(iter(data))
     reference_times = data[first_group_name].get_column("time")
-    reference_set = set(reference_times.to_list())
 
     # All groups must share an identical time axis; an inner join would
-    # otherwise silently drop timestamps not present in every group.
-    misaligned = [name for name, df in data.items() if set(df.get_column("time").to_list()) != reference_set]
+    # otherwise silently drop timestamps not present in every group. A set
+    # comparison cannot detect duplicate timestamps (e.g. [1, 1, 2] vs
+    # [1, 2, 2]), so compare the ordered series directly instead.
+    misaligned = [
+        name
+        for name, df in data.items()
+        if name != first_group_name and not df.get_column("time").equals(reference_times)
+    ]
     if misaligned:
         raise ValueError(
             f"dict_to_panel requires every group to share an identical 'time' axis, "

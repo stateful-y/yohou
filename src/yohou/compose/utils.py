@@ -8,8 +8,8 @@ import polars.selectors as cs
 from yohou.base import BaseTransformer
 
 
-def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_horizons: list[int]) -> pl.DataFrame:
-    """Stack transformed features horizontally, aligning observation horizons.
+def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]]) -> pl.DataFrame:
+    """Stack transformed features horizontally, aligning by time.
 
     Aligns transformer outputs by their ``"time"`` column, keeping only the
     intersection of timestamps across all DataFrames.  This handles
@@ -23,11 +23,6 @@ def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_h
 
     column_names : list of list of str
         Column names for each DataFrame.
-
-    observation_horizons : list of int
-        Observation horizon for each transformer. Accepted for API
-        consistency; currently unused because alignment is driven entirely
-        by the ``"time"`` column intersection.
 
     Returns
     -------

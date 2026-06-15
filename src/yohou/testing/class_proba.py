@@ -86,10 +86,9 @@ def check_class_proba_prediction_bounds(forecaster, y_test: pl.DataFrame) -> Non
     proba_cols = [col for col in y_pred.columns if "_proba_" in col]
     assert len(proba_cols) > 0, "No probability columns found"
 
-    for col in proba_cols:
-        values = y_pred[col]
-        min_val = values.min()
-        max_val = values.max()
+    mins = y_pred.select(proba_cols).min().row(0)
+    maxs = y_pred.select(proba_cols).max().row(0)
+    for col, min_val, max_val in zip(proba_cols, mins, maxs, strict=True):
         assert min_val >= 0.0, f"Probability column {col} has negative values (min={min_val})"
         assert max_val <= 1.0, f"Probability column {col} has values > 1 (max={max_val})"
 
@@ -122,14 +121,16 @@ def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame) -> None:
                 row_sums = y_pred.select(proba_cols).sum_horizontal()
                 max_err = (row_sums - 1.0).abs().max()
                 assert max_err < 1e-6, (
-                    f"Probabilities for {group_prefix}__{target_col} sum to at most {1.0 + max_err}, expected ~1.0"
+                    f"Probabilities for {group_prefix}__{target_col} deviate from 1.0 by up to {max_err:.2e}, expected < 1e-6"
                 )
     else:
         for target_col, class_labels in forecaster.classes_.items():
             proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
             row_sums = y_pred.select(proba_cols).sum_horizontal()
             max_err = (row_sums - 1.0).abs().max()
-            assert max_err < 1e-6, f"Probabilities for {target_col} sum to at most {1.0 + max_err}, expected ~1.0"
+            assert max_err < 1e-6, (
+                f"Probabilities for {target_col} deviate from 1.0 by up to {max_err:.2e}, expected < 1e-6"
+            )
 
 
 def check_class_proba_prediction_types(forecaster) -> None:

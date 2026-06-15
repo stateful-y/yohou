@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -142,7 +143,8 @@ class _BaseEnsembleForecaster:
                 )
             names.append(name)
 
-        duplicates = [n for n in set(names) if names.count(n) > 1]
+        counts = Counter(names)
+        duplicates = [n for n, c in counts.items() if c > 1]
         if duplicates:
             raise ValueError(f"Duplicate forecaster names: {duplicates}")
 
@@ -475,10 +477,13 @@ class _BaseEnsembleForecaster:
                     aggregated = np.mean(values, axis=1)
             elif strategy == "median":
                 aggregated = np.median(values, axis=1)
-            elif weights is not None:
-                aggregated = np.average(values, axis=1, weights=weights)
+            elif strategy == "mean":
+                if weights is not None:
+                    aggregated = np.average(values, axis=1, weights=weights)
+                else:
+                    aggregated = np.mean(values, axis=1)
             else:
-                aggregated = np.mean(values, axis=1)
+                raise ValueError(f"Unknown interval aggregation strategy {strategy!r}")
 
             agg_exprs.append(pl.Series(name=col, values=aggregated))
 

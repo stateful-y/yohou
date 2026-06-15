@@ -1097,6 +1097,18 @@ class TestFeatureStride:
         with pytest.raises(ValueError, match="feature_stride"):
             forecaster.fit(y[:18], X[:18], forecasting_horizon=5)
 
+    def test_short_series_for_feature_stride_one_raises(self):
+        """The length guard also fires for feature_stride=1, not just > 1.
+
+        With feature_stride=1, feature_horizon == forecasting_horizon, so the
+        guard must still reject a forecasting_horizon that meets or exceeds the
+        available data length.
+        """
+        y, X = _make_fs_data()
+        forecaster = _reduction_fff(feature_stride=1)
+        with pytest.raises(ValueError, match="feature_stride"):
+            forecaster.fit(y[:5], X[:5], forecasting_horizon=10)
+
     @pytest.mark.parametrize("variant", ["observe_predict", "observe_predict_interval"])
     def test_observe_predict_variants_roll(self, variant):
         """Point and interval observe_predict produce rolling multi-vintage output."""

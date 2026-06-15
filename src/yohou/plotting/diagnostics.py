@@ -23,6 +23,7 @@ from yohou.plotting._utils import (
     _auto_detect_panel,
     _create_subplots,
     _group_panel_columns,
+    _hex_to_rgba,
     _make_hovertemplate,
     _member_name,
     _subplot_spacing,
@@ -135,13 +136,13 @@ def plot_autocorrelation(
     [`plot_correlation_heatmap`][yohou.plotting.plot_correlation_heatmap] : Plot correlation matrix.
     """
     # Validate inputs
-    validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
     if _auto_detect_panel(df) and groups is None and columns is None:
         groups = []
 
     if groups is not None:
+        validate_plotting_data(df, min_rows=2)
         _color_mgr = PanelColorManager(color_palette)
         _acf_legend = LegendTracker()
 
@@ -192,7 +193,7 @@ def plot_autocorrelation(
         return fig
 
     # Non-panel case: column-mode facet_figure
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"], min_rows=2)
     _colors = resolve_color_palette(color_palette, len(plot_columns))
     _col_colors = dict(zip(plot_columns, _colors, strict=False))
     _default_bar_color = color  # fallback single-column color
@@ -429,13 +430,13 @@ def plot_partial_autocorrelation(
     [`plot_autocorrelation`][yohou.plotting.plot_autocorrelation] : Plot autocorrelation function.
     """
     # Validate inputs
-    validate_plotting_data(df, min_rows=2)
     validate_plotting_params(width=width, height=height)
 
     if _auto_detect_panel(df) and groups is None and columns is None:
         groups = []
 
     if groups is not None:
+        validate_plotting_data(df, min_rows=2)
         _pacf_color_mgr = PanelColorManager(color_palette)
         _pacf_legend = LegendTracker()
 
@@ -491,7 +492,7 @@ def plot_partial_autocorrelation(
         return fig
 
     # Non-panel case: column-mode facet_figure
-    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
+    plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"], min_rows=2)
     _colors = resolve_color_palette(color_palette, len(plot_columns))
     _col_colors = dict(zip(plot_columns, _colors, strict=False))
     _default_bar_color = color  # fallback single-column color
@@ -778,8 +779,6 @@ def plot_correlation_heatmap(
         groups = []
 
     if groups is not None:
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
@@ -1014,9 +1013,6 @@ def plot_seasonality(
             slabels = _SEASON_LABELS_MAP.get(seasonality)
             n_cycles = len(cycles)
 
-            # Collect per-season values for aggregated mean
-            season_vals: dict[int | str, list[float]] = {}
-
             is_legend_member = _legend_tracker.should_show(ctx.display_name)
             r, g, b = int(member_color[1:3], 16), int(member_color[3:5], 16), int(member_color[5:7], 16)
 
@@ -1044,10 +1040,6 @@ def plot_seasonality(
                     else cyc_df["season"].to_list()
                 )
                 y_vals = cyc_df[base].to_list()
-
-                # Accumulate for mean
-                for x, y in zip(x_vals, y_vals, strict=True):
-                    season_vals.setdefault(x, []).append(y)
 
                 is_hl = bool(highlight_set) and cyc in highlight_set
                 lw = highlight_width if is_hl else line_width
@@ -1079,12 +1071,12 @@ def plot_seasonality(
                 )
 
             # Add aggregated mean line (bold, on top)
-            if season_vals:
-                mean_x = list(season_vals.keys())
-                mean_y = [
-                    float(np.mean([x for x in v if x is not None])) if any(x is not None for x in v) else float("nan")
-                    for v in season_vals.values()
-                ]
+            mean_df = dfs.group_by("season", maintain_order=False).agg(pl.col(base).mean()).sort("season")
+            if mean_df.height > 0:
+                mean_seasons = mean_df["season"].to_list()
+                use_labels = slabels is not None and all(s <= len(slabels) for s in mean_seasons)
+                mean_x = [slabels[int(s) - 1] for s in mean_seasons] if use_labels else mean_seasons
+                mean_y = [float("nan") if v is None else float(v) for v in mean_df[base].to_list()]
                 ctx.fig.add_trace(
                     go.Scatter(
                         x=mean_x,
@@ -1189,13 +1181,6 @@ def plot_seasonality(
     fig.update_layout(showlegend=show_legend)
 
     return fig
-
-
-def _hex_to_rgba(hex_color: str, opacity: float) -> str:
-    """Convert ``#RRGGBB`` to ``rgba(r, g, b, opacity)``."""
-    _hex = hex_color.lstrip("#")
-    r, g, b = (int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-    return f"rgba({r}, {g}, {b}, {opacity})"
 
 
 def _add_kind_traces(
@@ -1421,8 +1406,6 @@ def plot_subseasonality(
             subplot_titles.append(str(s))
 
     if groups is not None:
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
         grouped, all_members = _group_panel_columns(plot_columns)
 
         # Build one figure per member, groups overlaid by colour.
@@ -2137,19 +2120,14 @@ def _compute_ccf(x: np.ndarray, y: np.ndarray, max_lags: int) -> list[float]:
     n = len(x)
     x_mean, y_mean = x.mean(), y.mean()
     x_std, y_std = x.std(), y.std()
-    lag_values = range(-max_lags, max_lags + 1)
+    if n == 0 or x_std == 0 or y_std == 0:
+        return [0.0] * (2 * max_lags + 1)
+    full = np.correlate(x - x_mean, y - y_mean, mode="full") / (n * x_std * y_std)
+    center = n - 1
     ccf: list[float] = []
-    for lag in lag_values:
-        if lag < 0:
-            xa, ya = x[: n + lag], y[-lag:]
-        elif lag > 0:
-            xa, ya = x[lag:], y[: n - lag]
-        else:
-            xa, ya = x, y
-        if len(xa) > 0 and x_std != 0 and y_std != 0:
-            ccf.append(float(((xa - x_mean) * (ya - y_mean)).mean() / (x_std * y_std)))
-        else:
-            ccf.append(0.0)
+    for lag in range(-max_lags, max_lags + 1):
+        idx = center + lag
+        ccf.append(float(full[idx]) if 0 <= idx < full.size else 0.0)
     return ccf
 
 
@@ -2946,8 +2924,6 @@ def plot_scatter_matrix(
         groups = []
 
     if groups is not None:
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
         # Normalize columns to list for member filtering
         col_filter = [columns] if isinstance(columns, str) else columns
 
@@ -3023,20 +2999,7 @@ def plot_scatter_matrix(
         )
         season_colors = resolve_color_palette(color_palette, n_seasons)
 
-    if max_points is not None and len(df_work) > max_points:
-        if seasons_raw is not None:
-            # Stratified sampling: preserve season proportions
-            n_per_season = max(1, max_points // len(seasons_raw))
-            parts = [
-                df_work.filter(pl.col("season") == s).sample(
-                    n=min(n_per_season, df_work.filter(pl.col("season") == s).height),
-                    seed=42,
-                )
-                for s in seasons_raw
-            ]
-            df_work = pl.concat(parts)
-        else:
-            df_work = df_work.sample(n=max_points, seed=42)
+    df_work = _subsample_df(df_work, max_points, seasons_raw)
 
     fig = make_subplots(
         rows=n,
@@ -3433,8 +3396,6 @@ def plot_seasonal_heatmap(
         groups = []
 
     if groups is not None:
-        from yohou.plotting._utils import _group_panel_columns  # noqa: PLC0415
-
         panel_cols = resolve_panel_columns(df, groups, columns)
         grouped, _all_members = _group_panel_columns(panel_cols)
 
@@ -3466,7 +3427,6 @@ def plot_seasonal_heatmap(
             trace.showscale = idx == n - 1
             fig.add_trace(trace, row=r, col=c)
 
-        _col_label = ", ".join(columns) if isinstance(columns, list) else (columns or "all")
         fig = apply_default_layout(
             fig,
             title=title or "Seasonal Heatmap",

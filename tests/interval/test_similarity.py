@@ -225,6 +225,22 @@ class TestDistanceSimilarityNullRejection:
         with pytest.raises(ValueError, match="null or NaN"):
             sim.predict(y_pred_null)
 
+    def test_error_reports_all_bad_columns(self, train_data):
+        """Error message lists every offending column, not just the first."""
+        y, y_pred = train_data
+        y_pred_bad = y_pred.with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("value"),
+        )
+        x_actual_bad = y_pred.select("time").with_columns(
+            pl.lit(None, dtype=pl.Float64).alias("extra"),
+        )
+        sim = DistanceSimilarity()
+        with pytest.raises(ValueError) as exc_info:
+            sim.fit(y, y_pred_bad, X_actual=x_actual_bad)
+        message = str(exc_info.value)
+        assert "value" in message
+        assert "extra" in message
+
     def test_predict_rejects_nan(self, train_data):
         """Test that predict raises ValueError when data contains NaN."""
         y, y_pred = train_data
@@ -323,7 +339,7 @@ class TestSeasonalSimilarityMultiSeasonality:
         sim = SeasonalSimilarity(seasonalities=[7.0, 365.25])
         sim.fit(y, y_pred)
         # 2 features per seasonality (sin + cos), 2 seasonalities = 4
-        assert sim._n_features == 4
+        assert sim._features_observed.shape[1] == 4
 
     def test_multi_seasonality_predict_shape(self, daily_data, daily_prediction_data):
         """Test that multi-seasonality prediction shape is correct."""
@@ -346,7 +362,7 @@ class TestSeasonalSimilarityHarmonics:
         )
         sim.fit(y, y_pred)
         # 3 harmonics x 2 (sin+cos) = 6 features
-        assert sim._n_features == 6
+        assert sim._features_observed.shape[1] == 6
 
         weights = sim.predict(daily_prediction_data)
         assert weights.shape == (1, 70)
@@ -683,6 +699,20 @@ class TestCompositeSimilarityObserveRewind:
 
         assert len(comp.similarities_[0][1]._X_observed) == n_dist_before
         assert comp.similarities_[1][1]._features_observed.shape[0] == n_temp_before
+
+    def test_rewind_before_fit_raises_not_fitted(self, composite_data):
+        """rewind before fit raises NotFittedError, not a bare AttributeError."""
+        from sklearn.exceptions import NotFittedError
+
+        y, y_pred = composite_data
+        comp = CompositeSimilarity(
+            similarities=[
+                ("dist", DistanceSimilarity(metric="euclidean")),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+            ],
+        )
+        with pytest.raises(NotFittedError):
+            comp.rewind(y.tail(1), y_pred.tail(1))
 
 
 class TestCompositeSimilarityIntegration:

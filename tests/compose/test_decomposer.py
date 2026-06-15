@@ -106,6 +106,37 @@ class TestPanelObserveRewind:
         assert "g1__value" in y_pred_rewound.columns
 
 
+class TestObservationBufferBounded:
+    """observe() must keep _y_observed bounded to observation_horizon."""
+
+    def test_y_observed_bounded_after_many_observes(self):
+        """Repeated observe() does not grow _y_observed without bound."""
+        from yohou.stationarity import SeasonalDifferencing
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=199),
+            interval="1d",
+            eager=True,
+        )
+        data = pl.DataFrame({"time": time, "value": [float(i) for i in range(200)]})
+
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1)), ("seas", SeasonalNaive(seasonality=7))],
+            target_transformer=SeasonalDifferencing(seasonality=1),
+        )
+        forecaster.fit(data[:30], forecasting_horizon=5)
+
+        for start in range(30, 110, 10):
+            forecaster.observe(data[start : start + 10])
+
+        # Buffer is trimmed to observation_horizon, not the full observed history.
+        assert forecaster._y_observed.height <= forecaster.observation_horizon
+        # predict still round-trips through the bounded inverse-transform context.
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert "value" in y_pred.columns
+
+
 class TestBasicFitPredict:
     """Tests for basic fit/predict workflow."""
 
@@ -145,6 +176,17 @@ class TestBasicFitPredict:
 
         y_pred = forecaster.predict(forecasting_horizon=10)
         assert len(y_pred) == 10
+
+    def test_predict_rejects_non_positive_horizon(self, daily_data):
+        """An explicitly invalid horizon is validated, not forwarded to inner forecasters."""
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("seasonality", SeasonalNaive(seasonality=7)),
+        ])
+        forecaster.fit(daily_data[:30], forecasting_horizon=5)
+
+        with pytest.raises((ValueError, Exception)):
+            forecaster.predict(forecasting_horizon=0)
 
     def test_prediction_types(self):
         """Test correct forecaster_type in tags."""

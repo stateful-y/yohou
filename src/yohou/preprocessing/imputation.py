@@ -342,11 +342,6 @@ class SimpleTimeImputer(BaseTransformer):
     limit : int or None, default=None
         Maximum number of consecutive NaN values to fill. If None, no limit.
 
-    Attributes
-    ----------
-    method_ : str
-        Validated imputation method.
-
     Examples
     --------
     >>> import polars as pl
@@ -422,8 +417,6 @@ class SimpleTimeImputer(BaseTransformer):
         X = validate_transformer_data(self, X=X, reset=True)
         BaseTransformer.fit(self, X, y, **params)
 
-        self.method_ = self.method
-
         return self
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
@@ -449,14 +442,14 @@ class SimpleTimeImputer(BaseTransformer):
         for col_name in data_cols:
             col = pl.col(col_name)
 
-            if self.method_ == "linear":
+            if self.method == "linear":
                 # Polars interpolate does linear by default
                 imputed = col.interpolate()
-            elif self.method_ == "forward":
+            elif self.method == "forward":
                 imputed = col.forward_fill(limit=self.limit)
-            elif self.method_ == "backward":
+            elif self.method == "backward":
                 imputed = col.backward_fill(limit=self.limit)
-            elif self.method_ == "nearest":
+            elif self.method == "nearest":
                 # Fill each null with the value closest in time, comparing the
                 # distance to the previous and next known observations. Ties go
                 # to the trailing (forward) anchor.
@@ -477,11 +470,11 @@ class SimpleTimeImputer(BaseTransformer):
                     .then(next_val)
                     .otherwise(prev_val)
                 )
-            elif self.method_ == "fill_both":
+            elif self.method == "fill_both":
                 # Forward fill then backward fill
                 imputed = col.forward_fill(limit=self.limit).backward_fill(limit=self.limit)
             else:
-                imputed = col
+                raise AssertionError(f"unreachable: unhandled method {self.method!r}")
 
             exprs.append(imputed.alias(col_name))
 
@@ -678,9 +671,8 @@ class SeasonalImputer(BaseTransformer):
                 # Find null/nan indices
                 null_mask = np.isnan(values) | (X[col_name].is_null().to_numpy())
 
-                # Replace with seasonal values
-                for i in np.where(null_mask)[0]:
-                    values[i] = seasonal_vals[season_idx_arr[i]]
+                # Replace with seasonal values in one vectorised assignment.
+                values[null_mask] = seasonal_vals[season_idx_arr[null_mask]]
 
             # A position whose season bucket was empty at fit time stays NaN;
             # convert back to a proper polars null rather than emitting a float

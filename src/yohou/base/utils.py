@@ -89,8 +89,7 @@ def _fit_transform_transformers_one(
         y_t = y_t[feature_observation_horizon:]
         # Also trim X_t: drop null rows produced by transformers that keep all rows
         # but fill initial positions with null (e.g., LagTransformer, RollingStatisticsTransformer)
-        data_cols = [c for c in X_t.columns if c != "time"]
-        X_t = X_t.drop_nulls(subset=data_cols)
+        X_t = X_t.drop_nulls(subset=~cs.by_name("time"))
         # Then, align by timestamps (handles transformers that DO drop rows)
         y_t = y_t.join(X_t.select("time"), on="time", how="semi")
 
@@ -414,14 +413,16 @@ def _derive_step_columns(
             # null is under-covered even if another column reaches the horizon.
             # Track the highest covered step per base column and take the worst
             # (minimum) so a single under-covered column still warns.
+            n_rows = len(forecast_pivoted)
+            null_counts = forecast_pivoted.select(step_cols_forecast).null_count().row(0)
             per_col_max: dict[str, int] = {}
-            for c in step_cols_forecast:
+            for c, null_count in zip(step_cols_forecast, null_counts, strict=True):
                 m = re.search(r"^(.*)_step_(\d+)$", c)
                 if m is None:
                     continue
                 base = m.group(1)
                 per_col_max.setdefault(base, 0)
-                if forecast_pivoted[c].null_count() < len(forecast_pivoted):
+                if null_count < n_rows:
                     per_col_max[base] = max(per_col_max[base], int(m.group(2)))
             max_covered = min(per_col_max.values(), default=0)
             if max_covered < forecasting_horizon:

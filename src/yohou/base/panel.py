@@ -120,6 +120,21 @@ class BasePanelForecaster:
                 self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
                 self.local_X_actual_schema_ = {}
 
+    def _build_X_actual_schema(self) -> dict[str, pl.DataType]:
+        """Build the merged (local + shared) X_actual schema for ``get_group_df``.
+
+        Returns
+        -------
+        dict[str, pl.DataType]
+            Local X_actual schema updated with any shared (global) columns.
+
+        """
+        assert self.local_X_actual_schema_ is not None
+        X_schema = dict(self.local_X_actual_schema_)
+        if self.shared_X_actual_schema_:
+            X_schema.update(self.shared_X_actual_schema_)
+        return X_schema
+
     def _fit_transform_inputs_panel(
         self, y: pl.DataFrame, X_actual: pl.DataFrame | None
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
@@ -151,10 +166,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X_actual (local + shared columns)
-                X_schema = dict(self.local_X_actual_schema_)
-                if self.shared_X_actual_schema_:
-                    X_schema.update(self.shared_X_actual_schema_)
+                X_schema = self._build_X_actual_schema()
                 X_local = get_group_df(df=X_actual, group_name=group_name, schema=X_schema)
 
             (
@@ -398,10 +410,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X_actual (local + shared columns)
-                X_schema = dict(self.local_X_actual_schema_)
-                if self.shared_X_actual_schema_:
-                    X_schema.update(self.shared_X_actual_schema_)
+                X_schema = self._build_X_actual_schema()
                 X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
 
             local_target_transformer = None
@@ -475,10 +484,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                # Build schema for X_actual (local + shared columns)
-                X_schema = dict(self.local_X_actual_schema_)
-                if self.shared_X_actual_schema_:
-                    X_schema.update(self.shared_X_actual_schema_)
+                X_schema = self._build_X_actual_schema()
                 X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
 
             local_target_transformer = None
@@ -600,9 +606,7 @@ class BasePanelForecaster:
 
             X_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                X_schema = dict(self.local_X_actual_schema_)
-                if self.shared_X_actual_schema_:
-                    X_schema.update(self.shared_X_actual_schema_)
+                X_schema = self._build_X_actual_schema()
                 X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
 
             local_target_transformer = None

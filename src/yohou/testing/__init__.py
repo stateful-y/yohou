@@ -54,14 +54,20 @@ from .common import (
     check_metadata_routing_get_metadata_routing,
 )
 from .composite import (
-    _yield_composite_reducer_checks,
+    _yield_composite_reducer_checks as _yield_composite_reducer_checks,
+)
+from .composite import (
     check_composite_combination_validation,
     check_composite_rejects_bare_list,
     check_composite_weights_length_validation,
 )
 from .contract import (
-    _yield_composition_contract_checks,
-    _yield_estimator_contract_checks,
+    _yield_composition_contract_checks as _yield_composition_contract_checks,
+)
+from .contract import (
+    _yield_estimator_contract_checks as _yield_estimator_contract_checks,
+)
+from .contract import (
     check_clone_preserves_params,
     check_composition_clone_deep_clones_components,
     check_composition_nested_param_addressable,
@@ -91,13 +97,25 @@ from .forecaster import (
     check_rewind_replaces_observations,
 )
 from .generators import (
-    _yield_yohou_forecaster_checks,
-    _yield_yohou_scorer_checks,
-    _yield_yohou_search_checks,
-    _yield_yohou_similarity_checks,
-    _yield_yohou_splitter_checks,
-    _yield_yohou_transformer_checks,
-    _yield_yohou_weighter_checks,
+    _yield_yohou_forecaster_checks as _yield_yohou_forecaster_checks,
+)
+from .generators import (
+    _yield_yohou_scorer_checks as _yield_yohou_scorer_checks,
+)
+from .generators import (
+    _yield_yohou_search_checks as _yield_yohou_search_checks,
+)
+from .generators import (
+    _yield_yohou_similarity_checks as _yield_yohou_similarity_checks,
+)
+from .generators import (
+    _yield_yohou_splitter_checks as _yield_yohou_splitter_checks,
+)
+from .generators import (
+    _yield_yohou_transformer_checks as _yield_yohou_transformer_checks,
+)
+from .generators import (
+    _yield_yohou_weighter_checks as _yield_yohou_weighter_checks,
 )
 from .interval import (
     check_coverage_rates_parameter,
@@ -107,7 +125,6 @@ from .interval import (
     check_interval_prediction_types,
 )
 from .metadata_routing import (
-    _Registry,
     assert_request_equal,
     assert_request_is_empty,
     check_recorded_metadata,
@@ -194,6 +211,7 @@ from .transformer import (
     check_tags_accessible_before_fit,
     check_tags_match_capabilities,
     check_tags_static_after_fit,
+    check_transform_drops_warmup_rows,
     check_transform_output_structure,
     check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
@@ -233,6 +251,7 @@ __all__ = [
     "check_tags_accessible_before_fit",
     "check_tags_match_capabilities",
     "check_tags_static_after_fit",
+    "check_transform_drops_warmup_rows",
     "check_transform_output_structure",
     "check_transformer_methods_call_check_is_fitted",
     "check_transformer_preserve_dtypes",
@@ -331,17 +350,6 @@ __all__ = [
     "check_similarity_to_weights_rows_reserve_mass",
     "check_similarity_metric_params_verbatim",
     "check_similarity_methods_call_check_is_fitted",
-    "_yield_estimator_contract_checks",
-    "_yield_composition_contract_checks",
-    "_yield_composite_reducer_checks",
-    "_yield_yohou_forecaster_checks",
-    "_yield_yohou_transformer_checks",
-    "_yield_yohou_splitter_checks",
-    "_yield_yohou_scorer_checks",
-    "_yield_yohou_search_checks",
-    "_yield_yohou_weighter_checks",
-    "_yield_yohou_similarity_checks",
-    "_Registry",
     "assert_request_equal",
     "assert_request_is_empty",
     "check_recorded_metadata",

@@ -159,6 +159,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
     forecasters_ : list of (name, fitted_forecaster, columns) tuples
         The fitted forecasters with their column assignments.
 
+    column_map_ : dict of str to list of str
+        Mapping from each forecaster name to the list of columns it was
+        assigned at fit time.
+
     named_forecasters_ : Bunch
         Access any fitted forecaster by name.
         ``forecaster.named_forecasters_['sales']`` returns the fitted
@@ -563,6 +567,53 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         return self
 
+    def _collect_prediction(
+        self,
+        name: str | None,
+        y_pred: pl.DataFrame,
+        predictions: list[pl.DataFrame],
+        time_columns: pl.DataFrame | None,
+        time_col_names: list[str],
+    ) -> tuple[pl.DataFrame, list[str]]:
+        """Split time columns from features and append features to ``predictions``.
+
+        On the first prediction, the present time columns (``"vintage_time"``
+        and/or ``"time"``) are detected and captured. Feature columns are
+        prefixed with ``name`` when ``verbose_feature_names_out`` is True,
+        mirroring `ColumnTransformer`'s ``{name}__{col}`` naming.
+
+        Parameters
+        ----------
+        name : str or None
+            Forecaster name used as the prefix, or ``None`` for the remainder
+            forecaster (which is never prefixed).
+        y_pred : pl.DataFrame
+            Prediction from a single child forecaster.
+        predictions : list of pl.DataFrame
+            Accumulator of feature-only predictions, appended to in place.
+        time_columns : pl.DataFrame or None
+            Time columns captured from the first prediction, or ``None`` if no
+            prediction has been seen yet.
+        time_col_names : list of str
+            Names of the captured time columns.
+
+        Returns
+        -------
+        tuple of (pl.DataFrame, list of str)
+            The (possibly newly captured) ``time_columns`` and ``time_col_names``.
+
+        """
+        if time_columns is None:
+            time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
+            time_columns = y_pred.select(time_col_names)
+
+        features = y_pred.select(~cs.by_name(*time_col_names))
+        if self.verbose_feature_names_out and name is not None:
+            features = features.rename({col: f"{name}__{col}" for col in features.columns})
+        predictions.append(features)
+
+        return time_columns, time_col_names
+
     @available_if(_column_forecaster_has("predict"))
     def predict(
         self,
@@ -623,13 +674,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 **forecaster_params.predict,
             )
 
-            # Store time columns from first prediction
-            if time_columns is None:
-                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
-                time_columns = y_pred.select(time_col_names)
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
-            else:
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                name, y_pred, predictions, time_columns, time_col_names
+            )
 
         # Predict with remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
@@ -642,10 +689,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 X_forecast=X_forecast,
                 **remainder_params.predict,
             )
-            predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                None, y_pred_remainder, predictions, time_columns, time_col_names
+            )
 
-        # Concatenate all predictions with time columns
-        assert time_columns is not None
+        if time_columns is None:
+            raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         result = pl.concat([time_columns] + predictions, how="horizontal")
 
         return result
@@ -694,11 +743,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
         # Bookkeeping only: this meta-forecaster delegates bounded buffering
         # to its child forecasters, so _y_observed/_X_observed are not used for
-        # prediction and are intentionally not truncated here.
-        assert isinstance(self._y_observed, pl.DataFrame)
-        self._y_observed = pl.concat([self._y_observed, y])
-        if X_actual is not None:
-            self._X_observed = pl.concat([self._X_observed, X_actual]) if self._X_observed is not None else X_actual
+        # prediction. Hold only the latest batch (as rewind does) to keep memory
+        # bounded on long-running streams instead of accumulating every batch.
+        self._y_observed = y
+        self._X_observed = X_actual
 
         return self
 
@@ -880,13 +928,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 **forecaster_params.predict_interval,
             )
 
-            # Store time columns from first prediction
-            if time_columns is None:
-                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
-                time_columns = y_pred.select(time_col_names)
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
-            else:
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                name, y_pred, predictions, time_columns, time_col_names
+            )
 
         # Predict with remainder forecaster if present
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
@@ -900,10 +944,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 X_forecast=X_forecast,
                 **remainder_params.predict_interval,
             )
-            predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                None, y_pred_remainder, predictions, time_columns, time_col_names
+            )
 
-        # Concatenate all predictions with time columns
-        assert time_columns is not None
+        if time_columns is None:
+            raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         result = pl.concat([time_columns] + predictions, how="horizontal")
 
         return result
@@ -1029,12 +1075,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 **forecaster_params.predict_class_proba,
             )
 
-            if time_columns is None:
-                time_col_names = [c for c in ["vintage_time", "time"] if c in y_pred.columns]
-                time_columns = y_pred.select(time_col_names)
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
-            else:
-                predictions.append(y_pred.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                name, y_pred, predictions, time_columns, time_col_names
+            )
 
         if self.remainder_forecaster_ is not None and self.remainder_cols_:
             remainder_params = routed_params.get("remainder", Bunch(predict_class_proba={}))
@@ -1045,9 +1088,12 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 X_forecast=X_forecast,
                 **remainder_params.predict_class_proba,
             )
-            predictions.append(y_pred_remainder.select(~cs.by_name(*time_col_names)))
+            time_columns, time_col_names = self._collect_prediction(
+                None, y_pred_remainder, predictions, time_columns, time_col_names
+            )
 
-        assert time_columns is not None
+        if time_columns is None:
+            raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         return pl.concat([time_columns] + predictions, how="horizontal")
 
     @available_if(_column_forecaster_has("predict_class_proba"))

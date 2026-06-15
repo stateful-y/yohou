@@ -428,6 +428,9 @@ class BaseStandardForecaster:
             Predictions with vintage_time and time columns.
 
         """
+        # interval_ may be a non-uniform string offset (e.g. "1mo"), so steps
+        # are advanced one at a time via add_interval rather than a vectorised
+        # datetime_range that assumes a fixed timedelta.
         predicted_times = [add_interval(self.observed_time_, self.interval_, n=n) for n in range(1, len(y_pred) + 1)]
 
         time = pl.DataFrame({"vintage_time": [self.observed_time_] * len(y_pred), "time": predicted_times})

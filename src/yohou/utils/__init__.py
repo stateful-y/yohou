@@ -10,7 +10,7 @@ from .panel import (
     panel_aware_suffix,
     select_panel_columns,
 )
-from .pivot import window_futures
+from .pivot import window_forecasts, window_futures
 from .polars import cast, get_categorical_columns, get_numeric_columns
 from .tabularization import tabularize
 from .tags import (
@@ -76,7 +76,7 @@ __all__ = [
     "check_inputs",
     "check_interval_consistency",
     "check_groups",
-    "check_groups_exist",
+    "check_groups_exist",  # deprecated, use check_groups
     "check_panel_groups_match",
     "check_panel_internal_consistency",
     "check_schema",
@@ -103,5 +103,6 @@ __all__ = [
     "validate_search_data",
     "validate_splitter_data",
     "validate_transformer_data",
+    "window_forecasts",
     "window_futures",
 ]

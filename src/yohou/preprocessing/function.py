@@ -163,10 +163,15 @@ class FunctionTransformer(BaseTransformer):
 
     def _check_inverse_transform(self, X: pl.DataFrame) -> None:
         """Check that func and inverse_func are inverses."""
-        # Sample a subset of the data for efficiency
+        # Sample a subset of the data for efficiency. For stateful transforms
+        # the round-trip needs contiguous history (e.g. finite differences), so
+        # take a contiguous tail slice rather than spread-out rows.
         n_samples = min(100, len(X))
-        idx = np.linspace(0, len(X) - 1, n_samples, dtype=int)
-        X_sample = X[idx.tolist()]
+        if self._observation_horizon > 0:
+            X_sample = X.tail(n_samples)
+        else:
+            idx = np.linspace(0, len(X) - 1, n_samples, dtype=int)
+            X_sample = X[idx.tolist()]
 
         X_transformed = self.transform(X_sample)
         # Provide warmup rows as X_p so inverse_func can reconstruct
@@ -219,13 +224,10 @@ class FunctionTransformer(BaseTransformer):
         # Find rows where all values are NaN
         all_nan_mask = data_cols.select(pl.all_horizontal(pl.all().is_null() | pl.all().is_nan())).to_series()
 
-        # Count consecutive NaN rows at the beginning
-        obs_horizon = 0
-        for is_nan in all_nan_mask:
-            if is_nan:
-                obs_horizon += 1
-            else:
-                break
+        # Count consecutive NaN rows at the beginning: the first non-NaN row
+        # index is the leading NaN count.
+        non_nan = (~all_nan_mask).arg_true()
+        obs_horizon = int(non_nan[0]) if len(non_nan) > 0 else len(all_nan_mask)
 
         # Verify NaN only at the beginning
         if obs_horizon > 0:
@@ -233,9 +235,9 @@ class FunctionTransformer(BaseTransformer):
             remaining_nan = all_nan_mask[obs_horizon:]
             if remaining_nan.any():
                 raise ValueError(
-                    "`func` generates NaN values at discontinuous time stamps. "
-                    "`func` is only allowed to generate NaN at continuous time "
-                    "stamps at the beginning of X."
+                    "`func` generates NaN values at non-leading positions. "
+                    "`func` is only allowed to generate NaN at the beginning of "
+                    "X (contiguous leading rows)."
                 )
 
         return obs_horizon

@@ -129,6 +129,30 @@ class TestVotingIntervalForecasterStrategies:
         assert len(lower_cols) > 0
         assert len(upper_cols) > 0
 
+    def test_predict_interval_forwards_strategy_to_children(self, _interval_data):
+        """predict_interval forwards the ``strategy`` kwarg to each child."""
+        y_train, base_forecasters = _interval_data
+
+        ensemble = VotingIntervalForecaster(
+            forecasters=base_forecasters,
+            method="envelope",
+        )
+        ensemble.fit(y_train, forecasting_horizon=3)
+
+        seen_strategies = []
+        for _, child in ensemble.forecasters_:
+            original = child.predict_interval
+
+            def _spy(*args, _orig=original, **kwargs):
+                seen_strategies.append(kwargs.get("strategy"))
+                return _orig(*args, **kwargs)
+
+            child.predict_interval = _spy
+
+        ensemble.predict_interval(forecasting_horizon=3, strategy="median")
+
+        assert seen_strategies == ["median"] * len(ensemble.forecasters_)
+
     def test_envelope_strategy(self, _interval_data):
         """Test that envelope takes min(lower) and max(upper)."""
         y_train, base_forecasters = _interval_data

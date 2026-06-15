@@ -261,7 +261,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ) -> pl.DataFrame:
         """Alternate recursive predict and observe.
 
-        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
+        Produces a forecast after each stride-sized observation block,
+        concatenating all predictions. Equivalent to calling ``observe``
+        then ``predict`` repeatedly across the full length of ``y``.
         Returns point predictions.
 
         Parameters

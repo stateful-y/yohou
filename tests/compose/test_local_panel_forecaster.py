@@ -611,3 +611,25 @@ class TestReassemblePanelPredictions:
 
         assert result["a__value"].to_list() == [1.0, 2.0]
         assert result["b__value"].to_list() == [10.0, 20.0]
+
+
+class TestHeterogeneousPanelSchema:
+    """fit() must reject panels whose groups have mismatched local schemas."""
+
+    def test_mismatched_group_dtypes_raise(self):
+        """Groups with different local target dtypes raise instead of silently using group[0]."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=29),
+            interval="1d",
+            eager=True,
+        )
+        # store_a sales are Float64, store_b sales are Int64: same local name, different dtype.
+        y = pl.DataFrame({
+            "time": time,
+            "store_a__sales": [float(i) for i in range(30)],
+            "store_b__sales": list(range(30)),
+        })
+        f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=1))
+        with pytest.raises(ValueError, match="same local"):
+            f.fit(y, forecasting_horizon=3)

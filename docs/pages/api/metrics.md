@@ -69,3 +69,10 @@ Scorers for evaluating point forecasts, prediction intervals, and conformal pred
 | [`RankedProbabilityScore`](generated/yohou.metrics.class_proba.RankedProbabilityScore.md) | Ranked Probability Score for ordered class-probability forecasts. |
 | [`Recall`](generated/yohou.metrics.classification.Recall.md) | Recall (hard-label) from class-probability forecasts. |
 | [`ROCAuC`](generated/yohou.metrics.classification.ROCAuC.md) | Area under the ROC curve from class-probability forecasts. |
+
+### Utilities
+
+| Name | Description |
+| --- | --- |
+| [`get_scorer`](generated/yohou.metrics.get_scorer.md) | Get a default-configured scorer instance by name. |
+| [`make_scorer`](generated/yohou.metrics.make_scorer.md) | Create a scorer instance with custom parameters. |

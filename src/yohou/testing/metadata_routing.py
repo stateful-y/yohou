@@ -119,6 +119,7 @@ def check_recorded_metadata(obj, method: str, parent: str, split_params: tuple =
 
     """
     all_records = getattr(obj, "_records", {}).get(method, {}).get(parent, [])
+    assert all_records, f"No records found for {method!r} called from {parent!r} on {type(obj).__name__}"
     for record in all_records:
         # Check that metadata names match
         assert set(params.keys()) == set(record.keys()), f"Expected {params.keys()} vs {record.keys()}"

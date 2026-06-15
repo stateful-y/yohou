@@ -242,6 +242,18 @@ class TestEdgeCases:
         assert len(search.cv_results_["params"]) == 1
         assert search.best_params_ == {"seasonality": 5}
 
+    def test_get_metadata_routing_with_default_scoring(self):
+        """get_metadata_routing must not raise on a fresh instance with scoring=None."""
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            cv=2,
+        )
+        # scoring defaults to None; routing should be returned without raising,
+        # simply omitting the (not-yet-configured) scorer.
+        router = search.get_metadata_routing()
+        assert router is not None
+
     def test_randomized_search_n_iter_exceeds_space(self, y_X_factory):
         """Test RandomizedSearchCV when n_iter exceeds parameter space."""
         y, X_actual = y_X_factory(length=100, seed=42)
@@ -1041,6 +1053,40 @@ class TestClassProbaSearch:
         y_pred2 = search_cv.observe_predict_class_proba(y=y_test[:3])
         proba_cols2 = [c for c in y_pred2.columns if "_proba_" in c]
         assert len(proba_cols2) == 3
+
+    def test_observe_predict_class_proba_forwards_horizon_and_stride(self, class_proba_y_X_factory):
+        """observe_predict_class_proba must forward forecasting_horizon and stride."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+        from yohou.metrics import LogLoss
+
+        y, _ = class_proba_y_X_factory(length=120, n_targets=1, n_features=0, n_classes=3, seed=7)
+        y_train, y_test = y[:80], y[80:]
+
+        search_cv = GridSearchCV(
+            forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=7),
+            ),
+            param_grid={"estimator__max_depth": [2]},
+            scoring=LogLoss(),
+            cv=2,
+            refit=True,
+        )
+        search_cv.fit(y_train, forecasting_horizon=2)
+
+        # Overriding forecasting_horizon must reach the underlying forecaster
+        # rather than being silently dropped: the wrapper output must match a
+        # direct call on an identically fitted forecaster.
+        forwarded = search_cv.observe_predict_class_proba(y=y_test[:6], forecasting_horizon=4, stride=2)
+
+        reference = clone(search_cv.forecaster)
+        reference.set_params(**search_cv.best_params_)
+        reference.fit(y_train, forecasting_horizon=2)
+        direct = reference.observe_predict_class_proba(y=y_test[:6], forecasting_horizon=4, stride=2)
+
+        assert forwarded.shape == direct.shape
+        assert forwarded["time"].max() == direct["time"].max()
 
 
 class TestSearchForecasterHas:

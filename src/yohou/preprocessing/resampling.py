@@ -333,8 +333,7 @@ class Upsampler(BaseTransformer):
         data_cols = list(self.feature_names_in_)
 
         if self.interpolation == "linear":
-            for col in data_cols:
-                joined = joined.with_columns(pl.col(col).interpolate())
+            joined = joined.with_columns([pl.col(col).interpolate() for col in data_cols])
         elif self.interpolation == "nearest":
             # Fill each new timestamp with the value closest in time, comparing
             # distance to the previous and next known observations. Ties go to
@@ -360,11 +359,9 @@ class Upsampler(BaseTransformer):
                     .alias(col)
                 )
         elif self.interpolation == "forward":
-            for col in data_cols:
-                joined = joined.with_columns(pl.col(col).forward_fill())
+            joined = joined.with_columns([pl.col(col).forward_fill() for col in data_cols])
         elif self.interpolation == "backward":
-            for col in data_cols:
-                joined = joined.with_columns(pl.col(col).backward_fill())
+            joined = joined.with_columns([pl.col(col).backward_fill() for col in data_cols])
 
         return joined
 

@@ -13,6 +13,12 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_clone_preserves_forecaster_params`](generated/yohou.testing.forecaster.check_clone_preserves_forecaster_params.md) | Check sklearn's clone() preserves init parameters. |
 | [`check_fit_sets_forecaster_attributes`](generated/yohou.testing.forecaster.check_fit_sets_forecaster_attributes.md) | Check fit() sets required forecaster attributes. |
 | [`check_fit_predict_without_exogenous`](generated/yohou.testing.forecaster.check_fit_predict_without_exogenous.md) | Check forecaster behavior when X=None at fit time. |
+| [`check_fit_predict_with_X_future`](generated/yohou.testing.forecaster.check_fit_predict_with_X_future.md) | Check fit + predict works with X_future provided. |
+| [`check_fit_predict_with_X_forecast`](generated/yohou.testing.forecaster.check_fit_predict_with_X_forecast.md) | Check fit + predict works with X_forecast provided. |
+| [`check_predict_X_forecast_override`](generated/yohou.testing.forecaster.check_predict_X_forecast_override.md) | Check predict with X_forecast override produces different results. |
+| [`check_requires_exogenous_warns_on_X_future_X_forecast`](generated/yohou.testing.forecaster.check_requires_exogenous_warns_on_X_future_X_forecast.md) | Check a forecaster with requires_exogenous=False warns when X_future/X_forecast provided. |
+| [`check_observe_auto_rederives_step_columns`](generated/yohou.testing.forecaster.check_observe_auto_rederives_step_columns.md) | Check observe() re-derives step columns from stored raws. |
+| [`check_observe_predict_with_step_columns`](generated/yohou.testing.forecaster.check_observe_predict_with_step_columns.md) | Check observe_predict works with step columns. |
 | [`check_forecaster_methods_call_check_is_fitted`](generated/yohou.testing.forecaster.check_forecaster_methods_call_check_is_fitted.md) | Check all forecaster methods (except fit) raise NotFittedError when unfitted. |
 | [`check_forecaster_not_fitted_error`](generated/yohou.testing.forecaster.check_forecaster_not_fitted_error.md) | Check accessing fitted attributes before fit() raises NotFittedError. |
 | [`check_forecaster_tags_accessible_before_fit`](generated/yohou.testing.forecaster.check_forecaster_tags_accessible_before_fit.md) | Check \_\_sklearn_tags\_\_() is accessible before fit(). |
@@ -41,6 +47,17 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_interval_bounds`](generated/yohou.testing.interval.check_interval_bounds.md) | Check upper >= lower for all coverage rates and time steps. |
 | [`check_interval_prediction_columns`](generated/yohou.testing.interval.check_interval_prediction_columns.md) | Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format. |
 | [`check_interval_prediction_types`](generated/yohou.testing.interval.check_interval_prediction_types.md) | Check interval forecaster has 'interval' in forecaster_type tag. |
+
+### Class-probability forecaster checks
+
+| Name | Description |
+| --- | --- |
+| [`check_class_proba_classes_attribute`](generated/yohou.testing.class_proba.check_class_proba_classes_attribute.md) | Check classes_ and n_classes_ attributes are populated correctly after fit. |
+| [`check_class_proba_predict_returns_labels`](generated/yohou.testing.class_proba.check_class_proba_predict_returns_labels.md) | Check predict() returns argmax class labels, not probabilities. |
+| [`check_class_proba_prediction_bounds`](generated/yohou.testing.class_proba.check_class_proba_prediction_bounds.md) | Check all probability values are in [0, 1]. |
+| [`check_class_proba_prediction_structure`](generated/yohou.testing.class_proba.check_class_proba_prediction_structure.md) | Check class-probability predictions have correct column structure. |
+| [`check_class_proba_prediction_sums`](generated/yohou.testing.class_proba.check_class_proba_prediction_sums.md) | Check probabilities sum to approximately 1.0 per row per target. |
+| [`check_class_proba_prediction_types`](generated/yohou.testing.class_proba.check_class_proba_prediction_types.md) | Check class-proba forecaster has 'class_proba' in forecaster_type tag. |
 
 ### Reduction forecaster checks
 
@@ -97,6 +114,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_scorer_coverage_rate_subselection`](generated/yohou.testing.scorer.check_scorer_coverage_rate_subselection.md) | Check coverage_rates parameter filters interval predictions correctly. |
 | [`check_scorer_lower_is_better`](generated/yohou.testing.scorer.check_scorer_lower_is_better.md) | Check lower_is_better convention matches scoring direction. |
 | [`check_scorer_methods_call_check_is_fitted`](generated/yohou.testing.scorer.check_scorer_methods_call_check_is_fitted.md) | Check all scorer methods (except fit) raise NotFittedError when unfitted. |
+| [`check_scorer_multi_vintage`](generated/yohou.testing.scorer.check_scorer_multi_vintage.md) | Check that scorer produces a finite result on multi-vintage input. |
 | [`check_scorer_panel_subselection`](generated/yohou.testing.scorer.check_scorer_panel_subselection.md) | Check groups filtering works correctly. |
 | [`check_scorer_parameter_validation`](generated/yohou.testing.scorer.check_scorer_parameter_validation.md) | Check parameter validation raises ValueError for invalid inputs. |
 | [`check_scorer_prediction_type_compatibility`](generated/yohou.testing.scorer.check_scorer_prediction_type_compatibility.md) | Check scorer works with correct forecaster output type. |
@@ -127,6 +145,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_search_cv_results_structure`](generated/yohou.testing.search.check_search_cv_results_structure.md) | Check cv_results_ has required structure. |
 | [`check_search_method_availability`](generated/yohou.testing.search.check_search_method_availability.md) | Check @available_if decorator logic with refit=True/False. |
 | [`check_search_predict_delegates`](generated/yohou.testing.search.check_search_predict_delegates.md) | Check predict() delegates to best_forecaster_.predict() correctly. |
+| [`check_search_interval_predict_delegates`](generated/yohou.testing.search.check_search_interval_predict_delegates.md) | Check predict_interval() works after interval search with refit. |
 | [`check_search_observe_delegates`](generated/yohou.testing.search.check_search_observe_delegates.md) | Check observe() delegates to best_forecaster_.observe() correctly. |
 | [`check_search_rewind_delegates`](generated/yohou.testing.search.check_search_rewind_delegates.md) | Check rewind() delegates to best_forecaster_.rewind() correctly. |
 | [`check_search_multimetric_scoring`](generated/yohou.testing.search.check_search_multimetric_scoring.md) | Check multi-metric scoring with dict scorer works correctly. |
@@ -150,3 +169,42 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`assert_request_is_empty`](generated/yohou.testing.metadata_routing.assert_request_is_empty.md) | Check if a metadata request dict is empty. |
 | [`check_recorded_metadata`](generated/yohou.testing.metadata_routing.check_recorded_metadata.md) | Check whether the expected metadata is passed to the object's method. |
 | [`record_metadata`](generated/yohou.testing.metadata_routing.record_metadata.md) | Utility function to store passed metadata to a method of obj. |
+| [`record_metadata_not_default`](generated/yohou.testing.metadata_routing.record_metadata_not_default.md) | Variant of record_metadata that also asserts the metadata is not the default value. |
+
+### Common contract checks
+
+| Name | Description |
+| --- | --- |
+| [`check_clone_preserves_params`](generated/yohou.testing.contract.check_clone_preserves_params.md) | Check clone() preserves shallow params and freshens nested estimators. |
+| [`check_get_set_params_round_trip`](generated/yohou.testing.contract.check_get_set_params_round_trip.md) | Check set_params(**get_params(deep=True)) is a no-op. |
+| [`check_init_no_param_mutation`](generated/yohou.testing.contract.check_init_no_param_mutation.md) | Check __init__ stores constructor arguments verbatim. |
+
+### Composition checks
+
+| Name | Description |
+| --- | --- |
+| [`check_composition_nested_param_addressable`](generated/yohou.testing.contract.check_composition_nested_param_addressable.md) | Check nested `<name>__<param>` get/set on a _BaseComposition. |
+| [`check_composition_clone_deep_clones_components`](generated/yohou.testing.contract.check_composition_clone_deep_clones_components.md) | Check clone(compositor) produces fresh same-type components. |
+| [`check_composite_rejects_bare_list`](generated/yohou.testing.composite.check_composite_rejects_bare_list.md) | Check a bare `[estimator, ...]` list (no names) is rejected. |
+| [`check_composite_combination_validation`](generated/yohou.testing.composite.check_composite_combination_validation.md) | Check an unknown combination raises. |
+| [`check_composite_weights_length_validation`](generated/yohou.testing.composite.check_composite_weights_length_validation.md) | Check a weights list of the wrong length raises. |
+
+### Weighter checks
+
+| Name | Description |
+| --- | --- |
+| [`check_weighter_compute_weights_alignment`](generated/yohou.testing.weighter.check_weighter_compute_weights_alignment.md) | Check compute_weights returns one weight per key element. |
+| [`check_weighter_default_constructible`](generated/yohou.testing.weighter.check_weighter_default_constructible.md) | Check the weighter class is constructible with no arguments. |
+| [`check_weighter_fit_noop_returns_self`](generated/yohou.testing.weighter.check_weighter_fit_noop_returns_self.md) | Check fit is a no-op returning self that leaves params unchanged. |
+| [`check_weighter_resolved_array_validation`](generated/yohou.testing.weighter.check_weighter_resolved_array_validation.md) | Check resolved-array validation rejects NaN/negative/inf/all-zero. |
+| [`check_weighter_tags_accessible_before_fit`](generated/yohou.testing.weighter.check_weighter_tags_accessible_before_fit.md) | Check __sklearn_tags__() is callable on an unfitted weighter. |
+| [`check_weighter_tags_static_after_fit`](generated/yohou.testing.weighter.check_weighter_tags_static_after_fit.md) | Check tags are unchanged by the no-op fit. |
+
+### Similarity checks
+
+| Name | Description |
+| --- | --- |
+| [`check_similarity_methods_call_check_is_fitted`](generated/yohou.testing.similarity.check_similarity_methods_call_check_is_fitted.md) | Check query methods raise NotFittedError before fit. |
+| [`check_similarity_metric_params_verbatim`](generated/yohou.testing.similarity.check_similarity_metric_params_verbatim.md) | Check metric_params=None is stored verbatim (no init-mutation). |
+| [`check_similarity_predict_matrix_shape`](generated/yohou.testing.similarity.check_similarity_predict_matrix_shape.md) | Check predict returns an (n_pred, n_calib) weight matrix. |
+| [`check_similarity_to_weights_rows_reserve_mass`](generated/yohou.testing.similarity.check_similarity_to_weights_rows_reserve_mass.md) | Check each predicted weight row is non-negative and sums below 1. |

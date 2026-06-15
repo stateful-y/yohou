@@ -49,7 +49,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         return super().fit(y_train, forecaster=forecaster, **params)
 
     @staticmethod
-    def _compute_assymetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> tuple[float, float]:
+    def _compute_asymmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> tuple[float, float]:
         """Compute lower and upper quantiles for asymmetric intervals.
 
         Parameters
@@ -70,13 +70,10 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         """
         # Convert to numpy array for quantile computation
-        if isinstance(conformity_scores, pl.DataFrame):
-            scores_array = conformity_scores.to_numpy()
-        else:
-            scores_array = conformity_scores
+        scores_array = conformity_scores.to_numpy()
 
         # Check if array is empty
-        if hasattr(scores_array, "size") and scores_array.size == 0:
+        if scores_array.size == 0:
             raise ValueError(
                 "Cannot compute quantile: conformity_scores is empty. "
                 "This typically happens when the calibration set is too small. "
@@ -96,7 +93,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         return lower_quantile, upper_quantile
 
     @staticmethod
-    def _compute_symetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> float:
+    def _compute_symmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> float:
         """Compute quantile for symmetric intervals.
 
         Parameters

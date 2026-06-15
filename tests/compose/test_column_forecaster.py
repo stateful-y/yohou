@@ -1552,3 +1552,74 @@ class TestColumnForecasterExogenous:
         # Both should produce valid predictions
         assert len(pred1) == fh
         assert len(pred2) == fh
+
+
+class TestVerboseFeatureNamesOut:
+    """Tests for the verbose_feature_names_out prefixing behavior."""
+
+    def _make_y(self):
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        return pl.DataFrame({"time": time, "sales": range(50), "inventory": range(50, 100)})
+
+    def test_verbose_false_keeps_bare_names(self):
+        """Default verbose_feature_names_out=False keeps original column names."""
+        y = self._make_y()
+        forecaster = ColumnForecaster([
+            ("sales_model", SeasonalNaive(seasonality=1), "sales"),
+            ("inv_model", SeasonalNaive(seasonality=1), "inventory"),
+        ])
+        forecaster.fit(y[:30], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert "sales" in y_pred.columns
+        assert "inventory" in y_pred.columns
+        assert "sales_model__sales" not in y_pred.columns
+
+    def test_verbose_true_prefixes_with_forecaster_name(self):
+        """verbose_feature_names_out=True prefixes columns with the forecaster name."""
+        y = self._make_y()
+        forecaster = ColumnForecaster(
+            [
+                ("sales_model", SeasonalNaive(seasonality=1), "sales"),
+                ("inv_model", SeasonalNaive(seasonality=1), "inventory"),
+            ],
+            verbose_feature_names_out=True,
+        )
+        forecaster.fit(y[:30], forecasting_horizon=5)
+        y_pred = forecaster.predict(forecasting_horizon=5)
+
+        assert "sales_model__sales" in y_pred.columns
+        assert "inv_model__inventory" in y_pred.columns
+        assert "sales" not in y_pred.columns
+        assert "inventory" not in y_pred.columns
+
+
+class TestObserveBuffersBounded:
+    """observe() must not accumulate an unbounded observation buffer."""
+
+    def test_observe_buffer_holds_only_latest_batch(self):
+        """Repeated observe() keeps _y_observed bounded to the latest batch."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=199),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": range(200), "inventory": range(200, 400)})
+
+        forecaster = ColumnForecaster([
+            ("sales_model", SeasonalNaive(seasonality=1), "sales"),
+            ("inv_model", SeasonalNaive(seasonality=1), "inventory"),
+        ])
+        forecaster.fit(y[:30], forecasting_horizon=5)
+
+        for start in range(30, 90, 10):
+            forecaster.observe(y[start : start + 10])
+
+        # Buffer holds only the most recent batch, not the concatenation of all.
+        assert forecaster._y_observed.height == 10

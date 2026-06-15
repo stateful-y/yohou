@@ -25,7 +25,7 @@ from yohou.datasets._registry import (
     TOURISM_QUARTERLY,
     RemoteFileMetadata,
 )
-from yohou.datasets._tsf_parser import parse_tsf
+from yohou.datasets._tsf_parser import _parse_tsf
 
 _KDD_CUP_MEASUREMENTS = frozenset({"pm2.5", "pm10", "no2", "co", "o3", "so2"})
 
@@ -72,7 +72,10 @@ def _fetch_classification_wasm(dataset_name: str) -> Bunch:
     x_url = f"{_CDN_BASE_URL}/{dataset_name}_X.bin"
     y = pl.DataFrame.deserialize(io.BytesIO(urlopen(y_url).read()), format="binary")  # noqa: S310
     X_actual = pl.DataFrame.deserialize(io.BytesIO(urlopen(x_url).read()), format="binary")  # noqa: S310
-    target_col = [c for c in y.columns if c != "time"][0]
+    non_time_y = [c for c in y.columns if c != "time"]
+    if not non_time_y:
+        raise ValueError(f"CDN file {y_url} deserialized to a frame with no target column.")
+    target_col = non_time_y[0]
     classes = sorted(y[target_col].unique().to_list())
     return Bunch(
         y=y,
@@ -243,7 +246,7 @@ def _extract_and_parse(
 ) -> pl.DataFrame:
     """Extract a TSF file from a ZIP and parse it to a polars DataFrame."""
     with zipfile.ZipFile(zip_path, "r") as zf, zf.open(tsf_filename) as f:
-        frame, _metadata = parse_tsf(f, value_column_name=value_column_name, n_series=n_series)
+        frame, _metadata = _parse_tsf(f, value_column_name=value_column_name, n_series=n_series)
 
     if frame.schema.get("time") == pl.Date:
         frame = frame.with_columns(pl.col("time").cast(pl.Datetime))
@@ -877,9 +880,9 @@ def fetch_kdd_cup(
         Maximum number of station groups to include. Beijing stations
         have 6 measurement series (PM2.5, PM10, NO2, CO, O3, SO2);
         London stations carry a subset (typically PM2.5, PM10, NO2).
-        ``n_groups=5`` loads up to 30 raw series (fewer if London
-        stations are selected). ``None`` loads all 270 series from 59
-        stations.
+        ``n_groups=5`` loads 30 raw series (6 per station); London
+        station columns for absent measurements are null-filled. ``None``
+        loads all 270 series from 59 stations.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -1051,6 +1054,15 @@ def fetch_air_quality_classification(
 
     feature_measurements = ["pm10", "no2", "co", "o3", "so2"]
     feature_cols = [f"{station_prefix}__{m}" for m in feature_measurements]
+
+    missing_feat = [c for c in feature_cols if c not in frame.columns]
+    if missing_feat:
+        raise ValueError(
+            f"fetch_air_quality_classification expected feature columns "
+            f"{missing_feat} in the KDD Cup dataset but they are absent "
+            f"(station '{station_prefix}' may lack some measurements). "
+            f"Available columns: {frame.columns}."
+        )
 
     # Drop rows with null PM2.5
     frame = frame.drop_nulls(subset=[pm25_col])

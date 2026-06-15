@@ -147,7 +147,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # and set forecaster_tags.stateful = True directly.
         stateful = False
 
-        if not stateful and self.target_transformer is not None:
+        if self.target_transformer is not None:
             target_tags = self.target_transformer.__sklearn_tags__().transformer_tags
             if target_tags is not None:
                 stateful = target_tags.stateful

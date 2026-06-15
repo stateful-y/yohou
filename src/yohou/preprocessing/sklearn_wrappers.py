@@ -83,11 +83,11 @@ class StandardScaler(SklearnScaler):
 
     mean_ : ndarray of shape (n_features,) or None
         The mean value for each feature in the training set. Equal to ``None``
-        when ``with_mean=False`` and ``with_std=False``.
+        when ``with_mean=False``.
 
     var_ : ndarray of shape (n_features,) or None
         The variance for each feature in the training set. Equal to ``None``
-        when ``with_mean=False`` and ``with_std=False``.
+        when ``with_std=False``.
 
     Examples
     --------
@@ -415,8 +415,7 @@ class MaxAbsScaler(SklearnScaler):
     _estimator_default_class = sklearn_MaxAbsScaler
 
     def __init__(self, copy=True, clip=False, **kwargs):
-        params = _filter_estimator_params(sklearn_MaxAbsScaler, {"copy": copy, "clip": clip})
-        super().__init__(**params, **kwargs)
+        super().__init__(copy=copy, clip=clip, **kwargs)
 
     @property
     def scale_(self) -> np.ndarray:

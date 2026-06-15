@@ -198,9 +198,7 @@ def check_coverage_rates_validation(
         )
         raise AssertionError(f"{forecaster_clone.__class__.__name__} should raise ValueError for coverage_rates=[1.5]")
     except ValueError as e:
-        assert "coverage" in str(e).lower() or "1" in str(e).lower(), (
-            f"ValueError should mention coverage_rates, got: {e}"
-        )
+        assert "coverage" in str(e).lower() or "1.5" in str(e), f"ValueError should mention coverage_rates, got: {e}"
 
     # Test negative rate (invalid)
     forecaster_clone = clone(forecaster)

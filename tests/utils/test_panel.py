@@ -407,6 +407,21 @@ class TestDictToPanel:
         with pytest.raises(ValueError, match="identical 'time' axis"):
             dict_to_panel(data_dict)
 
+    def test_dict_to_panel_raises_on_duplicate_timestamps(self):
+        """Groups with identical time sets but different duplicate layout are misaligned.
+
+        [1, 1, 2] and [1, 2, 2] share the same set of timestamps but differ
+        positionally; a set comparison cannot tell them apart, so the ordered
+        comparison must reject them.
+        """
+        data_dict = {
+            "sales": pl.DataFrame({"time": [1, 1, 2], "store_1": [100, 110, 120]}),
+            "inventory": pl.DataFrame({"time": [1, 2, 2], "warehouse_1": [50, 55, 60]}),
+        }
+
+        with pytest.raises(ValueError, match="identical 'time' axis"):
+            dict_to_panel(data_dict)
+
     def test_dict_to_panel_dataframe_passthrough(self):
         """Test dict_to_panel returns DataFrame unchanged when given a DataFrame."""
         df = pl.DataFrame({"time": [1, 2, 3], "sales__store_1": [100, 110, 120], "sales__store_2": [150, 160, 170]})

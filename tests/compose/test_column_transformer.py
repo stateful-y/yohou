@@ -652,3 +652,40 @@ class TestColumnTransformerSystematicChecks:
             _yield_yohou_transformer_checks(transformer, X_train, None, X_test),
             expected_failures=expected_failures,
         )
+
+
+class _TimeOnlyTransformer(SimpleTransformer):
+    """Transformer whose output is the time column only (no feature columns)."""
+
+    def transform(self, X):
+        return X.select(pl.col("time"))
+
+    def get_feature_names_out(self, input_features=None):
+        return []
+
+
+class TestHstackPrefixPairing:
+    """Regression: prefixes must stay paired with the right columns in _hstack."""
+
+    def test_time_only_transformer_does_not_shift_prefixes(self, time_series_3col):
+        """A time-only transformer output must not mis-pair feature prefixes.
+
+        When an earlier transformer emits only the time column (shape[1] == 1)
+        and verbose_feature_names_out=True, the surviving feature columns must
+        still be prefixed with their own transformer's name, not a shifted one.
+        """
+        ct = ColumnTransformer(
+            transformers=[
+                ("empty", _TimeOnlyTransformer(observation_horizon=0), ["a"]),
+                ("real", SimpleTransformer(observation_horizon=0), ["b"]),
+            ],
+            remainder="drop",
+            verbose_feature_names_out=True,
+        )
+        result = ct.fit_transform(time_series_3col)
+
+        # The real transformer's column must survive and carry its own "real"
+        # prefix (single underscore), never the time-only "empty" transformer's.
+        assert "real_b" in result.columns
+        assert "empty_b" not in result.columns
+        assert "time" in result.columns

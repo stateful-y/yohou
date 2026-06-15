@@ -278,6 +278,17 @@ class TestFeatureUnionAccessors:
         with pytest.raises(ValueError, match="step"):
             union[::2]
 
+    def test_slice_with_explicit_step_one_is_allowed(self):
+        """An explicit step of 1 is the documented supported case and must work."""
+        union = FeatureUnion([
+            ("a", SimpleTransformer(observation_horizon=0)),
+            ("b", SimpleTransformer(observation_horizon=0)),
+            ("c", SimpleTransformer(observation_horizon=0)),
+        ])
+        sub = union[0:2:1]
+        assert isinstance(sub, FeatureUnion)
+        assert len(sub.transformer_list) == 2
+
 
 class TestFeatureUnionValidation:
     """Tests for validation and error paths."""

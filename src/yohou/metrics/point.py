@@ -537,12 +537,14 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute per-row scaled squared errors for RMSSE."""
-        scaled_squared_errors_data = {}
-        for col in y_truth.columns:
-            errors = (y_truth[col] - y_pred[col]).to_numpy()
-            scale = self.scales_[col]
-            scaled_squared_errors_data[col] = (errors / np.sqrt(scale)) ** 2
-        return pl.DataFrame(scaled_squared_errors_data)
+        missing = [col for col in y_truth.columns if col not in self.scales_]
+        if missing:
+            raise ValueError(
+                f"Columns {missing} were not seen during fit(); RMSSE has no scale "
+                f"for them. Fitted columns: {list(self.scales_)}."
+            )
+        diff = y_truth - y_pred
+        return diff.select((pl.col(col) / float(np.sqrt(self.scales_[col]))).pow(2) for col in y_truth.columns)
 
     def _transform_scores(self, df: pl.DataFrame) -> pl.DataFrame:
         """Apply square root to aggregated scaled squared errors."""
@@ -656,11 +658,9 @@ class MeanAbsolutePercentageError(BasePointScorer):
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute per-row absolute percentage errors."""
-        pct_errors_data = {}
-        for col in y_truth.columns:
-            abs_errors = (y_truth[col] - y_pred[col]).abs()
-            pct_errors_data[col] = (abs_errors / (y_truth[col].abs() + self.epsilon)) * 100.0
-        return pl.DataFrame(pct_errors_data)
+        abs_errors = (y_truth - y_pred).select(pl.all().abs())
+        denom = y_truth.select(pl.all().abs() + self.epsilon)
+        return abs_errors / denom * 100.0
 
 
 class SymmetricMeanAbsolutePercentageError(BasePointScorer):
@@ -771,12 +771,9 @@ class SymmetricMeanAbsolutePercentageError(BasePointScorer):
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute per-row symmetric absolute percentage errors."""
-        smape_errors_data = {}
-        for col in y_truth.columns:
-            abs_errors = (y_truth[col] - y_pred[col]).abs()
-            denominator = (y_truth[col].abs() + y_pred[col].abs()) / 2.0 + self.epsilon
-            smape_errors_data[col] = (abs_errors / denominator) * 100.0
-        return pl.DataFrame(smape_errors_data)
+        abs_errors = (y_truth - y_pred).select(pl.all().abs())
+        denom = (y_truth.select(pl.all().abs()) + y_pred.select(pl.all().abs())) / 2.0 + self.epsilon
+        return abs_errors / denom * 100.0
 
 
 class MeanAbsoluteScaledError(BasePointScorer):
@@ -970,12 +967,14 @@ class MeanAbsoluteScaledError(BasePointScorer):
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Compute per-row scaled absolute errors."""
-        scaled_errors_data = {}
-        for col in y_truth.columns:
-            errors = (y_truth[col] - y_pred[col]).abs().to_numpy()
-            scale = self.naive_errors_[col]
-            scaled_errors_data[col] = errors / scale
-        return pl.DataFrame(scaled_errors_data)
+        missing = [col for col in y_truth.columns if col not in self.naive_errors_]
+        if missing:
+            raise ValueError(
+                f"Columns {missing} were not seen during fit(); MASE has no scale "
+                f"for them. Fitted columns: {list(self.naive_errors_)}."
+            )
+        diff = y_truth - y_pred
+        return diff.select((pl.col(col).abs() / float(self.naive_errors_[col])) for col in y_truth.columns)
 
 
 class MedianAbsoluteError(BasePointScorer):
@@ -1335,8 +1334,8 @@ class R2Score(BasePointScorer):
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
-        """Not used directly. R² overrides score()."""
-        return (y_truth - y_pred).select(pl.all().pow(2))
+        """Not reachable. R² fully overrides ``score()`` and never calls this hook."""
+        raise NotImplementedError("R2Score overrides score(); _compute_raw_errors is never called.")
 
     def score(
         self,
@@ -1502,8 +1501,8 @@ class MeanDirectionalAccuracy(BasePointScorer):
         )
 
     def _compute_raw_errors(self, y_truth: pl.DataFrame, y_pred: pl.DataFrame) -> pl.DataFrame:
-        """Not used directly. MDA overrides score()."""
-        return (y_truth - y_pred).select(pl.all().abs())
+        """Not reachable. MDA fully overrides ``score()`` and never calls this hook."""
+        raise NotImplementedError("MeanDirectionalAccuracy overrides score(); _compute_raw_errors is never called.")
 
     def score(
         self,
@@ -1538,7 +1537,19 @@ class MeanDirectionalAccuracy(BasePointScorer):
         )
 
         if len(y_truth) < 2:
-            return 0.0
+            # Direction requires at least 2 rows. Only the fully-collapsed
+            # (scalar) aggregation has a well-defined default; for any
+            # DataFrame-shaped aggregation the return-type contract cannot be
+            # honored with too few rows, so fail loudly instead.
+            dims = self._normalize_agg_methods(self.aggregation_method)
+            scalar_dims = {"stepwise", "vintagewise", "componentwise", "groupwise"}
+            if scalar_dims.issubset(dims):
+                return 0.0
+            raise ValueError(
+                "MeanDirectionalAccuracy requires at least 2 rows to compute a "
+                f"directional change, but received {len(y_truth)}. Provide more "
+                "data or use aggregation_method='all'."
+            )
 
         # Resolve vintage_weight into context
         context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)

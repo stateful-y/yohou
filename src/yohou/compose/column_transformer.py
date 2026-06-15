@@ -38,7 +38,6 @@ from yohou.utils._compat import (
     _fit_transform_one,
     _get_feature_names,
     _get_output_config,
-    _is_pandas_df,
     _num_samples,
     _raise_for_params,
     _safe_indexing,
@@ -79,8 +78,9 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Like in FeaturePipeline and FeatureUnion, this allows the transformer and
             its parameters to be set using ``set_params`` and searched in grid
             search.
-        transformer : {'drop', 'passthrough'} or estimator
-            Estimator must support ``fit`` and ``transform``.
+        transformer : {'drop', 'passthrough'} or BaseTransformer
+            Estimator must be a ``BaseTransformer`` instance, so the stateful
+            ``observe_transform``/``rewind_transform`` lifecycle is available.
             Special-cased strings 'drop' and 'passthrough' are accepted as
             well, to indicate to drop the columns or to pass them through
             untransformed, respectively.
@@ -696,7 +696,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         check_is_fitted(self)
 
         observation_horizons = self._get_observation_horizons()
-        observation_horizon = max(observation_horizons)
+        observation_horizon = max(observation_horizons, default=0)
 
         return observation_horizon
 
@@ -985,14 +985,12 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         time_column = X.select(cs.by_name("time"))
         X_no_time = X.select(~cs.by_name("time"))
 
-        # If ColumnTransformer is fit using a dataframe, and now a dataframe is
-        # passed to be transformed, we select columns by name instead. This
-        # enables the user to pass X at transform time with extra columns which
-        # were not present in fit time, and the order of the columns doesn't
-        # matter.
-        fit_dataframe_and_transform_dataframe = hasattr(self, "feature_names_in_") and (
-            _is_pandas_df(X_no_time) or hasattr(X_no_time, "__dataframe__")
-        )
+        # If ColumnTransformer was fit with named columns, we select columns by
+        # name instead. This enables the user to pass X at transform time with
+        # extra columns not present at fit time, and the column order doesn't
+        # matter. Inputs are always polars DataFrames (data contract), so the
+        # presence of feature_names_in_ alone determines the name-based path.
+        fit_dataframe_and_transform_dataframe = hasattr(self, "feature_names_in_")
 
         n_samples = _num_samples(X_no_time)
         column_names = _get_feature_names(X_no_time)
@@ -1016,7 +1014,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         else:
             # ndarray was used for fitting or transforming, thus we only
             # check that n_features_in_ is consistent
-            self._check_n_features(X_no_time, reset=False)  # ty: ignore[unresolved-attribute]
+            self._check_n_features(X_no_time, reset=False)
 
         routed_params = process_routing(self, "transform", **params)
 
@@ -1112,6 +1110,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Transformed output with "time" column, after rewinding state.
 
         """
+        _raise_for_params(params, self, "rewind_transform")
         check_is_fitted(self)
         time_column = X.select(cs.by_name("time"))
         X_no_time = X.select(~cs.by_name("time"))
@@ -1159,7 +1158,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         # rename before stacking as it avoids to error on temporary duplicated
         # columns
-        transformer_names = [
+        all_transformer_names = [
             t[0]
             for t in self._iter(
                 fitted=True,
@@ -1168,8 +1167,17 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                 skip_empty_columns=True,
             )
         ]
+        # Build transformer_names and feature_names_outs from the same filtered
+        # population so prefixes stay paired with the right columns: transformers
+        # whose output is time-only (shape[1] == 1) carry no feature columns and
+        # must be dropped from both lists in parallel.
+        feature_Xs = [X for X in Xs if X.shape[1] != 1]
+        if not feature_Xs:
+            # Every transformer emitted only the time column; nothing to stack.
+            return Xs[0].select(cs.by_name("time"))
+        transformer_names = [name for name, X in zip(all_transformer_names, Xs, strict=False) if X.shape[1] != 1]
         # feature_names_outs is a list of lists - one list per transformer
-        feature_names_outs = [[col for col in X.columns if col != "time"] for X in Xs if X.shape[1] != 1]
+        feature_names_outs = [[col for col in X.columns if col != "time"] for X in feature_Xs]
         # Track the original column counts per transformer for re-grouping after prefixing
         column_counts = [len(cols) for cols in feature_names_outs]
 
@@ -1195,9 +1203,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                     " outputs of the transformers:"
                     f" {duplicated_feature_names}.\n"
                 )
-                for transformer_name, X in zip(transformer_names, Xs, strict=False):
-                    if X.shape[1] == 1:
-                        continue
+                for transformer_name, X in zip(transformer_names, feature_Xs, strict=False):
                     dup_cols_in_transformer = sorted(set(X.columns).intersection(duplicated_feature_names))
                     if dup_cols_in_transformer:
                         err_msg += (
@@ -1213,11 +1219,10 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                     "names."
                 )
 
-        output = _hstack(
-            Xs,
-            column_names=feature_names_outs,
-            observation_horizons=self._get_observation_horizons(),
-        )
+        # Pass the same filtered population _hstack will rename: time-only frames
+        # carry no feature columns, and including them would misalign the
+        # frame-to-column_names zip inside _hstack.
+        output = _hstack(feature_Xs, column_names=feature_names_outs)
         output_samples = output.shape[0]
         if check_samples and output_samples > n_samples:
             raise ValueError(

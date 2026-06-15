@@ -609,6 +609,26 @@ class TestRPS:
         # Same order → same score
         assert np.isclose(score_ordered, score_default)
 
+    def test_rps_class_order_unknown_label_raises(self):
+        """class_order with a label absent from y_pred raises a descriptive ValueError."""
+        dates = [datetime(2020, 1, i) for i in range(1, 4)]
+        y_true = pl.DataFrame({
+            "time": dates,
+            "level": ["low", "medium", "high"],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 3,
+            "time": dates,
+            "level_proba_low": [0.8, 0.1, 0.1],
+            "level_proba_medium": [0.1, 0.8, 0.1],
+            "level_proba_high": [0.1, 0.1, 0.8],
+        })
+
+        scorer = RankedProbabilityScore(class_order=["low", "medium", "missing"])
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="class_order contains labels not found"):
+            scorer.score(y_true, y_pred)
+
     def test_rps_different_class_order_changes_score(self):
         """RPS should change when class order changes (non-reversal permutation)."""
         dates = [datetime(2020, 1, i) for i in range(1, 4)]
