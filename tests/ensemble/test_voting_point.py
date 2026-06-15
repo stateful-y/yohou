@@ -269,6 +269,32 @@ class TestVotingPointForecasterErrorHandling:
                 forecasting_horizon=3,
             )
 
+    def test_double_underscore_name_raises(self):
+        """A forecaster name containing '__' is rejected.
+
+        Regression for the 2026-06-15 QA finding: a name like 'foo__bar' passed
+        validation and corrupted nested-parameter routing.
+        """
+        forecaster = VotingPointForecaster(
+            forecasters=[
+                ("foo__bar", SeasonalNaive(seasonality=1)),
+                ("baz", SeasonalNaive(seasonality=7)),
+            ],
+        )
+        with pytest.raises(ValueError, match="must not contain '__'"):
+            forecaster.fit(
+                pl.DataFrame({
+                    "time": pl.datetime_range(
+                        start=datetime(2020, 1, 1),
+                        end=datetime(2020, 2, 19),
+                        interval="1d",
+                        eager=True,
+                    ),
+                    "value": range(50),
+                }),
+                forecasting_horizon=3,
+            )
+
     def test_schema_mismatch_validates(self):
         """Test that matching target schemas work correctly."""
         time = pl.datetime_range(

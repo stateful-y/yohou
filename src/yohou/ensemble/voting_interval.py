@@ -411,6 +411,8 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         """
         check_is_fitted(self, ["forecasters_"])
+        if predict_transformed:
+            self._validate_transformed_schemas_match()
         _raise_for_params(params, self, "predict")
         routed_params = process_routing(self, "predict", **params)
 
@@ -482,6 +484,8 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
 
         """
         check_is_fitted(self, ["forecasters_"])
+        if predict_transformed:
+            self._validate_transformed_schemas_match()
         _raise_for_params(params, self, "predict")
         routed_params = process_routing(self, "predict", **params)
 
