@@ -5,6 +5,8 @@ from typing import Any
 import polars as pl
 import polars.selectors as cs
 
+from yohou.base import BaseTransformer
+
 
 def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_horizons: list[int]) -> pl.DataFrame:
     """Stack transformed features horizontally, aligning observation horizons.
@@ -23,8 +25,9 @@ def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]], observation_h
         Column names for each DataFrame.
 
     observation_horizons : list of int
-        Observation horizon for each transformer (used for fallback when
-        ``"time"`` column is absent).
+        Observation horizon for each transformer. Accepted for API
+        consistency; currently unused because alignment is driven entirely
+        by the ``"time"`` column intersection.
 
     Returns
     -------
@@ -78,11 +81,19 @@ def _observe_transform_one(
         Transformed data.
 
     """
-    # Handle passthrough/FunctionTransformer which doesn't have observe_transform
+    # Stateful BaseTransformers must expose observe_transform; the transform()
+    # fallback is only legitimate for stateless transformers (e.g.
+    # FunctionTransformer used for passthrough). A BaseTransformer that reaches
+    # the fallback has lost its stateful method and would silently use stale
+    # state, so surface that as an error.
     if hasattr(transformer, "observe_transform"):
         X_transformed = transformer.observe_transform(X, **params.get("observe_transform", {}))
+    elif isinstance(transformer, BaseTransformer):
+        raise AttributeError(
+            f"{type(transformer).__name__} is a BaseTransformer but has no "
+            "'observe_transform' method; cannot observe-transform it statefully."
+        )
     else:
-        # Fall back to transform for stateless transformers (e.g., FunctionTransformer for passthrough)
         X_transformed = transformer.transform(X)
 
     if weight is None:
@@ -95,9 +106,10 @@ def _rewind_transform_one(
 ) -> pl.DataFrame:
     """Rewind and transform data using a single transformer.
 
-    Applies rewind_transform semantics: transforms from scratch without using
-    pre-existing memory, discards the first observation_horizon rows, and
-    rewinds the internal state with the input data.
+    Delegates to ``transformer.rewind_transform()``, which transforms from
+    scratch without using pre-existing memory, discards warmup rows, and
+    rewinds the internal state with the input data. This wrapper does not
+    perform the row-discarding itself.
 
     Parameters
     ----------
@@ -118,11 +130,17 @@ def _rewind_transform_one(
         Transformed data with warmup rows discarded.
 
     """
-    # Handle passthrough/transformers that might not have rewind_transform
+    # As in _observe_transform_one, the transform() fallback is only legitimate
+    # for stateless transformers; a BaseTransformer missing rewind_transform has
+    # lost its stateful method and must not silently fall back.
     if hasattr(transformer, "rewind_transform"):
         X_transformed = transformer.rewind_transform(X, **params.get("rewind_transform", {}))
+    elif isinstance(transformer, BaseTransformer):
+        raise AttributeError(
+            f"{type(transformer).__name__} is a BaseTransformer but has no "
+            "'rewind_transform' method; cannot rewind-transform it statefully."
+        )
     else:
-        # Fall back to transform for stateless transformers without rewind_transform
         X_transformed = transformer.transform(X)
 
     if weight is None:

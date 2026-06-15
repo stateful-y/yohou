@@ -25,7 +25,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     target_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
-        Transformer used to transform the target time series into features.
+        Transformer used to transform the feature time series (``X_actual``) into features.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -48,7 +48,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     classes_: dict[str, list[str]]
     n_classes_: dict[str, int]
-    label_to_code_: dict[str, dict[str, float]]
+    label_to_code_: dict[str, dict[str, int]]
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -301,6 +301,8 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ------
         sklearn.exceptions.NotFittedError
             If the forecaster has not been fitted yet.
+        ValueError
+            If ``groups`` contains names not seen during fit.
 
         """
         y_proba = self.predict_class_proba(
@@ -327,8 +329,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Returns
         -------
         pl.DataFrame
-            DataFrame with ``"time"``, and one column per original target
-            containing the class label with highest probability.
+            DataFrame with ``"vintage_time"``, ``"time"``, and one column per
+            original target containing the class label with highest
+            probability. In panel mode, output columns carry the
+            ``{group}__{target}`` prefix to match the input schema.
 
         """
         check_is_fitted(self, ["classes_"])
@@ -336,18 +340,33 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         time_cols = [c for c in ("vintage_time", "time") if c in y_proba.columns]
         result = y_proba.select(time_cols)
 
-        for target_col, class_labels in self.classes_.items():
-            proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
-            # For each row, find the index of the max probability column
-            # then map that index to the class label.
-            argmax_series = y_proba.select(pl.concat_list(proba_cols).list.arg_max().alias("_idx"))["_idx"]
-            label_series = pl.Series(values=class_labels)
-            result = result.with_columns(
-                argmax_series.map_elements(
-                    lambda idx, _labels=label_series: _labels[idx],
-                    return_dtype=pl.String,
-                ).alias(target_col),
-            )
+        if self.groups_ is None:
+            group_prefixes: list[str | None] = [None]
+        else:
+            # Only emit groups whose proba columns are present in y_proba
+            # (predict may have been called with a subset of groups).
+            present = set(y_proba.columns)
+            group_prefixes = [
+                group_prefix
+                for group_prefix in self.groups_
+                if any(col.startswith(f"{group_prefix}__") for col in present)
+            ]
+
+        for group_prefix in group_prefixes:
+            for target_col, class_labels in self.classes_.items():
+                if group_prefix is None:
+                    out_col = target_col
+                    proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
+                else:
+                    out_col = f"{group_prefix}__{target_col}"
+                    proba_cols = [f"{group_prefix}__{target_col}_proba_{label}" for label in class_labels]
+                # For each row, find the index of the max probability column
+                # then gather the matching class label.
+                argmax_series = y_proba.select(pl.concat_list(proba_cols).list.arg_max().cast(pl.UInt32).alias("_idx"))[
+                    "_idx"
+                ]
+                label_series = pl.Series(values=class_labels)
+                result = result.with_columns(label_series.gather(argmax_series).alias(out_col))
 
         return result
 
@@ -405,7 +424,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if y[col].dtype.is_numeric():
                 continue
             # For panel columns like "group_0__weather", extract "weather"
-            base_col = col.split("__")[-1] if "__" in col else col
+            base_col = col.split("__", 1)[1] if "__" in col else col
             if base_col in self.label_to_code_:
                 mapping = self.label_to_code_[base_col]
                 exprs.append(pl.col(col).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
@@ -505,8 +524,9 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ) -> pl.DataFrame:
         """Alternate recursive predict_class_proba and observe.
 
-        Equivalent to calling ``observe(y, X_actual)`` then
-        ``predict_class_proba()``. Returns probability predictions.
+        Emits an initial prediction from the current state, then alternates
+        observing a stride-sized slice of ``y`` and predicting, collecting
+        all probability predictions.
 
         Parameters
         ----------
@@ -526,7 +546,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             data.
         stride : int or None, default=None
             Step size for rolling update-predict. If ``None``, defaults to
-            ``forecasting_horizon``.
+            the horizon specified at fit time (``fit_forecasting_horizon_``).
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -596,8 +616,9 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ) -> pl.DataFrame:
         """Alternate recursive predict and observe.
 
-        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
-        Returns argmax class predictions.
+        Emits an initial prediction from the current state, then alternates
+        observing a stride-sized slice of ``y`` and predicting, collecting
+        all argmax class predictions.
 
         Parameters
         ----------
@@ -617,7 +638,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             data.
         stride : int or None, default=None
             Step size for rolling update-predict. If ``None``, defaults to
-            ``forecasting_horizon``.
+            the horizon specified at fit time (``fit_forecasting_horizon_``).
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None

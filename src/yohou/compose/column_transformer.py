@@ -201,7 +201,10 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     (e.g., 'deseason_sales') to prevent name collisions when multiple
     transformers produce columns with the same names. For panel data columns,
     the prefix is inserted after the group separator to preserve panel structure
-    (e.g., 'store_1__deseason_sales').
+    (e.g., 'store_1__deseason_sales'). This default differs from
+    `ColumnForecaster` (which defaults to ``verbose_feature_names_out=False``):
+    the transformer side prefixes by default for feature clarity, while the
+    forecaster side preserves original column names by default.
 
     The `observation_horizon` property returns the MAXIMUM across all column
     transformers, as the transformer needs enough history to satisfy the most
@@ -730,13 +733,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         # validate estimators
         for t in transformers:
-            if t == "passthrough":
+            if t in ("drop", "passthrough"):
                 continue
             if not isinstance(t, BaseTransformer):
                 # Used to validate the transformers in the `transformers` list
                 raise TypeError(
                     "All estimators should be instances of `BaseTransformer` "
-                    "or be the string 'passthrough' "
+                    "or be the strings 'drop' or 'passthrough' "
                     f"'{t}' (type {type(t)}) doesn't"
                 )
 

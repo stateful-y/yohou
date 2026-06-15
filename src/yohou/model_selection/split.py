@@ -3,7 +3,7 @@
 import numbers
 import warnings
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from typing import Any, ClassVar
 
 import numpy as np
@@ -191,7 +191,11 @@ class ExpandingWindowSplitter(BaseSplitter):
         Number of splits. Must be at least 2.
     max_train_size : int, default=None
         Maximum size for a single training set. If None, all available
-        training data is used.
+        training data is used. When set, the training window becomes
+        bounded-expanding: it still ends at the start of each test window but
+        is capped at the ``max_train_size`` most-recent rows, effectively
+        turning the splitter into a sliding window once enough data has
+        accumulated.
     test_size : int, default=None
         Used to limit the size of the test set. Defaults to
         ``n_samples // (n_splits + 1)``, which is the maximum allowed
@@ -333,11 +337,16 @@ class ExpandingWindowSplitter(BaseSplitter):
         if test_size >= n_samples:
             raise ValueError(f"test_size={test_size} should be less than the number of samples={n_samples}.")
 
-        test_starts = range(n_samples - n_splits * test_size, n_samples, test_size)
+        first_test_start = n_samples - n_splits * test_size
+        if first_test_start < 0:
+            raise ValueError(
+                f"Cannot create n_splits={n_splits} non-overlapping test windows of "
+                f"test_size={test_size} from n_samples={n_samples}: this needs at least "
+                f"{n_splits * test_size} samples for the test windows alone. "
+                f"Reduce n_splits or test_size, or provide more data."
+            )
 
-        for test_start in test_starts:
-            if test_start < 0:
-                continue
+        for test_start in range(first_test_start, n_samples, test_size):
             yield np.arange(test_start, test_start + test_size, dtype=np.intp)
 
     def get_n_splits(
@@ -630,20 +639,19 @@ class SlidingWindowSplitter(BaseSplitter):
 
 
 def check_cv(
-    cv: int | BaseSplitter | Iterable[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]] | None = 5,
+    cv: int | BaseSplitter | None = 5,
     forecasting_horizon: int = 1,
 ) -> BaseSplitter:
     """Input checker utility for building a cross-validator.
 
     Parameters
     ----------
-    cv : int, cross-validation generator or an iterable, default=5
+    cv : int or cross-validation generator, default=5
         Determines the cross-validation splitting strategy.
         Possible inputs for cv are:
         - None, to use the default 5-fold time series cross validation,
         - integer, to specify the number of folds in a time series `Splitter`,
-        - `BaseSplitter` instance,
-        - An iterable yielding (train, test) splits as arrays of indices.
+        - `BaseSplitter` instance.
     forecasting_horizon : int >= 1, default=1
         Horizon to forecast recursively.
 
@@ -685,7 +693,9 @@ def check_cv_alignment(
     -------
     dict
         ``n_vintages``
-            Number of predict calls per fold (1 initial + test_size // stride).
+            Number of predict calls per fold
+            (``1 + ceil(test_size / stride)``); for example ``test_size=10``
+            and ``stride=4`` give ``4`` vintages.
         ``steps_per_vintage``
             List of step counts per vintage.  All entries equal
             ``forecasting_horizon`` except possibly the last.

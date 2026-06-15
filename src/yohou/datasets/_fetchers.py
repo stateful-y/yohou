@@ -37,11 +37,24 @@ def _is_wasm() -> bool:
     return sys.platform == "emscripten"
 
 
-def _fetch_dataset_wasm(dataset_name: str, metadata: RemoteFileMetadata) -> Bunch:
-    """Download a pre-processed dataset from jsDelivr and return a Bunch."""
+def _fetch_dataset_wasm(
+    dataset_name: str,
+    metadata: RemoteFileMetadata,
+    n_series: int | None = None,
+) -> Bunch:
+    """Download a pre-processed dataset from jsDelivr and return a Bunch.
+
+    When ``n_series`` is given, the deserialized frame is sliced to the
+    first ``n_series`` value columns (the ``"time"`` column is always
+    retained) so the WASM path honours the same selection as the native
+    download path.
+    """
     url = f"{_CDN_BASE_URL}/{dataset_name}.bin"
     data = urlopen(url).read()  # noqa: S310
     frame = pl.DataFrame.deserialize(io.BytesIO(data), format="binary")
+    if n_series is not None:
+        value_cols = [c for c in frame.columns if c != "time"][:n_series]
+        frame = frame.select("time", *value_cols)
     feature_names = [c for c in frame.columns if c != "time"]
     return Bunch(
         frame=frame,
@@ -163,7 +176,7 @@ def _fetch_dataset(
 
     """
     if _is_wasm():
-        return _fetch_dataset_wasm(dataset_name, metadata)
+        return _fetch_dataset_wasm(dataset_name, metadata, n_series=n_series)
 
     data_home_str = get_data_home(data_home)
     dataset_dir = os.path.join(data_home_str, dataset_name)
@@ -861,10 +874,12 @@ def fetch_kdd_cup(
     Parameters
     ----------
     n_groups : int or None, default=5
-        Maximum number of station groups to include. Each station has
-        6 measurement series (PM2.5, PM10, NO2, CO, O3, SO2), so
-        ``n_groups=5`` loads 30 raw series. ``None`` loads all 59
-        stations (270 series).
+        Maximum number of station groups to include. Beijing stations
+        have 6 measurement series (PM2.5, PM10, NO2, CO, O3, SO2);
+        London stations carry a subset (typically PM2.5, PM10, NO2).
+        ``n_groups=5`` loads up to 30 raw series (fewer if London
+        stations are selected). ``None`` loads all 270 series from 59
+        stations.
     data_home : str, PathLike, or None
         Specify another download and cache folder for the datasets.
         By default all yohou data is stored in ``~/yohou_data/``.
@@ -875,6 +890,13 @@ def fetch_kdd_cup(
         Number of retries when HTTP errors are encountered.
     delay : float, default=1.0
         Number of seconds between retries.
+
+    Notes
+    -----
+    Internally, ``n_groups * 6`` raw series are requested from the TSF
+    parser and then restructured into station groups. If a station's
+    series are not contiguous in the file, some resulting groups may be
+    incomplete.
 
     Returns
     -------
@@ -1020,6 +1042,13 @@ def fetch_air_quality_classification(
     station_prefix = non_time[0].split("__")[0]
 
     pm25_col = f"{station_prefix}__pm2.5"
+    if pm25_col not in frame.columns:
+        raise ValueError(
+            f"fetch_air_quality_classification expected target column "
+            f"'{pm25_col}' in the KDD Cup dataset but it is absent. "
+            f"Available columns: {frame.columns}."
+        )
+
     feature_measurements = ["pm10", "no2", "co", "o3", "so2"]
     feature_cols = [f"{station_prefix}__{m}" for m in feature_measurements]
 
@@ -1041,7 +1070,7 @@ def fetch_air_quality_classification(
     y = frame.select("time", air_quality.alias("air_quality"))
     X_actual = frame.select("time", *feature_cols).rename({c: c.split("__")[1] for c in feature_cols})
 
-    classes = sorted(set(y["air_quality"].to_list()))
+    classes = sorted(y["air_quality"].unique().to_list())
 
     return Bunch(
         y=y,
@@ -1070,9 +1099,10 @@ def fetch_demand_classification(
 
     Downloads the Australian Electricity Demand dataset and bins
     Victoria's half-hourly demand into three levels (low, medium, high)
-    using tercile thresholds. The remaining four states (NSW, QLD, SA,
-    TAS) become exogenous features. Rows with null Victoria demand are
-    dropped.
+    using tercile thresholds. The remaining four states (NSW, QUN, SA,
+    TAS) become exogenous features. Note that the Monash dataset encodes
+    Queensland as ``qun`` (not the ISO abbreviation ``qld``). Rows with
+    null Victoria demand are dropped.
 
     Parameters
     ----------
@@ -1138,6 +1168,14 @@ def fetch_demand_classification(
     target_col = "vic__demand"
     feature_cols = ["nsw__demand", "qun__demand", "sa__demand", "tas__demand"]
 
+    missing = [c for c in (target_col, *feature_cols) if c not in frame.columns]
+    if missing:
+        raise ValueError(
+            f"fetch_demand_classification expected columns {missing} in the "
+            f"electricity demand dataset but they are absent. Available "
+            f"columns: {frame.columns}."
+        )
+
     # Drop rows with null target
     frame = frame.drop_nulls(subset=[target_col])
 
@@ -1157,7 +1195,7 @@ def fetch_demand_classification(
     y = frame.select("time", demand_level.alias("demand_level"))
     X_actual = frame.select("time", *feature_cols)
 
-    classes = sorted(set(y["demand_level"].to_list()))
+    classes = sorted(y["demand_level"].unique().to_list())
 
     return Bunch(
         y=y,
@@ -1170,6 +1208,6 @@ def fetch_demand_classification(
             "Australian Electricity Demand dataset (Monash/Zenodo). "
             "Victoria's half-hourly demand is binned into three tercile-based "
             "levels: low, medium, high. Features are the demand series from "
-            "the remaining four Australian states (NSW, QLD, SA, TAS)."
+            "the remaining four Australian states (NSW, QUN, SA, TAS)."
         ),
     )

@@ -14,6 +14,23 @@ import polars as pl
 from sklearn.utils import Bunch
 
 
+def _forecast_index_grid(n_samples: int, forecasting_horizon: int) -> tuple[np.ndarray, np.ndarray]:
+    """Build vintage and target index arrays for X_forecast construction.
+
+    Reproduces, in vectorized form, the row order of the nested loop over
+    vintage indices ``i in range(forecasting_horizon, n_samples)`` and steps
+    ``step in range(1, forecasting_horizon + 1)``, keeping only pairs whose
+    target index ``i + step`` stays within the sample range. The row order is
+    preserved so downstream RNG draws stay numerically identical.
+    """
+    vintage = np.arange(forecasting_horizon, n_samples)
+    steps = np.arange(1, forecasting_horizon + 1)
+    vintage_grid = np.repeat(vintage, forecasting_horizon)
+    target_grid = vintage_grid + np.tile(steps, vintage.shape[0])
+    keep = target_grid < n_samples
+    return vintage_grid[keep], target_grid[keep]
+
+
 def make_exogenous_regression(
     *,
     n_samples: int = 200,
@@ -35,9 +52,12 @@ def make_exogenous_regression(
     - **X_future** (known future): a deterministic ``is_holiday`` indicator
       (Sundays = 1.0) covering the full time range.
     - **X_forecast** (external forecasts): weather temperature forecasts
-      with one vintage per observation, each covering the next
-      ``forecasting_horizon`` steps. Forecasts carry a small systematic
-      bias relative to actuals.
+      with one vintage per observation from index ``forecasting_horizon``
+      up to (but not including) the last observation, each covering the
+      next ``forecasting_horizon`` steps that remain within the sample.
+      The final observation produces no vintage because all of its
+      forecast steps fall outside the sample range. Forecasts carry a
+      small systematic bias relative to actuals.
 
     Parameters
     ----------
@@ -66,7 +86,9 @@ def make_exogenous_regression(
         X_forecast : pl.DataFrame
             External forecasts with columns
             ``["vintage_time", "time", "wx_temp"]``. One vintage per
-            observation from index ``forecasting_horizon`` onward.
+            observation from index ``forecasting_horizon`` up to (but not
+            including) the last observation; the final observation
+            produces no vintage.
         frame : pl.DataFrame
             ``y``, ``X_actual``, and ``X_future`` joined on ``"time"``.
             ``X_forecast`` is excluded because it has a different schema.
@@ -95,32 +117,33 @@ def make_exogenous_regression(
 
     """
     rng = np.random.default_rng(random_state)
-    times = pl.Series(
-        "time",
-        [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(n_samples)],
-    )
+    times = pl.datetime_range(
+        datetime(2024, 1, 1),
+        datetime(2024, 1, 1) + timedelta(hours=n_samples - 1),
+        interval="1h",
+        eager=True,
+    ).alias("time")
     t = np.arange(n_samples, dtype=float)
 
     actual_temp = 15.0 + 5.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n_samples)
-    holidays = np.array([
-        1.0 if (datetime(2024, 1, 1) + timedelta(hours=i)).weekday() == 6 else 0.0 for i in range(n_samples)
-    ])
+    # Sundays = 1.0 (polars weekday(): Monday=1 .. Sunday=7).
+    holidays = (times.dt.weekday() == 7).cast(pl.Float64).to_numpy()
     price = 50.0 + 2.0 * actual_temp + 10.0 * holidays + rng.normal(0, noise, n_samples)
 
     y = pl.DataFrame({"time": times, "price": price})
     X_actual = pl.DataFrame({"time": times, "temperature": actual_temp})
     X_future = pl.DataFrame({"time": times, "is_holiday": holidays})
 
-    forecast_rows: list[dict[str, object]] = []
-    for i in range(forecasting_horizon, n_samples):
-        for step in range(1, forecasting_horizon + 1):
-            if i + step < n_samples:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "wx_temp": float(actual_temp[i + step] + forecast_bias + rng.normal(0, 0.3)),
-                })
-    X_forecast = pl.DataFrame(forecast_rows)
+    vintage_idx, target_idx = _forecast_index_grid(n_samples, forecasting_horizon)
+    wx_noise = rng.normal(0, 0.3, vintage_idx.shape[0])
+    X_forecast = pl.DataFrame(
+        {
+            "vintage_time": times.gather(vintage_idx),
+            "time": times.gather(target_idx),
+            "wx_temp": actual_temp[target_idx] + forecast_bias + wx_noise,
+        },
+        schema={"vintage_time": times.dtype, "time": times.dtype, "wx_temp": pl.Float64},
+    )
 
     frame = y.join(X_actual, on="time").join(X_future, on="time")
 
@@ -163,8 +186,12 @@ def make_exogenous_classification(
     - **X_future** (known future): a deterministic ``is_weekend``
       indicator covering the full time range.
     - **X_forecast** (external forecasts): pollutant concentration
-      forecasts with one vintage per observation, each covering the next
-      ``forecasting_horizon`` steps.
+      forecasts with one vintage per observation from index
+      ``forecasting_horizon`` up to (but not including) the last
+      observation, each covering the next ``forecasting_horizon`` steps
+      that remain within the sample. The final observation produces no
+      vintage because all of its forecast steps fall outside the sample
+      range.
 
     Classification thresholds on the continuous pollutant signal:
 
@@ -229,18 +256,19 @@ def make_exogenous_classification(
 
     """
     rng = np.random.default_rng(random_state)
-    times = pl.Series(
-        "time",
-        [datetime(2024, 1, 1) + timedelta(hours=i) for i in range(n_samples)],
-    )
+    times = pl.datetime_range(
+        datetime(2024, 1, 1),
+        datetime(2024, 1, 1) + timedelta(hours=n_samples - 1),
+        interval="1h",
+        eager=True,
+    ).alias("time")
     t = np.arange(n_samples, dtype=float)
 
     # Pollutant with 24h cycle centered at 50, amplitude 20
     pollutant = 50.0 + 20.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 5.0, n_samples)
 
-    is_weekend = np.array([
-        1.0 if (datetime(2024, 1, 1) + timedelta(hours=i)).weekday() >= 5 else 0.0 for i in range(n_samples)
-    ])
+    # Saturday/Sunday = 1.0 (polars weekday(): Monday=1 .. Sunday=7).
+    is_weekend = (times.dt.weekday() >= 6).cast(pl.Float64).to_numpy()
 
     # Weekend effect: lower pollutant readings
     effective_pollutant = pollutant - 5.0 * is_weekend + rng.normal(0, noise, n_samples)
@@ -257,16 +285,16 @@ def make_exogenous_classification(
     X_actual = pl.DataFrame({"time": times, "pollutant": pollutant})
     X_future = pl.DataFrame({"time": times, "is_weekend": is_weekend})
 
-    forecast_rows: list[dict[str, object]] = []
-    for i in range(forecasting_horizon, n_samples):
-        for step in range(1, forecasting_horizon + 1):
-            if i + step < n_samples:
-                forecast_rows.append({
-                    "vintage_time": times[i],
-                    "time": times[i + step],
-                    "pollutant_forecast": float(pollutant[i + step] + forecast_bias + rng.normal(0, 2.0)),
-                })
-    X_forecast = pl.DataFrame(forecast_rows)
+    vintage_idx, target_idx = _forecast_index_grid(n_samples, forecasting_horizon)
+    pollutant_noise = rng.normal(0, 2.0, vintage_idx.shape[0])
+    X_forecast = pl.DataFrame(
+        {
+            "vintage_time": times.gather(vintage_idx),
+            "time": times.gather(target_idx),
+            "pollutant_forecast": pollutant[target_idx] + forecast_bias + pollutant_noise,
+        },
+        schema={"vintage_time": times.dtype, "time": times.dtype, "pollutant_forecast": pl.Float64},
+    )
 
     frame = y.join(X_actual, on="time").join(X_future, on="time")
 

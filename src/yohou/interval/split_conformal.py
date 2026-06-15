@@ -363,10 +363,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
     ) -> "SplitConformalForecaster":
-        """Observe new data and update the wrapped point forecaster.
+        """Observe new data and update conformity scores and the point forecaster.
 
-        Delegates to the wrapped point forecaster's ``observe()`` method
-        to update its observation buffers without refitting.
+        Updates conformity scores and similarity weights with the new
+        observations, then advances the wrapped point forecaster's
+        observation buffers without refitting.
 
         Parameters
         ----------
@@ -421,9 +422,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
     ) -> "SplitConformalForecaster":
-        """Rewind the wrapped point forecaster's observation buffers.
+        """Rewind conformity scores, similarity state, and the point forecaster.
 
-        Delegates to the wrapped point forecaster's ``rewind()`` method.
+        Removes the most recently observed conformity scores and similarity
+        state, then rewinds the wrapped point forecaster's observation
+        buffers, mirroring the order used by ``observe()``.
 
         Parameters
         ----------
@@ -456,11 +459,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y, X_actual, groups = validate_forecaster_data(self, y, X_actual, reset=False, groups=groups)
 
-        self.point_forecaster_.rewind(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
+        # Rewind conformity / similarity state *before* the point forecaster
+        # rolls back, mirroring the order used by observe() so both methods
+        # maintain the same state invariant.
         if self.groups_ is None:
             self._rewind_standard(y, X_actual=X_actual)
         else:
             BasePanelForecaster._rewind_panel(self, y, X_actual=X_actual, groups=groups)
+
+        self.point_forecaster_.rewind(y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)
         self.observed_time_ = self.point_forecaster_.observed_time_
         return self
 
@@ -562,7 +569,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             data.
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
-            ``forecasting_horizon``.
+            the forecasting horizon used at fit time
+            (``fit_forecasting_horizon_``).
         predict_transformed : bool, default=False
             If ``True``, return predictions in the transformed space without
             applying inverse target transformation.
@@ -668,7 +676,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             are used.
         stride : int or None, default=None
             Step size for rolling update-predict.  If ``None``, defaults to
-            ``forecasting_horizon``.
+            the forecasting horizon used at fit time
+            (``fit_forecasting_horizon_``).
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None

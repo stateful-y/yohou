@@ -62,6 +62,7 @@ LINE_DASH_SEQUENCE: list[str] = [
     "longdash",
     "longdashdot",
 ]
+"""Ordered Plotly dash styles for distinguishing multiple line series."""
 
 
 @dataclass(frozen=True)
@@ -84,7 +85,9 @@ class RenderContext:
         ``facet_by="group"``, group name when ``facet_by="member"``,
         column name when ``facet_by="column"``).
     entity_idx : int
-        Index of the overlaid entity in the color palette.
+        Index of the overlaid entity in the color palette. In non-panel
+        (column) mode this is always 0; such callbacks should use
+        ``display_name`` to look up colours from their own mapping.
     row : int
         Subplot row (1-indexed).
     col : int
@@ -139,9 +142,6 @@ def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
         ``max(floor, base / n)``
     """
     return max(floor, base / max(n, 1))
-
-
-"""Ordered Plotly dash styles for distinguishing multiple line series."""
 
 
 def set_config(
@@ -514,6 +514,11 @@ def resolve_color_palette(color_palette: list[str] | None, n: int) -> list[str]:
     -------
     list[str]
         List of exactly *n* colour hex codes.
+
+    Raises
+    ------
+    ValueError
+        If *color_palette* is a non-None empty list.
 
     Examples
     --------
@@ -1198,12 +1203,20 @@ def facet_figure(
     subplot_h_spacing : float | None, default=None
         Horizontal spacing between subplots.
     resampler : bool | Literal["widget"] | None, default=None
-        Resampler mode.
+        Resampler mode.  ``False`` uses a plain ``go.Figure``, ``True`` a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``, and
+        ``None`` reads from :func:`get_config` (default ``False``).
 
     Returns
     -------
     go.Figure
         Plotly figure with faceted subplots.
+
+    Raises
+    ------
+    ValueError
+        If both *columns* and *column_groups* are specified in non-panel
+        mode.
 
     Examples
     --------

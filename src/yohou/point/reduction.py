@@ -212,7 +212,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             feature transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Bypasses the feature transformer. When provided,
+            recursive prediction (``forecasting_horizon > fit_forecasting_horizon_``
+            at predict time) is not supported and raises a ``ValueError``;
+            use ``ForecastedFeatureForecaster`` for that use case.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -246,7 +249,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predict ``fit_forecasting_horizon_`` steps from the observation horizon.
 
         Parameters
         ----------

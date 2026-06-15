@@ -2,6 +2,7 @@
 
 import calendar
 import re
+import warnings
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -441,6 +442,11 @@ def check_groups_exist(
     - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
 
     """
+    warnings.warn(
+        "check_groups_exist is deprecated; use check_groups instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if requested_panel_groups is None:
         return
 
@@ -730,14 +736,13 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     if df is None:
         raise ValueError("DataFrame cannot be None")
 
-    time_series = df["time"].to_list()
-
-    if len(time_series) < 2:
+    if df.height < 2:
         raise ValueError("Need at least 2 time points to infer interval")
 
-    # Calculate deltas
-    deltas = [time_series[i + 1] - time_series[i] for i in range(len(time_series) - 1)]
-    unique_deltas = sorted(set(deltas))
+    # Compute consecutive deltas with polars rather than a Python loop. The
+    # full datetime list is still needed downstream for month/day arithmetic.
+    unique_deltas = sorted(df["time"].diff().drop_nulls().unique().to_list())
+    time_series = df["time"].to_list()
 
     # Check if deltas are all similar (within small tolerance for rounding)
     delta_days = [d.days for d in unique_deltas]
@@ -945,10 +950,6 @@ def validate_column_names(df: pl.DataFrame) -> None:
     # Valid: store_1__sales, my_store__my_sales
     # Invalid: store___sales (underscore adjacent to __), _store__sales, store__sales_
     # Strategy: split on __, check parts don't start/end with _ and are non-empty
-
-    # Handle None case
-    if df is None:
-        return
 
     for col_name in df.columns:
         if col_name == "time":

@@ -120,7 +120,8 @@ class _BaseEnsembleForecaster:
         Raises
         ------
         ValueError
-            If names are not unique or tuples are malformed.
+            If names are not unique, tuples are malformed, names are not
+            strings, or forecasters are not ``BaseForecaster`` instances.
 
         """
         names = []
@@ -260,7 +261,7 @@ class _BaseEnsembleForecaster:
         Raises
         ------
         ValueError
-            If target column schemas differ across forecasters.
+            If target column names or dtypes differ across forecasters.
 
         """
         schemas = {}
@@ -270,11 +271,20 @@ class _BaseEnsembleForecaster:
 
         reference_name, reference_schema = next(iter(schemas.items()))
         for name, schema in schemas.items():
-            if schema != reference_schema:
+            if set(schema.keys()) != set(reference_schema.keys()):
                 raise ValueError(
                     f"Forecaster '{name}' predicts columns {set(schema.keys())} "
                     f"but '{reference_name}' predicts {set(reference_schema.keys())}. "
                     f"All base forecasters must predict the same target columns."
+                )
+            if schema != reference_schema:
+                mismatched = {
+                    col: (schema[col], reference_schema[col]) for col in schema if schema[col] != reference_schema[col]
+                }
+                raise ValueError(
+                    f"Forecaster '{name}' predicts column dtypes that differ from "
+                    f"'{reference_name}': {mismatched} (column: (this, reference)). "
+                    f"All base forecasters must predict the same target dtypes."
                 )
 
     def _derive_fitted_attributes(
@@ -304,11 +314,18 @@ class _BaseEnsembleForecaster:
         self.local_y_schema_ = dict(first_forecaster.local_y_schema_)
         self.local_X_actual_schema_ = getattr(first_forecaster, "local_X_actual_schema_", None)
         self.shared_X_actual_schema_ = getattr(first_forecaster, "shared_X_actual_schema_", None)
-        self.local_y_t_schema_ = self.local_y_schema_
-        self.local_X_t_schema_ = self.local_X_actual_schema_
+        self.local_y_t_schema_ = getattr(first_forecaster, "local_y_t_schema_", self.local_y_schema_)
+        # The transformed feature schema/buffer must reflect the post-pipeline
+        # space, which only the child knows; the raw X_actual is not a valid
+        # stand-in when a child wraps a feature transformer. Mirror the child's
+        # transformed state so the contract attributes are accurate. The
+        # ensemble itself never reads these on any predict path (predict,
+        # observe, and rewind all delegate to the children), so they exist
+        # solely to satisfy the BaseForecaster fitted-attribute contract.
+        self.local_X_t_schema_ = getattr(first_forecaster, "local_X_t_schema_", self.local_X_actual_schema_)
         self._y_observed = y
         self._X_observed = X_actual
-        self._X_t_observed = X_actual
+        self._X_t_observed = getattr(first_forecaster, "_X_t_observed", X_actual)
 
     def _compute_effective_weights(self) -> None:
         """Compute effective weights for surviving forecasters.
@@ -320,6 +337,8 @@ class _BaseEnsembleForecaster:
         """
         if self.weights is not None:
             fitted_names = {name for name, _ in self.forecasters_}
+            # self.forecasters and self.weights always have equal length here
+            # (guaranteed by pre-fit validation); strict=True asserts that.
             self.weights_ = [
                 w for (name, _), w in zip(self.forecasters, self.weights, strict=True) if name in fitted_names
             ]
@@ -396,6 +415,11 @@ class _BaseEnsembleForecaster:
         -------
         pl.DataFrame
             Aggregated interval predictions.
+
+        Notes
+        -----
+        For the ``"envelope"`` strategy, columns whose names contain neither
+        ``"_lower_"`` nor ``"_upper_"`` fall back to mean aggregation.
 
         """
         time_cols = [c for c in ("vintage_time", "time") if c in predictions[0].columns]

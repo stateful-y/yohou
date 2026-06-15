@@ -88,7 +88,8 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         # Create Tags with transformer-specific defaults
         tags = Tags(estimator_type="transformer", requires_fit=True)
 
-        assert tags.transformer_tags is not None
+        if tags.transformer_tags is None:
+            raise RuntimeError('Tags object has no transformer_tags; estimator_type="transformer" was not honoured.')
 
         # Default to non-invertible; subclasses set _tags = {"invertible": True}
         tags.transformer_tags.invertible = False
@@ -396,8 +397,9 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         observations with the new input, applying the transformation,
         and then updating the internal state.
 
-        Equivalent to calling ``observe(X)`` then ``transform(X)``, but
-        uses pre-existing memory for the transform.
+        Transforms using pre-existing memory first, then updates state with
+        ``observe(X)``. This is NOT equivalent to ``observe(X); transform(X)``,
+        since the transform uses memory from before the observation.
 
         Parameters
         ----------
@@ -441,9 +443,10 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         """Transform the input and rewind state (stateless transform).
 
         Applies the transformation to the full input and then rewinds
-        internal state.  Because ``transform()`` already drops the first
-        ``observation_horizon`` rows for stateful transformers, the result
-        has ``len(X) - observation_horizon`` rows.
+        internal state. Stateful subclasses typically discard the first
+        ``observation_horizon`` rows inside ``_transform()``, so the result
+        usually has ``len(X) - observation_horizon`` rows, but the exact count
+        depends on the transformer implementation.
 
         Equivalent to calling ``rewind(X)`` then ``transform(X)``.
 

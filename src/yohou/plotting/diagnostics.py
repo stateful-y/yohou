@@ -142,7 +142,6 @@ def plot_autocorrelation(
         groups = []
 
     if groups is not None:
-        _panel_cols = resolve_panel_columns(df, groups, columns)
         _color_mgr = PanelColorManager(color_palette)
         _acf_legend = LegendTracker()
 
@@ -264,18 +263,18 @@ def _compute_acf_values(series: pl.Series, max_lags: int) -> list[float]:
         ACF values from lag 0 to *max_lags* inclusive.
 
     """
-    mean_val = series.mean()
-    acf_values: list[float] = []
-    for lag in range(max_lags + 1):
-        if lag == 0:
-            acf_values.append(1.0)
-        else:
-            s1 = series[:-lag] - mean_val
-            s2 = series[lag:] - mean_val
-            numerator = float((s1 * s2).sum())
-            denominator = float(((series - mean_val) ** 2).sum())
-            acf_values.append(numerator / denominator if denominator != 0 else 0.0)
-    return acf_values
+    centered = series.to_numpy().astype(float)
+    centered = centered - centered.mean()
+    denominator = float((centered**2).sum())
+    n = centered.shape[0]
+    # Full autocovariance via numpy correlation; the second half holds the
+    # non-negative lags starting at lag 0.
+    autocov = np.correlate(centered, centered, mode="full")[n - 1 : n + max_lags]
+    if denominator == 0:
+        return [1.0] + [0.0] * max_lags
+    acf = (autocov / denominator).tolist()
+    acf[0] = 1.0
+    return acf
 
 
 def _compute_pacf(
@@ -437,7 +436,6 @@ def plot_partial_autocorrelation(
         groups = []
 
     if groups is not None:
-        _panel_cols = resolve_panel_columns(df, groups, columns)
         _pacf_color_mgr = PanelColorManager(color_palette)
         _pacf_legend = LegendTracker()
 
@@ -946,8 +944,6 @@ def plot_seasonality(
         Plot height in pixels.
     connect_gaps : bool, default=False
         If True, connect lines across missing data gaps.
-    show_legend : bool, default=True
-        Whether to display the legend.
     resampler : bool | Literal["widget"] | None, default=None
         Enable plotly-resampler for large datasets.  ``True`` returns a
         ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
@@ -1695,9 +1691,11 @@ def plot_lag_scatter(
         Input DataFrame with 'time' column and numeric columns.
     columns : str | list[str] | None, default=None
         Column(s) to analyse. If None, uses all numeric columns except 'time'.
-    lags : list[int] | None, default=None
+    lags : int | list[int] | None, default=None
         Lag values to plot. Each lag gets its own subplot when there are
-        multiple entries.  Defaults to ``[1]`` when ``None``.
+        multiple entries. If an int, generates lags ``[1, 2, ..., lags]``.
+        If a list, uses the exact values provided. Defaults to ``[1]``
+        when ``None``.
     seasonality : str | None, default=None
         When set, colour markers by season.  Accepts ``"month"``,
         ``"quarter"``, ``"weekday"``, ``"week"`` or ``"hour"``.

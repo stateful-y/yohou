@@ -1496,18 +1496,21 @@ def plot_outliers(
         Column(s) to analyze. If None, uses all numeric columns except 'time'.
     method : {"zscore", "iqr", "percentile"}, default="zscore"
         Outlier detection method:
-        - "zscore": points with |z-score| > threshold (default 3.0)
-        - "iqr": points outside [Q1 - threshold*IQR, Q3 + threshold*IQR] (default 1.5)
-        - "percentile": points above the threshold-th percentile or below
-          the (100-threshold)-th percentile (default 95.0, flags outer 5%)
+        - "zscore": points with |z-score| > *threshold*
+        - "iqr": points outside [Q1 - threshold*IQR, Q3 + threshold*IQR]
+        - "percentile": points above the *threshold*-th percentile or below
+          the (100 - *threshold*)-th percentile (e.g. ``threshold=95``
+          flags the outer 5%)
     threshold : float, default=3.0
-        Detection threshold. Interpretation depends on *method*.
+        Detection threshold. Interpretation depends on *method*. The default
+        of ``3.0`` suits ``"zscore"``; use a value such as ``1.5`` for
+        ``"iqr"`` and a value such as ``95`` for ``"percentile"``.
     groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
         Faceting axis for panel data.  ``"group"`` creates one subplot per
-        group, ``"member"`` one per member.  ``None`` disables faceting.
-        Ignored for non-panel data.
+        group, ``"member"`` one per member.  ``None`` falls back to
+        ``"member"``.  Ignored for non-panel data.
     facet_n_cols : int, default=2
         Number of columns in facet grid.
     color_palette : list[str] | None, default=None
@@ -1524,8 +1527,6 @@ def plot_outliers(
         Plot width in pixels.
     height : int | None, default=None
         Plot height in pixels.
-    show_legend : bool, default=True
-        Whether to display the legend.
     connect_gaps : bool, default=False
         If True, connect lines across missing data gaps.
     resampler : bool | Literal["widget"] | None, default=None
@@ -1715,7 +1716,7 @@ def plot_outliers(
             col=ctx.col,
         )
 
-        df_outliers = df.filter(mask)
+        df_outliers = ctx.sub_df.filter(mask)
         if len(df_outliers) > 0:
             ctx.fig.add_trace(
                 go.Scatter(
@@ -1891,14 +1892,6 @@ def plot_resampling_comparison(
     validate_plotting_data(df_resampled)
     validate_plotting_params(width=width, height=height)
 
-    # Get styling parameters
-    original_width = original_line_width
-    original_opacity = original_line_opacity
-    original_dash = original_line_dash
-    resampled_width = resampled_line_width
-    resampled_opacity = resampled_line_opacity
-    resampled_dash = resampled_line_dash
-
     if groups is None and columns is None and _auto_detect_panel(df_resampled):
         groups = []
 
@@ -1917,8 +1910,8 @@ def plot_resampling_comparison(
                         x=df_original["time"],
                         y=df_original[orig_col],
                         mode="lines",
-                        line={"color": _colors[0], "width": original_width, "dash": original_dash},
-                        opacity=original_opacity,
+                        line={"color": _colors[0], "width": original_line_width, "dash": original_line_dash},
+                        opacity=original_line_opacity,
                         name=original_label,
                         showlegend=False,
                     ),
@@ -1931,8 +1924,8 @@ def plot_resampling_comparison(
                     x=ctx.sub_df["time"],
                     y=ctx.sub_df[base],
                     mode="lines+markers",
-                    line={"color": _colors[0], "width": resampled_width, "dash": resampled_dash},
-                    opacity=resampled_opacity,
+                    line={"color": _colors[0], "width": resampled_line_width, "dash": resampled_line_dash},
+                    opacity=resampled_line_opacity,
                     name=resampled_label,
                     showlegend=False,
                 ),
@@ -1978,8 +1971,8 @@ def plot_resampling_comparison(
                 y=df_original[base],
                 mode="lines",
                 name=f"{base} ({original_label})",
-                line={"color": col_color, "width": original_width, "dash": original_dash},
-                opacity=original_opacity,
+                line={"color": col_color, "width": original_line_width, "dash": original_line_dash},
+                opacity=original_line_opacity,
                 connectgaps=connect_gaps,
                 hovertemplate=f"<b>{base} ({original_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
             ),
@@ -1992,8 +1985,8 @@ def plot_resampling_comparison(
                 y=ctx.sub_df[base],
                 mode="lines+markers",
                 name=f"{base} ({resampled_label})",
-                line={"color": col_color, "width": resampled_width, "dash": resampled_dash},
-                opacity=resampled_opacity,
+                line={"color": col_color, "width": resampled_line_width, "dash": resampled_line_dash},
+                opacity=resampled_line_opacity,
                 connectgaps=connect_gaps,
                 hovertemplate=f"<b>{base} ({resampled_label})</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
             ),

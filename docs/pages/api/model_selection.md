@@ -22,8 +22,17 @@ Time series cross-validation splitters and hyperparameter search.
 | [`ExpandingWindowSplitter`](generated/yohou.model_selection.split.ExpandingWindowSplitter.md) | Expanding window time series cross-validation splitter. |
 | [`SlidingWindowSplitter`](generated/yohou.model_selection.split.SlidingWindowSplitter.md) | Sliding window time series cross-validation splitter. |
 
+### Cross-validation
+
+| Name | Description |
+| --- | --- |
+| [`cross_validate`](generated/yohou.model_selection.validation.cross_validate.md) | Evaluate a forecaster across cross-validation splits, returning multiple scores. |
+| [`cross_val_score`](generated/yohou.model_selection.validation.cross_val_score.md) | Evaluate a forecaster across cross-validation splits with a single scorer. |
+| [`cross_val_predict`](generated/yohou.model_selection.validation.cross_val_predict.md) | Generate cross-validated predictions for each split. |
+
 ### Utilities
 
 | Name | Description |
 | --- | --- |
-| [`check_cv`](generated/yohou.model_selection.split.check_cv.md) | Input checker utility for building a cross-validator. |
+| [`train_test_split`](generated/yohou.model_selection.split.train_test_split.md) | Split a time series into contiguous train and test sets. |
+| [`check_cv_alignment`](generated/yohou.model_selection.split.check_cv_alignment.md) | Validate that a cross-validator's splits align with the data. |

@@ -22,7 +22,7 @@ class TestIntervalChecks:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
         # Should not raise
-        check_interval_prediction_columns(forecaster, y[:80], X[:80])
+        check_interval_prediction_columns(forecaster, y[:80])
 
     def test_check_interval_prediction_columns_single_coverage(self, y_X_factory):
         """Test check validates single coverage rate."""
@@ -31,7 +31,7 @@ class TestIntervalChecks:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.95])
 
         # Should not raise
-        check_interval_prediction_columns(forecaster, y[:80], X[:80])
+        check_interval_prediction_columns(forecaster, y[:80])
 
     def test_check_interval_bounds(self, y_X_factory):
         """Test check_interval_bounds passes for valid interval forecaster."""
@@ -40,7 +40,7 @@ class TestIntervalChecks:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3)
 
         # Should not raise
-        check_interval_bounds(forecaster, y[:80], X[:80])
+        check_interval_bounds(forecaster, y[:80])
 
     def test_check_interval_bounds_single_target(self, y_X_factory):
         """Test check validates single target intervals."""
@@ -49,7 +49,7 @@ class TestIntervalChecks:
         forecaster.fit(y[:80], X[:80], forecasting_horizon=3, coverage_rates=[0.9])
 
         # Should not raise
-        check_interval_bounds(forecaster, y[:80], X[:80])
+        check_interval_bounds(forecaster, y[:80])
 
     def test_check_interval_prediction_types(self):
         """Test check_interval_prediction_types passes for valid interval forecaster."""

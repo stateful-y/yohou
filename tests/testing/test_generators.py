@@ -1,14 +1,31 @@
 """Tests for yohou.testing.generators check generation functions."""
 
 from sklearn.tree import DecisionTreeRegressor
+from sklearn.utils._param_validation import Interval
 
 from yohou.point.naive import SeasonalNaive
 from yohou.point.reduction import PointReductionForecaster
 from yohou.preprocessing.window import LagTransformer
 from yohou.testing.generators import (
+    _interval_lower_bound,
     _yield_yohou_forecaster_checks,
     _yield_yohou_transformer_checks,
 )
+
+
+class TestIntervalLowerBound:
+    """Tests for the _interval_lower_bound constraint helper."""
+
+    def test_returns_int_lower_bound(self):
+        """The integer lower bound of the first Interval constraint is returned."""
+        import numbers
+
+        constraints = [Interval(numbers.Integral, 1, None, closed="left")]
+        assert _interval_lower_bound(constraints) == 1
+
+    def test_returns_none_without_interval(self):
+        """A constraint list with no bound returns None."""
+        assert _interval_lower_bound([list, None]) is None
 
 
 class TestGeneratorChecks:

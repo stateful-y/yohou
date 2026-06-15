@@ -6,6 +6,7 @@ handling in forecasters.
 
 import polars as pl
 
+from yohou.interval import BaseIntervalForecaster
 from yohou.utils import inspect_panel
 
 __all__ = ["check_panel_data", "check_panel_invalid_group_raises", "check_panel_single_group"]
@@ -13,21 +14,15 @@ __all__ = ["check_panel_data", "check_panel_invalid_group_raises", "check_panel_
 
 def _call_predict(forecaster, forecasting_horizon, panel_group=None, groups=None):
     """Call appropriate predict method based on forecaster type."""
-    # Interval forecasters use predict_interval, point forecasters use predict
-    if hasattr(forecaster, "predict"):
-        if panel_group is not None:
-            return forecaster.predict(forecasting_horizon=forecasting_horizon, panel_group=panel_group)
-        elif groups is not None:
-            return forecaster.predict(forecasting_horizon=forecasting_horizon, groups=groups)
-        else:
-            return forecaster.predict(forecasting_horizon=forecasting_horizon)
-    # Interval forecaster
-    elif panel_group is not None:
-        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon, panel_group=panel_group)
-    elif groups is not None:
-        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon, groups=groups)
-    else:
-        return forecaster.predict_interval(forecasting_horizon=forecasting_horizon)
+    if groups is None and panel_group is not None:
+        groups = [panel_group]
+    kwargs = {"forecasting_horizon": forecasting_horizon}
+    if groups is not None:
+        kwargs["groups"] = groups
+    # Interval forecasters use predict_interval, others use predict.
+    if isinstance(forecaster, BaseIntervalForecaster):
+        return forecaster.predict_interval(**kwargs)
+    return forecaster.predict(**kwargs)
 
 
 def _column_present(field: str, columns: list[str]) -> bool:
@@ -39,7 +34,7 @@ def _column_present(field: str, columns: list[str]) -> bool:
     return any(col.startswith(f"{field}_lower_") or col.startswith(f"{field}_upper_") for col in columns)
 
 
-def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_data(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning with panel data predicts all groups by default.
 
     Validates that when panel_group=None (default), predictions are
@@ -51,8 +46,6 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------
@@ -76,7 +69,7 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | 
                 )
 
 
-def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
+def check_panel_single_group(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning filters to specified panel group.
 
     Validates that when panel_group is specified, predictions are
@@ -88,8 +81,6 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------
@@ -116,11 +107,11 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame, X_panel: pl.Data
             )
 
 
-def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel: pl.DataFrame | None = None) -> None:
-    """Check that invalid panel_group raises ValueError.
+def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame) -> None:
+    """Check that an invalid group name raises ValueError.
 
-    Validates error handling when panel_group specifies a panel group
-    that doesn't exist in the training data.
+    Validates error handling when ``groups`` specifies group names that
+    were not seen during fit.
 
     Parameters
     ----------
@@ -128,8 +119,6 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
         Fitted forecaster with panel data
     y_panel : pl.DataFrame
         Panel data with panel columns for testing
-    X_panel : pl.DataFrame, optional
-        Panel features
 
     Raises
     ------
@@ -143,7 +132,7 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame, X_panel:
         # Try to predict with invalid group name
         try:
             _call_predict(forecaster, forecasting_horizon=3, groups=["invalid_group"])
-            raise AssertionError("predict() should raise ValueError for invalid panel_group, but didn't")
+            raise AssertionError("predict() should raise ValueError for an invalid group name, but didn't")
         except ValueError as e:
             # Expected - check error message mentions the invalid group
             assert "invalid_group" in str(e) or "not found" in str(e).lower(), (

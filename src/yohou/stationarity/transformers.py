@@ -23,6 +23,70 @@ __all__ = [
 ]
 
 
+def _inverse_seasonal_diff(
+    transformer: BaseTransformer,
+    X_t: pl.DataFrame,
+    X_p: pl.DataFrame | None,
+    seasonality: int,
+) -> pl.DataFrame:
+    """Reverse seasonal differencing via a seasonal cumulative sum.
+
+    Shared by :class:`SeasonalDifferencing` and
+    :class:`AbsoluteSeasonalReturn`, whose forward transforms (and thus
+    inverses) are identical seasonal differences.
+
+    Parameters
+    ----------
+    transformer : BaseTransformer
+        The calling transformer, used for data validation and to read
+        ``feature_names_in_`` / ``observation_horizon``.
+    X_t : pl.DataFrame
+        Transformed (differenced) series to invert.
+    X_p : pl.DataFrame or None
+        Prior context rows needed to seed the reconstruction.
+    seasonality : int
+        Seasonal lag of the differencing.
+
+    Returns
+    -------
+    pl.DataFrame
+        The reconstructed (level) series.
+
+    """
+    X_t, X_p = validate_transformer_data(
+        transformer,
+        X=X_t,
+        reset=False,
+        inverse=True,
+        X_p=X_p,
+        observation_horizon=transformer.observation_horizon,
+        stateful=True,
+    )
+
+    time = X_t.select(cs.by_name("time"))
+    X_t.columns = X_p.columns
+    X = pl.concat([X_p, X_t])
+
+    # Get the columns and their dtypes (excluding "time")
+    X_no_time = X.select(~cs.by_name("time"))
+    cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
+
+    def inverse_diff_col(series: pl.Series) -> pl.Series:
+        """Reverse seasonal differencing for a single series."""
+        arr = series.to_numpy().copy()
+        for i in range(len(X_p), len(arr)):
+            arr[i] += arr[i - seasonality]
+        return pl.Series(arr)
+
+    X = X_no_time.with_columns([
+        pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
+    ])[len(X_p) :]
+    X.columns = transformer.feature_names_in_
+    X = pl.concat([time, X], how="horizontal")
+
+    return X
+
+
 class BoxCoxTransformer(BaseTransformer):
     r"""Box-Cox power transformation time series transformer.
 
@@ -50,7 +114,12 @@ class BoxCoxTransformer(BaseTransformer):
 
     Notes
     -----
-    Box-Cox requires strictly positive input data.
+    Box-Cox requires strictly positive input data: ``x + offset`` must be
+    greater than zero for every value. The ``min_value`` input tag reports
+    ``-offset`` as the exclusive lower bound (``0.0`` when ``offset == 0.0``);
+    supplying exactly ``-offset`` produces a non-positive argument (e.g.
+    ``log(0) = -inf`` when ``lmbda == 0``), so callers must ensure strict
+    positivity.
 
     References
     ----------
@@ -108,8 +177,11 @@ class BoxCoxTransformer(BaseTransformer):
         """
         tags = super().__sklearn_tags__()
         assert tags.input_tags is not None
-        # Box-Cox requires positive data (after offset)
-        tags.input_tags.min_value = -self.offset if self.offset > 0.0 else 0.0
+        # Box-Cox requires strictly positive ``x + offset``, so the smallest
+        # admissible input is the exclusive lower bound ``-offset`` (which is
+        # ``0.0`` when ``offset == 0.0``). The bound is exclusive: feeding
+        # exactly ``-offset`` yields a non-positive argument to the transform.
+        tags.input_tags.min_value = -self.offset
         return tags
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
@@ -354,39 +426,7 @@ class SeasonalDifferencing(BaseTransformer):
 
     def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Inverse-transform the time series."""
-        X_t, X_p = validate_transformer_data(
-            self,
-            X=X_t,
-            reset=False,
-            inverse=True,
-            X_p=X_p,
-            observation_horizon=self.observation_horizon,
-            stateful=True,
-        )
-
-        time = X_t.select(cs.by_name("time"))
-        X_t.columns = X_p.columns
-        X = pl.concat([X_p, X_t])
-
-        # Get the columns and their dtypes (excluding "time")
-        X_no_time = X.select(~cs.by_name("time"))
-        cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
-
-        def inverse_diff_col(series: pl.Series) -> pl.Series:
-            """Reverse seasonal differencing for a single series."""
-            # Convert to numpy for in-place mutation
-            arr = series.to_numpy().copy()
-            for i in range(len(X_p), len(arr)):
-                arr[i] += arr[i - self.seasonality]
-            return pl.Series(arr)
-
-        X = X_no_time.with_columns([
-            pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
-        ])[len(X_p) :]
-        X.columns = self.feature_names_in_
-        X = pl.concat([time, X], how="horizontal")
-
-        return X
+        return _inverse_seasonal_diff(self, X_t, X_p, self.seasonality)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
@@ -559,7 +599,7 @@ class SeasonalReturn(BaseTransformer):
 
     Parameters
     ----------
-    seasonality : int > 1, default=1
+    seasonality : int >= 1, default=1
         Seasonality lag for computing returns.
 
     offset : float >= 0.0, default=0.0
@@ -717,7 +757,7 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
     Parameters
     ----------
-    seasonality : int > 1, default=1
+    seasonality : int >= 1, default=1
         Seasonality lag for computing differences.
 
     offset : float >= 0.0, default=0.0
@@ -791,39 +831,13 @@ class AbsoluteSeasonalReturn(BaseTransformer):
         return X_t
 
     def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
-        """Inverse-transform the time series."""
-        X_t, X_p = validate_transformer_data(
-            self,
-            X=X_t,
-            reset=False,
-            inverse=True,
-            X_p=X_p,
-            observation_horizon=self.observation_horizon,
-            stateful=True,
-        )
+        """Inverse-transform the time series.
 
-        time = X_t.select(cs.by_name("time"))
-        X_t.columns = X_p.columns
-        X = pl.concat([X_p, X_t])
-
-        # Get the columns and their dtypes (excluding "time")
-        X_no_time = X.select(~cs.by_name("time"))
-        cols_and_dtypes = list(zip(X_no_time.columns, X_no_time.dtypes, strict=False))
-
-        def inverse_diff_col(series: pl.Series) -> pl.Series:
-            """Reverse seasonal differencing for a single series."""
-            arr = series.to_numpy().copy()
-            for i in range(len(X_p), len(arr)):
-                arr[i] += arr[i - self.seasonality]
-            return pl.Series(arr)
-
-        X = X_no_time.with_columns([
-            pl.col(col).map_batches(inverse_diff_col, return_dtype=dtype) for col, dtype in cols_and_dtypes
-        ])[len(X_p) :]
-        X.columns = self.feature_names_in_
-        X = pl.concat([time, X], how="horizontal")
-
-        return X
+        The reconstruction is the seasonal cumulative sum, identical to
+        :class:`SeasonalDifferencing`, so it reuses the shared
+        :func:`_inverse_seasonal_diff` helper.
+        """
+        return _inverse_seasonal_diff(self, X_t, X_p, self.seasonality)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
@@ -927,38 +941,30 @@ class ASinhTransformer(BaseTransformer):
         self.median_: dict[str, float] = {}
         self.mad_: dict[str, float] = {}
 
-        for col in X_numeric.columns:
-            col_data = X_numeric.get_column(col)
-            median_val = col_data.median()
-            # Cast to float for numeric operations (polars median returns numeric type)
-            self.median_[col] = (
-                float(median_val) if median_val is not None else 0.0  # ty: ignore[invalid-argument-type]
-            )
+        if X_numeric.columns:
+            # Per-column median in a single pass.
+            median_row = X_numeric.select(pl.all().median()).row(0, named=True)
+            self.median_ = {col: (float(val) if val is not None else 0.0) for col, val in median_row.items()}
 
-            # Compute MAD: median(|X - median(X)|) * scale
-            abs_dev = (col_data - self.median_[col]).abs()
-            mad_val = abs_dev.median()
-            mad_scaled = (
-                float(mad_val) * self.scale if mad_val is not None else 1.0  # ty: ignore[invalid-argument-type]
-            )
-
-            # Avoid division by zero
-            self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0
+            # MAD: median(|X - median(X)|) * scale, computed for all columns at once.
+            mad_row = X_numeric.select(
+                (pl.col(col) - self.median_[col]).abs().median().alias(col) for col in X_numeric.columns
+            ).row(0, named=True)
+            for col, mad_val in mad_row.items():
+                mad_scaled = float(mad_val) * self.scale if mad_val is not None else 1.0
+                # Avoid division by zero
+                self.mad_[col] = mad_scaled if mad_scaled != 0.0 else 1.0
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform the input time series."""
         time = X.select(cs.by_name("time"))
         X_numeric = X.select(~cs.by_name("time"))
 
-        # Apply asinh((X - median) / MAD) for each column
-        transformed_cols = []
-        for col in X_numeric.columns:
-            col_data = X_numeric.get_column(col).to_numpy()
-            normalized = (col_data - self.median_[col]) / self.mad_[col]
-            transformed = pl.Series(panel_aware_prefix(col, "asinh"), np.arcsinh(normalized))
-            transformed_cols.append(transformed)
-
-        X_t = pl.DataFrame(transformed_cols)
+        # Apply asinh((X - median) / MAD) across all columns in one pass.
+        X_t = X_numeric.select(
+            ((pl.col(col) - self.median_[col]) / self.mad_[col]).arcsinh().alias(panel_aware_prefix(col, "asinh"))
+            for col in X_numeric.columns
+        )
         X_t = pl.concat([time, X_t], how="horizontal")
 
         return X_t

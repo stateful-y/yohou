@@ -46,7 +46,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     target_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
-        Transformer used to transform the target time series into features.
+        Transformer used to transform the feature time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
@@ -73,6 +73,23 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         unless in a ``joblib.parallel_backend`` context. ``-1`` means
         using all processors. Has no effect for ``"multi-output"`` or
         ``"dir-rec"`` strategies.
+    time_weighter : instance of `BaseWeighter` or None, default=None
+        Weighter producing per-timestamp weights for the target time
+        axis. Converted to sklearn ``sample_weight`` for training using
+        ``sample_weight_alignment``.
+    vintage_weighter : instance of `BaseWeighter` or None, default=None
+        Weighter producing per-vintage weights. Looked up directly per
+        training sample (no alignment) and combined multiplicatively with
+        the time weights.
+    sample_weight_alignment : {"first_step", "mean_step", \
+"weighted_mean_step", "max_weight_step", "min_weight_step"}, \
+default="first_step"
+        How to collapse the per-step ``time_weighter`` weights of a
+        sample's forecast window into a single ``sample_weight``.
+        ``"first_step"`` uses the one-step-ahead weight; ``"mean_step"``,
+        ``"max_weight_step"``, and ``"min_weight_step"`` aggregate across
+        the horizon; ``"weighted_mean_step"`` uses an exponentially
+        decaying weighting of the horizon steps.
 
     Notes
     -----
@@ -363,11 +380,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         -----
         Lag-to-step renaming convention:
         - Input: y with lag_0, lag_1, lag_2, ..., lag_H features
+        - General mapping: lag_{H - k} becomes step_k for k in 1..H.
         - For forecasting_horizon=3:
-            - lag_1 → step_1 (1-step-ahead target)
-            - lag_2 → step_2 (2-step-ahead target)
-            - lag_3 → step_3 (3-step-ahead target)
-            - lag_0 is the most recent observation (not a target)
+            - lag_2 → step_1 (1-step-ahead target)
+            - lag_1 → step_2 (2-step-ahead target)
+            - lag_0 → step_3 (3-step-ahead target)
+            - lag_3 (the oldest lag) maps to step_0 and is not selected as a
+              target
 
         This convention makes it clear that we're predicting future values, not
         explaining historical ones.
@@ -484,6 +503,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Stacked target matrix with all horizon steps.
 
         """
+        if X_t is None:
+            raise ValueError(
+                "Cannot tabularize: no feature matrix is available. Set "
+                "target_as_feature to include the target as a feature, or "
+                "provide exogenous features."
+            )
+
         if self.groups_ is None:
             assert isinstance(y_t, pl.DataFrame)
             assert isinstance(X_t, pl.DataFrame)
@@ -588,14 +614,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if self.nan_handling == "pass":
             return X_tab, y_tab, sample_weight
 
-        # For null: check all columns. For NaN: only float columns.
-        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
-        float_cols = X_tab.select(cs.float())
-        if float_cols.width > 0:
-            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
-            x_ok = null_free & nan_free
-        else:
-            x_ok = null_free
+        x_ok = self._compute_x_ok_mask(X_tab)
 
         if isinstance(y_tab, pl.Series):
             y_ok = y_tab.is_not_null()
@@ -632,18 +651,28 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         return X_tab, y_tab, sample_weight
 
+    @staticmethod
+    def _compute_x_ok_mask(X_tab: pl.DataFrame) -> pl.Series:
+        """Compute a per-row mask of feature rows free of nulls and NaNs.
+
+        For nulls, every column is checked. For NaNs, only float columns
+        are checked. The returned boolean Series is ``True`` for rows that
+        are safe to feed to the estimator.
+        """
+        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+        float_cols = X_tab.select(cs.float())
+        if float_cols.width > 0:
+            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+            return null_free & nan_free
+        return null_free
+
     def _features_have_nan(self, X_tab: pl.DataFrame) -> bool:
         """Check if a feature DataFrame contains any NaN or null values.
 
         Only used when ``nan_handling="drop"`` to decide whether the
         estimator can be called safely at predict time.
         """
-        null_free = X_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
-        float_cols = X_tab.select(cs.float())
-        if float_cols.width > 0:
-            nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
-            return not (null_free & nan_free).all()
-        return not null_free.all()
+        return not self._compute_x_ok_mask(X_tab).all()
 
     def _nan_predict_result(self, n_rows: int = 1) -> np.ndarray:
         """Return a NaN array shaped like a multi-output prediction."""
@@ -891,13 +920,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon,
         )
 
-        y_columns = (
-            list(self.local_y_t_schema_.keys())
-            if self.groups_ is None
-            else [c for c in next(iter(y_t.values())).columns if c != "time"]
-            if isinstance(y_t, dict)
-            else list(self.local_y_t_schema_.keys())
-        )
+        if self.groups_ is None:
+            y_columns = list(self.local_y_t_schema_.keys())
+        else:
+            assert isinstance(y_t, dict)
+            y_columns = [c for c in next(iter(y_t.values())).columns if c != "time"]
 
         def _fit_step(step: int) -> BaseEstimator:
             """Fit a single estimator for horizon step."""
@@ -971,13 +998,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         self._dir_rec_n_original_features_ = X_tab.shape[1]
 
-        y_columns = (
-            list(self.local_y_t_schema_.keys())
-            if self.groups_ is None
-            else [c for c in next(iter(y_t.values())).columns if c != "time"]
-            if isinstance(y_t, dict)
-            else list(self.local_y_t_schema_.keys())
-        )
+        if self.groups_ is None:
+            y_columns = list(self.local_y_t_schema_.keys())
+        else:
+            assert isinstance(y_t, dict)
+            y_columns = [c for c in next(iter(y_t.values())).columns if c != "time"]
 
         estimators: list[BaseEstimator] = []
         X_aug = X_tab.clone()  # Progressively augmented feature matrix

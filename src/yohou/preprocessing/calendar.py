@@ -267,7 +267,9 @@ class HolidayFeatureTransformer(BaseTransformer):
     ----------
     holidays : pl.DataFrame or None, default=None
         DataFrame with a ``"date"`` column containing holiday dates.
-        The column must be of ``Date`` or ``Datetime`` type.
+        The column must be of ``Date`` or ``Datetime`` type. ``None`` is only
+        a signature default; a DataFrame must be supplied before calling
+        ``fit`` (passing ``None`` raises ``ValueError`` at fit time).
     days_to_next : bool, default=False
         If ``True``, produce a ``holiday_days_to_next`` integer column
         with the number of days until the next holiday (null if none).
@@ -279,6 +281,12 @@ class HolidayFeatureTransformer(BaseTransformer):
     ----------
     holiday_dates_ : list of date
         Sorted list of holiday dates used for matching.
+
+    Raises
+    ------
+    ValueError
+        At fit time if ``holidays`` is ``None``, is not a polars DataFrame,
+        lacks a ``"date"`` column, or that column is not a Date/Datetime type.
 
     See Also
     --------
@@ -362,10 +370,7 @@ class HolidayFeatureTransformer(BaseTransformer):
 
         """
         dates = X["time"].cast(pl.Date)
-        holiday_set = set(self.holiday_dates_)
-        is_holiday = dates.map_elements(lambda d: 1 if d in holiday_set else 0, return_dtype=pl.Int32).alias(
-            f"{self._PREFIX}_indicator"
-        )
+        is_holiday = dates.is_in(self.holiday_dates_).cast(pl.Int32).alias(f"{self._PREFIX}_indicator")
 
         new_cols = [is_holiday]
 
@@ -391,27 +396,25 @@ class HolidayFeatureTransformer(BaseTransformer):
                         )
                     )
             else:
-                idx_next = np.searchsorted(holiday_arr, dates_arr, side="left")
-                idx_prev = idx_next - 1
-
                 if self.days_to_next:
-                    to_next = []
-                    for i, idx in enumerate(idx_next):
-                        if idx < len(holiday_arr):
-                            delta = int((holiday_arr[idx] - dates_arr[i]) / np.timedelta64(1, "D"))
-                            to_next.append(delta)
-                        else:
-                            to_next.append(None)
+                    # Smallest holiday h with h >= t (side="left" includes exact matches).
+                    idx_next = np.searchsorted(holiday_arr, dates_arr, side="left")
+                    valid = idx_next < len(holiday_arr)
+                    deltas = (holiday_arr[np.clip(idx_next, 0, len(holiday_arr) - 1)] - dates_arr) // np.timedelta64(
+                        1, "D"
+                    )
+                    to_next = [int(d) if v else None for d, v in zip(deltas, valid, strict=True)]
                     new_cols.append(pl.Series(f"{self._PREFIX}_days_to_next", to_next, dtype=pl.Int32))
 
                 if self.days_since_last:
-                    since_last = []
-                    for i, idx in enumerate(idx_prev):
-                        if idx >= 0:
-                            delta = int((dates_arr[i] - holiday_arr[idx]) / np.timedelta64(1, "D"))
-                            since_last.append(delta)
-                        else:
-                            since_last.append(None)
+                    # Largest holiday h with h <= t (side="right" minus 1 includes exact matches,
+                    # so a date that is itself a holiday yields 0).
+                    idx_prev = np.searchsorted(holiday_arr, dates_arr, side="right") - 1
+                    valid = idx_prev >= 0
+                    deltas = (dates_arr - holiday_arr[np.clip(idx_prev, 0, len(holiday_arr) - 1)]) // np.timedelta64(
+                        1, "D"
+                    )
+                    since_last = [int(d) if v else None for d, v in zip(deltas, valid, strict=True)]
                     new_cols.append(pl.Series(f"{self._PREFIX}_days_since_last", since_last, dtype=pl.Int32))
 
         return X.select(pl.col("time")).with_columns(*new_cols)

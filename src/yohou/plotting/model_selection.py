@@ -231,7 +231,8 @@ def plot_cv_results_scatter(
         Whether higher score values are better. When False, scores are negated
         for display so that metrics like ``neg_mean_squared_error`` appear as
         positive values. The best-point detection still operates on the
-        original (un-negated) scores.
+        original (un-negated) scores, selecting the maximum when
+        ``higher_is_better`` is True and the minimum otherwise.
     highlight_best : bool, default=True
         Whether to highlight the best parameter value.
     color_palette : list[str] | None, default=None
@@ -339,8 +340,10 @@ def plot_cv_results_scatter(
     if highlight_best and ranks is not None:
         best_idx = list(ranks).index(1)
     elif highlight_best:
-        # Fall back to finding max raw score (before negation)
-        best_idx = list(mean_scores_raw).index(max(mean_scores_raw))
+        # Fall back to the optimal raw score (before negation); the direction
+        # depends on whether higher or lower raw scores are better.
+        best_raw = max(mean_scores_raw) if higher_is_better else min(mean_scores_raw)
+        best_idx = list(mean_scores_raw).index(best_raw)
 
     # Add scatter trace with optional error bars
     error_y = None

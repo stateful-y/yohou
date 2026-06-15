@@ -60,6 +60,12 @@ def parse_tsf(
         *metadata* is a dict with keys ``"frequency"``, ``"horizon"``,
         ``"missing"``, ``"equallength"``, ``"relation"``, ``"n_series"``.
 
+    Raises
+    ------
+    ValueError
+        If the file contains no ``@data`` section, or if the frequency
+        string cannot be parsed into a polars duration.
+
     """
     line_iter = _iter_text_lines(source)
     attributes, header_meta = _parse_header(line_iter)
@@ -68,7 +74,7 @@ def parse_tsf(
 
     polars_freq = TSF_FREQUENCY_MAP.get(header_meta["frequency_raw"], header_meta["frequency_raw"])
 
-    has_timestamp = any(name == "start_timestamp" for name, _ in attributes)
+    has_timestamp = "start_timestamp" in attributes
 
     frame = _build_dataframe(
         series_list,
@@ -108,13 +114,14 @@ def _iter_text_lines(source: str | IO[bytes]) -> Iterator[str]:
 
 def _parse_header(
     line_iter: Iterator[str],
-) -> tuple[list[tuple[str, str]], dict]:
+) -> tuple[list[str], dict]:
     """Parse TSF header lines from a line iterator.
 
     Advances the iterator past the ``@data`` marker and returns
-    ``(attributes, header_meta)``.
+    ``(attributes, header_meta)``, where *attributes* is the list of
+    attribute names in declaration order.
     """
-    attributes: list[tuple[str, str]] = []
+    attributes: list[str] = []
     header_meta: dict = {
         "frequency_raw": "",
         "horizon": None,
@@ -128,10 +135,8 @@ def _parse_header(
         if not stripped or stripped.startswith("#"):
             continue
         if stripped.startswith("@attribute"):
-            parts = stripped.split()
-            attr_name = parts[1]
-            attr_type = parts[2] if len(parts) > 2 else "string"
-            attributes.append((attr_name, attr_type))
+            attr_name = stripped.split()[1]
+            attributes.append(attr_name)
         elif stripped.startswith("@frequency"):
             header_meta["frequency_raw"] = stripped.split()[1]
         elif stripped.startswith("@horizon"):
@@ -151,7 +156,7 @@ def _parse_header(
 
 def _parse_data_lines(
     line_iter: Iterator[str],
-    attributes: list[tuple[str, str]],
+    attributes: list[str],
     *,
     n_series: int | None = None,
 ) -> list[dict]:
@@ -176,7 +181,7 @@ def _parse_data_lines(
         start_timestamp = None
         extra_attrs: dict[str, str] = {}
 
-        for j, (attr_name, _attr_type) in enumerate(attributes):
+        for j, attr_name in enumerate(attributes):
             if attr_name == "start_timestamp":
                 start_timestamp = _parse_tsf_timestamp(attr_values[j])
             elif attr_name != "series_name":
@@ -231,7 +236,10 @@ def _generate_time_index(
     n: int,
     polars_freq: str,
 ) -> pl.Series:
-    """Generate a datetime time index of length *n*."""
+    """Generate a datetime time index of length *n*.
+
+    If *start* is None, defaults to ``datetime(2000, 1, 1)``.
+    """
     if start is None:
         start = datetime(2000, 1, 1)
 
@@ -331,27 +339,21 @@ def _build_panel_different_starts(
     value_column_name: str,
 ) -> pl.DataFrame:
     """Build panel DataFrame when series have different start timestamps."""
-    all_times: set[datetime] = set()
-    series_time_map: list[tuple[str, dict[datetime, float | None]]] = []
-
+    per_series: list[pl.DataFrame] = []
     for s in series_list:
         col_name = _panel_column_name(s, value_column_name)
         start = s["start_timestamp"]
         n = len(s["values"])
-        times = _generate_time_index(start, n, polars_freq).to_list()
-        time_val_map = dict(zip(times, s["values"], strict=True))
-        all_times.update(times)
-        series_time_map.append((col_name, time_val_map))
+        time_col = _generate_time_index(start, n, polars_freq).cast(pl.Datetime("us"))
+        per_series.append(
+            pl.DataFrame({"time": time_col, col_name: pl.Series(col_name, s["values"], dtype=pl.Float64)})
+        )
 
-    sorted_times = sorted(all_times)
-    time_col = pl.Series("time", sorted_times, dtype=pl.Datetime("us"))
+    result = per_series[0]
+    for frame in per_series[1:]:
+        result = result.join(frame, on="time", how="full", coalesce=True)
 
-    columns: dict[str, pl.Series] = {"time": time_col}
-    for col_name, time_val_map in series_time_map:
-        vals = [time_val_map.get(t) for t in sorted_times]
-        columns[col_name] = pl.Series(col_name, vals, dtype=pl.Float64)
-
-    return pl.DataFrame(columns)
+    return result.sort("time")
 
 
 def _build_panel_no_timestamp(
@@ -377,7 +379,13 @@ def _build_panel_no_timestamp(
 
 
 def _panel_column_name(series: dict, value_column_name: str) -> str:
-    """Build a panel column name using yohou's ``__`` separator convention."""
+    """Build a panel column name using yohou's ``__`` separator convention.
+
+    If the series has extra attributes beyond ``series_name`` and
+    ``start_timestamp``, their values are joined with underscores
+    (lowercased, spaces replaced by underscores) and used as the column
+    prefix instead of the series name. Otherwise the series name is used.
+    """
     name = series["name"]
     extra = series.get("extra_attrs", {})
     if extra:

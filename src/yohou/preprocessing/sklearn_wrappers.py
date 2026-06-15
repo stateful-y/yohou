@@ -529,6 +529,9 @@ class PolynomialFeatures(SklearnTransformer):
     n_output_features_ : int
         The total number of polynomial output features.
 
+    powers_ : ndarray of shape (n_output_features_, n_features_in_)
+        Exponent for each of the inputs in the output.
+
     Examples
     --------
     >>> import polars as pl
@@ -799,7 +802,9 @@ class SplineTransformer(SklearnTransformer):
         features will raise an error.
 
     include_bias : bool, default=True
-        If True, then the last spline element inside each bin is dropped.
+        If False, then the last spline element inside the data range of each
+        feature is dropped. Set to True (default) to keep it and include a
+        redundant basis column.
 
     order : {'C', 'F'}, default='C'
         Order of output array.

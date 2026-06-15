@@ -4,11 +4,11 @@ import re
 from collections.abc import Callable
 
 import polars as pl
+import polars.selectors as cs
 
 __all__ = [
     "dict_to_panel",
     "get_group_df",
-    "inspect_locality",
     "inspect_panel",
     "panel_aware_prefix",
     "panel_aware_rename",
@@ -290,27 +290,17 @@ def select_panel_columns(
     if groups is None:
         return df
 
-    # Determine which columns to keep
-    cols_to_keep = ["time"]
+    # Columns belonging to a panel group start with "<group>__"; the regex stays
+    # in the polars engine and preserves the original column order on select.
+    panel_regex = "^(?:" + "|".join(re.escape(g) for g in groups) + ")__"
+    panel_selector = cs.matches(panel_regex)
 
-    for col in df.columns:
-        if col == "time":
-            continue
+    selector = cs.by_name("time") | panel_selector
+    if include_global:
+        # Global columns are the non-time columns that match no group prefix.
+        selector = selector | (cs.all() - cs.by_name("time") - panel_selector)
 
-        # Check if this column belongs to any panel group
-        is_panel = False
-        for group_prefix in groups:
-            if col.startswith(f"{group_prefix}__"):
-                is_panel = True
-                break
-
-        if is_panel:
-            cols_to_keep.append(col)
-        elif include_global:
-            # Global column (doesn't match any group prefix)
-            cols_to_keep.append(col)
-
-    return df.select(cols_to_keep)
+    return df.select(selector)
 
 
 def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.DataFrame | None:
@@ -376,15 +366,30 @@ def dict_to_panel(data: dict[str, pl.DataFrame] | pl.DataFrame | None) -> pl.Dat
     if data is None or isinstance(data, pl.DataFrame):
         return data
 
+    # Reject empty dicts before the all-None check: an empty dict satisfies
+    # all(...) vacuously, which would otherwise mask it as an all-None input.
+    if not data:
+        raise ValueError("Cannot convert empty dict to panel DataFrame")
+
     if all(v is None for v in data.values()):
         return None
 
     # Convert dict of DataFrames to single DataFrame with prefixed columns
-    if not data:
-        raise ValueError("Cannot convert empty dict to panel DataFrame")
-
     # Start with the first group to get the time column
     first_group_name = next(iter(data))
+    reference_times = data[first_group_name].get_column("time")
+    reference_set = set(reference_times.to_list())
+
+    # All groups must share an identical time axis; an inner join would
+    # otherwise silently drop timestamps not present in every group.
+    misaligned = [name for name, df in data.items() if set(df.get_column("time").to_list()) != reference_set]
+    if misaligned:
+        raise ValueError(
+            f"dict_to_panel requires every group to share an identical 'time' axis, "
+            f"but these groups differ from group '{first_group_name}': {misaligned}. "
+            f"Align the group time columns (e.g. resample or reindex) before assembling the panel."
+        )
+
     result = data[first_group_name].select("time")
 
     # Add each group's columns with prefixes
@@ -514,6 +519,3 @@ def panel_aware_suffix(col: str, suffix: str) -> str:
 
     """
     return panel_aware_rename(col, lambda member: f"{member}_{suffix}")
-
-
-inspect_locality = inspect_panel

@@ -10,6 +10,7 @@ from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
+from yohou.utils.validation import interval_to_timedelta
 
 
 class FourierFeatureTransformer(BaseTransformer):
@@ -17,8 +18,9 @@ class FourierFeatureTransformer(BaseTransformer):
 
     Creates sin/cos feature pairs at specified harmonics of a given
     seasonal period, useful for encoding cyclical patterns as inputs
-    to reduction forecasters. Output columns are prefixed with
-    ``fourier_``.
+    to reduction forecasters. The output contains only the ``"time"``
+    column and the generated Fourier columns (prefixed with ``fourier_``);
+    all original input feature columns are dropped.
 
     For each harmonic $k$ and seasonal period $S$, the features at
     time step $t$ are:
@@ -103,6 +105,12 @@ class FourierFeatureTransformer(BaseTransformer):
 
         self.first_time_ = X["time"][0]
 
+        # Fixed sampling step (seconds) from the fitted interval, used so that
+        # transform produces consistent Fourier phases regardless of which
+        # sub-range of the series is passed (including single-row chunks).
+        step = interval_to_timedelta(self.interval_)
+        self._step_seconds_ = step.total_seconds() if step is not None else None
+
         s = f"{self.seasonality}"
         generated_names = []
         for k in self.harmonics_:
@@ -128,14 +136,26 @@ class FourierFeatureTransformer(BaseTransformer):
 
         """
         interval = self.interval_
-        time_diff = X["time"] - self.first_time_
+        first_time = self.first_time_
         if interval.endswith("mo") or interval.endswith("y"):
-            t = np.arange(len(X), dtype=np.float64)
+            # Anchor month/year offsets to the fitted first timestamp via
+            # calendar arithmetic, so phases continue past the fit origin.
+            months = (
+                ((X["time"].dt.year() - first_time.year) * 12 + (X["time"].dt.month() - first_time.month))
+                .to_numpy()
+                .astype(np.float64)
+            )
+            if interval.endswith("y"):
+                t = months / 12.0
+            else:
+                mo_count = int(interval.replace("mo", ""))
+                t = months / mo_count
         else:
-            t = time_diff.dt.total_seconds().to_numpy().astype(np.float64)
-            first_diff = (X["time"][1] - X["time"][0]).total_seconds() if len(X) > 1 else 1.0
-            if first_diff != 0:
-                t = t / first_diff
+            t = (X["time"] - first_time).dt.total_seconds().to_numpy().astype(np.float64)
+            # Normalise by the fixed sampling step from fit (not the spacing of
+            # the incoming chunk), avoiding wrong angles on single-row chunks.
+            if self._step_seconds_ and self._step_seconds_ != 0:
+                t = t / self._step_seconds_
 
         feature_cols = []
         s = f"{self.seasonality}"
@@ -176,7 +196,8 @@ class TimeIndexTransformer(BaseTransformer):
 
     Produces integer or normalized time step indices starting from the
     first observed timestamp, useful as trend features for reduction
-    forecasters.
+    forecasters. The output contains only the ``"time"`` column and the
+    generated index columns; all original input feature columns are dropped.
 
     The base index at time step $t$ is:
 

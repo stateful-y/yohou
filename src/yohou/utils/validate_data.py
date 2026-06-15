@@ -310,11 +310,14 @@ def _check_multi_vintage_time(y_pred: pl.DataFrame) -> None:
             "'time' column must not have missing values."
         )
 
-    # Check sorting within each vintage
-    for ot in y_pred["vintage_time"].unique().sort():
-        vintage = y_pred.filter(pl.col("vintage_time") == ot)
-        if not vintage["time"].is_sorted():
-            raise ValueError(f"'time' column within vintage_time={ot} is not sorted in ascending order.")
+    # Check sorting within each vintage with a single windowed scan: within a
+    # vintage, consecutive time diffs must never be negative.
+    unsorted = y_pred.with_columns(pl.col("time").diff().over("vintage_time").alias("_delta")).filter(
+        pl.col("_delta") < pl.duration(seconds=0)
+    )
+    if unsorted.height > 0:
+        ot = unsorted["vintage_time"].min()
+        raise ValueError(f"'time' column within vintage_time={ot} is not sorted in ascending order.")
 
 
 def _truncate_partial_vintage(
@@ -502,13 +505,12 @@ def validate_scorer_data(
 
         check_time_column(y_true)
 
-        # Validate seasonality for scorers with seasonality parameter
-        # y_true still has time column, so subtract 1 for data rows
+        # Validate that y_train has more rows than the seasonality period.
         if hasattr(scorer, "seasonality"):
             seasonality_val = scorer.seasonality
             if isinstance(seasonality_val, int) and len(y_true) <= seasonality_val:
                 raise ValueError(
-                    f"Training data length ({len(y_true) - 1}) must be greater than "
+                    f"Training data length ({len(y_true)}) must be greater than "
                     f"seasonality ({seasonality_val}). Cannot compute seasonal naive forecast errors."
                 )
 

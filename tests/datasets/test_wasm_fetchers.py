@@ -44,7 +44,7 @@ class TestFetchDatasetWasmRouting:
             from yohou.datasets._registry import SUNSPOT
 
             _fetch_dataset(SUNSPOT, "sunspot", value_column_name="sunspot_number")
-            mock_wasm.assert_called_once_with("sunspot", SUNSPOT)
+            mock_wasm.assert_called_once_with("sunspot", SUNSPOT, n_series=None)
 
     def test_wasm_url_is_correct(self):
         expected_url = f"{_CDN_BASE_URL}/sunspot.bin"
@@ -114,6 +114,24 @@ class TestFetchDatasetWasmBunch:
 
         assert SUNSPOT.descr == result.DESCR
         assert result.frequency == SUNSPOT.frequency
+
+    def test_n_series_slices_value_columns(self):
+        df = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 2, 1)],
+            "a": [1.0, 2.0],
+            "b": [3.0, 4.0],
+            "c": [5.0, 6.0],
+        })
+        payload = df.serialize(format="binary")
+        mock_response = io.BytesIO(payload)
+        mock_response.read = lambda: payload
+
+        with patch("yohou.datasets._fetchers.urlopen", return_value=mock_response):
+            result = _fetch_dataset_wasm("sunspot", SUNSPOT, n_series=2)
+
+        assert result.frame.columns == ["time", "a", "b"]
+        assert result.feature_names == ["a", "b"]
+        assert result.n_series == 2
 
 
 class TestFetchClassificationWasm:

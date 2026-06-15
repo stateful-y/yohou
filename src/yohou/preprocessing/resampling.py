@@ -24,8 +24,8 @@ class Downsampler(BaseTransformer):
     ----------
     interval : str
         Target time interval (e.g., "1h", "1d", "5m", "30s").
-        Uses polars duration string syntax. Must be larger than the input
-        data's interval.
+        Uses polars duration string syntax. Must be greater than or equal to
+        the input data's interval.
     aggregation : {"mean", "sum", "min", "max", "first", "last", "median"}, default="mean"
         Aggregation function to apply within each time bin:
         - "mean": Average values in each bin
@@ -174,6 +174,13 @@ class Downsampler(BaseTransformer):
             .agg(agg_exprs)
         )
 
+        # group_by_dynamic prepends _lower_boundary/_upper_boundary columns when
+        # include_boundaries=True; drop them so the output schema is just "time"
+        # plus the original feature columns (they are not reported by
+        # get_feature_names_out and duplicate the "time" anchor).
+        if self.include_boundaries:
+            result = result.drop(["_lower_boundary", "_upper_boundary"], strict=False)
+
         return result
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
@@ -212,7 +219,7 @@ class Upsampler(BaseTransformer):
     interpolation : {"linear", "nearest", "forward", "backward"}, default="linear"
         Interpolation method to fill new time points:
         - "linear": Linear interpolation between known points
-        - "nearest": Use nearest known value (forward then backward fill)
+        - "nearest": Use the known value closest in time (ties go to the following value)
         - "forward": Forward fill (carry last observation forward)
         - "backward": Backward fill (carry next observation backward)
 
@@ -309,8 +316,8 @@ class Upsampler(BaseTransformer):
         time_min = X["time"].min()
         time_max = X["time"].max()
 
-        # Assert non-null (X should have at least one row after fit validation)
-        assert time_min is not None and time_max is not None, "Empty time series"
+        if time_min is None or time_max is None:
+            raise ValueError("Upsampler received an empty time series.")
 
         # Generate new timestamps (cast to datetime for type narrowing)
         new_times = pl.datetime_range(
@@ -329,9 +336,29 @@ class Upsampler(BaseTransformer):
             for col in data_cols:
                 joined = joined.with_columns(pl.col(col).interpolate())
         elif self.interpolation == "nearest":
-            # Forward fill then backward fill for nearest approximation
+            # Fill each new timestamp with the value closest in time, comparing
+            # distance to the previous and next known observations. Ties go to
+            # the trailing (forward) anchor.
             for col in data_cols:
-                joined = joined.with_columns(pl.col(col).fill_null(strategy="forward").fill_null(strategy="backward"))
+                value = pl.col(col)
+                known_time = pl.when(value.is_not_null()).then(pl.col("time")).otherwise(None)
+                prev_val = value.forward_fill()
+                next_val = value.backward_fill()
+                prev_time = known_time.forward_fill()
+                next_time = known_time.backward_fill()
+                joined = joined.with_columns(
+                    pl
+                    .when(value.is_not_null())
+                    .then(value)
+                    .when(prev_val.is_null())
+                    .then(next_val)
+                    .when(next_val.is_null())
+                    .then(prev_val)
+                    .when((next_time - pl.col("time")) < (pl.col("time") - prev_time))
+                    .then(next_val)
+                    .otherwise(prev_val)
+                    .alias(col)
+                )
         elif self.interpolation == "forward":
             for col in data_cols:
                 joined = joined.with_columns(pl.col(col).forward_fill())

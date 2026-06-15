@@ -27,11 +27,16 @@ class DistanceSimilarity(BaseSimilarity):
     prediction intervals.
 
     The weight for the *i*-th historical observation given prediction
-    *j* is computed as:
+    *j* is computed with a numerically-stable softmax of negative
+    distances that reserves uniform mass for the (hypothetical) test
+    point over the calibration axis:
 
-    $$w_{ji} = \frac{\exp(-d(x_j, x_i))}{\sum_k \exp(-d(x_j, x_k))}$$
+    $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}
+    {1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
 
-    where *d* is the chosen distance metric.
+    where $d_{ji} = d(x_j, x_i)$ for the chosen distance metric. The
+    ``+1`` in the denominator reserves mass for the new test point
+    (Barber et al., 2023), so each row sums to strictly less than 1.
 
     Parameters
     ----------
@@ -154,13 +159,16 @@ class DistanceSimilarity(BaseSimilarity):
         else:
             result = y_pred
 
-        for col in result.columns:
-            if col == "time":
-                continue
-            series = result[col]
-            if series.null_count() > 0 or series.cast(pl.Float64, strict=False).is_nan().sum() > 0:
+        value_cols = [col for col in result.columns if col != "time"]
+        if value_cols:
+            bad_mask = result.select(
+                (pl.col(col).is_null() | pl.col(col).cast(pl.Float64, strict=False).is_nan()).any().alias(col)
+                for col in value_cols
+            )
+            bad_cols = [col for col in value_cols if bad_mask[col][0]]
+            if bad_cols:
                 raise ValueError(
-                    f"Column '{col}' contains null or NaN values. DistanceSimilarity requires complete data."
+                    f"Column '{bad_cols[0]}' contains null or NaN values. DistanceSimilarity requires complete data."
                 )
         return result
 
@@ -190,8 +198,6 @@ class DistanceSimilarity(BaseSimilarity):
         """
         X_features = self._get_X(y_pred, X_actual)
         self._X_observed = X_features
-
-        self._n_discarded_indices = len(y_pred) - len(X_features)
 
         return self
 
@@ -303,9 +309,11 @@ class SeasonalSimilarity(BaseSimilarity):
 
     Parameters
     ----------
-    seasonalities : list of float
+    seasonalities : list of float or None, default=None
         Seasonal periods in time steps (e.g. ``[7.0, 365.25]`` for
-        weekly and yearly cycles on daily data).
+        weekly and yearly cycles on daily data). ``None`` is accepted at
+        construction but invalid; passing ``None`` raises ``ValueError``
+        at ``fit`` time, so a list must be provided before fitting.
     harmonics : dict mapping float to list of int, or None, default=None
         Harmonics to include per seasonality period. Keys must match
         entries in ``seasonalities``. Each value is a list of positive

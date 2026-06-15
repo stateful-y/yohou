@@ -518,3 +518,41 @@ class TestVotingPointForecasterSklearn:
 
         with pytest.raises(NotFittedError):
             forecaster.predict(forecasting_horizon=3)
+
+
+class TestVotingSchemaValidation:
+    """Tests for _validate_schemas_match across base forecasters."""
+
+    def _ensemble_with(self, schemas):
+        """Build an (unfitted) ensemble and inject fake fitted children."""
+        from types import SimpleNamespace
+
+        ensemble = VotingPointForecaster(forecasters=[("a", SeasonalNaive()), ("b", SeasonalNaive())])
+        ensemble.forecasters_ = [(name, SimpleNamespace(local_y_schema_=schema)) for name, schema in schemas]
+        return ensemble
+
+    def test_mismatched_target_columns_raises(self):
+        """Different predicted column names raise a clear error."""
+        ensemble = self._ensemble_with([
+            ("a", {"sales": pl.Float64}),
+            ("b", {"revenue": pl.Float64}),
+        ])
+        with pytest.raises(ValueError, match="must predict the same target columns"):
+            ensemble._validate_schemas_match()
+
+    def test_mismatched_target_dtypes_raises(self):
+        """Same columns but differing dtypes raise a dtype-mismatch error."""
+        ensemble = self._ensemble_with([
+            ("a", {"sales": pl.Float64}),
+            ("b", {"sales": pl.Float32}),
+        ])
+        with pytest.raises(ValueError, match="differ from"):
+            ensemble._validate_schemas_match()
+
+    def test_matching_schemas_pass(self):
+        """Identical schemas validate without error."""
+        ensemble = self._ensemble_with([
+            ("a", {"sales": pl.Float64}),
+            ("b", {"sales": pl.Float64}),
+        ])
+        ensemble._validate_schemas_match()

@@ -1,6 +1,5 @@
 """Seasonality forecaster implementation."""
 
-import numbers
 from typing import Literal
 
 import numpy as np
@@ -12,7 +11,7 @@ from sklearn.linear_model import ElasticNet
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer
 
-from yohou.utils._compat import Interval, StrOptions
+from yohou.utils._compat import StrOptions
 
 from .base import _BaseSeasonalityForecaster
 
@@ -222,14 +221,10 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
             assert isinstance(truncated_length, int)
             y_truncated = y_t[:truncated_length]
 
-            # Add cycle and position indices
-            cycle_indices = [i // self.seasonality for i in range(truncated_length)]
-            position_indices = [i % self.seasonality for i in range(truncated_length)]
+            # Add the within-cycle position index for each row.
+            position_indices = pl.int_range(truncated_length, eager=True) % self.seasonality
 
-            y_with_indices = y_truncated.with_columns(
-                pl.Series("cycle", cycle_indices),
-                pl.Series("position", position_indices),
-            )
+            y_with_indices = y_truncated.with_columns(position_indices.alias("position"))
 
             # Group by position and aggregate
             if self.method == "average":
@@ -242,7 +237,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
                 ])
 
             # Sort by position to maintain order
-            pattern = pattern.sort("position").select(cs.all().exclude(["position", "cycle"]))
+            pattern = pattern.sort("position").select(cs.all().exclude("position"))
 
         return pattern
 
@@ -251,7 +246,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts `fit_forecasting_horizon_` steps from the observation horizon.
 
         Parameters
         ----------
@@ -281,9 +276,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
                     continue
 
                 # Extract values at specified phases
-                pattern_values = self.seasonal_pattern_[col_name].to_list()
-                pred_values = [pattern_values[phase] for phase in X_phases.to_list()]
-                y_pred[col_name] = pred_values
+                y_pred[col_name] = self.seasonal_pattern_[col_name].gather(X_phases)
 
             y_pred = pl.DataFrame(y_pred)
 
@@ -304,9 +297,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
                 y_pred_group = {}
                 for col_name in y_t_columns:
                     # Extract values at specified phases
-                    pattern_values = pattern[col_name].to_list()
-                    pred_values = [pattern_values[phase] for phase in X_phases.to_list()]
-                    y_pred_group[f"{panel_group_name}__{col_name}"] = pred_values
+                    y_pred_group[f"{panel_group_name}__{col_name}"] = pattern[col_name].gather(X_phases)
 
                 y_pred.append(pl.DataFrame(y_pred_group))
 
@@ -326,8 +317,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     ----------
     seasonality : float
         Seasonal period length (can be non-integer, e.g., 365.25 for yearly).
-    harmonics : list of int, default=[1]
+    harmonics : list of int or None, default=None
         List of Fourier harmonics to use (e.g., [1, 2, 3] uses first 3 harmonics).
+        When ``None``, a single first harmonic ``[1]`` is used at fit time.
     estimator : RegressorMixin, default=ElasticNet()
         Regression model used to fit Fourier coefficients.
     target_transformer : BaseTransformer, optional
@@ -385,8 +377,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     _parameter_constraints: dict = {
         **_BaseSeasonalityForecaster._parameter_constraints,
         "harmonics": [list, None],
-        "alpha": [Interval(numbers.Real, 0, None, closed="left")],
-        "l1_ratio": [Interval(numbers.Real, 0, 1, closed="both")],
+        "estimator": [RegressorMixin],
     }
 
     def __init__(
@@ -398,12 +389,11 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         panel_strategy="global",
     ):
         super().__init__(
-            seasonality=int(seasonality),
+            seasonality=seasonality,
             target_transformer=target_transformer,
             panel_strategy=panel_strategy,
         )
 
-        self.seasonality = seasonality
         self.harmonics = harmonics
         self.estimator = estimator
 

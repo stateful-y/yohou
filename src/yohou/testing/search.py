@@ -274,7 +274,7 @@ def check_search_refit_false_no_forecaster(
 
     # Temporarily set refit=False if not already
     original_refit = search_cv_clone.refit
-    search_cv_clone.refit = False
+    search_cv_clone.set_params(refit=False)
 
     search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
@@ -293,15 +293,13 @@ def check_search_refit_false_no_forecaster(
         pass
 
     # Restore original refit value
-    search_cv_clone.refit = original_refit
+    search_cv_clone.set_params(refit=original_refit)
 
 
 def check_search_predict_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
-    X_actual_test: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
 ) -> None:
@@ -315,10 +313,10 @@ def check_search_predict_delegates(
         Training target data
     y_test : pl.DataFrame
         Test target data
-    X_actual_train : pl.DataFrame, optional
-        Training features
-    X_actual_test : pl.DataFrame, optional
-        Test features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to predict()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to predict()
 
     Raises
     ------
@@ -424,25 +422,35 @@ def check_search_rewind_delegates(
         If rewind() doesn't delegate correctly
 
     """
-    # Get initial observed_time
+    # Capture observed_time before the rewind so we can assert it moved in the
+    # direction the rewind actually performs.
     initial_observed_time = search_cv.best_forecaster_.observed_time_
 
-    # Rewind via search CV
+    # Rewind via search CV. rewind() sets observed state to the reset data, so
+    # the new observed_time must equal the last time in y_reset regardless of
+    # whether that is earlier or later than the pre-rewind state.
+    target_time = y_reset["time"][-1]
     search_cv.rewind(y_reset, X_actual_reset, X_future=X_future, X_forecast=X_forecast)
 
-    # Check that best_forecaster_ was rewound
+    # Check that best_forecaster_ was rewound to the reset target.
     reset_observed_time = search_cv.best_forecaster_.observed_time_
 
-    # observed_time should have changed
     if isinstance(initial_observed_time, dict):
         # Panel data case
         for group_name in initial_observed_time:
             assert reset_observed_time[group_name] != initial_observed_time[group_name], (
                 f"observed_time for group {group_name} should change after rewind"
             )
+            assert reset_observed_time[group_name] == target_time, (
+                f"observed_time for group {group_name} should be reset to the last time in y_reset "
+                f"({target_time}), got {reset_observed_time[group_name]}"
+            )
     else:
         # Non-panel case
         assert reset_observed_time != initial_observed_time, "observed_time should change after rewind"
+        assert reset_observed_time == target_time, (
+            f"observed_time should be reset to the last time in y_reset ({target_time}), got {reset_observed_time}"
+        )
 
 
 def check_search_multimetric_scoring(
@@ -541,7 +549,7 @@ def check_search_return_train_score(
 
     # Temporarily set return_train_score=True
     original_return_train_score = search_cv_clone.return_train_score
-    search_cv_clone.return_train_score = True
+    search_cv_clone.set_params(return_train_score=True)
 
     search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
@@ -558,7 +566,7 @@ def check_search_return_train_score(
             assert split_key in cv_results, f"cv_results_ must have '{split_key}' when return_train_score=True"
 
     # Restore original value
-    search_cv_clone.return_train_score = original_return_train_score
+    search_cv_clone.set_params(return_train_score=original_return_train_score)
 
 
 def check_search_error_score_handling(
@@ -591,7 +599,7 @@ def check_search_error_score_handling(
     search_cv_clone = clone(search_cv)
 
     # Set error_score to np.nan (don't raise)
-    search_cv_clone.error_score = np.nan
+    search_cv_clone.set_params(error_score=np.nan)
 
     # Note: This check assumes that invalid parameters will be tested
     # If all parameters are valid, this check may pass trivially
@@ -904,8 +912,6 @@ def check_search_panel_data(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
-    X_actual_test: pl.DataFrame | None = None,
     groups: list[str] | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -920,12 +926,12 @@ def check_search_panel_data(
         Training target data with panel groups
     y_test : pl.DataFrame
         Test target data with panel groups
-    X_actual_train : pl.DataFrame, optional
-        Training features with panel groups
-    X_actual_test : pl.DataFrame, optional
-        Test features with panel groups
     groups : list of str, optional
         Panel group names to test
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to predict()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to predict()
 
     Raises
     ------
@@ -946,12 +952,12 @@ def check_search_panel_data(
 
         _, panel_groups = inspect_panel(y_pred)
 
-        # Check that all requested groups are present
+        # Check that all requested groups are present (exact group-key match;
+        # panel keys follow the exact group__column naming contract).
         pred_group_prefixes = set(panel_groups.keys())
         for group_name in groups:
-            # Group name might be a prefix
-            assert any(group_name in prefix for prefix in pred_group_prefixes), (
-                f"Requested panel group '{group_name}' not found in predictions"
+            assert group_name in pred_group_prefixes, (
+                f"Requested panel group '{group_name}' not found in predictions {pred_group_prefixes}"
             )
 
 
@@ -987,7 +993,7 @@ def check_search_method_availability(
     # For multimetric, preserve the original refit value (scorer name or callable)
     # For single metric, set refit=True
     if not (isinstance(search_cv.scoring, dict) and isinstance(search_cv.refit, str)):
-        search_cv_refit.refit = True
+        search_cv_refit.set_params(refit=True)
     search_cv_refit.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
     # Methods should be available
@@ -996,7 +1002,7 @@ def check_search_method_availability(
 
     # Test with refit=False
     search_cv_no_refit = clone(search_cv)
-    search_cv_no_refit.refit = False
+    search_cv_no_refit.set_params(refit=False)
     search_cv_no_refit.fit(
         y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
     )
@@ -1014,8 +1020,6 @@ def check_search_interval_predict_delegates(
     search_cv,
     y_train: pl.DataFrame,
     y_test: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
-    X_actual_test: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
 ) -> None:
@@ -1032,10 +1036,10 @@ def check_search_interval_predict_delegates(
         Training target data.
     y_test : pl.DataFrame
         Test target data.
-    X_actual_train : pl.DataFrame, optional
-        Training features.
-    X_actual_test : pl.DataFrame, optional
-        Test features.
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to predict_interval().
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to predict_interval().
 
     Raises
     ------

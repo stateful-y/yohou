@@ -382,8 +382,8 @@ class FunctionTransformer(BaseTransformer):
             more numeric columns.
         X_p : pl.DataFrame or None, default=None
             Past observations to prepend before transformation. If provided
-            and warmup_ > 0, the function is applied to the concatenation of
-            X_p and X, then only the X portion is returned.
+            and ``_observation_horizon > 0``, the function is applied to the
+            concatenation of X_p and X, then only the X portion is returned.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -392,6 +392,13 @@ class FunctionTransformer(BaseTransformer):
         pl.DataFrame
             Transformed time series with a ``"time"`` column and transformed
             value columns.
+
+        Notes
+        -----
+        When ``X_p`` is ``None`` and ``_observation_horizon > 0``, the first
+        ``_observation_horizon`` rows (which contain NaN from insufficient
+        history) are dropped, so the output is shorter than the input. Pass
+        ``X_p`` to avoid this row loss.
 
         """
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_", "_observation_horizon"])

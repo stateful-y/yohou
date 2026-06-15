@@ -1,6 +1,7 @@
 """Model selection tools including cross-validation and hyperparameter search."""
 
 from .search import (
+    BaseSearchCV,
     GridSearchCV,
     RandomizedSearchCV,
 )
@@ -18,6 +19,7 @@ from .validation import (
 )
 
 __all__ = [
+    "BaseSearchCV",
     "BaseSplitter",
     "ExpandingWindowSplitter",
     "GridSearchCV",

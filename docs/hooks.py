@@ -265,18 +265,22 @@ def _get_module_members(py_file):
     ``from .submodule import Name``, this function follows those imports and
     discovers the definitions in the referenced submodule files.
 
-    Returns a dict with *classes* and *functions* lists.  Each entry is a dict
-    with *name*, *doc* (first line of the docstring, or empty string), and
-    *source_module* (dotted relative submodule like ``"naive"`` for names
-    imported from a sibling file, or ``""`` for names defined directly).
+    Returns a dict with *classes*, *functions*, and *attributes* lists.  Each
+    entry is a dict with *name*, *doc* (first line of the docstring, or empty
+    string), and *source_module* (dotted relative submodule like ``"naive"``
+    for names imported from a sibling file, or ``""`` for names defined
+    directly).  *attributes* holds re-exported module-level constants and type
+    aliases (e.g. ``PredictionType``, ``POINT``) that are part of the public
+    API but are neither classes nor functions.
     """
     classes = []
     functions = []
+    attributes = []
     try:
         source = py_file.read_text(encoding="utf-8")
         tree = ast.parse(source)
     except (SyntaxError, UnicodeDecodeError):
-        return {"classes": classes, "functions": functions}
+        return {"classes": classes, "functions": functions, "attributes": attributes}
 
     # Collect direct definitions
     for node in ast.iter_child_nodes(tree):
@@ -287,17 +291,37 @@ def _get_module_members(py_file):
             doc = ast.get_docstring(node) or ""
             functions.append({"name": node.name, "doc": doc.strip().split("\n")[0], "source_module": ""})
 
-    # For __init__.py: resolve relative imports to sibling module files
+    # For __init__.py: resolve re-exports (relative, or absolute within this
+    # package) to the sibling module files that define each name.
     if py_file.name == "__init__.py" and not classes and not functions:
         pkg_dir = py_file.parent
-        # Collect all imported public names grouped by source module
+        # Dotted name of this package (e.g. "yohou.plotting"), used to recognize
+        # absolute re-exports such as ``from yohou.plotting._utils import ...``.
+        pkg_parts: list[str] = []
+        for part in reversed(pkg_dir.parts):
+            if part == "src":
+                break
+            pkg_parts.insert(0, part)
+        pkg_dotted = ".".join(pkg_parts)
+
+        # Collect imported public names grouped by their source submodule file.
         import_map: dict[str, list[str]] = {}
         for node in ast.iter_child_nodes(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.level == 1:
-                for alias in node.names:
-                    imported = alias.asname or alias.name
-                    if not imported.startswith("_"):
-                        import_map.setdefault(node.module, []).append(imported)
+            if not (isinstance(node, ast.ImportFrom) and node.module):
+                continue
+            if node.level == 1:
+                rel_module = node.module
+            elif node.level == 0 and node.module.startswith(f"{pkg_dotted}."):
+                rel_module = node.module[len(pkg_dotted) + 1 :]
+            else:
+                continue
+            if "." in rel_module:
+                # Only direct sibling modules map to a single page-name segment.
+                continue
+            for alias in node.names:
+                imported = alias.asname or alias.name
+                if not imported.startswith("_"):
+                    import_map.setdefault(rel_module, []).append(imported)
 
         # Scan the referenced files and pick out the imported definitions
         for rel_module, names in import_map.items():
@@ -325,8 +349,32 @@ def _get_module_members(py_file):
                         "doc": doc.strip().split("\n")[0],
                         "source_module": rel_module,
                     })
+                else:
+                    for attr_name in _assignment_targets(tnode):
+                        if attr_name in name_set:
+                            attributes.append({
+                                "name": attr_name,
+                                "doc": "",
+                                "source_module": rel_module,
+                            })
 
-    return {"classes": classes, "functions": functions}
+    return {"classes": classes, "functions": functions, "attributes": attributes}
+
+
+def _assignment_targets(node):
+    """Yield public names bound by a module-level assignment node.
+
+    Handles both annotated assignments (``POINT: frozenset = ...``) and plain
+    assignments (``LINE_DASH_SEQUENCE = [...]``), skipping private names.
+    """
+    targets = []
+    if isinstance(node, ast.AnnAssign):
+        targets = [node.target]
+    elif isinstance(node, ast.Assign):
+        targets = node.targets
+    for target in targets:
+        if isinstance(target, ast.Name) and not target.id.startswith("_"):
+            yield target.id
 
 
 def _build_members_tables(package_name, module_name, members):
@@ -499,7 +547,7 @@ def _generate_api_pages(project_root):
             continue
 
         members = _get_module_members(mod_file)
-        for entry in members["classes"] + members["functions"]:
+        for entry in members["classes"] + members["functions"] + members["attributes"]:
             src = entry.get("source_module", "")
             if src:
                 qualified = f"yohou.{mod['module_name']}.{src}.{entry['name']}"

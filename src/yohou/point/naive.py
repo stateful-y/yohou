@@ -15,6 +15,30 @@ from .base import BasePointForecaster
 __all__ = ["MeanSeasonalNaive", "SeasonalNaive"]
 
 
+def _tile_to_horizon(pattern: pl.DataFrame, horizon: int, seasonality: int) -> pl.DataFrame:
+    """Repeat a seasonal pattern cyclically to fill the forecasting horizon.
+
+    Parameters
+    ----------
+    pattern : pl.DataFrame
+        Seasonal pattern (value columns only, no ``"time"`` column).
+    horizon : int
+        Number of rows to produce.
+    seasonality : int
+        Seasonal period length of ``pattern``.
+
+    Returns
+    -------
+    pl.DataFrame
+        ``pattern`` repeated and trimmed to ``horizon`` rows.
+
+    """
+    if horizon > seasonality:
+        n_repeats = (horizon + seasonality - 1) // seasonality
+        pattern = pl.concat([pattern] * n_repeats)
+    return pattern.head(horizon)
+
+
 class SeasonalNaive(BasePointForecaster):
     """Seasonal naive forecaster that repeats values from previous season.
 
@@ -111,7 +135,7 @@ class SeasonalNaive(BasePointForecaster):
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predict ``fit_forecasting_horizon_`` steps from the observation horizon.
 
         Parameters
         ----------
@@ -129,13 +153,8 @@ class SeasonalNaive(BasePointForecaster):
         # Non-panel data
         if self.groups_ is None:
             assert isinstance(self._y_observed, pl.DataFrame)
-            y_pred = self._y_observed.select(~cs.by_name("time"))
-            if self.fit_forecasting_horizon_ > self.seasonality:
-                # Number of full repetitions needed
-                n_repeats = int((self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality)
-                y_pred = pl.concat([y_pred] * n_repeats)
-
-            y_pred = y_pred.head(self.fit_forecasting_horizon_)
+            pattern = self._y_observed.select(~cs.by_name("time"))
+            y_pred = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
 
         # Panel data
         else:
@@ -144,14 +163,8 @@ class SeasonalNaive(BasePointForecaster):
             for panel_group_name in groups:
                 y_group = self._y_observed[panel_group_name]
                 assert isinstance(y_group, pl.DataFrame)
-                y_pred_group = y_group.select(~cs.by_name("time"))
-
-                if self.fit_forecasting_horizon_ > self.seasonality:
-                    # Number of full repetitions needed
-                    n_repeats = (self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality
-                    y_pred_group = pl.concat([y_pred_group] * n_repeats)
-
-                y_pred_group = y_pred_group.head(self.fit_forecasting_horizon_)
+                pattern = y_group.select(~cs.by_name("time"))
+                y_pred_group = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
 
                 # Rename columns to add panel prefix
                 y_pred_group = y_pred_group.rename({col: f"{panel_group_name}__{col}" for col in y_pred_group.columns})
@@ -291,11 +304,15 @@ class MeanSeasonalNaive(BasePointForecaster):
         if self.n_seasons == 1:
             return y_values
 
-        result = {}
-        for col in y_values.columns:
-            values = y_values[col].to_numpy().reshape(self.n_seasons, self.seasonality)
-            result[col] = values.mean(axis=0).tolist()
-        return pl.DataFrame(result)
+        return (
+            y_values
+            .with_row_index("_pos")
+            .with_columns((pl.col("_pos") % self.seasonality).alias("_pos"))
+            .group_by("_pos", maintain_order=True)
+            .agg(pl.all().mean())
+            .sort("_pos")
+            .drop("_pos")
+        )
 
     def _predict_one(
         self,
@@ -321,13 +338,8 @@ class MeanSeasonalNaive(BasePointForecaster):
         if self.groups_ is None:
             assert isinstance(self._y_observed, pl.DataFrame)
             y_values = self._y_observed.select(~cs.by_name("time"))
-            y_pred = self._compute_mean_pattern(y_values)
-
-            if self.fit_forecasting_horizon_ > self.seasonality:
-                n_repeats = int((self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality)
-                y_pred = pl.concat([y_pred] * n_repeats)
-
-            y_pred = y_pred.head(self.fit_forecasting_horizon_)
+            pattern = self._compute_mean_pattern(y_values)
+            y_pred = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
 
         # Panel data
         else:
@@ -337,13 +349,8 @@ class MeanSeasonalNaive(BasePointForecaster):
                 y_group = self._y_observed[panel_group_name]
                 assert isinstance(y_group, pl.DataFrame)
                 y_values = y_group.select(~cs.by_name("time"))
-                y_pred_group = self._compute_mean_pattern(y_values)
-
-                if self.fit_forecasting_horizon_ > self.seasonality:
-                    n_repeats = (self.fit_forecasting_horizon_ + self.seasonality - 1) // self.seasonality
-                    y_pred_group = pl.concat([y_pred_group] * n_repeats)
-
-                y_pred_group = y_pred_group.head(self.fit_forecasting_horizon_)
+                pattern = self._compute_mean_pattern(y_values)
+                y_pred_group = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
 
                 # Rename columns to add panel prefix
                 y_pred_group = y_pred_group.rename({col: f"{panel_group_name}__{col}" for col in y_pred_group.columns})

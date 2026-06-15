@@ -4,6 +4,9 @@ Tests SimpleImputer, TransformedSpaceKNNImputer, SimpleTimeImputer,
 and SeasonalImputer basic functionality.
 """
 
+from datetime import datetime
+
+import numpy as np
 import polars as pl
 import pytest
 
@@ -339,6 +342,22 @@ class TestTimeSeriesInterpolatorMethods:
         result = imputer.transform(df_with_nulls)
         assert result["val"].null_count() == 0
 
+    def test_nearest_selects_by_temporal_distance(self):
+        """method='nearest' splits an interior gap toward the closer anchor."""
+        from datetime import datetime
+
+        from yohou.preprocessing.imputation import SimpleTimeImputer
+
+        X = pl.DataFrame({
+            "time": [datetime(2020, 1, i) for i in range(1, 6)],
+            "val": [1.0, None, None, None, 5.0],
+        })
+        result = SimpleTimeImputer(method="nearest").fit(X).transform(X)
+        # Must not collapse to an unconditional forward-fill.
+        assert result["val"].to_list() != [1.0, 1.0, 1.0, 1.0, 5.0]
+        # Points nearer the leading anchor take 1.0; nearer the trailing take 5.0.
+        assert result["val"].to_list() == [1.0, 1.0, 1.0, 5.0, 5.0]
+
     def test_fill_both(self, df_with_nulls):
         """method='fill_both' fills forward then backward."""
         from yohou.preprocessing.imputation import SimpleTimeImputer
@@ -359,3 +378,35 @@ class TestSeasonalImputerMedian:
         imputer.fit(X)
         X_imputed = imputer.transform(X)
         assert X_imputed.null_count().sum_horizontal().item() == 0
+
+
+class TestSeasonalImputerIrregularInterval:
+    """SeasonalImputer on calendar (month/year) intervals with no fixed step."""
+
+    def test_monthly_interval_uses_row_position_fallback(self):
+        """Calendar intervals have no fixed second-step; season index falls back to row position."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2021, 12, 1), interval="1mo", eager=True)
+        values = [float(i) for i in range(len(time))]
+        values[3] = None  # introduce a gap
+        X = pl.DataFrame({"time": time, "val": values})
+
+        imputer = SeasonalImputer(period=12, fill_method="seasonal_mean")
+        imputer.fit(X)
+        assert imputer._step_seconds_ is None
+
+        result = imputer.transform(X)
+        # The gap aligns with a season that has another observed value, so it is filled.
+        assert result["val"].null_count() == 0
+
+    def test_empty_seasons_remain_nan(self):
+        """A season with no observed data stays NaN (covers the missing-bucket branch)."""
+        # Only 3 monthly points but period=12, so seasons 3..11 have no rows at all.
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 3, 1), interval="1mo", eager=True)
+        X = pl.DataFrame({"time": time, "val": [1.0, None, 3.0]})
+
+        imputer = SeasonalImputer(period=12, fill_method="seasonal_mean")
+        imputer.fit(X)
+
+        # Season index 1 (row 1) has only a null, so its seasonal value is NaN.
+        seasonal = imputer.seasonal_values_["val"]
+        assert np.isnan(seasonal[1])

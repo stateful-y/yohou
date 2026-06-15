@@ -109,20 +109,16 @@ class TestScorerCheckFunctions:
         )
 
     def test_check_panel_subselection(self, scorer_panel_data):
-        """check_scorer_panel_subselection clones internally (exposes unfitted clone bug)."""
+        """check_scorer_panel_subselection fits the clone before scoring."""
         scorer, y_truth, y_pred = scorer_panel_data
         scorer_copy = MeanAbsoluteError()
-        scorer_copy.fit(y_truth)
-        with pytest.raises(AssertionError, match="filtering failed"):
-            check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, groups=["g1"])
+        check_scorer_panel_subselection(scorer_copy, y_truth, y_pred, groups=["g1"])
 
     def test_check_component_subselection(self, scorer_panel_data):
-        """check_scorer_component_subselection clones internally (exposes unfitted clone bug)."""
+        """check_scorer_component_subselection fits the clone before scoring."""
         scorer, y_truth, y_pred = scorer_panel_data
         scorer_copy = MeanAbsoluteError()
-        scorer_copy.fit(y_truth)
-        with pytest.raises(AssertionError, match="filtering failed"):
-            check_scorer_component_subselection(scorer_copy, y_truth, y_pred, components=["val"])
+        check_scorer_component_subselection(scorer_copy, y_truth, y_pred, components=["val"])
 
     def test_check_coverage_rate_subselection(self, interval_scorer_data):
         """check_scorer_coverage_rate_subselection filters interval predictions."""

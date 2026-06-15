@@ -81,23 +81,21 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
     forecaster : BaseForecaster
         The forecaster for which the scoring will be applied.
 
-    scoring : list, tuple or dict
+    scoring : BaseScorer or dict of {str: BaseScorer}
         Strategy to evaluate the performance of the cross-validated model on
         the test set.
 
         The possibilities are:
 
-        - a list or tuple of unique strings;
-        - a callable returning a dictionary where they keys are the metric
-          names and the values are the metric scores;
-        - a dictionary with metric names as keys and callables a values.
-
-        See [Multimetric Grid Search](https://scikit-learn.org/stable/auto_examples/model_selection/plot_multi_metric_evaluation.html) for an example.
+        - a single ``BaseScorer`` instance;
+        - a dictionary mapping scorer names (``str``) to ``BaseScorer``
+          instances for multimetric scoring.
 
     Returns
     -------
-    scorers_dict : dict
-        A dict mapping each scorer name to its validated scorer.
+    BaseScorer or dict of {str: BaseScorer}
+        The single scorer is returned unchanged; a dict is validated and
+        returned as-is.
     """
     if isinstance(scoring, BaseScorer):
         scorers = scoring
@@ -127,8 +125,9 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
 class _MultimetricScorer:
     """Callable for multimetric scoring used to avoid repeated calls.
 
-    Avoids repeated calls
-    to `predict_proba`, `predict`, and `decision_function`.
+    Avoids repeated calls to ``observe_predict``, ``observe_predict_interval``,
+    and ``observe_predict_class_proba`` by caching the single prediction call
+    shared across all scorers.
 
     `_MultimetricScorer` will return a dictionary of scores corresponding to
     the scorers in the dictionary. Note that `_MultimetricScorer` can be
@@ -345,8 +344,6 @@ def _fit_and_score(
         else:
             sorted_keys = sorted(parameters)  # Ensure deterministic o/p
             params_msg = ", ".join(f"{k}={parameters[k]}" for k in sorted_keys)
-    if verbose > 9:
-        pass
 
     # Adjust length of sample weights
     fit_params = fit_params if fit_params is not None else {}
@@ -453,8 +450,14 @@ def _fit_and_score(
                 raise ValueError("return_train_score requires a scorer.")
             # forecaster is stateful and needs to be rewound to predict the past
             score_params_train = _check_method_params(y, params=score_params, indices=train)
-            train_rewind = train[: -len(test)]
-            test_rewind = train[-len(test) :]
+            # ``train`` carries absolute row indices into the original ``y``,
+            # but ``y_train`` is already sliced to ``len(train)`` rows whose
+            # positions run 0..len(train)-1. Use relative positions here so the
+            # rewind/predict split indexes ``y_train`` correctly regardless of
+            # where the training window starts (e.g. SlidingWindowSplitter).
+            n_train_rewind = len(train) - len(test)
+            train_rewind = np.arange(n_train_rewind)
+            test_rewind = np.arange(n_train_rewind, len(train))
             y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
             y_train_test, X_actual_train_test = _safe_split(
                 forecaster, y_train, X_actual_train, test_rewind, train_rewind
@@ -501,6 +504,7 @@ def _fit_and_score(
         # Right align the result_msg
         end_msg += "." * (80 - len(end_msg) - len(result_msg))
         end_msg += result_msg
+        print(end_msg)  # noqa: T201
 
     if scorer is not None:
         result["test_scores"] = test_scores
@@ -550,7 +554,10 @@ def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:
     return max(methods, key=lambda m: _RESPONSE_METHOD_PRIORITY[m])
 
 
-# Backward-compat shims for yohou-optuna <= 0.1.0a1
+# Intentional backward-compat shims for yohou-optuna <= 0.1.0a1. These thin
+# wrappers over _get_response_methods are not used elsewhere in the main source
+# tree, but they are a public-facing compatibility surface relied on by the
+# yohou-optuna integration and its tests, so they are kept deliberately.
 def _needs_interval_predictions(scorer: BaseScorer | _MultimetricScorer) -> bool:
     """Check if any scorer requires interval predictions."""
     return "predict_interval" in _get_response_methods(scorer)
@@ -736,9 +743,12 @@ def _predict(
     # observe_predict produces overlapping prediction windows when the last
     # observation chunk is smaller than stride. Deduplicate (keeping the most
     # recently informed prediction) and sort so downstream scorers receive a
-    # clean, monotonically increasing time column.
+    # clean, monotonically increasing time column. Deduplicate on the full
+    # vintage key so rows that differ only in vintage_time are preserved.
     # TODO: Address this formally in scorers
-    return y_pred.unique(subset=["time"], keep="last").sort("time")
+    dedup_subset = ["vintage_time", "time"] if "vintage_time" in y_pred.columns else ["time"]
+    sort_cols = [col for col in ("time", "vintage_time") if col in y_pred.columns]
+    return y_pred.unique(subset=dedup_subset, keep="last").sort(sort_cols)
 
 
 def _score(

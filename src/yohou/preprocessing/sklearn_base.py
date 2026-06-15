@@ -2,7 +2,7 @@
 
 This module provides ``SklearnTransformer`` and ``SklearnScaler``, wrappers that integrate
 sklearn transformers and scalers into the Yohou pipeline. It preserves polars DataFrame
-structure and the "time" column while applying sklearn scaling transformations to numeric
+structure and the "time" column while applying sklearn transformations to numeric
 columns.
 """
 
@@ -58,7 +58,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     """Wrapper to integrate sklearn transformers into the Yohou pipeline.
 
     Preserves the polars DataFrame structure and "time" column while applying
-    sklearn scaling transformations to numeric columns.
+    sklearn transformations to numeric columns.
 
     This class can be used to:
 
@@ -145,8 +145,8 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SklearnTransformer":
         """Fit the transformer to the data.
 
-        Computes scaling parameters (e.g., mean, std, min, max) from the
-        training data, excluding the "time" column.
+        Fits the underlying sklearn transformer on the training data,
+        excluding the "time" column.
 
         Parameters
         ----------
@@ -213,6 +213,12 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         time = X.select(cs.by_name("time"))
         X_no_time = X.select(~cs.by_name("time"))
 
+        # An empty observe window (e.g. observation_horizon == 0 during rewind)
+        # yields a zero-row frame. sklearn's check_array rejects 0 samples, so
+        # short-circuit: an empty input transforms to an empty output.
+        if X_no_time.height == 0:
+            return X
+
         # Apply scaling transformation
         X_scaled_no_time = self.instance_.transform(X_no_time)
 
@@ -247,7 +253,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
 
         """
         check_is_fitted(self, ["instance_"])
-        X_t, _ = validate_transformer_data(self, X=X_t, reset=False, inverse=True, check_continuity=False)
+        X_t, _ = validate_transformer_data(self, X=X_t, reset=False, inverse=True)
 
         # Strip time column before inverse transforming
         time = X_t.select(cs.by_name("time"))

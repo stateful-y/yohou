@@ -342,6 +342,9 @@ def check_scorer_panel_subselection(
     scorer_filtered = clone(scorer)
     scorer_filtered.set_params(groups=groups)
 
+    # Always fit scorer before scoring
+    scorer_filtered.fit(y_truth_panel)
+
     try:
         score = scorer_filtered.score(y_truth_panel, y_pred_panel)
         assert isinstance(score, int | float | np.number), "Panel-filtered score should be numeric"
@@ -376,6 +379,9 @@ def check_scorer_component_subselection(
     """
     scorer_filtered = clone(scorer)
     scorer_filtered.set_params(components=components)
+
+    # Always fit scorer before scoring
+    scorer_filtered.fit(y_truth)
 
     try:
         score = scorer_filtered.score(y_truth, y_pred)
@@ -457,31 +463,11 @@ def check_scorer_parameter_validation(
         If invalid value is accepted
 
     """
-    # Create scorer instance to check its type
-    scorer = scorer_class()
-    tags = scorer.__sklearn_tags__()
-
-    # Create minimal test data based on prediction type
+    # Parameter validation happens in fit(), so minimal truth data is enough
     y_truth = pl.DataFrame({
         "time": [datetime.datetime(2020, 1, i) for i in range(1, 11)],
         "value": [float(i) for i in range(10)],
     })
-
-    if tags.scorer_tags.prediction_type == "interval":
-        # Interval scorer needs _lower and _upper columns
-        pl.DataFrame({
-            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
-            "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
-            "value_lower_0.9": [10.0, 11.0, 12.0],
-            "value_upper_0.9": [10.5, 11.5, 12.5],
-        })
-    else:
-        # Point scorer needs regular value columns
-        pl.DataFrame({
-            "vintage_time": [datetime.datetime(2020, 1, 10) for _ in range(3)],
-            "time": [datetime.datetime(2020, 1, i) for i in range(11, 14)],
-            "value": range(10, 13),
-        })
 
     # Create scorer with invalid parameter
     params = {param_name: invalid_value}
@@ -497,8 +483,6 @@ def check_scorer_parameter_validation(
         if error_match is None or error_match in str(e):
             return  # Test passed
         raise AssertionError(f"Expected error containing '{error_match}', got: {e}") from e
-        if error_match is not None:
-            assert error_match in str(e), f"Expected error containing '{error_match}', got: {e}"
 
 
 def check_scorer_methods_call_check_is_fitted(scorer, y_train: pl.DataFrame, y_pred: pl.DataFrame) -> None:

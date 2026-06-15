@@ -14,6 +14,7 @@ from sklearn.pipeline import Pipeline
 from yohou.base import BaseTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils._compat import StrOptions
+from yohou.utils.panel import get_group_df
 from yohou.utils.tags import Tags
 
 
@@ -142,8 +143,8 @@ class _BaseTrendForecaster(BasePointForecaster):
             state to. Must align with ``y``.
         groups : list of str or None, default=None
             Group prefixes for panel data:
-            - If None: predict for all groups
-            - If list of str: predict only for the specified panel groups
+            - If None: rewinds observation state for all fitted groups
+            - If list of str: rewinds only the specified panel groups
             Parameter is ignored if the forecaster was not fitted on panel data.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
@@ -179,7 +180,12 @@ class _BaseTrendForecaster(BasePointForecaster):
 
         # Panel data
         if groups is not None:
-            first_observed_time = dict.fromkeys(groups, y["time"][target_observation_horizon])
+            first_observed_time = {
+                group: get_group_df(df=y, group_name=group, schema=self.local_y_schema_)["time"][
+                    target_observation_horizon
+                ]
+                for group in groups
+            }
             self._first_observed_time |= first_observed_time
 
         # Non-panel data
@@ -308,7 +314,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         groups: list[str],
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts `fit_forecasting_horizon_` steps from the observation horizon.
 
         Parameters
         ----------
@@ -375,8 +381,10 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
 
     Parameters
     ----------
-    seasonality : int
+    seasonality : int or float
         Length of seasonal cycle (number of time steps).
+        ``PatternSeasonalityForecaster`` requires an integer period, while
+        ``FourierSeasonalityForecaster`` accepts a float (e.g. ``365.25``).
     target_transformer : BaseTransformer, optional
         Transformer applied to target before forecasting.
     panel_strategy : {"global", "multivariate"}, default="global"
@@ -400,7 +408,7 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
 
         Parameters
         ----------
-        seasonality : int
+        seasonality : int or float
             Length of seasonal cycle.
         target_transformer : BaseTransformer, optional
             Transformer for target variable.

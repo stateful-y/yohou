@@ -261,8 +261,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     ) -> "IntervalReductionForecaster":
         """Fit the forecaster to historical data.
 
-        Tabularizes the time series, fits the wrapped sklearn estimator,
-        and calibrates prediction intervals from residuals.
+        Tabularizes the time series and fits a pair of quantile-regression
+        estimators (a lower and an upper quantile) for each coverage rate.
 
         Parameters
         ----------
@@ -426,18 +426,21 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             y_pred_lower = self._estimator_predict_one(estimator_lower, groups=groups)
             y_pred_upper = self._estimator_predict_one(estimator_upper, groups=groups)
 
-            # Enforce monotonic bounds (lower <= upper) by column-wise min/max
-            # This handles cases where QuantileRegressor predictions cross
+            # Enforce monotonic bounds (lower <= upper) by column-wise min/max.
+            # This handles cases where QuantileRegressor predictions cross.
+            # Bounds are paired positionally, so column counts must match.
             lower_cols = y_pred_lower.columns
             upper_cols = y_pred_upper.columns
-            for lower_col, upper_col in zip(lower_cols, upper_cols, strict=False):
-                lower_vals = y_pred_lower.get_column(lower_col)
-                upper_vals = y_pred_upper.get_column(upper_col)
-                # Compute true lower and upper
-                true_lower = pl.when(lower_vals <= upper_vals).then(lower_vals).otherwise(upper_vals)
-                true_upper = pl.when(lower_vals <= upper_vals).then(upper_vals).otherwise(lower_vals)
-                y_pred_lower = y_pred_lower.with_columns(true_lower.alias(lower_col))
-                y_pred_upper = y_pred_upper.with_columns(true_upper.alias(upper_col))
+            lower_exprs = [
+                pl.min_horizontal(pl.col(lower_col), y_pred_upper.get_column(upper_col)).alias(lower_col)
+                for lower_col, upper_col in zip(lower_cols, upper_cols, strict=True)
+            ]
+            upper_exprs = [
+                pl.max_horizontal(y_pred_lower.get_column(lower_col), pl.col(upper_col)).alias(upper_col)
+                for lower_col, upper_col in zip(lower_cols, upper_cols, strict=True)
+            ]
+            y_pred_lower = y_pred_lower.with_columns(lower_exprs)
+            y_pred_upper = y_pred_upper.with_columns(upper_exprs)
 
             # Rename columns to include coverage rate
             # Use actual column names (prefixed for panel data, unprefixed for global)

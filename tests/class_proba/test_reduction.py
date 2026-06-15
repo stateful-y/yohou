@@ -99,12 +99,6 @@ class TestClassProbaReductionSystematic:
         run_checks(
             forecaster,
             _yield_yohou_forecaster_checks(forecaster, y_train, X_actual_train, y_test, X_actual_test),
-            expected_failures={
-                "check_predict_time_columns",
-                "check_class_proba_predict_returns_labels",
-                "check_panel_data",
-                "check_panel_single_group",
-            },
         )
 
 

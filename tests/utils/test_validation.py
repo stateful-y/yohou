@@ -1605,10 +1605,6 @@ class TestCheckPanelGroupNamesExist:
 class TestValidateColumnNames:
     """Tests for validate_column_names."""
 
-    def test_none_df_returns_early(self):
-        """None df returns without error."""
-        validate_column_names(None)
-
     def test_multiple_separators_raises(self):
         """Column with multiple __ separators raises ValueError."""
         df = pl.DataFrame({

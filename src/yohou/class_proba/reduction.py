@@ -224,7 +224,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for col in y.columns:
             if col == "time":
                 continue
-            base_col = col.split("__")[-1] if "__" in col else col
+            base_col = col.split("__", 1)[1] if "__" in col else col
             unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
             if base_col in self.classes_:
                 merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
@@ -273,7 +273,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for col in y.columns:
             if col == "time":
                 continue
-            base_col = col.split("__")[-1] if "__" in col else col
+            base_col = col.split("__", 1)[1] if "__" in col else col
             mapping = self.label_to_code_[base_col]
             # Cast to String first to handle Categorical/Enum/String uniformly,
             # then replace labels with integer codes.
@@ -420,7 +420,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         estimator : BaseEstimator
             Fitted classifier.
         X_tab : pl.DataFrame
-            Feature DataFrame of shape ``(1, n_features)``.
+            Feature DataFrame, typically of shape ``(1, n_features)`` at
+            predict time (the shape is a caller convention, not enforced here).
         panel_group_name : str or None
             Panel group prefix for column naming.
 
@@ -428,6 +429,18 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         -------
         pl.DataFrame
             Probability DataFrame with ``{target}_proba_{class}`` columns.
+
+        Notes
+        -----
+        ``classes_`` is the *globally merged* class set across every panel
+        group (see ``fit``); each group's underlying sklearn classifier may
+        have been trained on a subset of those classes, so its
+        ``predict_proba`` can return fewer columns than ``len(classes_)``.
+        When a global class index has no corresponding column from the
+        estimator (``c_idx >= len(step_proba)``), its probability is filled
+        with ``0.0``: the class was unseen by this group, so it carries zero
+        mass. This is expected reconciliation, not data loss, and keeps the
+        per-group output aligned to the shared global class layout.
 
         """
         assert self.local_y_t_schema_ is not None
@@ -464,6 +477,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
                         if c_idx < len(step_proba):
                             result_data[col_name].append(float(step_proba[c_idx]))
                         else:
+                            # Global class unseen by this group's estimator; zero mass.
                             result_data[col_name].append(0.0)
         else:
             # Single-output classifier or single-target: proba shape (1, n_classes)
@@ -483,8 +497,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
                     if panel_group_name is not None:
                         col_name = f"{panel_group_name}__{col_name}"
                     result_data[col_name].append(float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0)
-                # If fh > 1, replicate (the recursive loop in predict_class_proba handles stepping)
-                # This branch should only be reached with fh=1 in multi-output mode.
+                # This branch builds a single row and is only reached with
+                # fh=1 in single-output mode; multi-step stepping is handled
+                # by the recursive loop in predict_class_proba.
 
         return pl.DataFrame(result_data)
 
@@ -501,7 +516,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         estimator : BaseEstimator
             Fitted single-step classifier.
         X_tab : pl.DataFrame
-            Feature DataFrame of shape ``(1, n_features)``.
+            Feature DataFrame, typically of shape ``(1, n_features)`` at
+            predict time (the shape is a caller convention, not enforced here).
         panel_group_name : str or None
             Panel group prefix for column naming.
 
@@ -509,6 +525,14 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         -------
         pl.DataFrame
             Single-row probability DataFrame.
+
+        Notes
+        -----
+        As in ``_predict_proba_and_reshape``, a global class index without a
+        matching column from the estimator (``c_idx >= len(step_proba)``) is
+        filled with ``0.0``. This reconciles a group whose estimator saw only
+        a subset of the globally merged ``classes_``; the unseen class
+        correctly carries zero mass rather than being dropped.
 
         """
         assert self.local_y_t_schema_ is not None

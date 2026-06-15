@@ -150,6 +150,28 @@ from .weighter import (
 )
 
 
+def _interval_lower_bound(constraint_list: list) -> int | None:
+    """Return the integer lower bound of the first ``Interval`` in a constraint list.
+
+    Parameters
+    ----------
+    constraint_list : list
+        A ``_parameter_constraints`` entry (list of constraint objects).
+
+    Returns
+    -------
+    int or None
+        The interval's ``left`` bound as an int, or ``None`` if no interval
+        with an integer lower bound is present.
+
+    """
+    for constraint in constraint_list:
+        left = getattr(constraint, "left", None)
+        if left is not None:
+            return int(left)
+    return None
+
+
 def _yield_yohou_transformer_checks(
     transformer,
     X_train: pl.DataFrame,
@@ -174,7 +196,6 @@ def _yield_yohou_transformer_checks(
         Test target data
     tags : dict, optional
         Transformer metadata tags (if None, auto-detected from __sklearn_tags__):
-        - requires_y: bool
         - stateful: bool
         - observation_horizon: int | None
         - preserves_dtype: bool
@@ -195,14 +216,15 @@ def _yield_yohou_transformer_checks(
         # Get tags from __sklearn_tags__ method
         sklearn_tags = transformer.__sklearn_tags__()
         tags = {
-            "requires_y": False,  # Yohou transformers don't have a requires_y concept
             "stateful": sklearn_tags.transformer_tags.stateful if sklearn_tags.transformer_tags else False,
             "observation_horizon": (
                 transformer.observation_horizon if hasattr(transformer, "observation_horizon") else None
             ),
             "preserves_dtype": sklearn_tags.transformer_tags.preserves_dtype if sklearn_tags.transformer_tags else True,
             "invertible": sklearn_tags.transformer_tags.invertible if sklearn_tags.transformer_tags else False,
-            "supports_panel_data": True,  # All Yohou transformers support panel data (prefixed columns)
+            # The panel checks below additionally require the caller to supply
+            # panel-structured X_train; they are skipped when none is present.
+            "supports_panel_data": True,
         }
 
     # Core transformer checks (always yield)
@@ -477,8 +499,6 @@ def _yield_yohou_forecaster_checks(
             "y": y_train,
             "X_actual": X_actual_train,
             "forecasting_horizon": 3,
-            "X_future": X_future_train,
-            "X_forecast": X_forecast_train,
         },
     )
     yield (
@@ -527,9 +547,7 @@ def _yield_yohou_forecaster_checks(
             "check_observe_extends_observations",
             check_observe_extends_observations,
             {
-                "y_train": y_train,
                 "y_observe": y_update,
-                "X_actual_train": X_actual_train,
                 "X_actual_observe": X_actual_update,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
@@ -539,9 +557,7 @@ def _yield_yohou_forecaster_checks(
             "check_rewind_replaces_observations",
             check_rewind_replaces_observations,
             {
-                "y_train": y_train,
                 "y_reset": y_reset,
-                "X_actual_train": X_actual_train,
                 "X_actual_reset": X_actual_reset,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
@@ -556,9 +572,7 @@ def _yield_yohou_forecaster_checks(
             "check_rewind_propagates_to_transformers",
             check_rewind_propagates_to_transformers,
             {
-                "y_train": y_train,
                 "y_reset": y_reset,
-                "X_actual_train": X_actual_train,
                 "X_actual_reset": X_actual_reset,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
@@ -571,7 +585,7 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_point_prediction_structure",
             check_point_prediction_structure,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield "check_point_prediction_types", check_point_prediction_types, {}
 
@@ -580,12 +594,12 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_interval_prediction_columns",
             check_interval_prediction_columns,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield (
             "check_interval_bounds",
             check_interval_bounds,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield "check_interval_prediction_types", check_interval_prediction_types, {}
         yield "check_coverage_rates_parameter", check_coverage_rates_parameter, {}
@@ -600,24 +614,24 @@ def _yield_yohou_forecaster_checks(
         yield (
             "check_class_proba_prediction_structure",
             check_class_proba_prediction_structure,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield (
             "check_class_proba_prediction_bounds",
             check_class_proba_prediction_bounds,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield (
             "check_class_proba_prediction_sums",
             check_class_proba_prediction_sums,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
         yield "check_class_proba_prediction_types", check_class_proba_prediction_types, {}
         yield "check_class_proba_classes_attribute", check_class_proba_classes_attribute, {}
         yield (
             "check_class_proba_predict_returns_labels",
             check_class_proba_predict_returns_labels,
-            {"y_test": y_test, "X_actual_test": X_actual_test},
+            {"y_test": y_test},
         )
 
     # Reduction forecaster checks
@@ -635,17 +649,17 @@ def _yield_yohou_forecaster_checks(
             yield (
                 "check_panel_data",
                 check_panel_data,
-                {"y_panel": y_test, "X_panel": X_actual_test},
+                {"y_panel": y_test},
             )
             yield (
                 "check_panel_single_group",
                 check_panel_single_group,
-                {"y_panel": y_test, "X_panel": X_actual_test},
+                {"y_panel": y_test},
             )
             yield (
                 "check_panel_invalid_group_raises",
                 check_panel_invalid_group_raises,
-                {"y_panel": y_test, "X_panel": X_actual_test},
+                {"y_panel": y_test},
             )
 
     # X_future / X_forecast dedicated checks
@@ -660,7 +674,6 @@ def _yield_yohou_forecaster_checks(
                 {
                     "y_train": y_train,
                     "X_actual_train": X_actual_train,
-                    "y_test": y_test,
                     "X_future": X_future_train,
                     "forecasting_horizon": 3,
                 },
@@ -673,7 +686,6 @@ def _yield_yohou_forecaster_checks(
                 {
                     "y_train": y_train,
                     "X_actual_train": X_actual_train,
-                    "y_test": y_test,
                     "X_forecast": X_forecast_train,
                     "forecasting_horizon": 3,
                 },
@@ -683,7 +695,6 @@ def _yield_yohou_forecaster_checks(
                 "check_predict_X_forecast_override",
                 check_predict_X_forecast_override,
                 {
-                    "y_test": y_test,
                     "X_forecast": X_forecast_test if X_forecast_test is not None else X_forecast_train,
                     "forecasting_horizon": 3,
                 },
@@ -828,12 +839,8 @@ def _yield_yohou_splitter_checks(
     # Panel data support check (conditional)
     if tags.get("supports_panel_data", False):
         # Generate panel data for testing
-        y_panel = y.rename({col: f"{col}__group1" for col in y.columns if col != "time"})
-        X_panel = (
-            X_actual.rename({col: f"{col}__group1" for col in X_actual.columns if col != "time"})
-            if X_actual is not None
-            else None
-        )
+        y_panel = y.rename(lambda c: c if c == "time" else f"{c}__group1")
+        X_panel = X_actual.rename(lambda c: c if c == "time" else f"{c}__group1") if X_actual is not None else None
         yield (
             "check_splitter_panel_data_support",
             check_splitter_panel_data_support,
@@ -848,7 +855,11 @@ def _yield_yohou_splitter_checks(
 
         # Generate invalid values based on parameter constraints
         if "n_splits" in constraints:
-            param_test_cases.append(("n_splits", [1, 0, -1]))  # Must be >= 2
+            lower = _interval_lower_bound(constraints["n_splits"])
+            # Below the declared lower bound is invalid. Derive three values
+            # under it so the cases track the constraint instead of hardcoding.
+            invalid_n_splits = [lower - offset for offset in (1, 2, 3)] if lower is not None else [1, 0, -1]
+            param_test_cases.append(("n_splits", invalid_n_splits))
         if "test_size" in constraints:
             param_test_cases.append(("test_size", [0, -1]))  # Must be >= 1
         if "train_size" in constraints:
@@ -1117,8 +1128,6 @@ def _yield_yohou_search_checks(
             {
                 "y_train": y_train,
                 "y_test": y_test,
-                "X_actual_train": X_actual_train,
-                "X_actual_test": X_actual_test,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
             },
@@ -1210,8 +1219,6 @@ def _yield_yohou_search_checks(
             {
                 "y_train": y_train,
                 "y_test": y_test,
-                "X_actual_train": X_actual_train,
-                "X_actual_test": X_actual_test,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
             },
@@ -1301,8 +1308,6 @@ def _yield_yohou_search_checks(
                 {
                     "y_train": y_train,
                     "y_test": y_test,
-                    "X_actual_train": X_actual_train,
-                    "X_actual_test": X_actual_test,
                     "groups": groups,
                     "X_future": X_future_test,
                     "X_forecast": X_forecast_test,

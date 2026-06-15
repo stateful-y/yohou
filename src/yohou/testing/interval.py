@@ -18,9 +18,7 @@ __all__ = [
 ]
 
 
-def check_interval_prediction_columns(
-    forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None
-) -> None:
+def check_interval_prediction_columns(forecaster, y_test: pl.DataFrame) -> None:
     """Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format.
 
     Parameters
@@ -29,8 +27,6 @@ def check_interval_prediction_columns(
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_actual_test : pl.DataFrame, optional
-        Test features
 
     Raises
     ------
@@ -77,7 +73,7 @@ def check_interval_prediction_columns(
                 assert upper_col in y_pred.columns, f"Missing upper bound column: {upper_col}"
 
 
-def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_actual_test: pl.DataFrame | None = None) -> None:
+def check_interval_bounds(forecaster, y_test: pl.DataFrame) -> None:
     """Check upper >= lower for all coverage rates and time steps.
 
     Parameters
@@ -86,8 +82,6 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_actual_test: pl.Da
         Fitted interval forecaster instance
     y_test : pl.DataFrame
         Test target data
-    X_actual_test : pl.DataFrame, optional
-        Test features
 
     Raises
     ------
@@ -104,41 +98,21 @@ def check_interval_bounds(forecaster, y_test: pl.DataFrame, X_actual_test: pl.Da
     _, y_panel_groups = inspect_panel(y_test)
 
     if len(y_panel_groups) > 0:
-        # For panel data, interval columns use __ separator
-        for group_prefix in y_panel_groups:
-            # Get fields from the original training data (full column names)
-            expected_fields = y_panel_groups[group_prefix]
-
-            for rate in coverage_rates:
-                for field in expected_fields:
-                    lower_col = f"{field}_lower_{rate}"
-                    upper_col = f"{field}_upper_{rate}"
-
-                    lower_vals = y_pred[lower_col].to_numpy()
-                    upper_vals = y_pred[upper_col].to_numpy()
-
-                    violations = lower_vals > upper_vals
-                    if violations.any():
-                        raise AssertionError(
-                            f"Found {violations.sum()} violations where lower > upper for {field} at coverage {rate}"
-                        )
+        # For panel data, interval columns use __ separator (e.g. "stores__store_0").
+        fields = [field for group_prefix in y_panel_groups for field in y_panel_groups[group_prefix]]
     else:
-        # For global data, check individual columns
-        target_cols = list(forecaster.local_y_schema_.keys())
+        fields = list(forecaster.local_y_schema_.keys())
 
-        for rate in coverage_rates:
-            for col in target_cols:
-                lower_col = f"{col}_lower_{rate}"
-                upper_col = f"{col}_upper_{rate}"
-
-                lower_vals = y_pred[lower_col].to_numpy()
-                upper_vals = y_pred[upper_col].to_numpy()
-
-                violations = lower_vals > upper_vals
-                if violations.any():
-                    raise AssertionError(
-                        f"Found {violations.sum()} violations where lower > upper for {col} at coverage {rate}"
-                    )
+    # Build one violation flag per (field, rate) pair and evaluate in a single pass.
+    violation_exprs = [
+        (pl.col(f"{field}_lower_{rate}") > pl.col(f"{field}_upper_{rate}")).any().alias(f"{field}_lower_{rate}")
+        for rate in coverage_rates
+        for field in fields
+    ]
+    violations = y_pred.select(violation_exprs)
+    offenders = [name for name, flagged in violations.row(0, named=True).items() if flagged]
+    if offenders:
+        raise AssertionError(f"Found bounds where lower > upper: {offenders}")
 
 
 def check_interval_prediction_types(forecaster) -> None:
@@ -205,6 +179,10 @@ def check_coverage_rates_validation(
         Training target data
     X_actual : pl.DataFrame, optional
         Training features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to fit()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to fit()
 
     Raises
     ------

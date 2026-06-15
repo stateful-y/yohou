@@ -267,12 +267,13 @@ class LinearDecayWeighter(BaseWeighter):
             weights = ranks / (n - 1)
         else:
             cutoff = n - self.max_steps
+            # The most-recent key (rank n - 1) maps to exactly 1.0, so no
+            # additional upper clamp is required.
             weights = np.where(
                 ranks < cutoff,
                 0.0,
                 (ranks - cutoff) / (self.max_steps - 1) if self.max_steps > 1 else 1.0,
             )
-            weights = np.minimum(1.0, weights)
 
         return pl.Series(weights, dtype=pl.Float64).alias("weight")
 
@@ -337,7 +338,11 @@ class SeasonalEmphasisWeighter(BaseWeighter):
         ranks = key.rank(method="ordinal") - 1
         in_phase = np.zeros(n, dtype=bool)
         for s in seasonalities:
-            most_recent_phase = int(ranks[-1]) % s
+            # The most-recent key has the highest ordinal rank (n - 1),
+            # regardless of the positional order of ``key``. Using ranks[-1]
+            # (the last positional element) is only correct when ``key`` is
+            # already sorted ascending.
+            most_recent_phase = (n - 1) % s
             phases = ranks.to_numpy() % s
             in_phase = in_phase | (phases == most_recent_phase)
 
@@ -397,8 +402,16 @@ class LookupWeighter(BaseWeighter):
         mapping = self.mapping or {}
         effective_default = mapping.get("*", self.default)
         lookup = {k: v for k, v in mapping.items() if k != "*"}
-        weights = np.array([lookup.get(k, effective_default) for k in key.to_list()], dtype=np.float64)
-        return pl.Series(weights, dtype=pl.Float64).alias("weight")
+        if lookup:
+            weights = key.replace_strict(
+                list(lookup.keys()),
+                list(lookup.values()),
+                default=effective_default,
+                return_dtype=pl.Float64,
+            )
+        else:
+            weights = pl.Series(np.full(len(key), effective_default, dtype=np.float64))
+        return weights.alias("weight")
 
 
 class TableWeighter(BaseWeighter):
@@ -461,8 +474,13 @@ class TableWeighter(BaseWeighter):
 
         nan_mask = np.isnan(weights_np)
         if nan_mask.any():
-            missing_keys = key.filter(pl.Series(nan_mask)).unique().to_list()
-            raise ValueError(f"Weight DataFrame has no values for {self.on}s: {missing_keys}")
+            bad_keys = key.filter(pl.Series(nan_mask)).unique()
+            present_keys = set(self.frame[self.on].to_list())
+            absent = [k for k in bad_keys.to_list() if k not in present_keys]
+            null_valued = [k for k in bad_keys.to_list() if k in present_keys]
+            if absent:
+                raise ValueError(f"Weight DataFrame has no values for {self.on}s: {absent}")
+            raise ValueError(f"Weight DataFrame has explicit null '{weight_col}' values for {self.on}s: {null_valued}")
 
         return pl.Series(weights_np, dtype=pl.Float64).alias("weight")
 
@@ -518,7 +536,7 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
 
     _parameter_constraints: dict = {
         "weighters": [list, None],
-        "combination": [str],
+        "combination": [StrOptions({"multiply", "mean"})],
         "weights": [list, None],
     }
 
@@ -571,8 +589,6 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
         for item in self.weighters:
             if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
                 raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
-        if self.combination not in ("multiply", "mean"):
-            raise ValueError(f"combination must be 'multiply' or 'mean', got {self.combination!r}")
         if self.weights is not None and len(self.weights) != len(self.weighters):
             raise ValueError(
                 f"weights length ({len(self.weights)}) must match weighters length ({len(self.weighters)})"
@@ -586,6 +602,7 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Combine all component weights for ``key`` by product or mean."""
+        self._validate_params()
         self._check_weighters()
         alphas = self._resolved_weights()
         series = [weighter.compute_weights(key, group_name) for _name, weighter in self.weighters]  # ty: ignore[not-iterable]
@@ -595,12 +612,17 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
             for s, alpha in zip(series, alphas, strict=True):
                 result = result * s.pow(alpha)
         else:  # mean
+            total_alpha = sum(alphas)
+            if total_alpha == 0:
+                raise ValueError(
+                    "CompositeWeighter with combination='mean' requires the mixing "
+                    f"coefficients to sum to a nonzero value, got weights={alphas} "
+                    "(sum is zero). A zero sum would silently produce all-zero weights."
+                )
             result = pl.Series(np.zeros(len(key)), dtype=pl.Float64)
             for s, alpha in zip(series, alphas, strict=True):
                 result = result + s * alpha
-            total_alpha = sum(alphas)
-            if total_alpha != 0:
-                result = result / total_alpha
+            result = result / total_alpha
 
         return result.alias("weight")
 

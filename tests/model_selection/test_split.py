@@ -87,24 +87,25 @@ class TestExpandingWindowBasic:
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=15)
         assert splitter.get_n_splits(y) == 3
 
-    def test_expanding_window_insufficient_data(self, y_X_factory):
-        """Test behavior when splits don't fit - skips invalid splits."""
+    def test_expanding_window_insufficient_data_raises(self, y_X_factory):
+        """split() raises rather than silently yielding fewer folds than advertised."""
         y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
 
         splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-        splits = list(splitter.split(y))
+        with pytest.raises(ValueError, match="non-overlapping test windows"):
+            list(splitter.split(y))
 
-        assert len(splits) == 2
+    def test_expanding_window_split_count_matches_get_n_splits(self, y_X_factory):
+        """split() yields exactly get_n_splits() folds, or raises (never silently fewer)."""
+        y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
 
-        train_idx, test_idx = splits[0]
-        assert len(test_idx) == 10
-        assert test_idx[0] == 0
-        assert len(train_idx) == 0
-
-        train_idx, test_idx = splits[1]
-        assert len(test_idx) == 10
-        assert test_idx[0] == 10
-        assert len(train_idx) == 10
+        splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
+        try:
+            n_yielded = len(list(splitter.split(y)))
+        except ValueError:
+            pass
+        else:
+            assert n_yielded == splitter.get_n_splits(y)
 
     def test_expanding_window_train_index_expansion(self, y_X_factory):
         """Test training set expands correctly without max_train_size."""

@@ -117,7 +117,10 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
     The `observation_horizon` property accumulates across all steps, returning
     the sum of all transformer observation horizons. This indicates the total
-    amount of historical data required by the pipeline.
+    amount of historical data required by the pipeline. The sum is correct
+    because steps run sequentially, each consuming the previous step's output.
+    This contrasts with `FeatureUnion`, whose `observation_horizon` takes the
+    maximum across its parallel transformers.
 
     Supports time series-specific `observe()` method for incremental learning,
     allowing the pipeline to incorporate new observations without full retraining.
@@ -161,6 +164,12 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
     # BaseEstimator interface
     _required_parameters = ["steps"]
 
+    # sklearn's Pipeline reads ``transform_input`` in ``_get_metadata_for_step``.
+    # Yohou does not expose it as a constructor parameter (it is not a tunable
+    # estimator param), so it is a class attribute fixed to ``None``: this keeps
+    # sklearn's short-circuit working without leaking into ``get_params``.
+    transform_input = None
+
     _parameter_constraints: dict[str, Any] = {
         "steps": [list, Hidden(tuple)],
         "memory": [None, str, HasMethods(["cache"])],
@@ -175,7 +184,6 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         verbose: bool = False,
     ) -> None:
         self.steps = steps
-        self.transform_input = None
         self.memory = memory
         self.verbose = verbose
 
@@ -664,7 +672,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             FeaturePipeline with fitted steps.
         """
         routed_params = self._check_method_params(method="fit", props=params)
-        X_t = self._fit(X, y, routed_params)
+        X_t = self._fit(X, y, routed_params, raw_params=params)
         with _print_elapsed_time("FeaturePipeline", self._log_message(len(self.steps) - 1)):
             if self._final_estimator != "passthrough":
                 last_step_params = routed_params[self.steps[-1][0]]
@@ -673,7 +681,6 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         # Set pipeline-level attributes for rewind/observe validation.
         # Individual steps are already fitted with their own attributes.
         self.X_schema_ = dict(X.select(~cs.by_name("time")).schema)
-        self._observation_horizon = self.observation_horizon
         self._update_X_observed(X)
 
         return self
@@ -714,11 +721,11 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        X_t : ndarray of shape (n_samples, n_transformed_features)
-            Transformed samples.
+        X_t : pl.DataFrame
+            Transformed data.
         """
         routed_params = self._check_method_params(method="fit_transform", props=params)
-        X_t = self._fit(X, y, routed_params)
+        X_t = self._fit(X, y, routed_params, raw_params=params)
 
         last_step = self._final_estimator
         with _print_elapsed_time("FeaturePipeline", self._log_message(len(self.steps) - 1)):
@@ -753,7 +760,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        X_t : ndarray of shape (n_samples, n_transformed_features)
+        X_t : pl.DataFrame
             Transformed data.
         """
         _raise_for_params(params, self, "transform")
@@ -967,7 +974,6 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
             (
                 method_mapping
-                .add(caller="predict", callee="transform")
                 .add(caller="predict", callee="transform")
                 .add(caller="predict_proba", callee="transform")
                 .add(caller="decision_function", callee="transform")
