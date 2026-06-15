@@ -261,7 +261,10 @@ class LinearDecayWeighter(BaseWeighter):
         if n == 1:
             return pl.Series([1.0], dtype=pl.Float64).alias("weight")
 
-        ranks = (key.rank(method="ordinal") - 1).to_numpy()
+        # Cast to float: polars rank() yields UInt32, and an unsigned array
+        # underflows (OverflowError) on ``ranks - cutoff`` when cutoff is
+        # negative (max_steps > len(key)).
+        ranks = (key.rank(method="ordinal") - 1).to_numpy().astype(np.float64)
 
         if self.max_steps is None:
             weights = ranks / (n - 1)
@@ -363,7 +366,9 @@ class LookupWeighter(BaseWeighter):
     mapping : dict
         Mapping from key value to weight.
     default : float, default=1.0
-        Weight for keys absent from ``mapping``.
+        Weight for keys absent from ``mapping``. If ``mapping`` contains a
+        ``"*"`` key, that entry takes precedence over this parameter as the
+        fallback weight.
 
     See Also
     --------
