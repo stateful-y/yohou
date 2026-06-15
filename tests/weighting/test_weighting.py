@@ -147,6 +147,13 @@ def test_table_weighter_unmatched_key_raises(times: pl.Series) -> None:
         TableWeighter(frame=frame, on="time").compute_weights(times)
 
 
+def test_table_weighter_explicit_null_weight_raises(times: pl.Series) -> None:
+    """A key present in the frame but with an explicit null weight raises ValueError."""
+    frame = pl.DataFrame({"time": times, "weight": [0.5, None, 0.5]})
+    with pytest.raises(ValueError, match="explicit null"):
+        TableWeighter(frame=frame, on="time").compute_weights(times)
+
+
 def test_table_weighter_panel_group_column(times: pl.Series) -> None:
     """Group-specific weight columns are used for panel data."""
     frame = pl.DataFrame({"time": times, "A_weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})

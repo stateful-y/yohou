@@ -7,6 +7,8 @@ import polars as pl
 import polars.testing as plt
 import pytest
 
+from yohou.base import BaseTransformer
+
 
 class TestHstack:
     """Tests for _hstack horizontal stacking with observation horizon alignment."""
@@ -204,3 +206,48 @@ class TestRewindTransformOne:
 
         expected = pl.DataFrame({"a": [5.0, 10.0]})
         plt.assert_frame_equal(result, expected)
+
+
+class _StatefulWithoutMethods(BaseTransformer):
+    """A BaseTransformer that has lost its stateful observe/rewind methods.
+
+    Used to verify the guards reject a broken stateful transformer rather
+    than silently falling back to a stateless ``transform``.
+    """
+
+    @property
+    def observe_transform(self):
+        raise AttributeError("observe_transform removed")
+
+    @property
+    def rewind_transform(self):
+        raise AttributeError("rewind_transform removed")
+
+    def _fit(self, X, y=None):
+        return None
+
+    def _transform(self, X):
+        return X
+
+    def get_feature_names_out(self, input_features=None):
+        return ["a"]
+
+
+class TestStatefulFallbackGuards:
+    """Stateful BaseTransformers missing their methods must error, not fall back."""
+
+    def test_observe_transform_one_rejects_broken_stateful(self):
+        """A BaseTransformer without observe_transform raises AttributeError."""
+        from yohou.compose.utils import _observe_transform_one
+
+        X = pl.DataFrame({"time": [1], "a": [1.0]})
+        with pytest.raises(AttributeError, match="no 'observe_transform' method"):
+            _observe_transform_one(_StatefulWithoutMethods(), X, y=None, weight=None, params={})
+
+    def test_rewind_transform_one_rejects_broken_stateful(self):
+        """A BaseTransformer without rewind_transform raises AttributeError."""
+        from yohou.compose.utils import _rewind_transform_one
+
+        X = pl.DataFrame({"time": [1], "a": [1.0]})
+        with pytest.raises(AttributeError, match="no 'rewind_transform' method"):
+            _rewind_transform_one(_StatefulWithoutMethods(), X, y=None, weight=None, params={})

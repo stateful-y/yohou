@@ -6,6 +6,8 @@ SplineTransformer, SklearnTransformer) using both the check generator pattern an
 component-specific tests.
 """
 
+from datetime import datetime
+
 import numpy as np
 import polars as pl
 import pytest
@@ -1089,3 +1091,22 @@ class TestTransformerCloneAndParams:
         poly.set_params(degree=2, interaction_only=False)
         assert poly.get_params()["degree"] == 2
         assert poly.get_params()["interaction_only"] is False
+
+    def test_transform_empty_frame_returns_empty(self):
+        """An empty (0-row) input transforms to an empty output.
+
+        sklearn's check_array rejects zero-sample arrays, so the wrapper
+        short-circuits. This happens during rewind when observation_horizon
+        is 0 and the observe window is empty.
+        """
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 10), interval="1d", eager=True)
+        X = pl.DataFrame({"time": time, "value": np.arange(len(time), dtype=float)})
+
+        scaler = StandardScaler()
+        scaler.fit(X)
+
+        X_empty = X.head(0)
+        result = scaler.transform(X_empty)
+
+        assert result.height == 0
+        assert result.columns == X.columns

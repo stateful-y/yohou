@@ -307,3 +307,27 @@ class TestUpsampler:
 
         with pytest.raises(ValueError, match="larger than input interval"):
             upsampler.fit(X)
+
+    def test_upsample_empty_series_raises(self) -> None:
+        """Transforming an empty series raises a clear error."""
+        X = create_hourly_data(length=48)
+        upsampler = Upsampler(interval="30m", interpolation="linear")
+        upsampler.fit(X)
+
+        with pytest.raises(ValueError, match="empty time series"):
+            upsampler.transform(X.head(0))
+
+
+class TestDownsamplerBoundaries:
+    """Tests for Downsampler include_boundaries handling."""
+
+    def test_include_boundaries_dropped_from_output(self) -> None:
+        """include_boundaries=True must not leak boundary columns into output."""
+        X = create_hourly_data(length=48)
+        downsampler = Downsampler(interval="1d", aggregation="mean", include_boundaries=True)
+        downsampler.fit(X)
+        result = downsampler.transform(X)
+
+        assert "_lower_boundary" not in result.columns
+        assert "_upper_boundary" not in result.columns
+        assert result.columns == ["time", "value_a", "value_b"]

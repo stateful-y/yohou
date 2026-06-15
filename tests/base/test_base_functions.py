@@ -516,3 +516,55 @@ class TestRewindTransformersOne:
                 observation_horizon=observation_horizon,
                 target_as_feature="transformed",
             )
+
+    def test_feature_output_without_time_column_uses_tail(self, time_series_factory):
+        """A feature transformer that drops 'time' falls back to the last row."""
+        from unittest.mock import MagicMock
+
+        y = time_series_factory(length=20, n_components=1)
+        X_actual = make_exog_data(20, 2)
+
+        feature_transformer = MagicMock()
+        feature_transformer.observation_horizon = 2
+        # rewind_transform output has no 'time' column.
+        feature_transformer.rewind_transform.return_value = pl.DataFrame({"f": [1.0, 2.0, 3.0]})
+
+        X_t = _rewind_transformers_one(
+            y=y,
+            X_actual=X_actual,
+            target_transformer=None,
+            feature_transformer=feature_transformer,
+            observation_horizon=5,
+            target_as_feature=None,
+        )
+
+        # No time column to align on, so the last row is taken.
+        assert X_t.height == 1
+        assert X_t["f"][0] == 3.0
+
+    def test_feature_output_missing_last_time_uses_tail(self, time_series_factory):
+        """When the latest observation is dropped, alignment falls back to the tail."""
+        from unittest.mock import MagicMock
+
+        y = time_series_factory(length=20, n_components=1)
+        X_actual = make_exog_data(20, 2)
+        last_time = y["time"][-1]
+
+        # rewind_transform keeps 'time' but never includes last_time, so the
+        # timestamp filter is empty and the tail(1) fallback is used.
+        earlier = [last_time - timedelta(days=2), last_time - timedelta(days=1)]
+        feature_transformer = MagicMock()
+        feature_transformer.observation_horizon = 2
+        feature_transformer.rewind_transform.return_value = pl.DataFrame({"time": earlier, "f": [1.0, 2.0]})
+
+        X_t = _rewind_transformers_one(
+            y=y,
+            X_actual=X_actual,
+            target_transformer=None,
+            feature_transformer=feature_transformer,
+            observation_horizon=5,
+            target_as_feature=None,
+        )
+
+        assert X_t.height == 1
+        assert X_t["f"][0] == 2.0

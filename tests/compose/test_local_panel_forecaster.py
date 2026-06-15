@@ -537,3 +537,59 @@ class TestLocalPanelForecasterExogenous:
         # Should have lower/upper bound columns
         bound_cols = [c for c in y_pred.columns if "lower" in c or "upper" in c]
         assert len(bound_cols) > 0
+
+
+class TestReassemblePanelPredictions:
+    """Unit tests for _reassemble_panel_predictions stitching logic."""
+
+    def _forecaster(self):
+        return LocalPanelForecaster(SeasonalNaive(seasonality=1))
+
+    def test_empty_mapping_returns_empty_frame(self):
+        """No group predictions yields an empty DataFrame."""
+        result = self._forecaster()._reassemble_panel_predictions({})
+        assert result.height == 0
+        assert result.width == 0
+
+    def test_aligned_groups_join_and_sort(self):
+        """Aligned time grids join on time keys and sort by vintage/time."""
+        time = [datetime(2020, 1, 2), datetime(2020, 1, 1)]
+        vintage = [datetime(2020, 1, 1), datetime(2020, 1, 1)]
+        preds = {
+            "a": pl.DataFrame({"vintage_time": vintage, "time": time, "value": [2.0, 1.0]}),
+            "b": pl.DataFrame({"vintage_time": vintage, "time": time, "value": [20.0, 10.0]}),
+        }
+        result = self._forecaster()._reassemble_panel_predictions(preds)
+
+        assert result["time"].to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        assert result["a__value"].to_list() == [1.0, 2.0]
+        assert result["b__value"].to_list() == [10.0, 20.0]
+
+    def test_mismatched_row_counts_raise(self):
+        """Groups producing different numbers of rows raise a clear error."""
+        preds = {
+            "a": pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [1.0, 2.0]}),
+            "b": pl.DataFrame({"time": [datetime(2020, 1, 1)], "value": [10.0]}),
+        }
+        with pytest.raises(ValueError, match="must align to form a panel"):
+            self._forecaster()._reassemble_panel_predictions(preds)
+
+    def test_misaligned_time_grids_raise(self):
+        """Same row count but disjoint timestamps cannot form a panel."""
+        preds = {
+            "a": pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)], "value": [1.0, 2.0]}),
+            "b": pl.DataFrame({"time": [datetime(2020, 1, 3), datetime(2020, 1, 4)], "value": [10.0, 20.0]}),
+        }
+        with pytest.raises(ValueError, match="does not align"):
+            self._forecaster()._reassemble_panel_predictions(preds)
+
+    def test_groups_without_time_columns_concat_horizontally(self):
+        """Frames without time keys are concatenated by position."""
+        preds = {
+            "a": pl.DataFrame({"value": [1.0, 2.0]}),
+            "b": pl.DataFrame({"value": [10.0, 20.0]}),
+        }
+        result = self._forecaster()._reassemble_panel_predictions(preds)
+
+        assert result["a__value"].to_list() == [1.0, 2.0]
+        assert result["b__value"].to_list() == [10.0, 20.0]

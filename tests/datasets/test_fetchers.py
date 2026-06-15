@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import zipfile
+from datetime import datetime
 
 import polars as pl
 import pytest
@@ -434,3 +435,33 @@ class TestFetchDemandClassification:
         """DESCR is a non-empty string."""
         assert isinstance(demand_data.DESCR, str)
         assert len(demand_data.DESCR) > 0
+
+
+class TestClassificationMissingColumns:
+    """The classification fetchers raise clear errors when expected columns are absent."""
+
+    def test_air_quality_missing_pm25_raises(self, monkeypatch):
+        """A KDD Cup frame without the pm2.5 target column raises ValueError."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 3), interval="1h", eager=True)
+        frame = pl.DataFrame({"time": time, "beijing__pm10": [1.0] * len(time)})
+
+        monkeypatch.setattr(
+            "yohou.datasets._fetchers.fetch_kdd_cup",
+            lambda **kwargs: Bunch(frame=frame),
+        )
+
+        with pytest.raises(ValueError, match="pm2.5"):
+            fetch_air_quality_classification()
+
+    def test_demand_missing_columns_raises(self, monkeypatch):
+        """An electricity demand frame missing required columns raises ValueError."""
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 3), interval="1h", eager=True)
+        frame = pl.DataFrame({"time": time, "nsw__demand": [1.0] * len(time)})
+
+        monkeypatch.setattr(
+            "yohou.datasets._fetchers.fetch_electricity_demand",
+            lambda **kwargs: Bunch(frame=frame),
+        )
+
+        with pytest.raises(ValueError, match="electricity demand"):
+            fetch_demand_classification()

@@ -242,6 +242,22 @@ class TestFourierFeatureTransformerEdgeCases:
         with pytest.raises(ValueError, match="conflict"):
             transformer.fit(X)
 
+    def test_yearly_interval_uses_calendar_offsets(self):
+        """Yearly data anchors Fourier phases via calendar year offsets."""
+        time = pl.datetime_range(start=datetime(2000, 1, 1), end=datetime(2012, 1, 1), interval="1y", eager=True)
+        X = pl.DataFrame({"time": time, "value": range(len(time))})
+
+        transformer = FourierFeatureTransformer(seasonality=4.0, harmonics=[1])
+        transformer.fit(X)
+        assert transformer.interval_.endswith("y")
+
+        X_t = transformer.transform(X)
+        assert "fourier_4.0_sin_1" in X_t.columns
+        assert X_t.height == X.height
+        # Phase repeats every 4 years: year 0 and year 4 share the same angle.
+        sin_col = X_t["fourier_4.0_sin_1"].to_list()
+        assert sin_col[0] == pytest.approx(sin_col[4], abs=1e-9)
+
 
 class TestTimeIndexTransformerSystematic:
     """Systematic check generator tests for TimeIndexTransformer."""

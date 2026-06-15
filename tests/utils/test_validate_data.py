@@ -1327,3 +1327,32 @@ class TestValidateStepSourceSchema:
         df = pl.DataFrame({"time": time, "value": [1.0] * len(time)})
         expected = {"value": pl.Float64}
         _validate_step_source_schema(df, expected, "X_future", exclude_cols={"time"})
+
+
+class TestCheckMultiVintageTime:
+    """Tests for _check_multi_vintage_time time-ordering validation."""
+
+    def test_unsorted_time_within_vintage_raises(self):
+        """Descending time within a single vintage raises a ValueError naming the vintage."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        vintage = datetime(2020, 1, 1)
+        y_pred = pl.DataFrame({
+            "vintage_time": [vintage, vintage, vintage],
+            "time": [datetime(2020, 1, 4), datetime(2020, 1, 3), datetime(2020, 1, 5)],
+            "value": [1.0, 2.0, 3.0],
+        })
+        with pytest.raises(ValueError, match="not sorted in ascending order"):
+            _check_multi_vintage_time(y_pred)
+
+    def test_sorted_time_within_vintage_passes(self):
+        """Ascending time within each vintage passes."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        vintage = datetime(2020, 1, 1)
+        y_pred = pl.DataFrame({
+            "vintage_time": [vintage, vintage, vintage],
+            "time": [datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)],
+            "value": [1.0, 2.0, 3.0],
+        })
+        _check_multi_vintage_time(y_pred)
