@@ -1364,3 +1364,82 @@ class TestPlotMissingDataCategorical:
         fig = plot_missing_data(df, kind="bars")
         assert_figure_valid(fig)
         assert fig.data[0].name == "color"
+
+
+def _series_df(values):
+    """Build a simple single-column daily time series for QA regression tests."""
+    n = len(values)
+    return pl.DataFrame({
+        "time": pl.datetime_range(
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 1, 1) + pl.duration(days=n - 1),
+            interval="1d",
+            eager=True,
+        ),
+        "y": values,
+    })
+
+
+class TestOutlierColor:
+    """Regression: outlier-color-param-never-used (2026-06-15 QA)."""
+
+    def test_outlier_markers_use_outlier_color(self):
+        vals = [1.0] * 20 + [100.0] + [1.0] * 5
+        df = _series_df(vals)
+        fig = plot_outliers(df, columns="y", outlier_color="#00FF00", method="zscore", threshold=2.0)
+        marker_colors = [t.marker.color for t in fig.data if t.mode == "markers"]
+        assert "#00FF00" in marker_colors
+
+
+class TestRollingLineOpacity:
+    """Regression: rolling-stats-nonpanel-hardcoded-opacity (2026-06-15 QA)."""
+
+    def test_original_series_uses_line_opacity(self):
+        df = _series_df([float(i % 7) for i in range(60)])
+        fig = plot_rolling_statistics(df, columns="y", line_opacity=0.85, show_original=True)
+        opacities = [t.opacity for t in fig.data if t.opacity is not None]
+        assert pytest.approx(0.85) in opacities
+
+
+class TestMissingDataMatrixTimeAggregation:
+    """Regression: matrix-kind-ignores-time-aggregation (2026-06-15 QA)."""
+
+    def test_matrix_and_heatmap_agree_under_time_aggregation(self):
+        dates = pl.datetime_range(
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 1, 10, 23),
+            interval="1h",
+            eager=True,
+        )
+        vals = [None if i % 24 == 0 else float(i) for i in range(len(dates))]
+        df = pl.DataFrame({"time": dates, "y": vals})
+        fig_heatmap = plot_missing_data(df, kind="heatmap", time_aggregation="1d")
+        fig_matrix = plot_missing_data(df, kind="matrix", time_aggregation="1d")
+        z_heatmap = list(fig_heatmap.data[0].z)
+        z_matrix = list(fig_matrix.data[0].z)
+        assert z_matrix == z_heatmap
+        # Aggregation collapsed 240 hourly points into 10 daily cells.
+        assert len(z_matrix[0]) == 10
+
+
+class TestResamplingPanelColors:
+    """Regression: resampling-panel-resolve-color-inside-render-closure (2026-06-15 QA)."""
+
+    def test_panel_members_get_distinct_colors(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 9), "1d", eager=True)
+        n = len(dates)
+        original = pl.DataFrame({
+            "time": dates,
+            "sales__a": list(range(n)),
+            "sales__b": list(range(n, 2 * n)),
+        })
+        resampled = original.group_by_dynamic("time", every="1w").agg(
+            pl.col("sales__a").mean(), pl.col("sales__b").mean()
+        )
+        # facet_by="group" overlays the two members in one facet, so they must
+        # receive distinct palette colours (entity_idx based, not a single color).
+        fig = plot_resampling_comparison(
+            original, resampled, groups=[], facet_by="group", color_palette=["#abcdef", "#fedcba"]
+        )
+        line_colors = {t.line.color for t in fig.data if t.line.color is not None}
+        assert {"#abcdef", "#fedcba"}.issubset(line_colors)

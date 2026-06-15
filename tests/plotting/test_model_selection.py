@@ -257,3 +257,36 @@ class TestPlotCvResultsScatter:
         scatter_y = list(fig.data[0].y)
         assert scatter_y == [-0.5, -0.3, -0.2]
         assert len(fig.data) > 0
+
+
+class TestSplitsEmptyError:
+    """Regression: plot-splits-empty-splits-silent-empty-figure (2026-06-15 QA)."""
+
+    def test_zero_splits_raises(self):
+        from yohou.model_selection import BaseSplitter
+
+        class _EmptySplitter(BaseSplitter):
+            def split(self, y, X_actual=None):  # noqa: ARG002
+                return iter(())
+
+            def _iter_test_indices(self, y, X_actual=None):  # noqa: ARG002
+                return iter(())
+
+            def get_n_splits(self, y=None, X_actual=None):  # noqa: ARG002
+                return 0
+
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "value": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        with pytest.raises(ValueError, match="no splits"):
+            plot_splits(y, _EmptySplitter())
+
+
+class TestCvResultsNoMeanKeys:
+    """Regression: plot-cv-results-scorer-autodetect-unguarded-index (2026-06-15 QA)."""
+
+    def test_missing_mean_test_keys_raises_clear_error(self):
+        cv_results = {"param_alpha": [0.1, 1.0]}
+        with pytest.raises(ValueError, match="mean_test"):
+            plot_cv_results_scatter(cv_results, param_name="alpha")

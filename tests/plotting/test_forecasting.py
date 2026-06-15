@@ -18,6 +18,7 @@ from yohou.plotting import (
     plot_forecast,
     plot_time_weight,
 )
+from yohou.plotting.forecasting import _compute_classical
 
 from .conftest import assert_figure_valid, assert_layout, has_legendgrouptitle
 
@@ -2961,3 +2962,39 @@ class TestPlotForecastOptionalYTest:
         })
         with pytest.raises(ValueError, match="y_test is required"):
             plot_forecast(y_pred=y_pred)
+
+
+class TestForecastVintageTimeExcluded:
+    """Regression: vintage-time-excluded-from-test-value-cols (2026-06-15 QA)."""
+
+    def test_vintage_time_not_plotted_as_series(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        n = len(dates)
+        y_test = pl.DataFrame({
+            "time": dates,
+            "vintage_time": dates,
+            "y": [float(i) for i in range(n)],
+        })
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "vintage_time": dates,
+            "y": [float(i) + 0.5 for i in range(n)],
+        })
+        fig = plot_forecast(y_test, y_pred)
+        for trace in fig.data:
+            assert "vintage" not in (trace.name or "").lower()
+
+
+class TestClassicalMultiplicativeNonPositive:
+    """Regression: classical-decomp-multiplicative-offset-mismatch (2026-06-15 QA)."""
+
+    def test_observed_matches_original_and_adjusted_consistent(self):
+        t = np.arange(48)
+        vals = (np.sin(2 * np.pi * t / 12) * 5 + 0.1 * t).tolist()  # has negatives
+        with pytest.warns(UserWarning, match="log-transform"):
+            out = _compute_classical(pl.Series("y", vals), period=12, model="multiplicative")
+        observed = np.array(out["observed"])
+        seasonal = np.array(out["seasonal"])
+        adjusted = np.array(out["seasonal_adjusted"])
+        assert np.nanmax(np.abs(observed - np.array(vals))) == pytest.approx(0.0)
+        assert np.nanmax(np.abs(adjusted - observed / seasonal)) == pytest.approx(0.0)

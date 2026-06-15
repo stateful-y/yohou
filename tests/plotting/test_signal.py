@@ -367,3 +367,24 @@ class TestPlotSpectrumAutoDetectPanel:
         fig = plot_spectrum(df)
         assert_figure_valid(fig)
         assert len(fig.data) >= 2
+
+
+class TestPhasePanelColors:
+    """Regression: plot-phase-panel-colors-indexed-by-entity-idx-not-column-idx (2026-06-15 QA)."""
+
+    def test_panel_palette_does_not_index_out_of_range(self):
+        import numpy as np
+
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True)
+        n = len(dates)
+        df = pl.DataFrame({
+            "time": dates,
+            "sales__a": np.sin(np.arange(n) * 0.2).tolist(),
+            "sales__b": np.cos(np.arange(n) * 0.2).tolist(),
+            "demand__a": np.sin(np.arange(n) * 0.3).tolist(),
+            "demand__b": np.cos(np.arange(n) * 0.3).tolist(),
+        })
+        # Two groups overlaid per member facet; palette of two distinct colors.
+        fig = plot_phase(df, groups=[], color_palette=["#111111", "#222222"])
+        line_colors = {t.line.color for t in fig.data if t.line.color is not None}
+        assert {"#111111", "#222222"}.issubset(line_colors)

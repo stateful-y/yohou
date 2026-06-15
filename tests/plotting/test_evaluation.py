@@ -3370,3 +3370,35 @@ class TestGroupScoresBoxKind:
             distribute_by="vintage",
         )
         assert_figure_valid(fig)
+
+
+class TestCalibrationClassProbaParams:
+    """Regression: calibration-class-proba-drops-four-public-params (2026-06-15 QA)."""
+
+    def test_reference_color_is_forwarded(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 20), "1d", eager=True)
+        n = len(dates)
+        rng = np.random.default_rng(0)
+        p = rng.uniform(0, 1, n)
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "target_proba_yes": p.tolist(),
+            "target_proba_no": (1 - p).tolist(),
+        })
+        truth = ["yes" if pi > 0.5 else "no" for pi in p]
+        y_truth = pl.DataFrame({"time": dates, "target": truth})
+        fig = plot_calibration(y_pred, y_truth, target="target", reference_color="#123456")
+        ref_colors = [t.line.color for t in fig.data if t.line.color is not None]
+        assert "#123456" in ref_colors
+
+
+class TestScoreDistributionKdeWarning:
+    """Regression: kde-failure-silently-omits-trace (2026-06-15 QA)."""
+
+    def test_zero_variance_scores_warn(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        n = len(dates)
+        y_truth = pl.DataFrame({"time": dates, "y": [5.0] * n})
+        y_pred = pl.DataFrame({"time": dates, "y": [5.0] * n})
+        with pytest.warns(UserWarning, match="KDE"):
+            plot_score_distribution(MeanAbsoluteError(), y_truth, y_pred, kind="kde")
