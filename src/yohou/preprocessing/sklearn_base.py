@@ -213,6 +213,12 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         time = X.select(cs.by_name("time"))
         X_no_time = X.select(~cs.by_name("time"))
 
+        # An empty observe window (e.g. observation_horizon == 0 during rewind)
+        # yields a zero-row frame. sklearn's check_array rejects 0 samples, so
+        # short-circuit: an empty input transforms to an empty output.
+        if X_no_time.height == 0:
+            return X
+
         # Apply scaling transformation
         X_scaled_no_time = self.instance_.transform(X_no_time)
 
