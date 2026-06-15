@@ -105,6 +105,17 @@ class TestBaseTransformerObservationHorizon:
         t.fit(X)
         assert len(t._X_observed) == 0
 
+    def test_insufficient_data_error_names_values(self, time_series_factory):
+        """The insufficient-memory error reports the horizon and row count.
+
+        Regression for the 2026-06-15 QA finding: the message omitted both
+        ``observation_horizon`` and ``len(X)``, making it undiagnosable.
+        """
+        X = time_series_factory(length=3)
+        t = SimpleTransformer(observation_horizon=10)
+        with pytest.raises(ValueError, match=r"observation_horizon=10 but X has 3 rows"):
+            t.fit(X)
+
 
 class TestBaseTransformerObserve:
     """Tests for observe() method."""

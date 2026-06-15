@@ -146,6 +146,23 @@ class TestDeriveStepColumns:
         assert result["temp_step_1"][0] == 10.0
         assert result["temp_step_1"][1] is None  # Jan 5 not in X_forecast
 
+    def test_coverage_warning_per_column_not_conflated(self):
+        """Coverage warning fires when any single column under-covers the horizon.
+
+        Regression for the 2026-06-15 QA finding: coverage was tracked as the
+        global maximum covered step across all columns, so a column that fully
+        covered the horizon masked another column that did not.
+        """
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 2,
+            "time": [datetime(2020, 1, 2), datetime(2020, 1, 3)],
+            "temp": [10.0, 11.0],  # covers steps 1 and 2
+            "humidity": [50.0, None],  # covers only step 1
+        })
+        obs = pl.Series([datetime(2020, 1, 1)])
+        with pytest.warns(UserWarning, match="covers 1 of 2"):
+            _derive_step_columns(None, X_forecast, obs, 2, "1d")
+
     # --- Panel data ---
 
     def test_panel_prefixed_columns(self):

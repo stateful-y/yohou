@@ -165,7 +165,10 @@ class BaseStandardForecaster:
         y_observed = None
         if observation_horizon > 0:
             if observation_horizon > len(y):
-                raise ValueError("Not enough data to set observed y.")
+                raise ValueError(
+                    f"Not enough data to set observed y: observation_horizon={observation_horizon} "
+                    f"but y has {len(y)} rows."
+                )
             y_observed = y[-observation_horizon:]
 
         self._y_observed = y_observed

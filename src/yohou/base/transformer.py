@@ -147,7 +147,10 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         """
         if self.observation_horizon > 0:
             if self.observation_horizon > len(X):
-                raise ValueError("Not enough input data to set the transformer memory.")
+                raise ValueError(
+                    f"Not enough input data to set the transformer memory: "
+                    f"observation_horizon={self.observation_horizon} but X has {len(X)} rows."
+                )
 
             self._X_observed = X[-self.observation_horizon :]
             self.observed_time_ = X["time"][-1]

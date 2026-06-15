@@ -410,12 +410,20 @@ def _derive_step_columns(
         # indicating the matched vintage(s) don't cover the full horizon.
         step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time" and re.search(r"_step_\d+$", c)]
         if step_cols_forecast:
-            # Find the highest step number that has at least one non-null value
-            max_covered = 0
+            # Coverage is per value column: a column whose later steps are all
+            # null is under-covered even if another column reaches the horizon.
+            # Track the highest covered step per base column and take the worst
+            # (minimum) so a single under-covered column still warns.
+            per_col_max: dict[str, int] = {}
             for c in step_cols_forecast:
-                m = re.search(r"_step_(\d+)$", c)
-                if m and forecast_pivoted[c].null_count() < len(forecast_pivoted):
-                    max_covered = max(max_covered, int(m.group(1)))
+                m = re.search(r"^(.*)_step_(\d+)$", c)
+                if m is None:
+                    continue
+                base = m.group(1)
+                per_col_max.setdefault(base, 0)
+                if forecast_pivoted[c].null_count() < len(forecast_pivoted):
+                    per_col_max[base] = max(per_col_max[base], int(m.group(2)))
+            max_covered = min(per_col_max.values(), default=0)
             if max_covered < forecasting_horizon:
                 warnings.warn(
                     f"X_forecast covers {max_covered} of {forecasting_horizon} "
@@ -425,7 +433,9 @@ def _derive_step_columns(
                     f"timestamps. Tree-based estimators (e.g. XGBoost, LightGBM, "
                     f"HistGradientBoosting) handle null features natively.",
                     UserWarning,
-                    stacklevel=2,
+                    # user -> fit/observe -> _pre_fit(_standard) -> _derive_step_columns
+                    # -> warn; point at the user's fit()/observe() call.
+                    stacklevel=5,
                 )
 
         # Pad missing step columns to H (partial coverage → null columns)
