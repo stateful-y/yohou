@@ -678,9 +678,15 @@ class BasePanelForecaster:
         y : dict[str, pl.DataFrame]
             Target time series per group (already extracted).
         X_t : dict[str, pl.DataFrame] or None
-            Transformed features per group.
+            Transformed features per group. Only the most recent row of each
+            group's feature matrix is stored in ``_X_t_observed``.
         groups : list[str]
             Panel group names to update.
+
+        Raises
+        ------
+        ValueError
+            If ``observation_horizon`` exceeds the row count of any group.
 
         """
         self.observed_time_ = {}

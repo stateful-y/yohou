@@ -59,7 +59,7 @@ def _fit_transform_transformers_one(
     -----
     Transformation order matters:
     1. Apply target_transformer to y → y_t
-    2. Concatenate y_t with X_actual (aligned by observation horizon)
+    2. Align X_actual to y_t timestamps via a semi-join, then concatenate with y_t
     3. Apply feature_transformer to combined → X_t
     4. Trim y_t if feature transformer has its own observation horizon
 
@@ -134,7 +134,7 @@ def _build_feature_input(
     Notes
     -----
     The target_as_feature parameter controls what features are available:
-    - ``"transformed"``: Transformed target + exogenous features (default)
+    - ``"transformed"``: Transformed target + exogenous features
     - ``"raw"``: Original target + exogenous features
     - ``None``: Only exogenous features (no target)
 
@@ -257,7 +257,8 @@ def _rewind_transformers_one(
     Returns
     -------
     pl.DataFrame or None
-        Transformed new observations.
+        Feature matrix containing the single transformed row aligned to the
+        latest observation timestamp after rewinding state.
 
     """
     y_t = y

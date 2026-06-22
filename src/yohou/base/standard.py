@@ -121,6 +121,11 @@ class BaseStandardForecaster:
         X_t : pl.DataFrame or None
             Transformed features (standard data).
 
+        Notes
+        -----
+        Sets the following fitted attributes on ``self``: ``local_y_t_schema_``,
+        ``local_X_t_schema_``, ``n_features_in_``, and ``feature_names_in_``.
+
         """
         self.local_y_t_schema_ = dict(y_t.select(~cs.by_name("time")).schema)
 
@@ -150,9 +155,16 @@ class BaseStandardForecaster:
         y : pl.DataFrame
             Target time series (untransformed, standard data).
         X_t : pl.DataFrame or None
-            Transformed feature time series (standard data).
+            Transformed feature time series (standard data). Only the most
+            recent row is retained in ``_X_t_observed``.
         observation_horizon : int
-            Number of time steps to retain.
+            Number of time steps to retain. ``0`` disables the history buffer
+            (``_y_observed`` is set to ``None``).
+
+        Raises
+        ------
+        ValueError
+            If ``observation_horizon > len(y)``.
 
         """
         self.observed_time_ = y["time"][-1]
@@ -202,6 +214,14 @@ class BaseStandardForecaster:
             Transformed target.
         X_t : pl.DataFrame or None
             Transformed features.
+
+        Notes
+        -----
+        Beyond the return values, this method sets the following fitted
+        attributes on ``self``: ``_step_column_names_``, ``_X_future_raw_``,
+        ``_X_forecast_raw_``, ``_X_future_schema_``, and ``_X_forecast_schema_``
+        (plus those set by ``_set_transformed_attributes_standard`` and
+        ``_update_y_X_t_observed_standard``).
 
         """
         self._set_input_attributes_standard(y, X_actual)
@@ -309,6 +329,13 @@ class BaseStandardForecaster:
         -------
         self
 
+        Notes
+        -----
+        If ``_y_observed`` is non-None, it is prepended to ``y`` before the
+        state update so that ``observation_horizon`` rows of history are
+        maintained across successive ``observe`` calls. This rolling-window
+        accumulation is a core part of the stateful lifecycle.
+
         """
         # Update transformers with only new data (X_actual only, no step columns)
         X_t_updated = _observe_transformers_one(
@@ -335,8 +362,11 @@ class BaseStandardForecaster:
     ) -> None:
         """Re-derive step columns and append to _X_t_observed after state update.
 
-        Uses stored raws as fallback when X_future or X_forecast is omitted.
-        Updates stored raws when new data is provided.
+        Uses stored raws (``_X_future_raw_`` / ``_X_forecast_raw_``) as
+        fallback when ``X_future`` or ``X_forecast`` is omitted. When deriving
+        step columns from ``X_forecast``, the single latest vintage at or
+        before ``observed_time_`` is selected (as-of matching), not the full
+        input frame.
 
         """
         if not self._step_column_names_:
