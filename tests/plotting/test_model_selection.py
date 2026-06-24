@@ -241,6 +241,45 @@ class TestPlotNestedSplits:
                 "not_a_splitter",
             )
 
+    def test_invalid_outer_fold_value(self, sample_y):
+        """A non-integer outer_fold other than 'all' raises ValueError."""
+        with pytest.raises(ValueError, match="must be an int or 'all'"):
+            plot_nested_splits(
+                sample_y,
+                ExpandingWindowSplitter(n_splits=3, test_size=30),
+                ExpandingWindowSplitter(n_splits=2, test_size=20),
+                outer_fold="last",
+            )
+
+    def test_faceted_inner_split_too_small_raises(self, sample_y):
+        """An outer fold whose training slice is too small for the inner splitter raises a fold-indexed error."""
+        with pytest.raises(ValueError, match="inner split failed for outer fold"):
+            plot_nested_splits(
+                sample_y,
+                ExpandingWindowSplitter(n_splits=3, test_size=30),
+                ExpandingWindowSplitter(n_splits=2, test_size=200),  # needs 400 rows, first fold has ~276
+                outer_fold="all",
+            )
+
+    def test_with_x_actual(self, sample_y):
+        """X_actual is sliced to the outer training window in both single-fold and faceted modes."""
+        x_actual = pl.DataFrame({"time": sample_y["time"], "feature": list(range(len(sample_y)))})
+        single = plot_nested_splits(
+            sample_y,
+            ExpandingWindowSplitter(n_splits=3, test_size=30),
+            ExpandingWindowSplitter(n_splits=2, test_size=20),
+            X_actual=x_actual,
+        )
+        assert_figure_valid(single)
+        faceted = plot_nested_splits(
+            sample_y,
+            ExpandingWindowSplitter(n_splits=3, test_size=30),
+            ExpandingWindowSplitter(n_splits=2, test_size=20),
+            X_actual=x_actual,
+            outer_fold="all",
+        )
+        assert_figure_valid(faceted)
+
 
 class TestPlotCvResultsScatter:
     """Tests for plot_cv_results_scatter function."""
