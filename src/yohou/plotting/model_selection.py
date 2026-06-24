@@ -77,13 +77,17 @@ def _add_split_row(
     line_width: float,
     show_train_legend: bool,
     show_test_legend: bool,
+    train_group: str = "train",
+    test_group: str = "test",
     row: int | None = None,
     col: int | None = None,
 ) -> None:
     """Draw a train segment and a test segment on a single ``row_label`` row.
 
     Reused by :func:`plot_splits` (one row per outer fold) and
-    :func:`plot_nested_splits` (one row per inner fold).
+    :func:`plot_nested_splits` (one row per inner fold, plus the outer evaluation
+    row). ``train_group`` / ``test_group`` set the ``legendgroup`` so that, for
+    example, the inner and outer rows toggle independently in the legend.
     """
     _add_segment(
         fig,
@@ -92,7 +96,7 @@ def _add_split_row(
         row_label,
         color=train_color,
         name=train_name,
-        legendgroup="train",
+        legendgroup=train_group,
         show_legend=show_train_legend,
         line_width=line_width,
         row=row,
@@ -105,7 +109,7 @@ def _add_split_row(
         row_label,
         color=test_color,
         name=test_name,
-        legendgroup="test",
+        legendgroup=test_group,
         show_legend=show_test_legend,
         line_width=line_width,
         row=row,
@@ -279,10 +283,12 @@ def _plot_nested_all(
     *,
     train_color: str,
     test_color: str,
-    holdout_color: str,
+    outer_train_color: str,
+    outer_test_color: str,
     train_name: str,
     test_name: str,
-    holdout_name: str,
+    outer_train_name: str,
+    outer_test_name: str,
     show_legend: bool,
     title: str,
     x_label: str,
@@ -333,7 +339,7 @@ def _plot_nested_all(
                 inner_times,
                 inner_train_idx,
                 inner_test_idx,
-                f"Fold {j + 1}",
+                f"Inner fold {j + 1}",
                 train_color=train_color,
                 test_color=test_color,
                 train_name=train_name,
@@ -341,19 +347,27 @@ def _plot_nested_all(
                 line_width=line_width,
                 show_train_legend=tracker.should_show(train_name),
                 show_test_legend=tracker.should_show(test_name),
+                train_group="inner_train",
+                test_group="inner_val",
                 row=row,
                 col=col,
             )
-        _add_segment(
+        # Outer evaluation row: refit window + held-out scored test window.
+        _add_split_row(
             fig,
             times,
+            outer_train_idx,
             outer_test_idx,
-            holdout_name,
-            color=holdout_color,
-            name=holdout_name,
-            legendgroup="holdout",
-            show_legend=tracker.should_show(holdout_name),
+            "Outer fold",
+            train_color=outer_train_color,
+            test_color=outer_test_color,
+            train_name=outer_train_name,
+            test_name=outer_test_name,
             line_width=line_width,
+            show_train_legend=tracker.should_show(outer_train_name),
+            show_test_legend=tracker.should_show(outer_test_name),
+            train_group="outer_train",
+            test_group="outer_test",
             row=row,
             col=col,
         )
@@ -375,10 +389,12 @@ def plot_nested_splits(
     X_actual: pl.DataFrame | None = None,
     train_color: str | None = None,
     test_color: str | None = None,
-    holdout_color: str | None = None,
+    outer_train_color: str | None = None,
+    outer_test_color: str | None = None,
     train_name: str = "Inner train",
     test_name: str = "Inner validation",
-    holdout_name: str = "Outer test (held out)",
+    outer_train_name: str = "Outer train (refit, best params)",
+    outer_test_name: str = "Outer test (scored)",
     show_legend: bool = True,
     title: str | None = None,
     x_label: str | None = None,
@@ -392,10 +408,13 @@ def plot_nested_splits(
     """
     Plot a nested cross-validation as a timeline visualization.
 
-    Shows the inner cross-validation carved from one outer fold's training window,
-    together with that outer fold's test window drawn as a held-out segment the inner
-    splitter never sees. The figure is generated from the splitters themselves, so it
-    is faithful to actual splitting behavior rather than hand-drawn.
+    Shows both levels of a nested cross-validation. The **inner** rows are the
+    cross-validation carved from one outer fold's training window, which selects the
+    hyperparameters. The **outer** row above them shows the full outer training
+    window the model is then refit on with those hyperparameters, plus the outer test
+    window it is scored on (held out from the inner tuning). The figure is generated
+    from the splitters themselves, so it is faithful to actual splitting behavior
+    rather than hand-drawn.
 
     Parameters
     ----------
@@ -412,15 +431,18 @@ def plot_nested_splits(
     X_actual : pl.DataFrame or None, default=None
         Actual features passed to ``split()``. Sliced to the outer training window for
         the inner split.
-    train_color, test_color, holdout_color : str or None, default=None
-        Colors for the inner-train, inner-validation, and held-out outer-test segments.
-        If None, the first three colors from the yohou palette are used.
+    train_color, test_color, outer_train_color, outer_test_color : str or None, default=None
+        Colors for the inner-train, inner-validation, outer-refit-train, and
+        outer-test segments. If None, the first four colors from the yohou palette
+        are used.
     train_name : str, default="Inner train"
         Legend label for the inner training segments.
     test_name : str, default="Inner validation"
         Legend label for the inner validation segments.
-    holdout_name : str, default="Outer test (held out)"
-        Legend label for the held-out outer-test segment.
+    outer_train_name : str, default="Outer train (refit, best params)"
+        Legend label for the outer training window the model is refit on.
+    outer_test_name : str, default="Outer test (scored)"
+        Legend label for the outer test window the refit model is scored on.
     show_legend : bool, default=True
         Whether to show the legend.
     title : str or None, default=None
@@ -484,10 +506,11 @@ def plot_nested_splits(
             msg = f"Expected BaseSplitter for {label}, got {type(splitter).__name__}"
             raise TypeError(msg)
 
-    colors = resolve_color_palette(None, 3)
+    colors = resolve_color_palette(None, 4)
     train_color = train_color or colors[0]
     test_color = test_color or colors[1]
-    holdout_color = holdout_color or colors[2]
+    outer_train_color = outer_train_color or colors[2]
+    outer_test_color = outer_test_color or colors[3]
 
     times = y["time"]
     outer_splits = list(outer_splitter.split(y, X_actual))
@@ -506,10 +529,12 @@ def plot_nested_splits(
             X_actual,
             train_color=train_color,
             test_color=test_color,
-            holdout_color=holdout_color,
+            outer_train_color=outer_train_color,
+            outer_test_color=outer_test_color,
             train_name=train_name,
             test_name=test_name,
-            holdout_name=holdout_name,
+            outer_train_name=outer_train_name,
+            outer_test_name=outer_test_name,
             show_legend=show_legend,
             title=title_default,
             x_label=x_label_default,
@@ -541,7 +566,7 @@ def plot_nested_splits(
             inner_times,
             inner_train_idx,
             inner_test_idx,
-            f"Fold {j + 1}",
+            f"Inner fold {j + 1}",
             train_color=train_color,
             test_color=test_color,
             train_name=train_name,
@@ -549,18 +574,26 @@ def plot_nested_splits(
             line_width=line_width,
             show_train_legend=(j == 0),
             show_test_legend=(j == 0),
+            train_group="inner_train",
+            test_group="inner_val",
         )
-    # Held-out outer test row (single segment, placed on the full-series time axis).
-    _add_segment(
+    # Outer evaluation row: the full outer training window the model is refit on with
+    # the best hyperparameters, plus the held-out outer test window it is scored on.
+    _add_split_row(
         fig,
         times,
+        outer_train_idx,
         outer_test_idx,
-        holdout_name,
-        color=holdout_color,
-        name=holdout_name,
-        legendgroup="holdout",
-        show_legend=show_legend,
+        "Outer fold",
+        train_color=outer_train_color,
+        test_color=outer_test_color,
+        train_name=outer_train_name,
+        test_name=outer_test_name,
         line_width=line_width,
+        show_train_legend=show_legend,
+        show_test_legend=show_legend,
+        train_group="outer_train",
+        test_group="outer_test",
     )
 
     n_plot_rows = len(inner_splits) + 1

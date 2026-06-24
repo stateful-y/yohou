@@ -139,26 +139,38 @@ class TestPlotNestedSplits:
     """Tests for plot_nested_splits function."""
 
     def test_basic_single_fold(self, sample_y):
-        """Single outer fold renders inner folds plus a held-out outer-test row."""
+        """Single outer fold renders inner folds plus the outer evaluation row."""
         fig = plot_nested_splits(
             sample_y,
             ExpandingWindowSplitter(n_splits=3, test_size=30),
             ExpandingWindowSplitter(n_splits=2, test_size=20),
         )
-        # 2 inner folds × (train + test) + 1 held-out row
-        assert_figure_valid(fig, min_traces=5)
+        # 2 inner folds × (train + test) + outer row (train + test) = 6 traces
+        assert_figure_valid(fig, min_traces=6)
 
-    def test_holdout_row_present(self, sample_y):
-        """The held-out outer-test segment appears as its own legend entry and row."""
+    def test_outer_row_present(self, sample_y):
+        """The outer evaluation row shows the refit-train and the scored outer test."""
         fig = plot_nested_splits(
             sample_y,
             ExpandingWindowSplitter(n_splits=3, test_size=30),
             ExpandingWindowSplitter(n_splits=2, test_size=20),
         )
         legend_names = [t.name for t in fig.data if t.showlegend]
-        assert "Outer test (held out)" in legend_names
+        assert "Outer train (refit, best params)" in legend_names
+        assert "Outer test (scored)" in legend_names
         rows = {label for t in fig.data for label in t.y}
-        assert "Outer test (held out)" in rows
+        assert "Outer fold" in rows
+
+    def test_outer_train_spans_full_training_window(self, sample_y):
+        """The outer refit-train segment covers the whole outer training window."""
+        outer = ExpandingWindowSplitter(n_splits=3, test_size=30)
+        train_idx, _ = list(outer.split(sample_y))[-1]
+        expected_start = sample_y["time"][int(train_idx[0])]
+        expected_end = sample_y["time"][int(train_idx[-1])]
+        fig = plot_nested_splits(sample_y, outer, ExpandingWindowSplitter(n_splits=2, test_size=20))
+        outer_train = next(t for t in fig.data if t.name == "Outer train (refit, best params)")
+        assert outer_train.x[0] == expected_start
+        assert outer_train.x[-1] == expected_end
 
     def test_faceted_all_folds(self, sample_y):
         """outer_fold='all' renders one subplot per outer fold, legend shown once."""
@@ -173,9 +185,14 @@ class TestPlotNestedSplits:
         # One subplot per outer fold (3) -> at least 3 x-axes in the layout.
         x_axes = [k for k in fig.layout if k.startswith("xaxis")]
         assert len(x_axes) >= 3
-        # Each legend entry (inner train / inner validation / held-out) appears once.
+        # Each of the four legend entries appears once across the subplots.
         legend_names = [t.name for t in fig.data if t.showlegend]
-        assert sorted(legend_names) == ["Inner train", "Inner validation", "Outer test (held out)"]
+        assert sorted(legend_names) == [
+            "Inner train",
+            "Inner validation",
+            "Outer test (scored)",
+            "Outer train (refit, best params)",
+        ]
 
     def test_custom_colors_and_names(self, sample_y):
         """Colors and segment names are configurable."""
@@ -185,13 +202,15 @@ class TestPlotNestedSplits:
             ExpandingWindowSplitter(n_splits=2, test_size=20),
             train_color="#111111",
             test_color="#222222",
-            holdout_color="#333333",
+            outer_train_color="#333333",
+            outer_test_color="#444444",
             train_name="itr",
             test_name="ival",
-            holdout_name="held",
+            outer_train_name="otr",
+            outer_test_name="otest",
         )
         legend_names = [t.name for t in fig.data if t.showlegend]
-        assert legend_names == ["itr", "ival", "held"]
+        assert legend_names == ["itr", "ival", "otr", "otest"]
 
     def test_sliding_window_outer(self, sample_y):
         """A non-prefix outer training set (sliding window) renders without error."""
