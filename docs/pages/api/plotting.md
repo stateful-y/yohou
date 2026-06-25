@@ -43,6 +43,7 @@ Interactive time series visualization functions using Plotly. All plotting funct
 | Name | Description |
 | --- | --- |
 | [`plot_splits`](generated/yohou.plotting.model_selection.plot_splits.md) | Plot cross-validation splits as a timeline visualization. |
+| [`plot_nested_splits`](generated/yohou.plotting.model_selection.plot_nested_splits.md) | Plot a nested cross-validation: inner tuning folds within an outer training fold, plus the outer refit window and its held-out scored test. |
 | [`plot_cv_results_scatter`](generated/yohou.plotting.model_selection.plot_cv_results_scatter.md) | Plot hyperparameter search results as a scatter plot. |
 | [`plot_forecast`](generated/yohou.plotting.forecasting.plot_forecast.md) | Plot forecasts with historical data and optional prediction intervals. |
 | [`plot_score_time_series`](generated/yohou.plotting.evaluation.plot_score_time_series.md) | Plot scorer values over time for one or more forecasts. |
