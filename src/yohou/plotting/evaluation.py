@@ -1,6 +1,7 @@
 """Model evaluation and diagnostic visualization functions."""
 
 import copy
+import re
 import warnings
 from typing import Literal
 
@@ -523,6 +524,35 @@ def plot_residuals(
     return fig
 
 
+_COVERAGE_RATE_RE = re.compile(r"_(?:lower|upper)_(\d*\.?\d+)$")
+
+
+def _detect_coverage_rates(y_pred: pl.DataFrame) -> list[float]:
+    """Discover coverage rates from a prediction frame's interval columns.
+
+    Scans for the ``{base}_lower_{rate}`` / ``{base}_upper_{rate}`` naming and
+    returns the sorted rates that have **both** a lower and an upper bound.
+
+    Parameters
+    ----------
+    y_pred : pl.DataFrame
+        Prediction frame with interval bound columns.
+
+    Returns
+    -------
+    list of float
+        Sorted coverage rates present as matched lower/upper pairs.
+    """
+    lowers: set[str] = set()
+    uppers: set[str] = set()
+    for col in y_pred.columns:
+        match = _COVERAGE_RATE_RE.search(col)
+        if match is None:
+            continue
+        (uppers if "_upper_" in col else lowers).add(match.group(1))
+    return sorted(float(rate) for rate in (lowers & uppers))
+
+
 def _compute_empirical_coverages(
     y_truth_col: np.ndarray,
     y_pred_int: pl.DataFrame,
@@ -569,6 +599,60 @@ def _compute_empirical_coverages(
         )
         empirical.append(float(np.mean(inside)))
     return empirical
+
+
+def _compute_quantile_coverages(
+    y_truth_col: np.ndarray,
+    y_pred_int: pl.DataFrame,
+    target_column: str,
+    coverage_rates: list[StrictFloat],
+) -> tuple[list[float], list[float]]:
+    """Empirical CDF coverage ``P(y <= q)`` at each quantile level for one column.
+
+    The two-sided interval bounds are reinterpreted as one-sided quantiles: a
+    band at coverage ``c`` contributes the lower quantile ``(1 - c) / 2`` and
+    the upper quantile ``(1 + c) / 2``.  The point/median column, when present,
+    contributes the ``0.5`` quantile.
+
+    Parameters
+    ----------
+    y_truth_col : np.ndarray
+        Ground-truth values for one target column.
+    y_pred_int : pl.DataFrame
+        Prediction intervals DataFrame.
+    target_column : str
+        Column prefix used to find ``{target_column}_lower_{rate}`` /
+        ``{target_column}_upper_{rate}`` bounds and the median column
+        ``{target_column}``.
+    coverage_rates : list of float
+        Nominal coverage rates whose bounds are reinterpreted as quantiles.
+
+    Returns
+    -------
+    tuple[list of float, list of float]
+        Sorted nominal quantile levels and the matching empirical CDF coverage.
+
+    Raises
+    ------
+    ValueError
+        If the expected interval columns are missing.
+    """
+    quantiles: dict[float, np.ndarray] = {}
+    for rate in coverage_rates:
+        upper_col = f"{target_column}_upper_{rate}"
+        lower_col = f"{target_column}_lower_{rate}"
+        if upper_col not in y_pred_int.columns or lower_col not in y_pred_int.columns:
+            msg = f"Interval columns '{upper_col}' and '{lower_col}' not found in y_pred_int"
+            raise ValueError(msg)
+        quantiles[round((1.0 - rate) / 2.0, 6)] = y_pred_int[lower_col].to_numpy().flatten()
+        quantiles[round((1.0 + rate) / 2.0, 6)] = y_pred_int[upper_col].to_numpy().flatten()
+    # The median/point column (same name as the truth column) is the 0.5 quantile.
+    if target_column in y_pred_int.columns:
+        quantiles[0.5] = y_pred_int[target_column].to_numpy().flatten()
+
+    levels = sorted(quantiles)
+    empirical = [float(np.mean(np.less_equal(y_truth_col, quantiles[level]))) for level in levels]
+    return levels, empirical
 
 
 def _plot_calibration_class_proba(
@@ -725,6 +809,7 @@ def plot_calibration(
     y_truth: pl.DataFrame,
     coverage_rates: list[StrictFloat] | None = None,
     *,
+    type: Literal["interval", "quantile"] = "quantile",
     columns: str | list[str] | None = None,
     target: str | None = None,
     n_bins: int = 10,
@@ -748,13 +833,18 @@ def plot_calibration(
 
     Automatically detects the prediction type from column names:
 
-    - **Interval predictions**: columns named
-      ``"{target}_upper_{rate}"`` / ``"{target}_lower_{rate}"`` are
-      compared against nominal *coverage_rates* (empirical vs nominal
-      coverage).
+    - **Interval / quantile predictions**: columns named
+      ``"{target}_upper_{rate}"`` / ``"{target}_lower_{rate}"``.  With
+      ``type="interval"`` the two-sided band coverage
+      ``P(lower <= y <= upper)`` is compared against the nominal
+      *coverage_rates*.  With ``type="quantile"`` each bound is treated as
+      a single quantile (the band at coverage ``c`` yields quantile levels
+      ``(1 - c) / 2`` and ``(1 + c) / 2``, and the median/point column adds
+      the ``0.5`` level), and the empirical CDF coverage ``P(y <= q)`` is
+      compared against the nominal quantile level.
     - **Class-probability predictions**: columns containing
       ``"_proba_"`` are binned and compared against empirical
-      frequencies (reliability diagram).
+      frequencies (reliability diagram).  *type* is ignored.
 
     A well-calibrated model has points close to the diagonal.
 
@@ -769,8 +859,15 @@ def plot_calibration(
         Ground truth values.
     coverage_rates : list of float or None, default=None
         Nominal coverage rates for interval calibration (e.g.,
-        ``[0.9, 0.95]``).  Required when *y_pred* contains interval
-        columns; ignored for class-probability predictions.
+        ``[0.9, 0.95]``).  When ``None``, every coverage rate present as a
+        matched ``_lower_{rate}`` / ``_upper_{rate}`` pair in *y_pred* is
+        detected and plotted.  Ignored for class-probability predictions.
+    type : {"interval", "quantile"}, default="quantile"
+        Calibration mode for bound-based predictions.  ``"quantile"``
+        reinterprets each bound (and the median column) as a single quantile
+        and plots the empirical CDF coverage ``P(y <= q)`` against the nominal
+        quantile level; ``"interval"`` plots two-sided band coverage against
+        the nominal coverage rate.  Ignored for class-probability predictions.
     columns : str | list[str] | None, default=None
         Target column name(s) for interval calibration.  When
         *groups* is set this acts as a member postfix
@@ -881,10 +978,10 @@ def plot_calibration(
     """
     # Validate inputs
     if not isinstance(y_truth, pl.DataFrame):
-        msg = f"Expected pl.DataFrame for y_truth, got {type(y_truth).__name__}"
+        msg = f"Expected pl.DataFrame for y_truth, got {y_truth.__class__.__name__}"
         raise TypeError(msg)
     if not isinstance(y_pred, pl.DataFrame):
-        msg = f"Expected pl.DataFrame for y_pred, got {type(y_pred).__name__}"
+        msg = f"Expected pl.DataFrame for y_pred, got {y_pred.__class__.__name__}"
         raise TypeError(msg)
     validate_plotting_params(width=width, height=height)
 
@@ -908,10 +1005,31 @@ def plot_calibration(
             reference_dash=reference_dash,
         )
 
-    # Interval calibration path
+    # Interval / quantile calibration path. When the caller does not pin the
+    # rates, plot every coverage rate present as a matched lower/upper pair.
     if coverage_rates is None:
-        msg = "coverage_rates is required for interval calibration. Pass a list of coverage rates (e.g., [0.9, 0.95])."
-        raise ValueError(msg)
+        coverage_rates = _detect_coverage_rates(y_pred)
+        if not coverage_rates:
+            msg = (
+                "No interval columns found in y_pred for calibration. Expected "
+                "'{base}_lower_{rate}' / '{base}_upper_{rate}' columns, or pass "
+                "coverage_rates explicitly (e.g., [0.9, 0.95])."
+            )
+            raise ValueError(msg)
+
+    # Mode-dependent labels: quantile mode plots one-sided CDF coverage against
+    # the nominal quantile level, interval mode two-sided coverage vs the rate.
+    _is_quantile = type == "quantile"
+    _default_title = "Quantile calibration" if _is_quantile else "Calibration plot"
+    _default_x_label = "Nominal quantile level" if _is_quantile else "Nominal coverage"
+    _hover_x = "Quantile" if _is_quantile else "Nominal"
+
+    def _calibration_xy(panel_col: str) -> tuple[list[float], list[float]]:
+        """Return ``(x, empirical)`` for one column under the active mode."""
+        truth_vals = y_truth[panel_col].to_numpy().flatten()
+        if _is_quantile:
+            return _compute_quantile_coverages(truth_vals, y_pred, panel_col, coverage_rates)
+        return list(coverage_rates), _compute_empirical_coverages(truth_vals, y_pred, panel_col, coverage_rates)
 
     # Auto-detect panel data
     _, _panel_groups = inspect_panel(y_truth)
@@ -948,12 +1066,11 @@ def plot_calibration(
                 member_name = _member_name(panel_col)
                 member_idx = all_members.index(member_name)
 
-                truth_vals = y_truth[panel_col].to_numpy().flatten()
-                emp_cov = _compute_empirical_coverages(truth_vals, y_pred, panel_col, coverage_rates)
+                x_vals, emp_cov = _calibration_xy(panel_col)
 
                 fig.add_trace(
                     go.Scatter(
-                        x=list(coverage_rates),
+                        x=x_vals,
                         y=emp_cov,
                         mode="lines+markers",
                         name=member_name,
@@ -961,7 +1078,9 @@ def plot_calibration(
                         opacity=line_opacity,
                         showlegend=legend_tracker.should_show(member_name),
                         legendgroup=member_name,
-                        hovertemplate="<b>%{fullData.name}</b><br>Nominal: %{x:.2f}<br>Coverage: %{y:.3f}<extra></extra>",
+                        hovertemplate=(
+                            f"<b>%{{fullData.name}}</b><br>{_hover_x}: %{{x:.2f}}<br>Coverage: %{{y:.3f}}<extra></extra>"
+                        ),
                     ),
                     row=row,
                     col=col_idx,
@@ -969,8 +1088,8 @@ def plot_calibration(
 
             fig.add_trace(
                 go.Scatter(
-                    x=list(coverage_rates),
-                    y=list(coverage_rates),
+                    x=[0, 1],
+                    y=[0, 1],
                     mode="lines",
                     name="Perfect",
                     line={"color": reference_color, "width": reference_width, "dash": reference_dash},
@@ -985,13 +1104,28 @@ def plot_calibration(
         default_height = max(row_height * n_rows, 400)
         fig = apply_default_layout(
             fig,
-            title=title or "Calibration plot",
-            x_label=x_label or "Nominal coverage",
+            title=title or _default_title,
+            x_label=x_label or _default_x_label,
             y_label=y_label or "Empirical coverage",
             width=width,
             height=height or default_height,
         )
         fig.update_layout(showlegend=show_legend)
+        # Calibration axes are coverage probabilities: pin both to the full
+        # [0, 1] range and force a square aspect (1:1 scale, box constrained to
+        # the domain) so every subplot reads on the same scale and the diagonal
+        # sits at a true 45 degrees.  ``make_subplots`` shares axes within each
+        # row/column via ``matches``; a matched axis cannot also honour its own
+        # ``scaleanchor``, which leaves only the first column square.  Clearing
+        # ``matches`` lets each cell apply its own square constraint.
+        fig.update_xaxes(range=[0, 1], constrain="domain")
+        fig.update_yaxes(range=[0, 1], constrain="domain")
+        for _xaxis in [_k for _k in fig.layout if _k.startswith("xaxis")]:
+            fig.layout[_xaxis].matches = None
+        for _yaxis in [_k for _k in fig.layout if _k.startswith("yaxis")]:
+            fig.layout[_yaxis].matches = None
+            fig.layout[_yaxis].scaleanchor = "x" + _yaxis.removeprefix("yaxis")
+            fig.layout[_yaxis].scaleratio = 1
         return fig
 
     if columns is not None:
@@ -1011,27 +1145,26 @@ def plot_calibration(
     fig = go.Figure()
 
     for col_idx, target_column in enumerate(target_columns):
-        truth_vals = y_truth[target_column].to_numpy().flatten()
-        emp_cov = _compute_empirical_coverages(truth_vals, y_pred, target_column, coverage_rates)
+        x_vals, emp_cov = _calibration_xy(target_column)
 
         trace_name = target_column if len(target_columns) > 1 else "Empirical coverage"
         fig.add_trace(
             go.Scatter(
-                x=list(coverage_rates),
+                x=x_vals,
                 y=emp_cov,
                 mode="lines+markers",
                 name=trace_name,
                 line={"color": palette[col_idx % len(palette)], "width": line_width},
                 opacity=line_opacity,
-                hovertemplate=f"<b>{trace_name}</b><br>Nominal: %{{x:.2f}}<br>Coverage: %{{y:.3f}}<extra></extra>",
+                hovertemplate=f"<b>{trace_name}</b><br>{_hover_x}: %{{x:.2f}}<br>Coverage: %{{y:.3f}}<extra></extra>",
             )
         )
 
-    # Reference diagonal (always exactly one)
+    # Reference diagonal (always exactly one), spanning the full [0, 1] range.
     fig.add_trace(
         go.Scatter(
-            x=list(coverage_rates),
-            y=list(coverage_rates),
+            x=[0, 1],
+            y=[0, 1],
             mode="lines",
             name="Perfect calibration",
             line={"color": reference_color, "width": reference_width, "dash": reference_dash},
@@ -1041,13 +1174,18 @@ def plot_calibration(
 
     fig = apply_default_layout(
         fig,
-        title=title or "Calibration plot",
-        x_label=x_label or "Nominal coverage",
+        title=title or _default_title,
+        x_label=x_label or _default_x_label,
         y_label=y_label or "Empirical coverage",
         width=width,
         height=height,
     )
     fig.update_layout(showlegend=show_legend)
+    # Calibration axes are coverage probabilities: pin both to the full [0, 1]
+    # range and force a square aspect (1:1 scale, box constrained to the domain)
+    # so the diagonal sits at a true 45 degrees.
+    fig.update_xaxes(range=[0, 1], constrain="domain")
+    fig.update_yaxes(range=[0, 1], scaleanchor="x", scaleratio=1, constrain="domain")
 
     return fig
 

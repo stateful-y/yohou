@@ -758,17 +758,20 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             value_cols: list[str],
         ) -> pl.DataFrame:
             """Apply a single normalized weight (array or dict) to scores."""
-            if isinstance(w_resolved, dict):
-                for group_name, group_arr in w_resolved.items():
-                    normed = _normalize_weights(group_arr)  # ty: ignore[invalid-argument-type]
-                    tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
-                    group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]  # ty: ignore[no-matching-overload]
-                    if group_cols:
-                        df = _apply_array(df, tiled, group_cols)
-            else:
+            if isinstance(w_resolved, np.ndarray):
                 normed = _normalize_weights(w_resolved)
                 tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
                 df = _apply_array(df, tiled, value_cols)
+            else:
+                # ``w_resolved`` narrows to ``dict[str, np.ndarray]`` here (the union
+                # minus ``np.ndarray``), which preserves the key/value types so no
+                # type suppressions are needed for ``group_name`` / ``group_arr``.
+                for group_name, group_arr in w_resolved.items():
+                    normed = _normalize_weights(group_arr)
+                    tiled = np.tile(normed, n_rates) if n_rates > 1 else normed
+                    group_cols = [c for c in panel_groups.get(group_name, []) if c in value_cols]
+                    if group_cols:
+                        df = _apply_array(df, tiled, group_cols)
             return df
 
         value_cols = [c for c in scores.columns if c != "coverage_rate"]

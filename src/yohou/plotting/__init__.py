@@ -50,7 +50,7 @@ from yohou.plotting.forecasting import (
     plot_forecast,
     plot_time_weight,
 )
-from yohou.plotting.model_selection import plot_cv_results_scatter, plot_splits
+from yohou.plotting.model_selection import plot_cv_results_scatter, plot_nested_splits, plot_splits
 from yohou.plotting.signal import plot_phase, plot_spectrum
 
 __all__ = [
@@ -77,6 +77,7 @@ __all__ = [
     "plot_group_scores",
     "plot_lag_scatter",
     "plot_missing_data",
+    "plot_nested_splits",
     "plot_outliers",
     "plot_partial_autocorrelation",
     "plot_phase",

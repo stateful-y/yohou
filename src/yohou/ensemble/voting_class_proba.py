@@ -312,10 +312,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         return self
 
     @staticmethod
-    def _routed_for(routed_params: Bunch | None, name: str, callee: str) -> dict:
+    def _routed_for(routed_params: Bunch, name: str, callee: str) -> dict:
         """Per-forecaster routed metadata for one callee, or empty if none."""
-        if routed_params is None:
-            return {}
         return getattr(routed_params.get(name, Bunch(**{callee: {}})), callee, {})
 
     def _predict_class_proba_one(
@@ -409,7 +407,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        routed_params: Bunch | None = None,
+        *,
+        routed_params: Bunch,
     ) -> pl.DataFrame:
         """Soft vote: weighted average of class probabilities.
 
@@ -465,7 +464,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        routed_params: Bunch | None = None,
+        *,
+        routed_params: Bunch,
     ) -> pl.DataFrame:
         """Hard vote: majority vote converted to one-hot probabilities.
 
@@ -615,7 +615,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        routed_params: Bunch | None = None,
+        *,
+        routed_params: Bunch,
     ) -> pl.DataFrame:
         """Hard vote: majority vote of argmax predictions.
 

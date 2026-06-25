@@ -309,6 +309,42 @@ class TestPlotCalibration:
         )
         assert len(fig.data) == 2
 
+    def test_auto_detect_coverage_rates(self, sample_interval_data):
+        """Omitting coverage_rates plots every rate present in y_pred."""
+        fig = plot_calibration(
+            sample_interval_data["y_pred_int"],
+            sample_interval_data["y_truth"],
+            type="interval",
+        )
+        assert len(fig.data) == 2  # empirical + reference line
+        assert sorted(fig.data[0].x) == [0.9, 0.95]
+
+    def test_quantile_type(self, sample_interval_data):
+        """type='quantile' reinterprets each bound as a one-sided quantile."""
+        fig = plot_calibration(
+            sample_interval_data["y_pred_int"],
+            sample_interval_data["y_truth"],
+            type="quantile",
+        )
+        assert len(fig.data) == 2  # empirical + reference line
+        # rates 0.9/0.95 -> quantile levels (1 -+ rate)/2, no median column here
+        assert sorted(round(v, 3) for v in fig.data[0].x) == [0.025, 0.05, 0.95, 0.975]
+        assert fig.layout.xaxis.title.text == "Nominal quantile level"
+
+    def test_quantile_type_includes_median(self):
+        """The median/point column contributes the 0.5 quantile level."""
+        n = 200
+        rng = np.random.default_rng(0)
+        y_vals = rng.standard_normal(n)
+        y_truth = pl.DataFrame({"y": y_vals})
+        y_pred = pl.DataFrame({
+            "y": y_vals,  # median / point column
+            "y_lower_0.9": y_vals - 1.65,
+            "y_upper_0.9": y_vals + 1.65,
+        })
+        fig = plot_calibration(y_pred, y_truth, type="quantile")
+        assert sorted(round(v, 3) for v in fig.data[0].x) == [0.05, 0.5, 0.95]
+
     def test_custom_target_column(self, multi_column_interval_data):
         """Test with explicit target column name."""
         fig = plot_calibration(
@@ -359,11 +395,21 @@ class TestPlotCalibration:
         assert fig.layout.yaxis.title.text == "Error"
 
     def test_default_title(self, sample_interval_data):
-        """Test default title is 'Calibration plot'."""
+        """Test default (quantile) title is 'Quantile calibration'."""
         fig = plot_calibration(
             sample_interval_data["y_pred_int"],
             sample_interval_data["y_truth"],
             coverage_rates=[0.9],
+        )
+        assert_layout(fig, title="Quantile calibration")
+
+    def test_interval_default_title(self, sample_interval_data):
+        """type='interval' default title is 'Calibration plot'."""
+        fig = plot_calibration(
+            sample_interval_data["y_pred_int"],
+            sample_interval_data["y_truth"],
+            coverage_rates=[0.9],
+            type="interval",
         )
         assert_layout(fig, title="Calibration plot")
 
@@ -2546,7 +2592,7 @@ class TestPlotReliabilityDiagram:
 
         df = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": [1.0]})
         y_truth = pl.DataFrame({"time": [datetime(2020, 1, 1)], "a": ["x"]})
-        with pytest.raises(ValueError, match="coverage_rates is required"):
+        with pytest.raises(ValueError, match="No interval columns found"):
             plot_calibration(df, y_truth)
 
     def test_multi_target_without_target_raises(self):
