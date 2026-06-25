@@ -11,15 +11,11 @@ from yohou.base.utils import _derive_step_columns
 class TestDeriveStepColumns:
     """Tests for the _derive_step_columns utility function."""
 
-    # --- None inputs ---
-
     def test_both_none_returns_none(self):
         """Both X_future and X_forecast None → returns None."""
         obs = pl.Series([datetime(2020, 1, 1)])
         result = _derive_step_columns(None, None, obs, 3, "1d")
         assert result is None
-
-    # --- X_future only ---
 
     def test_x_future_only(self):
         """X_future only → windowed step columns."""
@@ -36,8 +32,6 @@ class TestDeriveStepColumns:
         assert "is_holiday_step_2" in result.columns
         assert result.shape == (2, 3)
 
-    # --- X_forecast only ---
-
     def test_x_forecast_only(self):
         """X_forecast only → pivoted step columns."""
         X_forecast = pl.DataFrame({
@@ -52,8 +46,6 @@ class TestDeriveStepColumns:
         assert "temp_step_1" in result.columns
         assert "temp_step_2" in result.columns
         assert result["time"].to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 2)]
-
-    # --- Both X_future and X_forecast ---
 
     def test_both_sources(self):
         """Both X_future and X_forecast → combined step columns."""
@@ -73,8 +65,6 @@ class TestDeriveStepColumns:
         assert "is_holiday_step_1" in result.columns
         assert "temp_step_1" in result.columns
         assert result.shape == (1, 5)  # time + 2 holiday steps + 2 temp steps
-
-    # --- Collision detection ---
 
     def test_collision_with_existing_columns(self):
         """Step column name collides with existing_columns → ValueError."""
@@ -130,8 +120,6 @@ class TestDeriveStepColumns:
         )
         assert result is not None
 
-    # --- Partial coverage / nulls ---
-
     def test_x_forecast_partial_coverage(self):
         """X_forecast missing some observation times → null step columns."""
         X_forecast = pl.DataFrame({
@@ -163,8 +151,6 @@ class TestDeriveStepColumns:
         with pytest.warns(UserWarning, match="covers 1 of 2"):
             _derive_step_columns(None, X_forecast, obs, 2, "1d")
 
-    # --- Panel data ---
-
     def test_panel_prefixed_columns(self):
         """Columns with __ panel prefix produce prefixed step names."""
         X_future = pl.DataFrame({
@@ -176,8 +162,6 @@ class TestDeriveStepColumns:
 
         assert "store_A__temp_step_1" in result.columns
         assert "store_A__temp_step_2" in result.columns
-
-    # --- Step column names extraction ---
 
     def test_step_column_names_extractable(self):
         """Step column names can be extracted by excluding 'time'."""
@@ -192,8 +176,6 @@ class TestDeriveStepColumns:
         step_names = {c for c in result.columns if c != "time"}
         assert step_names == {"a_step_1", "a_step_2", "b_step_1", "b_step_2"}
 
-    # --- Single observation time ---
-
     def test_single_observation_time(self):
         """Single observation time produces one row."""
         X_forecast = pl.DataFrame({
@@ -207,8 +189,6 @@ class TestDeriveStepColumns:
         assert result.shape == (1, 4)
         assert result["wind_step_1"].to_list() == [5.0]
         assert result["wind_step_3"].to_list() == [7.0]
-
-    # --- Forecast horizon filtering ---
 
     def test_forecast_timestamps_beyond_horizon_are_filtered(self):
         """Vintage with more timestamps than fh keeps only those within the window."""
@@ -300,8 +280,6 @@ class TestDeriveStepColumns:
 
         user_warnings = [x for x in w if issubclass(x.category, UserWarning)]
         assert len(user_warnings) == 0
-
-    # --- Sparse vintage schedules (as-of selection) ---
 
     def test_sparse_vintage_asof_selection(self):
         """6-hourly vintages with hourly observations use as-of matching."""
