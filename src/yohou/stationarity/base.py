@@ -164,25 +164,12 @@ class _BaseTrendForecaster(BasePointForecaster):
         if groups is None:
             groups = self.groups_
 
-        target_observation_horizon = 0
-        if self.target_transformer_ is not None:
-            if isinstance(self.target_transformer_, dict):
-                first_target_transformer = next(iter(self.target_transformer_.values()))
-                if first_target_transformer is not None:
-                    target_observation_horizon = typing_cast(
-                        BaseTransformer,
-                        first_target_transformer,
-                    ).observation_horizon
-                else:
-                    target_observation_horizon = 0
-            else:
-                target_observation_horizon = self.target_transformer_.observation_horizon
-
-        # Panel data
+        # Panel data: each group uses its own transformer's observation
+        # horizon, not the first group's (groups may differ).
         if groups is not None:
             first_observed_time = {
                 group: get_group_df(df=y, group_name=group, schema=self.local_y_schema_)["time"][
-                    target_observation_horizon
+                    self._group_target_observation_horizon(group)
                 ]
                 for group in groups
             }
@@ -190,9 +177,28 @@ class _BaseTrendForecaster(BasePointForecaster):
 
         # Non-panel data
         else:
-            self._first_observed_time = y["time"][target_observation_horizon]
+            self._first_observed_time = y["time"][self._group_target_observation_horizon(None)]
 
         return self
+
+    def _group_target_observation_horizon(self, group: str | None) -> int:
+        """Observation horizon of the target transformer for one group.
+
+        Returns the group's own transformer horizon in panel mode (where
+        ``target_transformer_`` is a dict), the scalar transformer's horizon in
+        non-panel mode, or 0 when there is no target transformer.
+        """
+        if self.target_transformer_ is None:
+            return 0
+        if isinstance(self.target_transformer_, dict):
+            # The dict form only exists in panel mode, where group is a real name.
+            assert group is not None
+            transformer_dict = typing_cast("dict[str, BaseTransformer | None]", self.target_transformer_)
+            transformer = transformer_dict[group]
+            if transformer is None:
+                return 0
+            return transformer.observation_horizon
+        return self.target_transformer_.observation_horizon
 
     def _get_time_indices(
         self, forecasting_horizon: int | None = None, panel_group_name: str | None = None

@@ -453,8 +453,14 @@ class TestMultiQuantile:
 
     @pytest.mark.slow
     def test_fit_predict_global(self, standard_splits):
-        """Multi-quantile path produces correct interval columns (global)."""
+        """Multi-quantile path produces correct interval columns (global, single target).
+
+        A MultiQuantile estimator is single-output and single-step, so the
+        path is only valid for one target column at ``forecasting_horizon=1``;
+        it returns exactly one row (the 2026-06-15 QA fix).
+        """
         y_train, y_test, X_actual_train, X_actual_test = standard_splits
+        y_train = y_train.select(["time", "a"])
         coverage_rates = [0.5, 0.9]
         est = _MockMultiQuantileRegressor()
         forecaster = IntervalReductionForecaster(estimator=est)
@@ -462,7 +468,7 @@ class TestMultiQuantile:
         forecaster.fit(
             y=y_train,
             X_actual=X_actual_train,
-            forecasting_horizon=2,
+            forecasting_horizon=1,
             coverage_rates=coverage_rates,
         )
 
@@ -471,23 +477,23 @@ class TestMultiQuantile:
         assert len(forecaster.estimator_) == 1
 
         y_pred = forecaster.predict_interval(
-            forecasting_horizon=2,
+            forecasting_horizon=1,
             X_actual=X_actual_test,
             coverage_rates=coverage_rates,
         )
 
-        # Should have lower/upper for each coverage rate + time columns
-        y_cols = [c for c in y_train.columns if c != "time"]
-        for col in y_cols:
-            for cr in coverage_rates:
-                assert f"{col}_lower_{cr}" in y_pred.columns
-                assert f"{col}_upper_{cr}" in y_pred.columns
-                assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
+        assert len(y_pred) == 1
+        for cr in coverage_rates:
+            assert f"a_lower_{cr}" in y_pred.columns
+            assert f"a_upper_{cr}" in y_pred.columns
+            assert all(y_pred[f"a_upper_{cr}"] + 1e-14 >= y_pred[f"a_lower_{cr}"])
 
     @pytest.mark.slow
-    def test_fit_predict_panel(self, panel_splits):
-        """Multi-quantile path produces correct interval columns (panel)."""
+    def test_fit_predict_panel_single_target(self, panel_splits):
+        """Multi-quantile path is valid for one target per group, horizon=1."""
         y_train_panel, y_test_panel, X_train_panel, X_test_panel = panel_splits
+        # One target ("a") per group keeps the per-group target count at 1.
+        y_train_panel = y_train_panel.select(["time", "x__a", "y__a"])
         coverage_rates = [0.9]
         est = _MockMultiQuantileRegressor()
         forecaster = IntervalReductionForecaster(estimator=est)
@@ -505,19 +511,42 @@ class TestMultiQuantile:
             coverage_rates=coverage_rates,
         )
 
-        # Check panel column naming
         for group in ["x", "y"]:
-            for target in ["a", "b"]:
-                for cr in coverage_rates:
-                    lower_col = f"{group}__{target}_lower_{cr}"
-                    upper_col = f"{group}__{target}_upper_{cr}"
-                    assert lower_col in y_pred.columns, f"Missing {lower_col}"
-                    assert upper_col in y_pred.columns, f"Missing {upper_col}"
+            for cr in coverage_rates:
+                assert f"{group}__a_lower_{cr}" in y_pred.columns
+                assert f"{group}__a_upper_{cr}" in y_pred.columns
+
+    @pytest.mark.slow
+    def test_multiquantile_rejects_multi_target(self, standard_splits):
+        """Multi-target input is rejected at fit (single-output estimator).
+
+        Regression for the 2026-06-15 QA finding: the predict path reused the
+        first target's quantiles for every target. The fit now rejects it.
+        """
+        y_train, _, X_actual_train, _ = standard_splits
+        forecaster = IntervalReductionForecaster(estimator=_MockMultiQuantileRegressor())
+        with pytest.raises(ValueError, match="single target column"):
+            forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=1, coverage_rates=[0.9])
+
+    @pytest.mark.slow
+    def test_multiquantile_rejects_multi_step(self, standard_splits):
+        """Horizon > 1 is rejected at fit (single-step estimator).
+
+        Regression for the 2026-06-15 QA finding: the predict path returned a
+        single row regardless of the fitted horizon.
+        """
+        y_train, _, X_actual_train, _ = standard_splits
+        y_train = y_train.select(["time", "a"])
+        forecaster = IntervalReductionForecaster(estimator=_MockMultiQuantileRegressor())
+        with pytest.raises(ValueError, match="forecasting_horizon=1"):
+            forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=2, coverage_rates=[0.9])
 
     @pytest.mark.slow
     def test_observe_predict_multiquantile(self, standard_splits):
-        """Multi-quantile path works with observe_predict_interval."""
+        """Multi-quantile path works with observe_predict_interval (single target)."""
         y_train, y_test, X_actual_train, X_actual_test = standard_splits
+        y_train = y_train.select(["time", "a"])
+        y_test = y_test.select(["time", "a"])
         coverage_rates = [0.5, 0.9]
         est = _MockMultiQuantileRegressor()
         forecaster = IntervalReductionForecaster(estimator=est)
@@ -538,11 +567,9 @@ class TestMultiQuantile:
             coverage_rates=coverage_rates,
         )
 
-        y_cols = [c for c in y_train.columns if c != "time"]
-        for col in y_cols:
-            for cr in coverage_rates:
-                assert f"{col}_lower_{cr}" in y_pred.columns
-                assert f"{col}_upper_{cr}" in y_pred.columns
+        for cr in coverage_rates:
+            assert f"a_lower_{cr}" in y_pred.columns
+            assert f"a_upper_{cr}" in y_pred.columns
 
 
 class _MockLGBMQuantileRegressor(BaseEstimator, RegressorMixin):

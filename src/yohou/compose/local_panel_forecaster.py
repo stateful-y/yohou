@@ -469,7 +469,6 @@ class LocalPanelForecaster(BaseForecaster):
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        **params,
     ) -> LocalPanelForecaster:
         """Observe new data per group without refitting.
 
@@ -487,8 +486,6 @@ class LocalPanelForecaster(BaseForecaster):
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
-        **params : dict
-            Metadata routing parameters.
 
         Returns
         -------
@@ -508,7 +505,7 @@ class LocalPanelForecaster(BaseForecaster):
             )
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].observe(
-                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group, **params
+                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group
             )
 
         return self
@@ -520,7 +517,6 @@ class LocalPanelForecaster(BaseForecaster):
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        **params,
     ) -> LocalPanelForecaster:
         """Rewind each per-group forecaster's observation window.
 
@@ -538,8 +534,6 @@ class LocalPanelForecaster(BaseForecaster):
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
-        **params : dict
-            Metadata routing parameters.
 
         Returns
         -------
@@ -559,7 +553,7 @@ class LocalPanelForecaster(BaseForecaster):
             )
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].rewind(
-                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group, **params
+                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group
             )
 
         return self

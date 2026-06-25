@@ -261,6 +261,32 @@ class TestRecursivePredict:
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 3
 
+    def test_recursive_predict_panel(self, class_proba_y_X_factory):
+        """Recursive prediction on panel data re-encodes prefixed columns.
+
+        Regression for the 2026-06-15 QA finding: ``_encode_observation``
+        looked up ``label_to_code_`` by the raw column name, so panel columns
+        like ``group_0__weather`` raised ``KeyError`` (the dict is keyed by the
+        base target name ``weather``). Recursive prediction (horizon > fit
+        horizon, no X_actual) is the path that exercises it.
+        """
+        y, _ = class_proba_y_X_factory(
+            length=120,
+            n_targets=1,
+            n_features=0,
+            n_classes=3,
+            seed=42,
+            panel=True,
+            n_groups=2,
+        )
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y, forecasting_horizon=3)
+
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=6)
+        assert len(y_pred) == 6
+
     def test_predict_longer_horizon_without_X(self, class_proba_data):
         """Recursive prediction works without exogenous features."""
         y_train, _, X_actual_train, _ = class_proba_data

@@ -652,6 +652,41 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         return y_pred
 
+    def _transform_panel(
+        self,
+        transformer_dict: dict,
+        df: pl.DataFrame,
+        schema: dict,
+        method: str,
+    ) -> dict[str, pl.DataFrame]:
+        """Apply a per-group stateful transform dict to a panel DataFrame.
+
+        Slices each group's columns, calls ``method`` (e.g.
+        ``"observe_transform"`` or ``"rewind_transform"``) on the group's
+        transformer with the group prefix stripped, and returns the per-group
+        transformed frames as a dict keyed by group. Mirrors the per-group
+        inverse-transform branch in ``predict`` so that panel-mode
+        ``observe``/``rewind`` do not assume a scalar transformer. Callers reuse
+        the dict both as the per-group observation buffer (``_y_observed``,
+        ``_X_observed``) and, via ``dict_to_panel``, as the panel frame fed to
+        the component forecasters.
+        """
+        assert self.groups_ is not None
+        transformed = {}
+        for group_name in self.groups_:
+            transformer = transformer_dict[group_name]
+            group_local = get_group_df(df=df, group_name=group_name, schema=schema)
+            transformed[group_name] = group_local if transformer is None else getattr(transformer, method)(group_local)
+        return transformed
+
+    def _panel_X_actual_schema(self) -> dict:
+        """Build the per-group X_actual schema (local plus shared columns)."""
+        assert self.local_X_actual_schema_ is not None
+        X_schema = dict(self.local_X_actual_schema_)
+        if self.shared_X_actual_schema_:
+            X_schema.update(self.shared_X_actual_schema_)
+        return X_schema
+
     def observe_predict(
         self,
         y: pl.DataFrame,
@@ -794,15 +829,29 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # pre-observe state to transform, then updates the buffer.  A separate
         # observe() then transform() would transform against post-observe state
         # and yield empty output for stateful transformers (e.g. differencing).
+        y_t_dict: dict[str, pl.DataFrame] | None = None
+        X_t_dict: dict[str, pl.DataFrame] | None = None
         if self.target_transformer_ is not None:
-            assert isinstance(self.target_transformer_, BaseTransformer)
-            y_t = self.target_transformer_.observe_transform(y)
+            if self.groups_ is None:
+                assert isinstance(self.target_transformer_, BaseTransformer)
+                y_t = self.target_transformer_.observe_transform(y)
+            else:
+                assert isinstance(self.target_transformer_, dict)
+                y_t_dict = self._transform_panel(self.target_transformer_, y, self.local_y_schema_, "observe_transform")
+                y_t = dict_to_panel(y_t_dict)
         else:
             y_t = y
 
         if X_actual is not None and self.feature_transformer_ is not None:
-            assert isinstance(self.feature_transformer_, BaseTransformer)
-            X_t = self.feature_transformer_.observe_transform(X_actual)
+            if self.groups_ is None:
+                assert isinstance(self.feature_transformer_, BaseTransformer)
+                X_t = self.feature_transformer_.observe_transform(X_actual)
+            else:
+                assert isinstance(self.feature_transformer_, dict)
+                X_t_dict = self._transform_panel(
+                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "observe_transform"
+                )
+                X_t = dict_to_panel(X_t_dict)
         else:
             X_t = X_actual
 
@@ -843,10 +892,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 prior = self.residuals_.get(name)
                 self.residuals_[name] = pl.concat([prior, residuals]) if prior is not None else residuals
 
-        # Observe base class observation buffers
-        self._y_observed = y_t
+        # Observe base class observation buffers. In panel mode predict() reads
+        # these as per-group dicts, so store the dict form there.
+        self._y_observed = y_t_dict if self.groups_ is not None and y_t_dict is not None else y_t
         if X_t is not None:
-            self._X_observed = X_t
+            self._X_observed = X_t_dict if self.groups_ is not None and X_t_dict is not None else X_t
 
         return self
 
@@ -907,15 +957,29 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         )
 
         # Rewind transformers first
+        y_t_dict: dict[str, pl.DataFrame] | None = None
+        X_t_dict: dict[str, pl.DataFrame] | None = None
         if self.target_transformer_ is not None:
-            assert isinstance(self.target_transformer_, BaseTransformer)
-            y_t = self.target_transformer_.rewind_transform(y)
+            if self.groups_ is None:
+                assert isinstance(self.target_transformer_, BaseTransformer)
+                y_t = self.target_transformer_.rewind_transform(y)
+            else:
+                assert isinstance(self.target_transformer_, dict)
+                y_t_dict = self._transform_panel(self.target_transformer_, y, self.local_y_schema_, "rewind_transform")
+                y_t = dict_to_panel(y_t_dict)
         else:
             y_t = y
 
         if X_actual is not None and self.feature_transformer_ is not None:
-            assert isinstance(self.feature_transformer_, BaseTransformer)
-            X_t = self.feature_transformer_.rewind_transform(X_actual)
+            if self.groups_ is None:
+                assert isinstance(self.feature_transformer_, BaseTransformer)
+                X_t = self.feature_transformer_.rewind_transform(X_actual)
+            else:
+                assert isinstance(self.feature_transformer_, dict)
+                X_t_dict = self._transform_panel(
+                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "rewind_transform"
+                )
+                X_t = dict_to_panel(X_t_dict)
         else:
             X_t = X_actual
 
@@ -978,10 +1042,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 [pl.col("time")] + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
             )
 
-        # Rewind base class observation buffers
-        self._y_observed = y_t
+        # Rewind base class observation buffers. In panel mode predict() reads
+        # these as per-group dicts, so store the dict form there.
+        self._y_observed = y_t_dict if self.groups_ is not None and y_t_dict is not None else y_t
         if X_t is not None:
-            self._X_observed = X_t
+            self._X_observed = X_t_dict if self.groups_ is not None and X_t_dict is not None else X_t
 
         return self
 

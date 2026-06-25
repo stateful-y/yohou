@@ -61,6 +61,88 @@ class TestSystematicChecks:
         )
 
 
+class TestPanelObserveRewind:
+    """Panel-mode observe/rewind must not crash on the scalar-transformer assumption.
+
+    Regression for the 2026-06-15 QA findings: in panel mode the base class
+    stores ``target_transformer_``/``feature_transformer_`` as dicts keyed by
+    group, so ``observe``/``rewind`` must branch on ``groups_`` instead of
+    asserting a single ``BaseTransformer`` (which raised ``AssertionError``).
+    """
+
+    @pytest.fixture
+    def panel_data(self):
+        """Two-group strictly-positive linear panel (LogTransformer-safe)."""
+        n = 60
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        data = {"time": time}
+        for g in range(2):
+            slope = g + 1
+            data[f"g{g}__value"] = [slope * t + 10.0 * (g + 1) for t in range(n)]
+        return pl.DataFrame(data)
+
+    def test_panel_observe_then_rewind_with_target_transformer(self, panel_data):
+        y = panel_data
+        y_train, y_new = y[:50], y[50:]
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1))],
+            target_transformer=LogTransformer(),
+        )
+        forecaster.fit(y_train, forecasting_horizon=3)
+
+        forecaster.observe(y_new)
+        y_pred = forecaster.predict()
+        assert "g0__value" in y_pred.columns
+        assert "g1__value" in y_pred.columns
+
+        forecaster.rewind(y_train)
+        y_pred_rewound = forecaster.predict()
+        assert "g0__value" in y_pred_rewound.columns
+        assert "g1__value" in y_pred_rewound.columns
+
+    @pytest.mark.parametrize("with_shared", [False, True])
+    def test_panel_observe_then_rewind_with_feature_transformer(self, panel_data, with_shared):
+        """Panel observe/rewind must apply the per-group feature transformer.
+
+        Covers the ``feature_transformer_`` panel branch (and the shared
+        ``_panel_X_actual_schema`` helper): with X_actual present in panel
+        mode, ``observe``/``rewind`` build the per-group transform dict instead
+        of asserting a single ``BaseTransformer``. The ``with_shared`` parameter
+        exercises both the local-only and local-plus-shared X_actual schemas.
+        """
+        from yohou.preprocessing import FunctionTransformer
+
+        y = panel_data
+        X_actual = panel_data.rename({c: c.replace("__value", "__feat") if c != "time" else c for c in y.columns})
+        if with_shared:
+            # A shared (global, no ``__``) column makes _panel_X_actual_schema
+            # merge both the local and shared schemas.
+            X_actual = X_actual.with_columns(shared_feat=pl.col("g0__feat") + pl.col("g1__feat"))
+        y_train, y_new = y[:50], y[50:]
+        X_train, X_new = X_actual[:50], X_actual[50:]
+
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1))],
+            feature_transformer=FunctionTransformer(),
+        )
+        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=3)
+
+        forecaster.observe(y_new, X_actual=X_new)
+        y_pred = forecaster.predict()
+        assert "g0__value" in y_pred.columns
+        assert "g1__value" in y_pred.columns
+
+        forecaster.rewind(y_train, X_actual=X_train)
+        y_pred_rewound = forecaster.predict()
+        assert "g0__value" in y_pred_rewound.columns
+        assert "g1__value" in y_pred_rewound.columns
+
+
 class TestBasicFitPredict:
     """Tests for basic fit/predict workflow."""
 

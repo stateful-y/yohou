@@ -682,7 +682,10 @@ class SeasonalImputer(BaseTransformer):
                 for i in np.where(null_mask)[0]:
                     values[i] = seasonal_vals[season_idx_arr[i]]
 
-            result_cols[col_name] = pl.Series(values)
+            # A position whose season bucket was empty at fit time stays NaN;
+            # convert back to a proper polars null rather than emitting a float
+            # NaN, which would violate the data contract.
+            result_cols[col_name] = pl.Series(values).fill_nan(None)
 
         return pl.DataFrame(result_cols)
 

@@ -1261,6 +1261,18 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                     .add(caller="fit_transform", callee="transform")
                 )
             method_mapping.add(caller="transform", callee="transform")
+            # Stateful callers: observe_transform/rewind_transform dispatch via
+            # process_routing too, so they must be registered or routing raises
+            # at runtime. Map to the stateful callee when present, else fall
+            # back to transform (mirroring the per-step transform fallback).
+            if hasattr(step, "observe_transform"):
+                method_mapping.add(caller="observe_transform", callee="observe_transform")
+            else:
+                method_mapping.add(caller="observe_transform", callee="transform")
+            if hasattr(step, "rewind_transform"):
+                method_mapping.add(caller="rewind_transform", callee="rewind_transform")
+            else:
+                method_mapping.add(caller="rewind_transform", callee="transform")
             router.add(method_mapping=method_mapping, **{name: step})
 
         return router

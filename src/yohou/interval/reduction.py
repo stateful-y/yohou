@@ -314,6 +314,24 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         multiquantile_param = self._detect_multiquantile_loss()
 
         if multiquantile_param is not None:
+            # A MultiQuantile estimator is single-output and single-step: it
+            # predicts the quantile vector for one target at one horizon. The
+            # predict path would otherwise reuse the first target's quantiles
+            # for every target and return a single row regardless of horizon,
+            # so reject the unsupported shapes up front. Count targets per group
+            # (local_y_t_schema_) so single-target-per-group panels stay valid.
+            n_targets = len(self.local_y_t_schema_)
+            if n_targets > 1:
+                raise ValueError(
+                    f"MultiQuantile estimators support only a single target column; got {n_targets}. "
+                    "Fit one IntervalReductionForecaster per target, or use a single-quantile estimator."
+                )
+            if forecasting_horizon > 1:
+                raise ValueError(
+                    "The MultiQuantile reduction path requires forecasting_horizon=1; "
+                    f"got {forecasting_horizon}. Use a single-quantile estimator for multi-step horizons."
+                )
+
             all_quantiles = sorted({q for cr in self.fit_coverage_rates_ for q in ((1.0 - cr) / 2.0, (1.0 + cr) / 2.0)})
             q_to_idx = {q: i for i, q in enumerate(all_quantiles)}
             self._multiquantile_map_ = {

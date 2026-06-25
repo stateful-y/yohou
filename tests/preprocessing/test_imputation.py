@@ -105,6 +105,32 @@ class TestSeasonalImputer:
         # Check no nulls remain
         assert X_imputed.null_count().sum_horizontal().item() == 0
 
+    def test_empty_season_bucket_yields_null_not_nan(self):
+        """An empty season bucket leaves a polars null, never a float NaN.
+
+        Regression for the 2026-06-15 QA finding: when a season bucket had no
+        observations at fit time, ``_transform`` wrote ``np.nan`` over the
+        polars null, silently violating the data contract.
+        """
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 10),
+            interval="1d",
+            eager=True,
+        )
+        # period=2: even rows are season 0, odd rows season 1. Season 0 has no
+        # observations at fit, so its positions cannot be imputed.
+        values = [None, 1.0, None, 2.0, None, 3.0, None, 4.0, None, 5.0]
+        X = pl.DataFrame({"time": time, "value": values})
+
+        imputer = SeasonalImputer(period=2, fill_method="seasonal_mean")
+        imputer.fit(X)
+        X_imputed = imputer.transform(X)
+
+        # The empty-bucket positions remain null, and no float NaN is emitted.
+        assert X_imputed["value"].is_nan().sum() == 0
+        assert X_imputed["value"].null_count() == 5
+
     def test_preserves_time_column(self, time_series_with_nulls_factory):
         """Test SeasonalImputer preserves time column."""
         X = time_series_with_nulls_factory(length=70, n_components=1)

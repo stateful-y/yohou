@@ -343,6 +343,34 @@ class TestColumnTransformerRouting:
         assert len(y_t) > 0
         assert "time" in y_t.columns
 
+    def test_stateful_methods_routable_when_routing_enabled(self, y_X_factory):
+        """observe_transform/rewind_transform must not raise when routing is enabled.
+
+        Regression for the 2026-06-15 QA finding: get_metadata_routing did not
+        register observe_transform/rewind_transform as callers, so
+        process_routing raised an unregistered-caller error at runtime once
+        metadata routing was enabled.
+        """
+        import sklearn
+
+        y, _ = y_X_factory(length=50, n_targets=2)
+        y_train, y_test = y[:-10], y[-10:]
+
+        ct = ColumnTransformer(
+            [
+                ("diff1", SeasonalDifferencing(seasonality=3), ["y_0"]),
+                ("diff2", SeasonalDifferencing(seasonality=2), ["y_1"]),
+            ],
+            remainder="passthrough",
+        )
+        ct.fit(y_train)
+
+        with sklearn.config_context(enable_metadata_routing=True):
+            y_obs = ct.observe_transform(y_test[:3])
+            assert "time" in y_obs.columns
+            y_rew = ct.rewind_transform(y_test[:3])
+            assert "time" in y_rew.columns
+
 
 class TestSearchCVRouting:
     """Tests for GridSearchCV metadata routing."""
