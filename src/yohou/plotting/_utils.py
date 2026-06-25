@@ -420,7 +420,7 @@ def _fill_trace_kwargs(fig: go.Figure) -> dict:
         return {}
     if isinstance(fig, AbstractFigureAggregator):  # pragma: no cover
         return {"gap_handler": NoGapHandler()}
-    return {}  # pragma: no cover
+    return {}
 
 
 def palette_yohou() -> dict[str, str]:
@@ -919,7 +919,9 @@ def resolve_panel_columns(
             else:
                 cols.extend(members)
     if not cols:
-        if columns is not None:
+        if not panels:
+            msg = "DataFrame has no panel (group__member) columns; cannot resolve panel columns."
+        elif columns is not None:
             msg = f"No panel columns found for groups={groups} with members={columns}"
         else:
             msg = f"No panel columns found for groups: {groups}"
@@ -1067,15 +1069,14 @@ def _group_panel_columns(
     ({'plain_col': ['plain_col']}, ['plain_col'])
     """
     groups: dict[str, list[str]] = {}
-    all_members: list[str] = []
+    seen_members: dict[str, None] = {}
     for col in panel_cols:
         prefix, sep, member = col.partition("__")
         key = prefix if sep else col
         m = member if sep else col
         groups.setdefault(key, []).append(col)
-        if m not in all_members:
-            all_members.append(m)
-    return groups, all_members
+        seen_members.setdefault(m, None)
+    return groups, list(seen_members)
 
 
 def build_category_map(
@@ -1107,10 +1108,36 @@ def build_category_map(
     """
     cats: set[str] = set()
     for s in series_list:
-        cats.update(str(v) for v in s.drop_nulls().to_list())
+        cats.update(s.drop_nulls().cast(pl.String).unique().to_list())
     sorted_cats = sorted(cats)
     cat_to_int = {cat: i for i, cat in enumerate(sorted_cats)}
     return sorted_cats, cat_to_int
+
+
+def _hex_to_rgba(hex_color: str, opacity: float) -> str:
+    """Convert a ``#RRGGBB`` hex color to an ``rgba(r, g, b, opacity)`` string.
+
+    Parameters
+    ----------
+    hex_color : str
+        Hex color string (e.g., ``"#1f77b4"``).
+    opacity : float
+        Opacity value between 0 and 1.
+
+    Returns
+    -------
+    str
+        RGBA color string (e.g., ``"rgba(31, 119, 180, 0.6)"``).
+
+    Examples
+    --------
+    >>> from yohou.plotting._utils import _hex_to_rgba
+    >>> _hex_to_rgba("#1f77b4", 0.6)
+    'rgba(31, 119, 180, 0.6)'
+    """
+    _hex = hex_color.lstrip("#")
+    r, g, b = (int(_hex[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {opacity})"
 
 
 def _member_name(col: str) -> str:

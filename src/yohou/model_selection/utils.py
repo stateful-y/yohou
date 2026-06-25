@@ -7,7 +7,7 @@ import time
 import warnings
 from contextlib import suppress
 from traceback import format_exc
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import polars as pl
@@ -69,18 +69,11 @@ def _split_X_forecast(
     return X_forecast_train, X_forecast_test
 
 
-def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | _MultimetricScorer:
+def _check_scoring(scoring: object) -> BaseScorer | dict[str, BaseScorer]:
     """Check the scoring parameter.
-
-    In addition, multimetric scoring leverages a caching mechanism to not call the same
-    estimator response method multiple times. Hence, the scorer is modified to only use
-    a single response method given a list of response methods and the estimator.
 
     Parameters
     ----------
-    forecaster : BaseForecaster
-        The forecaster for which the scoring will be applied.
-
     scoring : BaseScorer or dict of {str: BaseScorer}
         Strategy to evaluate the performance of the cross-validated model on
         the test set.
@@ -110,7 +103,7 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
         if not all(isinstance(v, BaseScorer) for v in scoring.values()):
             raise ValueError(f"Non-scorer types were found in the values of the given dict. scoring={scoring!r}")
 
-        scorers = scoring  # Return the dict as-is
+        scorers = cast(dict[str, BaseScorer], scoring)  # Return the dict as-is
 
     else:
         raise ValueError(
@@ -119,7 +112,7 @@ def _check_scoring(forecaster: BaseForecaster, scoring: object) -> BaseScorer | 
             f"values. Got {scoring}."
         )
 
-    return scorers  # ty: ignore[invalid-return-type]
+    return scorers
 
 
 class _MultimetricScorer:
@@ -448,8 +441,7 @@ def _fit_and_score(
         if return_train_score:
             if scorer is None:
                 raise ValueError("return_train_score requires a scorer.")
-            # forecaster is stateful and needs to be rewound to predict the past
-            score_params_train = _check_method_params(y, params=score_params, indices=train)
+            # forecaster is stateful and needs to be rewound to predict the past.
             # ``train`` carries absolute row indices into the original ``y``,
             # but ``y_train`` is already sliced to ``len(train)`` rows whose
             # positions run 0..len(train)-1. Use relative positions here so the
@@ -458,6 +450,11 @@ def _fit_and_score(
             n_train_rewind = len(train) - len(test)
             train_rewind = np.arange(n_train_rewind)
             test_rewind = np.arange(n_train_rewind, len(train))
+            # ``_score`` evaluates only the ``y_train_test`` rows (the last
+            # ``len(test)`` rows of the training window), so the score params
+            # must be sliced to those same absolute indices to keep lengths
+            # aligned.
+            score_params_train = _check_method_params(y, params=score_params, indices=train[test_rewind])
             y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
             y_train_test, X_actual_train_test = _safe_split(
                 forecaster, y_train, X_actual_train, test_rewind, train_rewind
@@ -861,7 +858,7 @@ def _score(
                     score_val = item_method()
             if not isinstance(score_val, numbers.Number):
                 raise ValueError(error_msg % (score_val, type(score_val), name))
-            scores[name] = float(score_val) if isinstance(score_val, int | float | numbers.Number) else score_val
+            scores[name] = float(score_val)
 
         # Negate scores for lower_is_better scorers (sklearn sign convention).
         # This ensures rankdata(-scores) in _format_results correctly assigns

@@ -197,9 +197,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         )
 
         conformity_scorers = {}
-        conformity_scores = pl.DataFrame()
+        conformity_scores_list: list[pl.DataFrame] = []
         similarities = {}
-        weights_list: list[pl.DataFrame] = []
 
         for step in range(1, 1 + forecasting_horizon):
             y_pred_calib_step = y_pred_calib[step - 1 :: forecasting_horizon]
@@ -209,7 +208,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scores_step = conformity_scorer_step.score(y_truth_step, y_pred_calib_step)
 
             conformity_scores_step = conformity_scores_step.with_columns(step=step)
-            conformity_scores = pl.concat([conformity_scores, conformity_scores_step])
+            conformity_scores_list.append(conformity_scores_step)
 
             conformity_scorers[f"step_{step}"] = conformity_scorer_step
 
@@ -223,20 +222,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 similarity_step = clone(self.similarity)
                 similarity_step.fit(y=y_calib, y_pred=y_pred_for_sim)
 
-                weights_array = similarity_step.predict(y_pred=y_pred_for_sim)
-                weight_col_names = [f"w_{i}" for i in range(weights_array.shape[1])]
-                weights_step = pl.DataFrame(weights_array, schema=weight_col_names)
-                weights_step = weights_step.with_columns(step=pl.lit(step))
-                weights_list.append(weights_step)
-
                 similarities[f"step_{step}"] = similarity_step
+
+        conformity_scores = pl.concat(conformity_scores_list)
 
         self.conformity_scorers_ = conformity_scorers
         self.conformity_scores_ = conformity_scores
 
         if self.similarity is not None:
             self.similarities_ = similarities
-            self.weights_ = pl.concat(weights_list, how="diagonal")
             # Track fit-time counts for correct rewind arithmetic
             self._fit_score_counts_ = {}
             for step in range(1, 1 + forecasting_horizon):
@@ -265,9 +259,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_actual : pl.DataFrame or None
             Exogenous features aligned with ``y``.
         X_future : pl.DataFrame or None, default=None
-            Known future features (unused, accepted for API consistency).
+            Known future features, forwarded to the point forecaster's
+            pre-observe ``predict`` call so post-observe conformity scores
+            match the features used at ``predict_interval`` time.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts (unused, accepted for API consistency).
+            External forecasts, forwarded to the point forecaster's
+            pre-observe ``predict`` call.
 
         Returns
         -------
@@ -280,6 +277,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # Generate predictions *before* the point forecaster is updated
         y_pred = self.point_forecaster_.predict(
             forecasting_horizon=self.fit_forecasting_horizon_,
+            X_future=X_future,
+            X_forecast=X_forecast,
         )
 
         for step in range(1, 1 + self.fit_forecasting_horizon_):
@@ -870,7 +869,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y_pred_time = y_pred.select("time")
         y_pred_values = y_pred.drop("time")
 
-        y_pred_intervals = pl.DataFrame()
+        y_pred_intervals_list: list[pl.DataFrame] = []
         for step in range(1, 1 + forecasting_horizon):
             # Get step predictions
             y_pred_step_values = y_pred_values.slice(step - 1, 1)
@@ -882,7 +881,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scorer_step = self.conformity_scorers_[f"step_{step}"]
             conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step).drop("step")
 
-            y_pred_intervals_step = pl.DataFrame()
+            rate_parts: list[pl.DataFrame] = []
             for coverage_rate in coverage_rates:
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
@@ -903,15 +902,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                         coverage_rate=coverage_rate,
                     ).drop("time")
 
-                y_pred_intervals_step = pl.concat(
-                    [y_pred_intervals_step, y_pred_interval_rate_step],
-                    how="horizontal",
-                )
+                rate_parts.append(y_pred_interval_rate_step)
 
             # Add time column once at the front
-            y_pred_intervals_step = pl.concat([y_pred_step_time, y_pred_intervals_step], how="horizontal")
+            y_pred_intervals_step = pl.concat([y_pred_step_time, *rate_parts], how="horizontal")
 
-            y_pred_intervals = pl.concat([y_pred_intervals, y_pred_intervals_step])
+            y_pred_intervals_list.append(y_pred_intervals_step)
+
+        y_pred_intervals = pl.concat(y_pred_intervals_list)
 
         if has_vintage_time:
             return y_pred_intervals.insert_column(0, vintage_time_col.head(len(y_pred_intervals)))

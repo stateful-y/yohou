@@ -114,8 +114,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     This can significantly improve performance for computationally expensive transformers.
 
     Results are concatenated horizontally with automatic time alignment. The
-    internal `_hstack()` function handles transformers with different observation
-    horizons by aligning their outputs to the maximum observation horizon.
+    internal `_hstack()` function aligns transformer outputs by taking the
+    intersection of their `"time"` columns, so only timestamps present in all
+    transformer outputs are retained.
 
     The `observation_horizon` property returns the MAXIMUM across all transformers
     (not the sum). This is because all transformers operate on the same input data,
@@ -224,7 +225,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         """
         if isinstance(ind, slice):
-            if ind.step is not None:
+            if ind.step is not None and ind.step != 1:
                 raise ValueError("FeatureUnion slicing only supports a step of 1")
             return self.__class__(
                 transformer_list=self.transformer_list[ind],
@@ -443,10 +444,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         """
         observation_horizons = []
         for _, t, _ in self._iter():
-            observation_horizon = 0
-            if t != "passthrough" and t is not None and hasattr(t, "observation_horizon"):
-                observation_horizon = t.observation_horizon
-
+            # _iter() already replaces 'passthrough' with a FunctionTransformer
+            # and skips 'drop'/None, so t is always a transformer here.
+            observation_horizon = t.observation_horizon if hasattr(t, "observation_horizon") else 0
             observation_horizons.append(observation_horizon)
 
         return observation_horizons
@@ -652,11 +652,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         column_names = self._build_column_names(list(Xs))
 
-        result = _hstack(
-            list(Xs),
-            column_names=column_names,
-            observation_horizons=self._get_observation_horizons(),
-        )
+        result = _hstack(list(Xs), column_names=column_names)
         return result
 
     def transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
@@ -690,11 +686,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         column_names = self._build_column_names(list(Xs))
 
-        result = _hstack(
-            Xs,
-            column_names=column_names,
-            observation_horizons=self._get_observation_horizons(),
-        )
+        result = _hstack(Xs, column_names=column_names)
         return result
 
     def observe_transform(self, X: pl.DataFrame, **params: Any) -> pl.DataFrame:
@@ -712,7 +704,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             New data to observe with and transform.
 
         **params : dict, default=None
-            Parameters routed to the `transform` methods of the sub-transformers
+            Parameters routed to the `observe_transform` methods of the sub-transformers
             via the metadata routing API. See [Metadata Routing User Guide](https://scikit-learn.org/stable/metadata_routing.html) for more details.
 
         Returns
@@ -737,15 +729,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         column_names = self._build_column_names(list(Xs))
 
-        result = _hstack(
-            Xs,
-            column_names=column_names,
-            # observe_transform returns the same number of rows as the input
-            # for every sub-transformer (alignment is handled internally via
-            # each transformer's observation memory), so no observation-horizon
-            # trimming is needed here.
-            observation_horizons=[0] * len(Xs),
-        )
+        result = _hstack(Xs, column_names=column_names)
 
         return result
 
@@ -788,11 +772,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         column_names = self._build_column_names(list(Xs))
 
-        result = _hstack(
-            Xs,
-            column_names=column_names,
-            observation_horizons=self._get_observation_horizons(),
-        )
+        result = _hstack(Xs, column_names=column_names)
 
         return result
 

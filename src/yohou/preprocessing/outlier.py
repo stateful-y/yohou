@@ -140,13 +140,14 @@ class OutlierThresholdHandler(BaseTransformer):
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
+        # Validate threshold ordering before assigning any fitted attributes so
+        # a failed fit does not leave the transformer in a half-fitted state.
+        if self.low is not None and self.high is not None and self.low > self.high:
+            msg = f"low ({self.low}) must be <= high ({self.high})"
+            raise ValueError(msg)
+
         self.low_ = self.low
         self.high_ = self.high
-
-        # Validate threshold ordering
-        if self.low_ is not None and self.high_ is not None and self.low_ > self.high_:
-            msg = f"low ({self.low_}) must be <= high ({self.high_})"
-            raise ValueError(msg)
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Handle outliers in time series.

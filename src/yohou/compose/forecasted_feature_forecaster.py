@@ -345,7 +345,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             self.target_forecaster_.__sklearn_tags__().forecaster_tags.requires_exogenous
         )
         feature_horizon = forecasting_horizon + self.feature_stride - 1
-        if self.feature_stride > 1 and feature_horizon >= len(X_actual):
+        if feature_horizon >= len(X_actual):
             raise ValueError(
                 f"feature_stride={self.feature_stride} requires the feature forecaster to "
                 f"forecast H + feature_stride - 1 = {feature_horizon} steps, but "
@@ -495,9 +495,13 @@ class ForecastedFeatureForecaster(BaseForecaster):
         self.local_y_t_schema_ = self.local_y_schema_
         self.local_X_t_schema_ = self.local_X_actual_schema_
 
-        # Set observation buffers for observe/rewind
-        self._y_observed = y
-        self._X_t_observed = X_actual
+        # This meta-forecaster delegates all buffering to its child forecasters:
+        # predict() reads neither _y_observed nor _X_t_observed, and the class has
+        # no target_transformer whose inverse transform would need _y_observed as
+        # context. Set them to None (required by the fitted-forecaster contract)
+        # rather than the full training frames to avoid an unbounded buffer.
+        self._y_observed = None
+        self._X_t_observed = None
         # Expose observed_time_ per the fitted-forecaster contract; it tracks
         # the end of the data this meta-forecaster has observed (full y).
         self.observed_time_ = y["time"][-1]

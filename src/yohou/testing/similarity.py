@@ -102,9 +102,9 @@ def check_similarity_metric_params_verbatim(similarity) -> None:
 
     """
     cls = type(similarity)
-    if "metric_params" not in cls().get_params(deep=False):
-        return
     fresh = cls()
+    if "metric_params" not in fresh.get_params(deep=False):
+        return
     assert fresh.metric_params is None, (
         f"{cls.__name__}: default metric_params mutated from None to {fresh.metric_params!r}"
     )

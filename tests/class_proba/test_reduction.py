@@ -264,11 +264,12 @@ class TestRecursivePredict:
     def test_recursive_predict_panel(self, class_proba_y_X_factory):
         """Recursive prediction on panel data re-encodes prefixed columns.
 
-        Regression for the 2026-06-15 QA finding: ``_encode_observation``
-        looked up ``label_to_code_`` by the raw column name, so panel columns
-        like ``group_0__weather`` raised ``KeyError`` (the dict is keyed by the
-        base target name ``weather``). Recursive prediction (horizon > fit
-        horizon, no X_actual) is the path that exercises it.
+        ``_encode_observation`` must look up ``label_to_code_`` by the base
+        target name, so panel columns like ``group_0__weather`` resolve
+        correctly (the dict is keyed by the base target name ``weather``)
+        rather than raising ``KeyError`` on the raw column name. Recursive
+        prediction (horizon > fit horizon, no X_actual) is the path that
+        exercises it.
         """
         y, _ = class_proba_y_X_factory(
             length=120,
@@ -438,3 +439,21 @@ class TestMultiTargetReduction:
 
         assert "y_0" in y_pred.columns
         assert "y_1" in y_pred.columns
+
+
+class TestEstimatorPredictProbaDispatch:
+    """_estimator_predict_proba_one rejects estimators that mismatch the reduction strategy."""
+
+    def test_direct_strategy_requires_list(self):
+        """The 'direct' strategy expects a list of estimators, not a single one."""
+        forecaster = ClassProbaReductionForecaster(estimator=DecisionTreeClassifier(), reduction_strategy="direct")
+        with pytest.raises(TypeError, match="list of estimators for the 'direct' strategy"):
+            forecaster._estimator_predict_proba_one(estimator=DecisionTreeClassifier(), groups=[])
+
+    def test_multi_output_strategy_requires_single_estimator(self):
+        """The 'multi-output' strategy expects a single estimator, not a list."""
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(), reduction_strategy="multi-output"
+        )
+        with pytest.raises(TypeError, match="single estimator for the 'multi-output' strategy"):
+            forecaster._estimator_predict_proba_one(estimator=[DecisionTreeClassifier()], groups=[])

@@ -180,25 +180,22 @@ class TestSearchCheckFunctionsDelegation:
     def test_predict_delegates(self, fitted_grid_search):
         """check_search_predict_delegates verifies prediction delegation."""
         gs, y = fitted_grid_search
-        y_train = y.head(80)
         y_test = y.tail(20)
-        check_search_predict_delegates(gs, y_train, y_test)
+        check_search_predict_delegates(gs, y_test)
 
     @pytest.mark.slow
     def test_observe_delegates(self, fitted_grid_search):
         """check_search_observe_delegates verifies observation delegation."""
         gs, y = fitted_grid_search
-        y_train = y.head(80)
         y_update = y.slice(80, 10)
-        check_search_observe_delegates(gs, y_train, y_update)
+        check_search_observe_delegates(gs, y_update)
 
     @pytest.mark.slow
     def test_rewind_delegates(self, fitted_grid_search):
         """check_search_rewind_delegates verifies rewind delegation."""
         gs, y = fitted_grid_search
-        y_train = y.head(80)
         y_reset = y.tail(10)
-        check_search_rewind_delegates(gs, y_train, y_reset)
+        check_search_rewind_delegates(gs, y_reset)
 
 
 class TestSearchCheckFunctionsMultimetric:

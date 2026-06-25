@@ -62,7 +62,7 @@ def check_weighter_fit_noop_returns_self(weighter) -> None:
     returned = weighter.fit(None)
     assert returned is weighter, f"{name}.fit() must return self"
     after = weighter.get_params(deep=False)
-    assert before.keys() == after.keys(), f"{name}.fit() changed parameter keys"
+    assert before == after, f"{name}.fit() changed parameter values: {before} -> {after}"
 
 
 def check_weighter_resolved_array_validation(weighter, key: pl.Series) -> None:

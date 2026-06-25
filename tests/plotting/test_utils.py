@@ -383,3 +383,12 @@ class TestResamplerSuccessPaths:
 
         fig = _create_subplots(resampler=True, rows=1, cols=1)
         assert isinstance(fig, FigureResampler)
+
+
+class TestResolvePanelColumnsNoPanelMessage:
+    """resolve_panel_columns gives a distinct error message when no panel columns exist."""
+
+    def test_no_panel_columns_distinct_message(self):
+        df = pl.DataFrame({"time": [1, 2, 3], "y": [1.0, 2.0, 3.0]})
+        with pytest.raises(ValueError, match="no panel"):
+            resolve_panel_columns(df)

@@ -3131,6 +3131,18 @@ class TestPlotGroupScores:
                 kind="scatter",
             )
 
+    @pytest.mark.parametrize("kind", ["bar", "box", "heatmap"])
+    def test_dataframe_scorer_reduced_to_scalar(self, panel_group_data, kind):
+        """A scorer that returns a per-component DataFrame is reduced to one score per group."""
+        scorer = MeanAbsoluteError(aggregation_method=["componentwise"])
+        fig = plot_group_scores(
+            scorer,
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind=kind,
+        )
+        assert_figure_valid(fig)
+
 
 class TestMultiScorerMultiModelFaceted:
     """Tests for multi-scorer + multi-model faceted subplot paths."""
@@ -3416,3 +3428,35 @@ class TestGroupScoresBoxKind:
             distribute_by="vintage",
         )
         assert_figure_valid(fig)
+
+
+class TestCalibrationClassProbaParams:
+    """plot_calibration forwards its public styling params (such as reference_color) in class-probability mode."""
+
+    def test_reference_color_is_forwarded(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 20), "1d", eager=True)
+        n = len(dates)
+        rng = np.random.default_rng(0)
+        p = rng.uniform(0, 1, n)
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "target_proba_yes": p.tolist(),
+            "target_proba_no": (1 - p).tolist(),
+        })
+        truth = ["yes" if pi > 0.5 else "no" for pi in p]
+        y_truth = pl.DataFrame({"time": dates, "target": truth})
+        fig = plot_calibration(y_pred, y_truth, target="target", reference_color="#123456")
+        ref_colors = [t.line.color for t in fig.data if t.line.color is not None]
+        assert "#123456" in ref_colors
+
+
+class TestScoreDistributionKdeWarning:
+    """A KDE failure warns instead of silently omitting the trace."""
+
+    def test_zero_variance_scores_warn(self):
+        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
+        n = len(dates)
+        y_truth = pl.DataFrame({"time": dates, "y": [5.0] * n})
+        y_pred = pl.DataFrame({"time": dates, "y": [5.0] * n})
+        with pytest.warns(UserWarning, match="KDE"):
+            plot_score_distribution(MeanAbsoluteError(), y_truth, y_pred, kind="kde")

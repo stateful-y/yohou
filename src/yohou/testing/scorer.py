@@ -15,6 +15,7 @@ except ImportError as e:
     raise ImportError("polars is required for yohou.testing module. Install with: uv sync --group tests") from e
 
 import datetime
+import inspect
 from typing import Any
 
 import numpy as np
@@ -70,7 +71,6 @@ def check_scorer_tags_accessible_before_fit(scorer) -> None:
 def check_scorer_tags_static_after_fit(
     scorer,
     y_truth: pl.DataFrame,
-    y_pred: pl.DataFrame,
 ) -> None:
     """Check tags remain unchanged after fit.
 
@@ -83,8 +83,6 @@ def check_scorer_tags_static_after_fit(
         Unfitted scorer instance
     y_truth : pl.DataFrame
         Ground truth with "time" column
-    y_pred : pl.DataFrame
-        Predictions with "vintage_time" and "time" columns
 
     Raises
     ------
@@ -229,13 +227,11 @@ def check_scorer_prediction_type_compatibility(
 
 
 def check_scorer_lower_is_better(scorer) -> None:
-    """Check lower_is_better convention matches scoring direction.
+    """Check the ``lower_is_better`` tag is a boolean.
 
-    Validates that the ``lower_is_better`` tag is a boolean and that
-    the tag's value is consistent with the scorer's actual behavior:
-    for ``lower_is_better=True`` scorers, a perfect prediction should
-    yield a score less than or equal to a noisy prediction; for
-    ``lower_is_better=False`` scorers, the opposite.
+    Validates that the scorer exposes a boolean ``lower_is_better`` tag.
+    Error metrics typically set ``lower_is_better=True`` while score
+    metrics (R-squared and the like) set it to ``False``.
 
     Parameters
     ----------
@@ -245,7 +241,7 @@ def check_scorer_lower_is_better(scorer) -> None:
     Raises
     ------
     AssertionError
-        If lower_is_better doesn't match expected convention
+        If lower_is_better is not a boolean
 
     """
     tags = scorer.__sklearn_tags__()
@@ -523,8 +519,10 @@ def check_scorer_methods_call_check_is_fitted(scorer, y_train: pl.DataFrame, y_p
         try:
             scores = scorer_clone.score(y_train[:10], y_pred[:10])
             scorer_clone2 = clone(scorer)  # Fresh unfitted clone
-            # inverse_score requires coverage_rate argument
-            scorer_clone2.inverse_score(y_pred[:10], scores, coverage_rate=0.9)
+            # Only pass coverage_rate when the scorer's inverse_score declares it.
+            inverse_params = inspect.signature(scorer_clone2.inverse_score).parameters
+            inverse_kwargs = {"coverage_rate": 0.9} if "coverage_rate" in inverse_params else {}
+            scorer_clone2.inverse_score(y_pred[:10], scores, **inverse_kwargs)
             raise AssertionError(
                 f"{scorer_clone.__class__.__name__}.inverse_score() must raise NotFittedError when called on unfitted scorer"
             )

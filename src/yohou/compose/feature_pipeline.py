@@ -914,15 +914,19 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 X_p_iter = deepcopy(transform).rewind_transform(X_p_iter)
                 X_p_iter_list.append(X_p_iter)
 
+            # The forward pass builds X_p_iter_list least-to-most transformed:
+            # [A(X_p), B(A(X_p)), ...]. reverse_iter walks steps last-to-first
+            # ([..., B, A]), so each step's inverse must receive X_p expressed in
+            # its own input space (the output of the step before it). Reverse the
+            # forward-pass list so the most-transformed context pairs with the
+            # last step.
+            X_p_iter_list.reverse()
+
             # For the first transformer's inverse, we need the slice of X_p
             # that comes after all the memory used by other transformers
             first_transform = steps_list[0][2]
             offset = sum(t.observation_horizon for _, _, t in steps_list[1:])
             X_p_iter_list.append(X_p[offset : offset + first_transform.observation_horizon])
-
-            # NOTE: Do NOT reverse! X_p_iter_list is built as:
-            # [X_p for last step's inverse, ..., X_p for first step's inverse]
-            # which matches reverse_iter: [last step, ..., first step]
 
             X = X_t
             for (_, name, transform), X_p_iter in zip(reverse_iter, X_p_iter_list, strict=False):
@@ -979,6 +983,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 .add(caller="decision_function", callee="transform")
                 .add(caller="predict_log_proba", callee="transform")
                 .add(caller="transform", callee="transform")
+                .add(caller="observe_transform", callee="observe_transform")
+                .add(caller="rewind_transform", callee="rewind_transform")
                 .add(caller="inverse_transform", callee="inverse_transform")
                 .add(caller="score", callee="transform")
             )
@@ -999,6 +1005,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             method_mapping
             .add(caller="fit", callee="fit")
             .add(caller="transform", callee="transform")
+            .add(caller="observe_transform", callee="observe_transform")
+            .add(caller="rewind_transform", callee="rewind_transform")
             .add(caller="inverse_transform", callee="inverse_transform")
             .add(caller="score", callee="score")
         )

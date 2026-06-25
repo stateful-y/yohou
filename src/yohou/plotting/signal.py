@@ -16,6 +16,7 @@ from yohou.plotting._utils import (
     LegendTracker,
     RenderContext,
     _auto_detect_panel,
+    _group_panel_columns,
     facet_figure,
     resolve_color_palette,
     resolve_panel_columns,
@@ -126,7 +127,10 @@ def plot_phase(
     if groups is not None:
         validate_plotting_data(df)
         _panel_cols = resolve_panel_columns(df, groups, columns)
-        _panel_colors = resolve_color_palette(color_palette, len(_panel_cols))
+        effective_facet_by = facet_by or "member"
+        _group_map, _members = _group_panel_columns(_panel_cols)
+        _n_overlays = len(_group_map) if effective_facet_by == "member" else len(_members)
+        _panel_colors = resolve_color_palette(color_palette, _n_overlays)
         _legend_tracker = LegendTracker()
 
         def _render_phase(ctx: RenderContext) -> None:
@@ -155,7 +159,6 @@ def plot_phase(
                 col=ctx.col,
             )
 
-        effective_facet_by = facet_by or "member"
         fig = facet_figure(
             df,
             _render_phase,
@@ -436,6 +439,8 @@ def plot_spectrum(
                 row=ctx.row,
                 col=ctx.col,
             )
+        if log_scale:
+            ctx.fig.update_yaxes(type="log", row=ctx.row, col=ctx.col)
 
     fig = facet_figure(
         df,
@@ -449,8 +454,6 @@ def plot_spectrum(
         height=height,
         shared_xaxes=False,
     )
-    if log_scale:
-        fig.update_yaxes(type="log")
     fig.update_layout(showlegend=show_legend)
 
     return fig

@@ -21,7 +21,6 @@ TSF_FREQUENCY_MAP: dict[str, str] = {
     "secondly": "1s",
     "10_minutes": "10m",
     "15_minutes": "15m",
-    "30_minutes": "30m",
 }
 
 
@@ -33,7 +32,7 @@ def _parse_tsf_timestamp(s: str) -> datetime:
     return datetime.strptime(s.strip(), "%Y-%m-%d %H-%M-%S")
 
 
-def parse_tsf(
+def _parse_tsf(
     source: str | IO[bytes],
     *,
     value_column_name: str = "value",
@@ -46,8 +45,13 @@ def parse_tsf(
     source : str or file-like
         Path to a ``.tsf`` file, or an open file-like object (binary mode).
     value_column_name : str
-        Name for the value column(s). For panel data, column names become
-        ``"{series_name}__{value_column_name}"``.
+        Name for the value column(s). For panel data, the column prefix
+        depends on the series attributes: when a series has no extra
+        attributes beyond ``series_name``, columns become
+        ``"{series_name}__{value_column_name}"``; when extra attributes are
+        present, their values (joined with underscores, lowercased, spaces
+        replaced by underscores) are used as the prefix instead, giving
+        ``"{joined_attributes}__{value_column_name}"``.
     n_series : int or None
         Maximum number of series to parse. ``None`` parses all series.
         Use this to limit memory consumption for large datasets.
@@ -69,6 +73,10 @@ def parse_tsf(
     """
     line_iter = _iter_text_lines(source)
     attributes, header_meta = _parse_header(line_iter)
+
+    if not header_meta["frequency_raw"]:
+        msg = "TSF file is missing a required @frequency directive"
+        raise ValueError(msg)
 
     series_list = _parse_data_lines(line_iter, attributes, n_series=n_series)
 
@@ -168,7 +176,7 @@ def _parse_data_lines(
     n_attrs = len(attributes)
     series_list: list[dict] = []
 
-    for line in line_iter:
+    for line_number, line in enumerate(line_iter, start=1):
         stripped = line.strip()
         if not stripped:
             continue
@@ -183,7 +191,14 @@ def _parse_data_lines(
 
         for j, attr_name in enumerate(attributes):
             if attr_name == "start_timestamp":
-                start_timestamp = _parse_tsf_timestamp(attr_values[j])
+                try:
+                    start_timestamp = _parse_tsf_timestamp(attr_values[j])
+                except ValueError as exc:
+                    msg = (
+                        f"Cannot parse start_timestamp {attr_values[j]!r} for "
+                        f"series {series_name!r} (data line {line_number})"
+                    )
+                    raise ValueError(msg) from exc
             elif attr_name != "series_name":
                 extra_attrs[attr_name] = attr_values[j].strip()
 
@@ -315,10 +330,16 @@ def _build_panel_same_start(
     *,
     polars_freq: str,
     value_column_name: str,
+    start: datetime | None = None,
 ) -> pl.DataFrame:
-    """Build panel DataFrame when all series share the same start timestamp."""
+    """Build panel DataFrame when all series share the same start timestamp.
+
+    When *start* is None, the shared start is read from the first series'
+    ``start_timestamp``. Callers without timestamps pass an explicit *start*.
+    """
     max_len = max(len(s["values"]) for s in series_list)
-    start = series_list[0]["start_timestamp"]
+    if start is None:
+        start = series_list[0]["start_timestamp"]
     time_col = _generate_time_index(start, max_len, polars_freq)
 
     columns: dict[str, pl.Series] = {"time": time_col}
@@ -349,11 +370,7 @@ def _build_panel_different_starts(
             pl.DataFrame({"time": time_col, col_name: pl.Series(col_name, s["values"], dtype=pl.Float64)})
         )
 
-    result = per_series[0]
-    for frame in per_series[1:]:
-        result = result.join(frame, on="time", how="full", coalesce=True)
-
-    return result.sort("time")
+    return pl.concat(per_series, how="align_full").sort("time")
 
 
 def _build_panel_no_timestamp(
@@ -362,20 +379,17 @@ def _build_panel_no_timestamp(
     polars_freq: str,
     value_column_name: str,
 ) -> pl.DataFrame:
-    """Build panel DataFrame when no timestamps are available."""
-    max_len = max(len(s["values"]) for s in series_list)
-    start = datetime(2000, 1, 1)
-    time_col = _generate_time_index(start, max_len, polars_freq)
+    """Build panel DataFrame when no timestamps are available.
 
-    columns: dict[str, pl.Series] = {"time": time_col}
-    for s in series_list:
-        col_name = _panel_column_name(s, value_column_name)
-        vals = s["values"]
-        if len(vals) < max_len:
-            vals = vals + [None] * (max_len - len(vals))
-        columns[col_name] = pl.Series(col_name, vals, dtype=pl.Float64)
-
-    return pl.DataFrame(columns)
+    Identical to the same-start case but with a synthetic shared start of
+    ``datetime(2000, 1, 1)``.
+    """
+    return _build_panel_same_start(
+        series_list,
+        polars_freq=polars_freq,
+        value_column_name=value_column_name,
+        start=datetime(2000, 1, 1),
+    )
 
 
 def _panel_column_name(series: dict, value_column_name: str) -> str:

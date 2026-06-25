@@ -667,7 +667,10 @@ def _plot_calibration_class_proba(
     y_label: str | None,
     width: int | None,
     height: int | None,
-    **kwargs,
+    show_legend: bool = True,
+    line_width: float = 2.0,
+    reference_color: str = "#1e293b",
+    reference_dash: str = "dash",
 ) -> go.Figure:
     """Reliability diagram for class-probability predictions.
 
@@ -694,8 +697,14 @@ def _plot_calibration_class_proba(
         Figure width.
     height : int or None
         Figure height.
-    **kwargs : dict
-        Styling overrides.
+    show_legend : bool, default=True
+        Whether to show the legend.
+    line_width : float, default=2.0
+        Width of the model series line.
+    reference_color : str, default="#1e293b"
+        Color of the diagonal reference line.
+    reference_dash : str, default="dash"
+        Dash style of the diagonal reference line.
 
     Returns
     -------
@@ -705,11 +714,6 @@ def _plot_calibration_class_proba(
     """
     validate_plotting_data(y_pred, min_rows=1)
     validate_plotting_data(y_truth, min_rows=1)
-
-    line_width = kwargs.get("line_width", 2.0)
-    reference_color = kwargs.get("reference_color", "#1e293b")
-    reference_dash = kwargs.get("reference_dash", "dash")
-    show_legend = kwargs.get("show_legend", True)
 
     proba_cols = [c for c in y_pred.columns if "_proba_" in c]
     targets = _discover_proba_targets(proba_cols)
@@ -995,6 +999,10 @@ def plot_calibration(
             y_label=y_label,
             width=width,
             height=height,
+            show_legend=show_legend,
+            line_width=line_width,
+            reference_color=reference_color,
+            reference_dash=reference_dash,
         )
 
     # Interval / quantile calibration path. When the caller does not pin the
@@ -1253,9 +1261,10 @@ def _plot_score_time_series_panel(
     mode = "lines+markers" if show_markers else "lines"
 
     _, all_groups = inspect_panel(y_truth)
+    requested_groups = groups
     groups = list(all_groups) if not groups else [g for g in groups if g in all_groups]
     if not groups:
-        msg = f"No panel groups found matching {groups}. Available: {list(all_groups)}"
+        msg = f"No panel groups found matching {requested_groups}. Available: {list(all_groups)}"
         raise ValueError(msg)
 
     n_groups = len(groups)
@@ -2147,7 +2156,12 @@ def plot_score_distribution(
                 try:
                     kde = gaussian_kde(score_vals)
                 except np.linalg.LinAlgError:
-                    pass
+                    warnings.warn(
+                        f"Could not compute KDE for model {mname!r} "
+                        "(scores have zero variance); skipping its density trace.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
                 else:
                     x_grid = np.linspace(
                         float(score_vals.min()),
@@ -3150,7 +3164,7 @@ def plot_score_per_vintage(
                 "Ensure y_pred has multiple vintages (vintage_time values)."
             )
             raise ValueError(msg)
-        score_cols = [c for c in scores_df.columns if c not in ("vintage_time", "time")]
+        score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
         if len(score_cols) == 1:
             score_values = scores_df[score_cols[0]]
         else:
@@ -3436,7 +3450,7 @@ def plot_score_heatmap(
             raise ValueError(msg)
 
     if "vintage_time" not in y_pred.columns:
-        msg = "y_pred must have an 'vintage_time' column for heatmap plotting"
+        msg = "y_pred must have a 'vintage_time' column for heatmap plotting"
         raise ValueError(msg)
 
     vintages = y_pred["vintage_time"].unique().sort()
@@ -3680,9 +3694,7 @@ def plot_group_scores(
                     score_val = s_agg.score(y_truth_g, y_pm_g)
 
                     if isinstance(score_val, pl.DataFrame):
-                        score_cols = [
-                            c for c in score_val.columns if c not in ("time", "vintage_time", "forecasting_step")
-                        ]
+                        score_cols = [c for c in score_val.columns if c not in _SCORER_META_COLS]
                         group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
                     else:
                         group_score = float(score_val)  # type: ignore
@@ -3788,9 +3800,7 @@ def plot_group_scores(
                     score_val = s_agg.score(y_truth_g, y_pm_g)
 
                     if isinstance(score_val, pl.DataFrame):
-                        score_cols = [
-                            c for c in score_val.columns if c not in ("time", "vintage_time", "forecasting_step")
-                        ]
+                        score_cols = [c for c in score_val.columns if c not in _SCORER_META_COLS]
                         group_score = float(score_val.select(score_cols).mean_horizontal().mean())  # type: ignore
                     else:
                         group_score = float(score_val)  # type: ignore
@@ -3938,24 +3948,3 @@ def _discover_proba_targets(
         target_name = col.split("_proba_", 1)[0]
         targets.setdefault(target_name, []).append(col)
     return targets
-
-
-def _hex_to_rgba(hex_color: str, opacity: float) -> str:
-    """Convert hex color to rgba string with given opacity.
-
-    Parameters
-    ----------
-    hex_color : str
-        Hex color string (e.g., ``"#1f77b4"``).
-    opacity : float
-        Opacity value between 0 and 1.
-
-    Returns
-    -------
-    str
-        RGBA color string (e.g., ``"rgba(31, 119, 180, 0.6)"``).
-
-    """
-    hex_color = hex_color.lstrip("#")
-    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-    return f"rgba({r}, {g}, {b}, {opacity})"

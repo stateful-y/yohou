@@ -56,10 +56,10 @@ class TestScorerChecks:
         check_scorer_tags_accessible_before_fit(MeanAbsoluteError())
         check_scorer_tags_accessible_before_fit(MeanSquaredError())
 
-    def test_tags_static_after_fit(self, scorers, y_truth, y_pred):
+    def test_tags_static_after_fit(self, scorers, y_truth):
         """Test that tags don't change after fit()."""
         for scorer in scorers:
-            check_scorer_tags_static_after_fit(scorer, y_truth, y_pred)
+            check_scorer_tags_static_after_fit(scorer, y_truth)
 
     def test_tags_match_capabilities(self, scorers, y_truth, y_pred):
         """Test that tags match actual scorer behavior."""

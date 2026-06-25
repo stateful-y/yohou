@@ -13,6 +13,7 @@ except ImportError as e:
 import numpy as np
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
+from sklearn.model_selection import ParameterSampler
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.model_selection import GridSearchCV, RandomizedSearchCV
@@ -272,8 +273,7 @@ def check_search_refit_false_no_forecaster(
     """
     search_cv_clone = clone(search_cv)
 
-    # Temporarily set refit=False if not already
-    original_refit = search_cv_clone.refit
+    # Set refit=False on the local clone (the original is never mutated).
     search_cv_clone.set_params(refit=False)
 
     search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
@@ -292,13 +292,9 @@ def check_search_refit_false_no_forecaster(
         # Expected behavior
         pass
 
-    # Restore original refit value
-    search_cv_clone.set_params(refit=original_refit)
-
 
 def check_search_predict_delegates(
     search_cv,
-    y_train: pl.DataFrame,
     y_test: pl.DataFrame,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -309,8 +305,6 @@ def check_search_predict_delegates(
     ----------
     search_cv : BaseSearchCV
         Fitted search CV instance
-    y_train : pl.DataFrame
-        Training target data
     y_test : pl.DataFrame
         Test target data
     X_future : pl.DataFrame, optional
@@ -340,9 +334,7 @@ def check_search_predict_delegates(
 
 def check_search_observe_delegates(
     search_cv,
-    y_train: pl.DataFrame,
     y_update: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
     X_actual_update: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -353,12 +345,8 @@ def check_search_observe_delegates(
     ----------
     search_cv : BaseSearchCV
         Fitted search CV instance
-    y_train : pl.DataFrame
-        Training target data
     y_update : pl.DataFrame
         Update target data
-    X_actual_train : pl.DataFrame, optional
-        Training features
     X_actual_update : pl.DataFrame, optional
         Update features
 
@@ -394,9 +382,7 @@ def check_search_observe_delegates(
 
 def check_search_rewind_delegates(
     search_cv,
-    y_train: pl.DataFrame,
     y_reset: pl.DataFrame,
-    X_actual_train: pl.DataFrame | None = None,
     X_actual_reset: pl.DataFrame | None = None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
@@ -407,12 +393,8 @@ def check_search_rewind_delegates(
     ----------
     search_cv : BaseSearchCV
         Fitted search CV instance
-    y_train : pl.DataFrame
-        Training target data
     y_reset : pl.DataFrame
         Reset target data
-    X_actual_train : pl.DataFrame, optional
-        Training features
     X_actual_reset : pl.DataFrame, optional
         Reset features
 
@@ -547,8 +529,7 @@ def check_search_return_train_score(
     """
     search_cv_clone = clone(search_cv)
 
-    # Temporarily set return_train_score=True
-    original_return_train_score = search_cv_clone.return_train_score
+    # Set return_train_score=True on the local clone (the original is never mutated).
     search_cv_clone.set_params(return_train_score=True)
 
     search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
@@ -564,9 +545,6 @@ def check_search_return_train_score(
         for split_idx in range(n_splits):
             split_key = f"split{split_idx}_train_score"
             assert split_key in cv_results, f"cv_results_ must have '{split_key}' when return_train_score=True"
-
-    # Restore original value
-    search_cv_clone.set_params(return_train_score=original_return_train_score)
 
 
 def check_search_error_score_handling(
@@ -598,17 +576,62 @@ def check_search_error_score_handling(
     """
     search_cv_clone = clone(search_cv)
 
+    # Inject one guaranteed-failing candidate alongside the existing valid ones.
+    # The sentinel is an out-of-domain value that the forecaster's parameter
+    # constraints reject during _validate_params (raised inside the candidate
+    # fit, which is exactly what error_score absorbs). set_params accepts any
+    # value, so the failure surfaces at fit time rather than before it. Keeping
+    # the valid candidates avoids the all-candidates-failed path, which raises
+    # regardless of error_score.
+    _invalid = "__yohou_invalid_param_value__"
+    if hasattr(search_cv_clone, "param_grid"):
+        grid = search_cv_clone.param_grid
+        valid_dicts = [dict(d) for d in grid] if isinstance(grid, list) else [dict(grid)]
+        failing_key = next(iter(valid_dicts[0].keys()))
+        failing_grid = [*valid_dicts, {failing_key: [_invalid]}]
+        search_cv_clone.set_params(param_grid=failing_grid)
+    elif hasattr(search_cv_clone, "param_distributions"):
+        dist = search_cv_clone.param_distributions
+        valid_dists = [dict(d) for d in dist] if isinstance(dist, list) else [dict(dist)]
+        failing_key = next(iter(valid_dists[0].keys()))
+        # Materialize a fixed set of concrete valid candidates from the original
+        # distributions, then append the failing one and enumerate the whole
+        # finite grid. Sampling from the live distributions could otherwise miss
+        # the single failing candidate entirely.
+        n_valid = max(1, getattr(search_cv_clone, "n_iter", 1))
+        concrete_valid = list(
+            ParameterSampler(valid_dists, n_iter=n_valid, random_state=getattr(search_cv_clone, "random_state", None))
+        )
+        # Each sampled candidate becomes a one-value finite grid so the whole
+        # space (valid samples + failing candidate) can be enumerated exactly.
+        finite_grids = [{key: [value] for key, value in candidate.items()} for candidate in concrete_valid]
+        failing_dist = [*finite_grids, {failing_key: [_invalid]}]
+        search_cv_clone.set_params(param_distributions=failing_dist, n_iter=len(failing_dist))
+    else:  # pragma: no cover - the check suite only runs on searches that expose a tunable space
+        # No tunable search space to corrupt; nothing to assert.
+        return
+
     # Set error_score to np.nan (don't raise)
     search_cv_clone.set_params(error_score=np.nan)
 
-    # Note: This check assumes that invalid parameters will be tested
-    # If all parameters are valid, this check may pass trivially
     search_cv_clone.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
-    # Check that fit completed without raising
+    # Check that fit completed without raising despite the failing candidate.
     assert hasattr(search_cv_clone, "cv_results_"), (
-        "fit() should complete with error_score=np.nan even with some failing fits"
+        "fit() should complete with error_score=np.nan even when some fits fail"
     )
+
+    # The failing candidate must be recorded as np.nan, not silently dropped or
+    # scored as a real value. Single-metric searches expose 'mean_test_score';
+    # multimetric searches expose one 'mean_test_<name>' key per scorer.
+    cv_results = search_cv_clone.cv_results_
+    mean_test_keys = [k for k in cv_results if k.startswith("mean_test_")]
+    assert mean_test_keys, f"cv_results_ must expose at least one mean_test_* key, got {list(cv_results)}"
+    for key in mean_test_keys:
+        mean_test_score = np.asarray(cv_results[key], dtype=float)
+        assert np.isnan(mean_test_score).any(), (
+            f"error_score=np.nan must record np.nan for the failing candidate in {key!r}, got {mean_test_score}"
+        )
 
 
 def check_search_clone_preserves_params(search_cv) -> None:
@@ -910,7 +933,6 @@ def check_randomized_search_distributions(
 
 def check_search_panel_data(
     search_cv,
-    y_train: pl.DataFrame,
     y_test: pl.DataFrame,
     groups: list[str] | None = None,
     X_future: pl.DataFrame | None = None,
@@ -922,8 +944,6 @@ def check_search_panel_data(
     ----------
     search_cv : BaseSearchCV
         Fitted search CV instance with panel data
-    y_train : pl.DataFrame
-        Training target data with panel groups
     y_test : pl.DataFrame
         Test target data with panel groups
     groups : list of str, optional
@@ -1018,8 +1038,6 @@ def check_search_method_availability(
 
 def check_search_interval_predict_delegates(
     search_cv,
-    y_train: pl.DataFrame,
-    y_test: pl.DataFrame,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
 ) -> None:
@@ -1032,10 +1050,6 @@ def check_search_interval_predict_delegates(
     ----------
     search_cv : BaseSearchCV
         Fitted search CV instance (interval scorer, refit=True).
-    y_train : pl.DataFrame
-        Training target data.
-    y_test : pl.DataFrame
-        Test target data.
     X_future : pl.DataFrame, optional
         Known-future features forwarded to predict_interval().
     X_forecast : pl.DataFrame, optional

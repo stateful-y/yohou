@@ -129,6 +129,30 @@ class TestVotingIntervalForecasterStrategies:
         assert len(lower_cols) > 0
         assert len(upper_cols) > 0
 
+    def test_predict_interval_forwards_strategy_to_children(self, _interval_data):
+        """predict_interval forwards the ``strategy`` kwarg to each child."""
+        y_train, base_forecasters = _interval_data
+
+        ensemble = VotingIntervalForecaster(
+            forecasters=base_forecasters,
+            method="envelope",
+        )
+        ensemble.fit(y_train, forecasting_horizon=3)
+
+        seen_strategies = []
+        for _, child in ensemble.forecasters_:
+            original = child.predict_interval
+
+            def _spy(*args, _orig=original, **kwargs):
+                seen_strategies.append(kwargs.get("strategy"))
+                return _orig(*args, **kwargs)
+
+            child.predict_interval = _spy
+
+        ensemble.predict_interval(forecasting_horizon=3, strategy="median")
+
+        assert seen_strategies == ["median"] * len(ensemble.forecasters_)
+
     def test_envelope_strategy(self, _interval_data):
         """Test that envelope takes min(lower) and max(upper)."""
         y_train, base_forecasters = _interval_data
@@ -610,3 +634,40 @@ class TestVotingIntervalForecasterSklearn:
 
         with pytest.raises(NotFittedError):
             forecaster.predict_interval(forecasting_horizon=3)
+
+
+class TestVotingIntervalForecasterPredictTransformed:
+    """predict/observe_predict validate transformed schemas when predict_transformed=True."""
+
+    def _ensemble(self, y_X_factory):
+        y, _ = y_X_factory(length=80, n_targets=1, n_features=0, seed=42)
+        ensemble = VotingIntervalForecaster(
+            forecasters=[
+                (
+                    "conf_1",
+                    SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1), calibration_size=10),
+                ),
+                (
+                    "conf_7",
+                    SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=10),
+                ),
+            ],
+            point_method="mean",
+        )
+        ensemble.fit(y[:60], forecasting_horizon=3)
+        return ensemble
+
+    def test_predict_transformed_validates_and_predicts(self, y_X_factory):
+        """predict(predict_transformed=True) runs the transformed-schema check and predicts."""
+        ensemble = self._ensemble(y_X_factory)
+        y_pred = ensemble.predict(forecasting_horizon=3, predict_transformed=True)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_transformed(self, y_X_factory):
+        """observe_predict(predict_transformed=True) also runs the check before predicting."""
+        y, _ = y_X_factory(length=80, n_targets=1, n_features=0, seed=42)
+        ensemble = self._ensemble(y_X_factory)
+        y_pred = ensemble.observe_predict(y[60:63], forecasting_horizon=3, predict_transformed=True)
+        target_cols = [c for c in y_pred.columns if c not in ("vintage_time", "time")]
+        assert len(y_pred) > 0
+        assert len(target_cols) > 0

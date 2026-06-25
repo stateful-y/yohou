@@ -217,6 +217,22 @@ class TestStepWeight:
         # Without vintage_time, step_weight is a no-op
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
+    def test_step_weight_without_forecasting_step_warns(self, y_train):
+        """A step_weighter with no forecasting_step emits a UserWarning."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [11.0, 22.0, 28.0],
+        })
+
+        mae = MeanAbsoluteError(step_weighter=LookupWeighter(mapping={1: 10.0}, default=1.0))
+        mae.fit(y_train)
+        with pytest.warns(UserWarning, match="step_weighter was provided"):
+            mae.score(y_true, y_pred)
+
     def test_step_weight_with_stepwise_vintagewise_row_reduction(self, y_train, multi_vintage_data):
         """step_weight applies during row reduction with stepwise+vintagewise."""
         y_true, y_pred = multi_vintage_data

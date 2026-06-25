@@ -116,3 +116,18 @@ class TestPointReductionPanelBehavior:
         assert y_pred_default.equals(y_pred_explicit)
         assert "feature_0" in y_pred_default.columns
         assert len(y_pred_default) == 3
+
+
+def test_panel_fit_insufficient_data_for_group_raises():
+    """A panel forecaster whose observation_horizon exceeds a group's rows raises, naming the group."""
+    from datetime import datetime
+
+    import polars as pl
+
+    from yohou.point import SeasonalNaive
+
+    time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 5), interval="1d", eager=True)
+    y = pl.DataFrame({"time": time, "g0__v": [1.0, 2.0, 3.0, 4.0, 5.0], "g1__v": [2.0, 3.0, 4.0, 5.0, 6.0]})
+
+    with pytest.raises(ValueError, match="Not enough data to set observed y for group 'g0'"):
+        SeasonalNaive(seasonality=100).fit(y, forecasting_horizon=1)

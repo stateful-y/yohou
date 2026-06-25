@@ -165,7 +165,10 @@ class BaseStandardForecaster:
         y_observed = None
         if observation_horizon > 0:
             if observation_horizon > len(y):
-                raise ValueError("Not enough data to set observed y.")
+                raise ValueError(
+                    f"Not enough data to set observed y: observation_horizon={observation_horizon} "
+                    f"but y has {len(y)} rows."
+                )
             y_observed = y[-observation_horizon:]
 
         self._y_observed = y_observed
@@ -425,6 +428,9 @@ class BaseStandardForecaster:
             Predictions with vintage_time and time columns.
 
         """
+        # interval_ may be a non-uniform string offset (e.g. "1mo"), so steps
+        # are advanced one at a time via add_interval rather than a vectorised
+        # datetime_range that assumes a fixed timedelta.
         predicted_times = [add_interval(self.observed_time_, self.interval_, n=n) for n in range(1, len(y_pred) + 1)]
 
         time = pl.DataFrame({"vintage_time": [self.observed_time_] * len(y_pred), "time": predicted_times})

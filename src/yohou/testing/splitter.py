@@ -10,8 +10,7 @@ Organized into three categories:
 """
 
 import datetime
-
-from yohou.model_selection import SlidingWindowSplitter
+import inspect
 
 try:
     import polars as pl
@@ -141,7 +140,7 @@ def check_splitter_tags_match_capabilities(
             "get_n_splits() with y=None should return non-negative integer"
         )
     except ValueError as e:
-        raise AssertionError(f"get_n_splits(y=None) raised ValueError: {e}") from e
+        raise AssertionError(f"{type(splitter).__name__}.get_n_splits(y=None) raised ValueError: {e}") from e
 
 
 def check_splitter_produces_valid_indices(splitter, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
@@ -307,11 +306,17 @@ def check_splitter_parameter_constraints(
         If invalid values are accepted
 
     """
-    # Default valid values for required parameters (per splitter)
-
-    defaults = {}
-    if splitter_class == SlidingWindowSplitter:
-        defaults = {"n_splits": 3, "test_size": 5}
+    # Supply each other constructor parameter its own declared default so that
+    # only ``param_name`` is exercised. Parameters without a default are left
+    # out; the splitter is expected to validate ``param_name`` regardless.
+    init_params = inspect.signature(splitter_class.__init__).parameters
+    defaults = {
+        name: param.default
+        for name, param in init_params.items()
+        if name not in ("self", param_name)
+        and param.default is not inspect.Parameter.empty
+        and param.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+    }
 
     for invalid_value in invalid_values:
         try:

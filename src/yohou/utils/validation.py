@@ -2,7 +2,6 @@
 
 import calendar
 import re
-import warnings
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -19,7 +18,6 @@ __all__ = [
     "check_inputs",
     "check_interval_consistency",
     "check_groups",
-    "check_groups_exist",
     "check_panel_groups_match",
     "check_panel_internal_consistency",
     "check_schema",
@@ -224,6 +222,13 @@ def check_scorer_column_selection(
                 y_pred_cols = set(y_pred.columns)
                 valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
 
+                missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
+                if missing_pred_cols:
+                    raise ValueError(
+                        f"Selected target column(s) {sorted(missing_pred_cols)} are missing from y_pred. "
+                        f"Available y_pred columns: {sorted(y_pred_cols - {'time', 'vintage_time'})}."
+                    )
+
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(valid_y_pred_cols)
 
@@ -278,6 +283,13 @@ def check_scorer_column_selection(
             else:
                 y_pred_cols = set(y_pred.columns)
                 valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+
+                missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
+                if missing_pred_cols:
+                    raise ValueError(
+                        f"Selected target column(s) {sorted(missing_pred_cols)} are missing from y_pred. "
+                        f"Available y_pred columns: {sorted(y_pred_cols - {'time', 'vintage_time'})}."
+                    )
 
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(valid_y_pred_cols)
@@ -386,7 +398,6 @@ def check_groups(
 
     See Also
     --------
-    - [`check_groups_exist`][yohou.utils.validation.check_groups_exist] : Validate requested panel groups exist (deprecated).
     - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
     - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
 
@@ -408,55 +419,6 @@ def check_groups(
         )
 
     return requested_panel_groups
-
-
-def check_groups_exist(
-    fitted_panel_groups: list[str],
-    requested_panel_groups: list[str] | None,
-    context: str,
-) -> None:
-    """Validate all requested panel groups exist in fitted forecaster.
-
-    .. deprecated::
-        Use `check_groups` instead.
-
-    Consolidates duplicated validation in predict, observe, rewind methods.
-
-    Parameters
-    ----------
-    fitted_panel_groups : list of str
-        Panel group names from fitted forecaster (groups_).
-    requested_panel_groups : list of str or None
-        Panel group names requested for operation.
-    context : str
-        Method name for error message (e.g., "predict", "observe", "rewind").
-
-    Raises
-    ------
-    ValueError
-        If any requested panel group was not present during fit.
-
-    See Also
-    --------
-    - [`check_groups`][yohou.utils.validation.check_groups] : Preferred replacement for this function.
-    - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
-
-    """
-    warnings.warn(
-        "check_groups_exist is deprecated; use check_groups instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if requested_panel_groups is None:
-        return
-
-    missing_groups = set(requested_panel_groups) - set(fitted_panel_groups)
-    if missing_groups:
-        raise ValueError(
-            f"Panel groups {sorted(missing_groups)} not found in fitted forecaster. "
-            f"Available groups: {sorted(fitted_panel_groups)}. "
-            f"Cannot {context} for groups that were not present during fit."
-        )
 
 
 def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
@@ -733,16 +695,13 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     - [`add_interval`][yohou.utils.validation.add_interval] : Add intervals to datetime values
 
     """
-    if df is None:
-        raise ValueError("DataFrame cannot be None")
-
     if df.height < 2:
         raise ValueError("Need at least 2 time points to infer interval")
 
     # Compute consecutive deltas with polars rather than a Python loop. The
-    # full datetime list is still needed downstream for month/day arithmetic.
+    # full datetime list is only needed for the monthly inference branch, so it
+    # is materialised lazily inside _infer_freq_from_deltas.
     unique_deltas = sorted(df["time"].diff().drop_nulls().unique().to_list())
-    time_series = df["time"].to_list()
 
     # Check if deltas are all similar (within small tolerance for rounding)
     delta_days = [d.days for d in unique_deltas]
@@ -757,7 +716,7 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
             return _timedelta_to_string(timedelta(seconds=median_seconds))
 
     # Infer based on delta distribution
-    freq = _infer_freq_from_deltas(time_series, unique_deltas)
+    freq = _infer_freq_from_deltas(df["time"], unique_deltas)
     if freq is not None:
         return freq
 
@@ -1224,13 +1183,11 @@ def check_continuity(
             interval_n = check_interval_consistency(df_n)
             interval_n_norm = _normalize_interval(interval_n)
 
-            if len(df_p) > 1:
-                interval_p_norm = _normalize_interval(interval_p)
-                if interval_p_norm != interval_n_norm:
-                    raise ValueError(
-                        "Interval mismatch between DataFrames: previous DataFrame has interval "
-                        f"{interval_p}, but next DataFrame has interval {interval_n}."
-                    )
+            if len(df_p) > 1 and interval_p_norm != interval_n_norm:
+                raise ValueError(
+                    "Interval mismatch between DataFrames: previous DataFrame has interval "
+                    f"{interval_p}, but next DataFrame has interval {interval_n}."
+                )
 
             expected_interval_norm = _normalize_interval(expected_interval)
             if interval_n_norm != expected_interval_norm:
@@ -1342,13 +1299,14 @@ def _timedelta_to_string(td: timedelta) -> str:
             return f"{microseconds}us"
 
 
-def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[timedelta]) -> str | None:
+def _infer_freq_from_deltas(time: pl.Series, unique_deltas: list[timedelta]) -> str | None:
     """Infer frequency pattern from delta distribution.
 
     Parameters
     ----------
-    time_series : list[datetime]
-        List of datetime values.
+    time : pl.Series
+        The "time" column. Materialised to a Python list only when the monthly
+        inference branch is actually entered.
 
     unique_deltas : list[timedelta]
         Unique time deltas between consecutive dates.
@@ -1365,7 +1323,7 @@ def _infer_freq_from_deltas(time_series: list[datetime], unique_deltas: list[tim
     # Try monthly inference first (handles 1mo, 2mo, 3mo, 6mo, etc.)
     # Monthly patterns: 28-31 days (1mo), 59-62 days (2mo), 89-92 days (3mo), 181-184 days (6mo)
     if 28 <= min_delta <= 31 or 59 <= min_delta <= 62 or 89 <= min_delta <= 92 or 181 <= min_delta <= 184:
-        freq = _infer_monthly_freq(time_series)
+        freq = _infer_monthly_freq(time.to_list())
         if freq is not None:
             return freq
 
@@ -1606,7 +1564,10 @@ def add_interval(start: datetime, interval: str | timedelta, n: int = 1) -> date
         # Quarters are 3 months
         return add_interval(start, "3mo", n)
     elif unit == "y":
-        # Add years (handles leap years)
-        return start.replace(year=start.year + total_units)
+        # Add years, capping the day-of-month so February 29 maps to
+        # February 28 when the target year is not a leap year.
+        target_year = start.year + total_units
+        day = min(start.day, calendar.monthrange(target_year, start.month)[1])
+        return start.replace(year=target_year, day=day)
     else:
         raise ValueError(f"Unsupported interval unit: {unit}")

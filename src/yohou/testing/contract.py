@@ -261,9 +261,8 @@ def check_composition_nested_param_addressable(compositor, descriptor: dict) -> 
 
     value = deep[key]
     compositor.set_params(**{key: value})
-    assert compositor.get_params(deep=True)[key] == value or compositor.get_params(deep=True)[key] is value, (
-        f"{name}: set_params({key}=...) did not round-trip"
-    )
+    round_tripped = compositor.get_params(deep=True)[key]
+    assert _safe_equal(round_tripped, value), f"{name}: set_params({key}=...) did not round-trip"
 
 
 def check_composition_clone_deep_clones_components(compositor, descriptor: dict) -> None:

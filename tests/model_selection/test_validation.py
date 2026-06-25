@@ -377,6 +377,47 @@ class TestCrossValPredict:
 class TestFitAndScoreReturnPredictions:
     """Tests for _fit_and_score return_predictions parameter."""
 
+    def test_train_score_params_match_predicted_rows(self, fit_and_score_data):
+        """Train-side score_params must align with the scored train-test rows.
+
+        ``score_params`` were previously sliced with the full ``train`` indices
+        (len(train) entries) while ``_score`` evaluates only the last len(test)
+        rows of the training window, producing a length mismatch.
+        """
+        y, train, test, fh = fit_and_score_data
+
+        captured = {}
+
+        class _RecordingMAE(MeanAbsoluteError):
+            def __call__(self, y_truth, y_pred, **params):
+                if "sample_weight" in params:
+                    captured.setdefault("lengths", []).append(len(params["sample_weight"]))
+                params.pop("sample_weight", None)
+                return super().__call__(y_truth, y_pred, **params)
+
+        sample_weight = np.arange(len(y), dtype=float)
+
+        _fit_and_score(
+            SeasonalNaive(seasonality=1),
+            y,
+            None,
+            fh,
+            scorer=_RecordingMAE(),
+            train=train,
+            test=test,
+            verbose=0,
+            parameters=None,
+            fit_params=None,
+            predict_func_params=None,
+            score_params={"sample_weight": sample_weight},
+            return_train_score=True,
+        )
+
+        # Both the test scoring and the train scoring evaluate len(test) rows,
+        # so every captured weight array must have len(test) entries.
+        assert captured["lengths"]
+        assert all(length == len(test) for length in captured["lengths"])
+
     def test_return_predictions_with_scorer(self, fit_and_score_data):
         """return_predictions=True with scorer returns both scores and predictions."""
         y, train, test, fh = fit_and_score_data

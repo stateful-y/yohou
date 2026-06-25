@@ -39,6 +39,46 @@ def _tile_to_horizon(pattern: pl.DataFrame, horizon: int, seasonality: int) -> p
     return pattern.head(horizon)
 
 
+def _build_panel_prediction(
+    y_observed: dict[str, pl.DataFrame],
+    groups: list[str],
+    horizon: int,
+    seasonality: int,
+    get_pattern_fn,
+) -> pl.DataFrame:
+    """Build panel predictions by tiling a per-group seasonal pattern.
+
+    Parameters
+    ----------
+    y_observed : dict[str, pl.DataFrame]
+        Observed values per panel group.
+    groups : list of str
+        Panel group names to predict for.
+    horizon : int
+        Forecasting horizon (number of rows per group).
+    seasonality : int
+        Seasonal period length.
+    get_pattern_fn : callable
+        Maps a group's observed DataFrame (value columns only, no ``"time"``)
+        to its seasonal pattern DataFrame.
+
+    Returns
+    -------
+    pl.DataFrame
+        Horizontally concatenated, group-prefixed predictions.
+
+    """
+    y_pred = []
+    for panel_group_name in groups:
+        y_group = y_observed[panel_group_name]
+        assert isinstance(y_group, pl.DataFrame)
+        pattern = get_pattern_fn(y_group.select(~cs.by_name("time")))
+        y_pred_group = _tile_to_horizon(pattern, horizon, seasonality)
+        y_pred_group = y_pred_group.rename({col: f"{panel_group_name}__{col}" for col in y_pred_group.columns})
+        y_pred.append(y_pred_group)
+    return pl.concat(y_pred, how="horizontal")
+
+
 class SeasonalNaive(BasePointForecaster):
     """Seasonal naive forecaster that repeats values from previous season.
 
@@ -91,7 +131,7 @@ class SeasonalNaive(BasePointForecaster):
     """
 
     _parameter_constraints: dict = {
-        **BasePointForecaster._parameter_constraints,
+        "panel_strategy": BasePointForecaster._parameter_constraints["panel_strategy"],
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
     }
 
@@ -159,20 +199,13 @@ class SeasonalNaive(BasePointForecaster):
         # Panel data
         else:
             assert isinstance(self._y_observed, dict)
-            y_pred = []
-            for panel_group_name in groups:
-                y_group = self._y_observed[panel_group_name]
-                assert isinstance(y_group, pl.DataFrame)
-                pattern = y_group.select(~cs.by_name("time"))
-                y_pred_group = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
-
-                # Rename columns to add panel prefix
-                y_pred_group = y_pred_group.rename({col: f"{panel_group_name}__{col}" for col in y_pred_group.columns})
-
-                y_pred.append(y_pred_group)
-
-            # Concatenate horizontally (side by side)
-            y_pred = pl.concat(y_pred, how="horizontal")
+            y_pred = _build_panel_prediction(
+                self._y_observed,
+                groups,
+                self.fit_forecasting_horizon_,
+                self.seasonality,
+                lambda values: values,
+            )
 
         y_pred = self._add_time_columns(y_pred)
 
@@ -243,7 +276,7 @@ class MeanSeasonalNaive(BasePointForecaster):
     """
 
     _parameter_constraints: dict = {
-        **BasePointForecaster._parameter_constraints,
+        "panel_strategy": BasePointForecaster._parameter_constraints["panel_strategy"],
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
         "n_seasons": [Interval(numbers.Integral, 1, None, closed="left")],
     }
@@ -309,7 +342,7 @@ class MeanSeasonalNaive(BasePointForecaster):
             .with_row_index("_pos")
             .with_columns((pl.col("_pos") % self.seasonality).alias("_pos"))
             .group_by("_pos", maintain_order=True)
-            .agg(pl.all().mean())
+            .agg(pl.exclude("_pos").mean())
             .sort("_pos")
             .drop("_pos")
         )
@@ -344,21 +377,13 @@ class MeanSeasonalNaive(BasePointForecaster):
         # Panel data
         else:
             assert isinstance(self._y_observed, dict)
-            y_pred = []
-            for panel_group_name in groups:
-                y_group = self._y_observed[panel_group_name]
-                assert isinstance(y_group, pl.DataFrame)
-                y_values = y_group.select(~cs.by_name("time"))
-                pattern = self._compute_mean_pattern(y_values)
-                y_pred_group = _tile_to_horizon(pattern, self.fit_forecasting_horizon_, self.seasonality)
-
-                # Rename columns to add panel prefix
-                y_pred_group = y_pred_group.rename({col: f"{panel_group_name}__{col}" for col in y_pred_group.columns})
-
-                y_pred.append(y_pred_group)
-
-            # Concatenate horizontally (side by side)
-            y_pred = pl.concat(y_pred, how="horizontal")
+            y_pred = _build_panel_prediction(
+                self._y_observed,
+                groups,
+                self.fit_forecasting_horizon_,
+                self.seasonality,
+                self._compute_mean_pattern,
+            )
 
         y_pred = self._add_time_columns(y_pred)
 

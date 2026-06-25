@@ -507,11 +507,11 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             class_labels = self.classes_[target_col]
 
             winners = _majority_vote(predictions, target_col)
+            winners_series = pl.Series(values=winners)
 
             for label in class_labels:
                 col_name = f"{target_col}_proba_{label}"
-                proba_values = [1.0 if w == label else 0.0 for w in winners]
-                result = result.with_columns(pl.Series(name=col_name, values=proba_values))
+                result = result.with_columns(winners_series.eq(label).cast(pl.Float64).alias(col_name))
 
         return result
 
@@ -601,14 +601,11 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
                     proba_cols = [f"{target_col}_proba_{label}" for label in class_labels]
                     out_col = target_col
 
-                argmax_series = y_proba.select(pl.concat_list(proba_cols).list.arg_max().alias("_idx"))["_idx"]
+                argmax_series = y_proba.select(pl.concat_list(proba_cols).list.arg_max().cast(pl.UInt32).alias("_idx"))[
+                    "_idx"
+                ]
                 label_series = pl.Series(values=class_labels)
-                result = result.with_columns(
-                    argmax_series.map_elements(
-                        lambda idx, _labels=label_series: _labels[idx],
-                        return_dtype=pl.String,
-                    ).alias(out_col),
-                )
+                result = result.with_columns(label_series.gather(argmax_series).alias(out_col))
 
         return result
 

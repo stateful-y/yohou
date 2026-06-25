@@ -206,7 +206,11 @@ def make_exogenous_classification(
     forecasting_horizon : int, default=6
         Number of forward steps per X_forecast vintage.
     noise : float, default=0.1
-        Standard deviation of the classification boundary noise.
+        Standard deviation of an additional jitter layered on top of the
+        pollutant signal just before classification. The underlying pollutant
+        signal already carries a fixed ``std=5.0`` noise term, so at the
+        default ``noise=0.1`` this jitter only marginally perturbs the
+        decision boundary; raise it to inject more label noise.
     forecast_bias : float, default=0.3
         Systematic bias added to pollutant forecasts relative to actuals.
     random_state : int, default=42

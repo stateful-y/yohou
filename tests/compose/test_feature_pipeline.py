@@ -174,6 +174,41 @@ class TestFeaturePipelineInverseTransform:
         tags = pipe.__sklearn_tags__()
         assert tags.transformer_tags.invertible is False
 
+    def test_three_step_stateful_inverse_round_trips(self):
+        """Three stateful steps with distinct horizons must invert correctly.
+
+        Regression: the inverse_transform X_p context for each step must be
+        paired with that step's input space. With the wrong ordering, the most-
+        transformed context was paired with the last step's inverse, corrupting
+        the round trip for pipelines of three or more stateful transformers.
+        """
+        from datetime import datetime, timedelta
+
+        from yohou.stationarity import SeasonalDifferencing
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=39),
+            interval="1d",
+            eager=True,
+        )
+        X = pl.DataFrame({"time": time, "v": [float(i * i % 17 + i) for i in range(40)]})
+
+        pipe = FeaturePipeline([
+            ("d1", SeasonalDifferencing(seasonality=1)),
+            ("d2", SeasonalDifferencing(seasonality=2)),
+            ("d3", SeasonalDifferencing(seasonality=3)),
+        ])
+        pipe.fit(X)
+        X_t = pipe.transform(X)
+
+        recovered = pipe.inverse_transform(X_t=X_t, X_p=X)
+
+        # Recovered values must match the original on every overlapping timestamp.
+        merged = recovered.join(X, on="time", suffix="_orig")
+        max_abs_diff = merged.select((pl.col("v") - pl.col("v_orig")).abs().max()).item()
+        assert max_abs_diff == pytest.approx(0.0, abs=1e-9)
+
 
 class TestFeaturePipelineParams:
     """Tests for get_params and set_params."""

@@ -405,6 +405,20 @@ class TestFunctionTransformerStateful:
         t.fit(X)
         assert t._observation_horizon == 1
 
+    def test_check_inverse_uses_contiguous_sample_for_stateful(self, recwarn):
+        """A valid stateful diff/cumsum pair must not warn under check_inverse.
+
+        Non-contiguous sampling would break finite differences and trigger a
+        spurious "not strictly inverse" warning, so the check uses a contiguous
+        tail slice for stateful transforms.
+        """
+        X = create_positive_data(length=200)
+        t = FunctionTransformer(func=_diff_func, inverse_func=_cumsum_inverse, check_inverse=True)
+        t.fit(X)
+
+        inverse_warnings = [w for w in recwarn.list if "not strictly inverse" in str(w.message)]
+        assert inverse_warnings == []
+
     def test_fit_transform_slices_warmup_rows(self):
         """fit_transform returns data with warmup rows removed."""
         X = create_positive_data(length=30)
@@ -481,7 +495,7 @@ class TestFunctionTransformerDiscontinuousNaN:
 
         X = create_positive_data(length=30)
         t = FunctionTransformer(func=bad_func, check_inverse=False)
-        with pytest.raises(ValueError, match="discontinuous"):
+        with pytest.raises(ValueError, match="non-leading positions"):
             t.fit(X)
 
 

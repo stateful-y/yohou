@@ -1,7 +1,6 @@
 """Base class for reduction-based forecasters."""
 
 import abc
-import contextlib
 import inspect
 import numbers
 import warnings
@@ -226,7 +225,7 @@ default="first_step"
         if self.groups_ is None:
             # Global data: y_t is DataFrame
             assert isinstance(y_t, pl.DataFrame)
-            sample_weights, _ = self._compute_sample_weights_one(
+            sample_weights = self._compute_sample_weights_one(
                 y_t=y_t,
                 forecasting_horizon=forecasting_horizon,
                 group_name=None,
@@ -237,7 +236,7 @@ default="first_step"
             sample_weights_list = []
             for panel_group_name in self.groups_:
                 y_t_local = y_t[panel_group_name]
-                weights_local, _ = self._compute_sample_weights_one(
+                weights_local = self._compute_sample_weights_one(
                     y_t=y_t_local,
                     forecasting_horizon=forecasting_horizon,
                     group_name=panel_group_name,
@@ -252,7 +251,7 @@ default="first_step"
         y_t: pl.DataFrame,
         forecasting_horizon: int,
         group_name: str | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> np.ndarray:
         """Compute sample weights for one time series (global or local).
 
         Resolves ``self.time_weighter`` (with alignment strategy) and
@@ -270,9 +269,8 @@ default="first_step"
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray]
-            ``(sample_weights, nonzero_mask)`` where ``nonzero_mask`` is a
-            boolean array (``True`` for non-zero weight samples).
+        np.ndarray
+            Per-sample weights aligned to the tabularized training rows.
 
         """
         n_samples = len(y_t) - forecasting_horizon
@@ -292,35 +290,23 @@ default="first_step"
             if sample_weight_alignment == "first_step":
                 aligned_indices = np.arange(1, n_samples + 1)
                 tw_aligned = weights_array[aligned_indices]
-
-            elif sample_weight_alignment == "mean_step":
-                tw_aligned = np.array([
-                    weights_array[i + 1 : i + forecasting_horizon + 1].mean() for i in range(n_samples)
-                ])
-
-            elif sample_weight_alignment == "weighted_mean_step":
-                horizon_decay = np.exp(-np.arange(forecasting_horizon) * 0.5)
-                horizon_decay = horizon_decay / horizon_decay.sum()
-                tw_aligned = np.array([
-                    np.sum(weights_array[i + 1 : i + forecasting_horizon + 1] * horizon_decay) for i in range(n_samples)
-                ])
-
-            elif sample_weight_alignment == "max_weight_step":
-                tw_aligned = np.array([
-                    weights_array[i + 1 : i + forecasting_horizon + 1].max() for i in range(n_samples)
-                ])
-
-            elif sample_weight_alignment == "min_weight_step":
-                tw_aligned = np.array([
-                    weights_array[i + 1 : i + forecasting_horizon + 1].min() for i in range(n_samples)
-                ])
-
             else:
-                raise ValueError(
-                    f"Invalid sample_weight_alignment: {sample_weight_alignment}. "
-                    f"Must be 'first_step', 'mean_step', 'weighted_mean_step', "
-                    f"'max_weight_step', or 'min_weight_step'."
-                )
+                # Sliding windows over steps 1..H for each of the n_samples rows.
+                windows = np.lib.stride_tricks.sliding_window_view(
+                    weights_array[1 : n_samples + forecasting_horizon],
+                    window_shape=forecasting_horizon,
+                )[:n_samples]
+                if sample_weight_alignment == "mean_step":
+                    tw_aligned = windows.mean(axis=1)
+                elif sample_weight_alignment == "weighted_mean_step":
+                    horizon_decay = np.exp(-np.arange(forecasting_horizon) * 0.5)
+                    horizon_decay = horizon_decay / horizon_decay.sum()
+                    tw_aligned = windows @ horizon_decay
+                elif sample_weight_alignment == "max_weight_step":
+                    tw_aligned = windows.max(axis=1)
+                else:
+                    # min_weight_step (only remaining StrOptions value)
+                    tw_aligned = windows.min(axis=1)
 
         # Resolve vintage_weighter via direct lookup (no alignment)
         vw_aligned = None
@@ -334,14 +320,11 @@ default="first_step"
             # Direct lookup: sample i's vintage is time_series[i]
             vw_aligned = vw_array[:n_samples]
 
-        # Combine and normalize
+        # Combine and normalize. At least one weighter is set (the public
+        # caller short-circuits when both are None), so this is never None.
         sample_weights = _combine_weight_vectors(tw_aligned, vw_aligned, n=n_samples)
-        if sample_weights is None:  # pragma: no cover
-            # Both were None (shouldn't reach here since caller checks)
-            sample_weights = np.ones(n_samples)
-
-        nonzero_mask = sample_weights > 0.0
-        return sample_weights, nonzero_mask
+        assert sample_weights is not None
+        return sample_weights
 
     def _get_tabularized_dataset(
         self,
@@ -726,10 +709,17 @@ default="first_step"
                     f"sample_weight parameter. Cannot use time_weight/vintage_weight for training."
                 )
             last_step.set_fit_request(sample_weight=True)
-            for _, step in estimator.steps[:-1]:
+            for step_name, step in estimator.steps[:-1]:
                 if step != "passthrough":
-                    with contextlib.suppress(TypeError, AttributeError):
+                    try:
                         step.set_fit_request(sample_weight=False)
+                    except (TypeError, AttributeError) as exc:
+                        warnings.warn(
+                            f"Could not disable sample_weight routing on Pipeline step "
+                            f"{step_name!r} ({step.__class__.__name__}): {exc}. This step "
+                            f"may receive sample_weight unexpectedly.",
+                            stacklevel=2,
+                        )
             return {"sample_weight": sample_weight}
 
         # 3. VAR_KEYWORD fallback (**kwargs / **fit_params)

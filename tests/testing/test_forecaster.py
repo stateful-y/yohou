@@ -156,11 +156,10 @@ class TestForecasterCloneAndTagChecks:
 
     def test_tags_accessible_before_fit(self, y_X_factory):
         """Test check_forecaster_tags_accessible_before_fit passes for valid forecaster."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         forecaster = SeasonalNaive(seasonality=12)
 
         # Should not raise
-        check_forecaster_tags_accessible_before_fit(forecaster, y, X)
+        check_forecaster_tags_accessible_before_fit(forecaster)
 
     def test_tags_static_after_fit(self, y_X_factory):
         """Test check_forecaster_tags_static_after_fit passes for valid forecaster."""

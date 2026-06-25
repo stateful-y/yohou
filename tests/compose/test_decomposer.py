@@ -64,10 +64,10 @@ class TestSystematicChecks:
 class TestPanelObserveRewind:
     """Panel-mode observe/rewind must not crash on the scalar-transformer assumption.
 
-    Regression for the 2026-06-15 QA findings: in panel mode the base class
-    stores ``target_transformer_``/``feature_transformer_`` as dicts keyed by
-    group, so ``observe``/``rewind`` must branch on ``groups_`` instead of
-    asserting a single ``BaseTransformer`` (which raised ``AssertionError``).
+    In panel mode the base class stores ``target_transformer_``/
+    ``feature_transformer_`` as dicts keyed by group, so ``observe``/``rewind``
+    must branch on ``groups_`` instead of asserting a single ``BaseTransformer``
+    (which would raise ``AssertionError``).
     """
 
     @pytest.fixture
@@ -143,6 +143,78 @@ class TestPanelObserveRewind:
         assert "g1__value" in y_pred_rewound.columns
 
 
+class TestObservationBufferBounded:
+    """observe() must keep _y_observed bounded to observation_horizon."""
+
+    def test_y_observed_bounded_after_many_observes(self):
+        """Repeated observe() does not grow _y_observed without bound."""
+        from yohou.stationarity import SeasonalDifferencing
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=199),
+            interval="1d",
+            eager=True,
+        )
+        data = pl.DataFrame({"time": time, "value": [float(i) for i in range(200)]})
+
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1)), ("seas", SeasonalNaive(seasonality=7))],
+            target_transformer=SeasonalDifferencing(seasonality=1),
+        )
+        forecaster.fit(data[:30], forecasting_horizon=5)
+
+        for start in range(30, 110, 10):
+            forecaster.observe(data[start : start + 10])
+
+        # Buffer is trimmed to observation_horizon, not the full observed history.
+        assert forecaster._y_observed.height <= forecaster.observation_horizon
+        # predict still round-trips through the bounded inverse-transform context.
+        y_pred = forecaster.predict(forecasting_horizon=3)
+        assert "value" in y_pred.columns
+
+    def test_panel_y_observed_bounded(self):
+        """In panel mode each group's _y_observed buffer is trimmed to observation_horizon."""
+        from yohou.stationarity import SeasonalDifferencing
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        data = pl.DataFrame({
+            "time": time,
+            "g0__value": [float(i) for i in range(100)],
+            "g1__value": [float(2 * i) for i in range(100)],
+        })
+
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1))],
+            target_transformer=SeasonalDifferencing(seasonality=1),
+        )
+        forecaster.fit(data[:30], forecasting_horizon=3)
+        for start in range(30, 90, 10):
+            forecaster.observe(data[start : start + 10])
+
+        assert isinstance(forecaster._y_observed, dict)
+        for group_df in forecaster._y_observed.values():
+            assert group_df.height <= forecaster.observation_horizon
+
+
+class TestResidualAlignmentGuard:
+    """_check_residual_alignment raises when the residual/prediction join loses rows."""
+
+    def test_row_loss_raises(self):
+        """Fewer aligned rows than expected signals a stride/horizon misalignment."""
+        with pytest.raises(ValueError, match="alignment for component 'trend' lost 2 row"):
+            DecompositionPipeline._check_residual_alignment("trend", aligned_height=3, expected_height=5)
+
+    def test_exact_match_passes(self):
+        """Equal aligned and expected heights raise nothing."""
+        DecompositionPipeline._check_residual_alignment("trend", aligned_height=5, expected_height=5)
+
+
 class TestBasicFitPredict:
     """Tests for basic fit/predict workflow."""
 
@@ -182,6 +254,17 @@ class TestBasicFitPredict:
 
         y_pred = forecaster.predict(forecasting_horizon=10)
         assert len(y_pred) == 10
+
+    def test_predict_rejects_non_positive_horizon(self, daily_data):
+        """An explicitly invalid horizon is validated, not forwarded to inner forecasters."""
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("seasonality", SeasonalNaive(seasonality=7)),
+        ])
+        forecaster.fit(daily_data[:30], forecasting_horizon=5)
+
+        with pytest.raises((ValueError, Exception)):
+            forecaster.predict(forecasting_horizon=0)
 
     def test_prediction_types(self):
         """Test correct forecaster_type in tags."""
@@ -968,3 +1051,27 @@ class TestStepColumnStripping:
         pipe = self._pipeline()
         pipe.fit(y, forecasting_horizon=1, X_future=x_future)
         assert pipe.predict(forecasting_horizon=1).height == 1
+
+    def test_panel_global_local_step_column_clash_raises(self):
+        """A global X_future column whose step name matches a per-group suffix is rejected.
+
+        A global ``promo`` and group-local ``store_*__promo`` both expand to a
+        ``promo_step_1`` column, so the global step name clashes with the per-group
+        suffix and must raise rather than silently overwrite one of them.
+        """
+        n = 120
+        time = self._time(n)
+        y = pl.DataFrame({
+            "time": time,
+            "store_1__sales": [10 + i * 0.5 for i in range(n)],
+            "store_2__sales": [20 + i * 0.3 for i in range(n)],
+        })
+        x_future = pl.DataFrame({
+            "time": time,
+            "promo": [float(i % 5 == 0) for i in range(n)],
+            "store_1__promo": [float(i % 3 == 0) for i in range(n)],
+            "store_2__promo": [float(i % 4 == 0) for i in range(n)],
+        })
+        pipe = self._pipeline()
+        with pytest.raises(ValueError, match="Step column name clash"):
+            pipe.fit(y, forecasting_horizon=1, X_future=x_future)

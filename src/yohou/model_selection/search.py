@@ -507,15 +507,13 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         if callable(self.scoring):
             if not isinstance(self.scoring, BaseScorer):
-                raise ValueError("scoring must be an instance of BaseScorer or a dict of BaseScorer instances")
+                raise ValueError("scoring must be an instance of BaseScorer, got a callable that is not a BaseScorer")
             scorers = self.scoring
             # Single metric, default name is "score"
         elif isinstance(self.scoring, dict):
             # Multi-metric scoring
-            scorers_result = _check_scoring(self.forecaster, self.scoring)
             # _check_scoring returns the dict directly when given a dict
-
-            scorers_dict = cast(dict[str, BaseScorer], scorers_result)
+            scorers_dict = cast(dict[str, BaseScorer], _check_scoring(self.scoring))
             self._check_refit_for_multimetric(self.scoring)
             refit_metric = self.refit if isinstance(self.refit, str) else "score"
             scorers = _MultimetricScorer(scorers=scorers_dict, raise_exc=(self.error_score == "raise"))
@@ -527,8 +525,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     def _get_routed_params_for_fit(self, params):
         """Get the parameters to be used for routing.
 
-        This is a method instead of a snippet in fit since it's used twice,
-        here in fit, and potentially in subclasses.
+        This is extracted into a method so that subclasses can override
+        routing behaviour if needed.
 
         Parameters
         ----------
@@ -664,7 +662,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             # Weighted std is not directly available in np
             # However, std = sqrt(mean(abs(x - mean(x))^2))
             # The weighted variance is then:
-            # var = mean(w * (x - mean(x))^2)
+            # var = sum(w * (x - mean(x))^2) / sum(w)
             if weights is not None:
                 array_stds = np.sqrt(np.average((array - array_means[:, np.newaxis]) ** 2, axis=1, weights=weights))
             else:
@@ -686,9 +684,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         _store("fit_time", out["fit_time"])
         _store("score_time", out["score_time"])
-        # Use one MaskedArray for all the test scores per scorer
-        # because it's more memory efficient than storing multiple
-        # MaskedArrays.
+        # Weight per-fold test scores by fold size when available.
         test_sample_counts = np.array(out.get("n_test_samples", []), dtype=np.int32)
         if len(test_sample_counts) > 0:
             test_sample_counts = test_sample_counts.reshape(n_candidates, n_splits)
@@ -741,14 +737,17 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             .add(caller="observe_predict_class_proba", callee="observe_predict_class_proba"),
         )
 
-        # Add scorer routing
-        scorers, _ = self._get_scorers()
-        # Always add as "scorer" regardless of single or multi-metric
-        # _MultimetricScorer handles routing internally
-        router.add(
-            scorer=scorers,
-            method_mapping=MethodMapping().add(caller="fit", callee="score"),
-        )
+        # Add scorer routing only when scoring is configured. With the
+        # default scoring=None, the scorer is resolved at fit time, so there
+        # is nothing to route yet and _get_scorers would raise.
+        if self.scoring is not None:
+            scorers, _ = self._get_scorers()
+            # Always add as "scorer" regardless of single or multi-metric
+            # _MultimetricScorer handles routing internally
+            router.add(
+                scorer=scorers,
+                method_mapping=MethodMapping().add(caller="fit", callee="score"),
+            )
 
         # Add CV splitter routing (if applicable)
         router.add(
@@ -1317,7 +1316,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: int | None = None,
         groups: list[str] | None = None,
+        stride: int | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -1336,9 +1337,15 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             Actual feature observations with a ``"time"`` column aligned
             with ``y``. Sliced and observed incrementally at each step
             of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of time steps to forecast into the future.  If ``None``,
+            uses the horizon specified at fit time.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
+        stride : int or None, default=None
+            Step size for rolling update-predict.  If ``None``, defaults to
+            ``forecasting_horizon``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -1358,8 +1365,10 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         _raise_for_params(params, self, "observe_predict_class_proba")
         return self.best_forecaster_.observe_predict_class_proba(
             y,
-            X_actual,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
             groups=groups,
+            stride=stride,
             X_future=X_future,
             X_forecast=X_forecast,
             **params,

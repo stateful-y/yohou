@@ -191,11 +191,10 @@ class TestObserveRewind:
     def test_observe_rewind_reject_unexpected_params(self, panel_y):
         """observe/rewind reject stray kwargs at the LocalPanelForecaster boundary.
 
-        Regression for the 2026-06-15 QA finding: observe/rewind accepted and
-        forwarded ``**params`` raw to child forecasters, so a stray keyword was
-        passed through and surfaced as a confusing error deep in the base class.
         Like the base ``observe``/``rewind``, these methods take no routable
-        metadata, so an unexpected keyword is rejected up front.
+        metadata, so an unexpected keyword is rejected up front rather than being
+        forwarded raw to child forecasters (which would surface as a confusing
+        error deep in the base class).
         """
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
@@ -611,3 +610,25 @@ class TestReassemblePanelPredictions:
 
         assert result["a__value"].to_list() == [1.0, 2.0]
         assert result["b__value"].to_list() == [10.0, 20.0]
+
+
+class TestHeterogeneousPanelSchema:
+    """fit() must reject panels whose groups have mismatched local schemas."""
+
+    def test_mismatched_group_dtypes_raise(self):
+        """Groups with different local target dtypes raise instead of silently using group[0]."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=29),
+            interval="1d",
+            eager=True,
+        )
+        # store_a sales are Float64, store_b sales are Int64: same local name, different dtype.
+        y = pl.DataFrame({
+            "time": time,
+            "store_a__sales": [float(i) for i in range(30)],
+            "store_b__sales": list(range(30)),
+        })
+        f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=1))
+        with pytest.raises(ValueError, match="same local"):
+            f.fit(y, forecasting_horizon=3)

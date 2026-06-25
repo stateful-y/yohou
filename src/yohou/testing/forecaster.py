@@ -264,8 +264,10 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_actual_test: 
     assert len(y_pred) == forecasting_horizon, f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
 
     # Validate time column types
-    assert y_pred["vintage_time"].dtype == pl.Datetime, "vintage_time must be Datetime dtype"
-    assert y_pred["time"].dtype == pl.Datetime, "time must be Datetime dtype"
+    assert isinstance(y_pred["vintage_time"].dtype, pl.Datetime | pl.Date), (
+        "vintage_time must be Datetime or Date dtype"
+    )
+    assert isinstance(y_pred["time"].dtype, pl.Datetime | pl.Date), "time must be Datetime or Date dtype"
 
 
 def check_observe_extends_observations(
@@ -396,7 +398,7 @@ def check_rewind_replaces_observations(
     if isinstance(reset_observed_time, dict):
         # Panel data: check each group's observed_time matches
         for group_name in reset_observed_time:
-            # Get expected time from y_reset (last row for this group's column)
+            # All groups share the global 'time' column; the expected reset timestamp is the same for all groups.
             assert reset_observed_time[group_name] == y_reset["time"][-1], (
                 f"observed_time_['{group_name}'] should be reset to last time in reset data"
             )
@@ -646,9 +648,7 @@ def check_clone_preserves_forecaster_params(forecaster) -> None:
     assert forecaster_clone is not forecaster, "clone() should create new instance"
 
 
-def check_forecaster_tags_accessible_before_fit(
-    forecaster, y: pl.DataFrame | None = None, X_actual: pl.DataFrame | None = None
-) -> None:
+def check_forecaster_tags_accessible_before_fit(forecaster) -> None:
     """Check __sklearn_tags__() is accessible before fit().
 
     Tags should be static class capabilities, not fitted state.
@@ -658,10 +658,6 @@ def check_forecaster_tags_accessible_before_fit(
     ----------
     forecaster : BaseForecaster
         Unfitted forecaster instance
-    y : pl.DataFrame, optional
-        Not used, included for signature consistency
-    X_actual : pl.DataFrame, optional
-        Not used, included for signature consistency
 
     Raises
     ------
@@ -751,9 +747,7 @@ def check_forecaster_tags_static_after_fit(
     )
 
 
-def check_forecaster_tags_match_capabilities(
-    forecaster, y: pl.DataFrame | None = None, X_actual: pl.DataFrame | None = None
-) -> None:
+def check_forecaster_tags_match_capabilities(forecaster) -> None:
     """Check forecaster tags accurately reflect capabilities.
 
     Validates that tag values match actual forecaster behavior:
@@ -767,10 +761,6 @@ def check_forecaster_tags_match_capabilities(
     ----------
     forecaster : BaseForecaster
         Fitted forecaster instance
-    y : pl.DataFrame, optional
-        Not used, for consistency
-    X_actual : pl.DataFrame, optional
-        Not used, for consistency
 
     Raises
     ------
@@ -863,6 +853,11 @@ def check_forecaster_methods_call_check_is_fitted(
     """
     forecaster_clone = clone(forecaster)
 
+    # Length-safe slice so observe()/rewind() receive a non-empty frame even on short y.
+    stride = max(1, len(y) // 10)
+    y_slice = y[:stride]
+    X_actual_slice = X_actual[:stride] if X_actual is not None else None
+
     # Determine if this is an interval forecaster. Only interval forecasters
     # expose predict_interval(); point and class-proba forecasters do not.
     is_interval = hasattr(forecaster_clone, "predict_interval")
@@ -886,7 +881,7 @@ def check_forecaster_methods_call_check_is_fitted(
 
     # Test that observe() raises NotFittedError when unfitted
     try:
-        forecaster_clone.observe(y[50:53], X_actual[50:53] if X_actual is not None else None)
+        forecaster_clone.observe(y_slice, X_actual_slice)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.observe() must raise NotFittedError when called on unfitted forecaster"
         )
@@ -895,7 +890,7 @@ def check_forecaster_methods_call_check_is_fitted(
 
     # Test that rewind() raises NotFittedError when unfitted
     try:
-        forecaster_clone.rewind(y[40:50], X_actual[40:50] if X_actual is not None else None)
+        forecaster_clone.rewind(y_slice, X_actual_slice)
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.rewind() must raise NotFittedError when called on unfitted forecaster"
         )
@@ -905,12 +900,10 @@ def check_forecaster_methods_call_check_is_fitted(
     # Test that observe_predict() or observe_predict_interval() raises NotFittedError when unfitted
     try:
         if is_interval:
-            forecaster_clone.observe_predict_interval(
-                y[50:53], X_actual[50:53] if X_actual is not None else None, coverage_rates=[0.9]
-            )
+            forecaster_clone.observe_predict_interval(y_slice, X_actual_slice, coverage_rates=[0.9])
             method_name = "observe_predict_interval"
         else:
-            forecaster_clone.observe_predict(y[50:53], X_actual[50:53] if X_actual is not None else None)
+            forecaster_clone.observe_predict(y_slice, X_actual_slice)
             method_name = "observe_predict"
         raise AssertionError(
             f"{forecaster_clone.__class__.__name__}.{method_name}() must raise NotFittedError when called on unfitted forecaster"
@@ -1102,8 +1095,10 @@ def check_predict_X_forecast_override(
         Number of steps ahead to forecast.
 
     """
-    # Store original raw
+    # Store a snapshot of the original raw so we can detect in-place mutation.
     original_raw = forecaster._X_forecast_raw_
+    if original_raw is not None:
+        original_raw = original_raw.clone()
 
     # Predict with override
     y_pred = forecaster.predict(
@@ -1117,7 +1112,7 @@ def check_predict_X_forecast_override(
 
     # State unchanged (predict must not mutate stored raw)
     if original_raw is not None:
-        assert forecaster._X_forecast_raw_.shape == original_raw.shape, (
+        assert forecaster._X_forecast_raw_.equals(original_raw), (
             "predict() with X_forecast override must not mutate _X_forecast_raw_"
         )
 

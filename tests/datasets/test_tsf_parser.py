@@ -8,8 +8,8 @@ import pytest
 
 from yohou.datasets._tsf_parser import (
     TSF_FREQUENCY_MAP,
+    _parse_tsf,
     _parse_tsf_timestamp,
-    parse_tsf,
 )
 
 
@@ -53,7 +53,7 @@ class TestFrequencyMap:
 
 
 class TestParseTsf:
-    """Tests for the main parse_tsf function."""
+    """Tests for the main _parse_tsf function."""
 
     def _make_tsf(self, content: str) -> BytesIO:
         """Create a BytesIO TSF source from text content."""
@@ -70,7 +70,7 @@ class TestParseTsf:
             "@data\n"
             "T1:2000-01-01 00-00-00:10.0,20.0,30.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="val")
+        df, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert isinstance(df, pl.DataFrame)
         assert "time" in df.columns
@@ -92,7 +92,7 @@ class TestParseTsf:
             "S1:2000-01-01 00-00-00:1.0,2.0,3.0\n"
             "S2:2000-01-01 00-00-00:4.0,5.0,6.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="sales")
+        df, meta = _parse_tsf(tsf, value_column_name="sales")
 
         assert df.shape == (3, 3)
         assert df.columns == ["time", "S1__sales", "S2__sales"]
@@ -109,7 +109,7 @@ class TestParseTsf:
             "S1:2000-01-01 00-00-00:1.0,2.0\n"
             "S2:2000-02-01 00-00-00:3.0,4.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="val")
+        df, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert "time" in df.columns
         assert len(df) == 3  # Jan, Feb, Mar
@@ -126,7 +126,7 @@ class TestParseTsf:
             "S1:2000-01-01 00-00-00:1.0,2.0,3.0\n"
             "S2:2000-01-01 00-00-00:4.0,5.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="val")
+        df, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert df.shape == (3, 3)
         assert df["S2__val"].to_list()[2] is None
@@ -136,7 +136,7 @@ class TestParseTsf:
         tsf = self._make_tsf(
             "@attribute series_name string\n@frequency weekly\n@missing false\n@data\nT1:10.0,20.0,30.0\nT2:40.0,50.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="profit")
+        df, meta = _parse_tsf(tsf, value_column_name="profit")
 
         assert "time" in df.columns
         assert len(df) == 3
@@ -156,7 +156,7 @@ class TestParseTsf:
             "T1:NSW:2002-01-01 00-00-00:100.0,200.0\n"
             "T2:VIC:2002-01-01 00-00-00:300.0,400.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="demand")
+        df, meta = _parse_tsf(tsf, value_column_name="demand")
 
         assert "nsw__demand" in df.columns
         assert "vic__demand" in df.columns
@@ -172,7 +172,7 @@ class TestParseTsf:
             "@data\n"
             "T1:2000-01-01 00-00-00:1.0,?,3.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="val")
+        df, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert df["val"][1] is None
         assert meta["missing"]
@@ -189,7 +189,7 @@ class TestParseTsf:
             "@data\n"
             "T1:2000-01-01 00-00-00:1.0,2.0\n"
         )
-        df, meta = parse_tsf(tsf, value_column_name="val")
+        df, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert len(df) == 2
         assert meta["n_series"] == 1
@@ -207,7 +207,7 @@ class TestParseTsf:
             "@data\n"
             "T1:2000-01-01 00-00-00:1.0\n"
         )
-        _, meta = parse_tsf(tsf, value_column_name="val")
+        _, meta = _parse_tsf(tsf, value_column_name="val")
 
         assert meta["relation"] == "TestRelation"
         assert meta["horizon"] == 24
@@ -218,7 +218,25 @@ class TestParseTsf:
         """Missing @data section raises ValueError."""
         tsf = self._make_tsf("@attribute series_name string\n@frequency daily\n")
         with pytest.raises(ValueError, match="@data"):
-            parse_tsf(tsf)
+            _parse_tsf(tsf)
+
+    def test_missing_frequency_raises(self):
+        """Missing @frequency directive raises an explicit ValueError."""
+        tsf = self._make_tsf("@attribute series_name string\n@data\nT1:1.0,2.0,3.0\n")
+        with pytest.raises(ValueError, match="missing a required @frequency"):
+            _parse_tsf(tsf, value_column_name="val")
+
+    def test_malformed_timestamp_raises_with_context(self):
+        """A malformed start_timestamp raises an error naming the series."""
+        tsf = self._make_tsf(
+            "@attribute series_name string\n"
+            "@attribute start_timestamp date\n"
+            "@frequency monthly\n"
+            "@data\n"
+            "T1:not-a-timestamp:1.0,2.0,3.0\n"
+        )
+        with pytest.raises(ValueError, match="start_timestamp.*'T1'"):
+            _parse_tsf(tsf, value_column_name="val")
 
     def test_time_column_is_datetime(self):
         """The time column should always be Datetime type."""
@@ -229,6 +247,6 @@ class TestParseTsf:
             "@data\n"
             "T1:2000-01-01 00-00-00:1.0,2.0,3.0\n"
         )
-        df, _ = parse_tsf(tsf, value_column_name="val")
+        df, _ = _parse_tsf(tsf, value_column_name="val")
 
         assert df.schema["time"] == pl.Datetime("us")

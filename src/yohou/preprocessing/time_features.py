@@ -276,6 +276,11 @@ class TimeIndexTransformer(BaseTransformer):
         self.first_time_ = X["time"][0]
         self.n_steps_ = len(X)
 
+        # Cache the step size in seconds so the step index is computed
+        # consistently regardless of how many rows a transform chunk contains.
+        step = interval_to_timedelta(self.interval_)
+        self._step_seconds_ = step.total_seconds() if step is not None else None
+
         generated_names = []
         for d in range(1, self.degree + 1):
             col_name = self._PREFIX if d == 1 else f"{self._PREFIX}_{d}"
@@ -316,10 +321,8 @@ class TimeIndexTransformer(BaseTransformer):
                 t = months / mo_count
         else:
             t = time_diff.dt.total_seconds().to_numpy().astype(np.float64)
-            if len(X) > 1:
-                first_diff = (X["time"][1] - X["time"][0]).total_seconds()
-                if first_diff != 0:
-                    t = t / first_diff
+            if self._step_seconds_ and self._step_seconds_ != 0:
+                t = t / self._step_seconds_
 
         return t
 

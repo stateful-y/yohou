@@ -111,10 +111,10 @@ def cross_validate(
     scorers: BaseScorer | _MultimetricScorer
     if isinstance(scoring, dict):
         # _check_scoring validates the dict keys/values, then we wrap
-        _check_scoring(forecaster, scoring)
+        _check_scoring(scoring)
         scorers = _MultimetricScorer(scorers=cast(dict[str, BaseScorer], scoring), raise_exc=(error_score == "raise"))
     else:
-        scorers = _check_scoring(forecaster, scoring)
+        scorers = cast(BaseScorer, _check_scoring(scoring))
 
     _validate_forecaster_scorer_compatibility(forecaster, scorers)
 

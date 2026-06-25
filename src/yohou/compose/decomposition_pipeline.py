@@ -408,14 +408,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             # inner forecasters) and produces predictions conditioned on
             # real observations rather than synthetic feedback.
             forecaster_clone_pred = deepcopy(forecaster_clone)
-            forecaster_observation_horizon = forecaster_clone_pred.observation_horizon
-            if forecaster_clone_pred.feature_transformer is not None:
-                ft_ = forecaster_clone_pred.feature_transformer_
-                if isinstance(ft_, dict):
-                    feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
-                else:
-                    feature_observation_horizon = ft_.observation_horizon + 1
-                forecaster_observation_horizon = max(forecaster_observation_horizon, feature_observation_horizon)
+            forecaster_observation_horizon = self._effective_observation_horizon(forecaster_clone_pred)
 
             if not forecaster_observation_horizon:
                 rewind_time = add_interval(residuals["time"][0], interval=forecaster_clone_pred.interval_, n=-1)
@@ -450,13 +443,17 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_forecast=X_forecast,
             )
 
-            # Align predictions with current residuals on time
+            # Align predictions with current residuals on time. The warmup rows
+            # (first forecaster_observation_horizon residuals) have no prediction
+            # and are dropped intentionally; every remaining residual must match a
+            # prediction, so guard against any extra silent loss.
             aligned = residuals.join(
                 y_pred_train.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",
             )
+            self._check_residual_alignment(name, aligned.height, residuals_remaining.height)
 
             # Calculate residuals (actual - predicted)
             target_cols = [c for c in residuals.columns if c != "time"]
@@ -524,9 +521,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             groups=groups,
         )
 
-        # Use fit horizon if not specified
-        if forecasting_horizon is None:
-            forecasting_horizon = self.fit_forecasting_horizon_
+        # Validate the horizon (falls back to fit_forecasting_horizon_ when None,
+        # and rejects horizons < 1 instead of forwarding them to inner forecasters)
+        forecasting_horizon = self._validate_predict_params(forecasting_horizon)
 
         # Validate params before routing
         _raise_for_params(params, self, "predict")
@@ -667,9 +664,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         transformed frames as a dict keyed by group. Mirrors the per-group
         inverse-transform branch in ``predict`` so that panel-mode
         ``observe``/``rewind`` do not assume a scalar transformer. Callers reuse
-        the dict both as the per-group observation buffer (``_y_observed``,
-        ``_X_observed``) and, via ``dict_to_panel``, as the panel frame fed to
-        the component forecasters.
+        the dict both as the per-group observation buffer (``_y_observed``) and,
+        via ``dict_to_panel``, as the panel frame fed to the component
+        forecasters.
         """
         assert self.groups_ is not None
         transformed = {}
@@ -686,6 +683,99 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         if self.shared_X_actual_schema_:
             X_schema.update(self.shared_X_actual_schema_)
         return X_schema
+
+    @staticmethod
+    def _effective_observation_horizon(forecaster) -> int:
+        """Observation horizon for the residual rolling observe-predict warmup.
+
+        Returns the component forecaster's own ``observation_horizon``, widened
+        to cover a feature transformer's horizon when present. The ``+1`` over
+        the feature transformer's horizon reserves one extra row so the first
+        prediction has a fully observed feature window, unlike
+        `BaseForecaster.observation_horizon`, which is sized for buffer retention
+        rather than for warming up this internal rolling loop.
+
+        Parameters
+        ----------
+        forecaster : BaseForecaster
+            Fitted component forecaster (a deepcopy used for residual prediction).
+
+        Returns
+        -------
+        int
+            Number of leading rows to reserve before the rolling observe-predict.
+
+        """
+        observation_horizon = forecaster.observation_horizon
+        if forecaster.feature_transformer is not None:
+            ft_ = forecaster.feature_transformer_
+            if isinstance(ft_, dict):
+                feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
+            else:
+                feature_observation_horizon = ft_.observation_horizon + 1
+            observation_horizon = max(observation_horizon, feature_observation_horizon)
+        return observation_horizon
+
+    def _bounded_observed(
+        self,
+        y_t: pl.DataFrame,
+        y_t_dict: dict[str, pl.DataFrame] | None,
+    ) -> pl.DataFrame | dict[str, pl.DataFrame]:
+        """Store ``_y_observed`` trimmed to ``observation_horizon`` rows.
+
+        predict() reads ``_y_observed`` only as the prior context (``X_p``) for
+        the target transformer's inverse transform, which needs at most
+        ``observation_horizon`` leading rows. Trimming keeps the buffer bounded
+        on long-running streams instead of growing with every observe/rewind.
+
+        Parameters
+        ----------
+        y_t : pl.DataFrame
+            The transformed target for this call (panel frame in panel mode).
+        y_t_dict : dict of str to pl.DataFrame or None
+            Per-group transformed frames in panel mode, else ``None``.
+
+        Returns
+        -------
+        pl.DataFrame or dict of str to pl.DataFrame
+            The bounded observation buffer, as a dict in panel mode.
+
+        """
+        horizon = self.observation_horizon
+        if self.groups_ is not None and y_t_dict is not None:
+            if horizon:
+                return {group: df.tail(horizon) for group, df in y_t_dict.items()}
+            return y_t_dict
+        return y_t.tail(horizon) if horizon else y_t
+
+    @staticmethod
+    def _check_residual_alignment(name: str, aligned_height: int, expected_height: int) -> None:
+        """Raise if the residual/prediction inner join dropped rows unexpectedly.
+
+        Parameters
+        ----------
+        name : str
+            Name of the component forecaster being aligned.
+        aligned_height : int
+            Number of rows surviving the residual/prediction inner join.
+        expected_height : int
+            Number of residual rows that should have a matching prediction.
+
+        Raises
+        ------
+        ValueError
+            If fewer rows survived the join than expected, signalling that
+            residual timestamps were silently dropped (e.g. stride
+            misalignment between residuals and predictions).
+
+        """
+        if aligned_height != expected_height:
+            raise ValueError(
+                f"Residual/prediction alignment for component '{name}' lost "
+                f"{expected_height - aligned_height} row(s): {aligned_height} aligned "
+                f"but {expected_height} expected. This usually indicates a stride or "
+                "horizon misalignment between residuals and the component's predictions."
+            )
 
     def observe_predict(
         self,
@@ -869,13 +959,16 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_future=X_future,
                 X_forecast=X_forecast,
             )
-            # Align predictions with current residuals on time
+            # Align predictions with current residuals on time. observe_predict
+            # ran on the full residual stream, so every residual must match a
+            # prediction; guard against silent row loss.
             aligned = residuals.join(
                 y_pred.select(~cs.by_name("vintage_time")),
                 on="time",
                 how="inner",
                 suffix="_pred",
             )
+            self._check_residual_alignment(name, aligned.height, residuals.height)
 
             # Calculate residuals (actual - predicted)
             target_cols = [c for c in residuals.columns if c != "time"]
@@ -892,11 +985,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 prior = self.residuals_.get(name)
                 self.residuals_[name] = pl.concat([prior, residuals]) if prior is not None else residuals
 
-        # Observe base class observation buffers. In panel mode predict() reads
-        # these as per-group dicts, so store the dict form there.
-        self._y_observed = y_t_dict if self.groups_ is not None and y_t_dict is not None else y_t
-        if X_t is not None:
-            self._X_observed = X_t_dict if self.groups_ is not None and X_t_dict is not None else X_t
+        # Store the observation buffer predict() reads as inverse-transform
+        # context, bounded to observation_horizon. In panel mode predict() reads
+        # it as a per-group dict, so store the dict form there. _X_observed is
+        # not read by this forecaster, so it is intentionally not stored.
+        self._y_observed = self._bounded_observed(y_t, y_t_dict)
 
         return self
 
@@ -990,18 +1083,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # (mirroring fit) so the real forecaster's buffer is left in the rewound
         # state, not the observe-predict state.
         residuals = y_t
-        for _, forecaster in self.forecasters_:
+        for name, forecaster in self.forecasters_:
             forecaster.rewind(residuals, X_actual=X_t, X_future=X_future, X_forecast=X_forecast)
 
             forecaster_pred = deepcopy(forecaster)
-            forecaster_observation_horizon = forecaster_pred.observation_horizon
-            if forecaster_pred.feature_transformer is not None:
-                ft_ = forecaster_pred.feature_transformer_
-                if isinstance(ft_, dict):
-                    feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
-                else:
-                    feature_observation_horizon = ft_.observation_horizon + 1
-                forecaster_observation_horizon = max(forecaster_observation_horizon, feature_observation_horizon)
+            forecaster_observation_horizon = self._effective_observation_horizon(forecaster_pred)
 
             if not forecaster_observation_horizon:
                 rewind_time = add_interval(residuals["time"][0], interval=forecaster_pred.interval_, n=-1)
@@ -1037,16 +1123,17 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 how="inner",
                 suffix="_pred",
             )
+            self._check_residual_alignment(name, aligned.height, residuals_remaining.height)
             target_cols = [c for c in residuals.columns if c != "time"]
             residuals = aligned.select(
                 [pl.col("time")] + [(pl.col(col) - pl.col(f"{col}_pred")).alias(col) for col in target_cols]
             )
 
-        # Rewind base class observation buffers. In panel mode predict() reads
-        # these as per-group dicts, so store the dict form there.
-        self._y_observed = y_t_dict if self.groups_ is not None and y_t_dict is not None else y_t
-        if X_t is not None:
-            self._X_observed = X_t_dict if self.groups_ is not None and X_t_dict is not None else X_t
+        # Store the observation buffer predict() reads as inverse-transform
+        # context, bounded to observation_horizon. In panel mode predict() reads
+        # it as a per-group dict, so store the dict form there. _X_observed is
+        # not read by this forecaster, so it is intentionally not stored.
+        self._y_observed = self._bounded_observed(y_t, y_t_dict)
 
         return self
 

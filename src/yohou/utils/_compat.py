@@ -141,7 +141,7 @@ def _is_pandas_df(X: object) -> bool:
 
 #: Default value for ``ColumnTransformer.force_int_remainder_cols``.
 #: sklearn <1.8 reads this attribute inside ``_get_remainder_cols``;
-#: sklearn >=1.8 deprecated and then removed it.
+#: sklearn >=1.8 no longer reads it.
 FORCE_INT_REMAINDER_COLS = True
 
 

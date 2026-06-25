@@ -30,39 +30,39 @@ class TestCheckScoring:
     def test_single_scorer(self):
         """Single BaseScorer instance passes through."""
         scorer = MeanAbsoluteError()
-        result = _check_scoring(MagicMock(), scorer)
+        result = _check_scoring(scorer)
         assert result is scorer
 
     def test_dict_of_scorers(self):
         """Dict with string keys and BaseScorer values passes through."""
         scorers = {"mae": MeanAbsoluteError(), "mse": MeanSquaredError()}
-        result = _check_scoring(MagicMock(), scorers)
+        result = _check_scoring(scorers)
         assert result == scorers
 
     def test_rejects_empty_dict(self):
         """Empty dict raises ValueError."""
         with pytest.raises(ValueError, match="empty dict"):
-            _check_scoring(MagicMock(), {})
+            _check_scoring({})
 
     def test_rejects_non_string_keys(self):
         """Dict with non-string keys raises ValueError."""
         with pytest.raises(ValueError, match="Non-string"):
-            _check_scoring(MagicMock(), {1: MeanAbsoluteError()})
+            _check_scoring({1: MeanAbsoluteError()})
 
     def test_rejects_non_scorer_values(self):
         """Dict with non-scorer values raises ValueError."""
         with pytest.raises(ValueError, match="Non-scorer"):
-            _check_scoring(MagicMock(), {"mae": "not_a_scorer"})
+            _check_scoring({"mae": "not_a_scorer"})
 
     def test_rejects_invalid_type(self):
         """Non-scorer, non-dict input raises ValueError."""
         with pytest.raises(ValueError, match="Invalid scoring"):
-            _check_scoring(MagicMock(), "mae")
+            _check_scoring("mae")
 
     def test_rejects_list(self):
         """List input raises ValueError."""
         with pytest.raises(ValueError, match="Invalid scoring"):
-            _check_scoring(MagicMock(), [MeanAbsoluteError()])
+            _check_scoring([MeanAbsoluteError()])
 
 
 class TestMultimetricScorer:
