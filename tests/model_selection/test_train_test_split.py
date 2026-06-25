@@ -117,9 +117,9 @@ class TestTrainTestSplitValidation:
     def test_float_rounding_to_full_sample_raises(self):
         """A float test_size rounding to n_samples must raise, not empty the train set.
 
-        Regression for the 2026-06-15 QA finding: ``round(n * 0.99)`` could equal
-        n_samples, leaving ``split_idx == 0`` and an empty training set returned
-        silently.
+        When ``round(n * test_size)`` equals n_samples, ``split_idx`` would be 0
+        and the training set empty, so the split must raise rather than return
+        an empty training set silently.
         """
         y = pl.DataFrame({
             "time": pl.date_range(date(2020, 1, 1), date(2020, 1, 10), eager=True),

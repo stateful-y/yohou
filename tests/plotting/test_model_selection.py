@@ -420,7 +420,7 @@ class TestPlotCvResultsScatter:
 
 
 class TestSplitsEmptyError:
-    """Regression: plot-splits-empty-splits-silent-empty-figure (2026-06-15 QA)."""
+    """plot_splits raises on an empty split set instead of returning a blank figure."""
 
     def test_zero_splits_raises(self):
         from yohou.model_selection import BaseSplitter
@@ -444,7 +444,7 @@ class TestSplitsEmptyError:
 
 
 class TestCvResultsNoMeanKeys:
-    """Regression: plot-cv-results-scorer-autodetect-unguarded-index (2026-06-15 QA)."""
+    """plot_cv_results_scatter raises a clear error when no mean_test score key is present."""
 
     def test_missing_mean_test_keys_raises_clear_error(self):
         cv_results = {"param_alpha": [0.1, 1.0]}

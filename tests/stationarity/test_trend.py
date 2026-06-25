@@ -237,9 +237,9 @@ class TestPolynomialTrendWithoutExogenous:
     def test_panel_rewind_uses_per_group_observation_horizon(self):
         """Each panel group's rewind uses its own transformer horizon.
 
-        Regression for the 2026-06-15 QA finding: panel rewind read the
-        observation horizon from the first group's transformer
-        (``next(iter(...))``) and applied it to every group. With groups whose
+        Panel rewind must read the observation horizon from each group's own
+        transformer rather than from the first group's transformer
+        (``next(iter(...))``) and applying it to every group. With groups whose
         transformers have different horizons, each group must use its own.
         """
         from yohou.stationarity import SeasonalDifferencing

@@ -346,10 +346,9 @@ class TestColumnTransformerRouting:
     def test_stateful_methods_routable_when_routing_enabled(self, y_X_factory):
         """observe_transform/rewind_transform must not raise when routing is enabled.
 
-        Regression for the 2026-06-15 QA finding: get_metadata_routing did not
-        register observe_transform/rewind_transform as callers, so
-        process_routing raised an unregistered-caller error at runtime once
-        metadata routing was enabled.
+        get_metadata_routing must register observe_transform/rewind_transform as
+        callers; otherwise process_routing raises an unregistered-caller error at
+        runtime once metadata routing is enabled.
         """
         import sklearn
 

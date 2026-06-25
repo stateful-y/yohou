@@ -386,7 +386,7 @@ class TestResamplerSuccessPaths:
 
 
 class TestResolvePanelColumnsNoPanelMessage:
-    """Regression: resolve-panel-columns-error-message-misleading-when-no-panel (2026-06-15 QA)."""
+    """resolve_panel_columns gives a distinct error message when no panel columns exist."""
 
     def test_no_panel_columns_distinct_message(self):
         df = pl.DataFrame({"time": [1, 2, 3], "y": [1.0, 2.0, 3.0]})

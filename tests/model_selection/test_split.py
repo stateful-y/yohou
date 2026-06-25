@@ -98,10 +98,9 @@ class TestExpandingWindowBasic:
     def test_expanding_window_all_test_no_train_raises(self, y_X_factory):
         """The boundary n_samples == n_splits * test_size must not yield an empty train.
 
-        Regression for the 2026-06-15 QA finding: the guard was
-        ``first_test_start < 0``, so n_samples == n_splits * test_size (which
-        makes the first fold's training set empty) slipped through and yielded
-        a fold whose train index starts at 0.
+        When n_samples == n_splits * test_size, the first fold's training set
+        would be empty, so split() must raise rather than yield a fold whose
+        train index starts at 0.
         """
         y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
 

@@ -272,8 +272,8 @@ class TestVotingPointForecasterErrorHandling:
     def test_double_underscore_name_raises(self):
         """A forecaster name containing '__' is rejected.
 
-        Regression for the 2026-06-15 QA finding: a name like 'foo__bar' passed
-        validation and corrupted nested-parameter routing.
+        A name like 'foo__bar' must fail validation; otherwise it corrupts
+        nested-parameter routing.
         """
         forecaster = VotingPointForecaster(
             forecasters=[

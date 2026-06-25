@@ -61,8 +61,8 @@ def test_linear_decay_max_steps_zeros_older() -> None:
 def test_linear_decay_max_steps_exceeds_length() -> None:
     """max_steps > len(key) computes without an OverflowError.
 
-    Regression for the 2026-06-15 QA finding: ranks were a uint32 array, so the
-    negative ``ranks - cutoff`` underflowed when max_steps exceeded the length.
+    Ranks are cast to a signed type so that ``ranks - cutoff`` stays correct
+    (rather than underflowing) when max_steps exceeds the series length.
     """
     t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
     weights = LinearDecayWeighter(max_steps=10).compute_weights(t).to_numpy()

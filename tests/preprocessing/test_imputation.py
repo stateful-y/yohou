@@ -108,9 +108,9 @@ class TestSeasonalImputer:
     def test_empty_season_bucket_yields_null_not_nan(self):
         """An empty season bucket leaves a polars null, never a float NaN.
 
-        Regression for the 2026-06-15 QA finding: when a season bucket had no
-        observations at fit time, ``_transform`` wrote ``np.nan`` over the
-        polars null, silently violating the data contract.
+        When a season bucket has no observations at fit time, ``_transform``
+        must leave the polars null in place rather than writing ``np.nan``
+        over it, which would silently violate the data contract.
         """
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),

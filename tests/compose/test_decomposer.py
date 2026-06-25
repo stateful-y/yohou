@@ -64,10 +64,10 @@ class TestSystematicChecks:
 class TestPanelObserveRewind:
     """Panel-mode observe/rewind must not crash on the scalar-transformer assumption.
 
-    Regression for the 2026-06-15 QA findings: in panel mode the base class
-    stores ``target_transformer_``/``feature_transformer_`` as dicts keyed by
-    group, so ``observe``/``rewind`` must branch on ``groups_`` instead of
-    asserting a single ``BaseTransformer`` (which raised ``AssertionError``).
+    In panel mode the base class stores ``target_transformer_``/
+    ``feature_transformer_`` as dicts keyed by group, so ``observe``/``rewind``
+    must branch on ``groups_`` instead of asserting a single ``BaseTransformer``
+    (which would raise ``AssertionError``).
     """
 
     @pytest.fixture

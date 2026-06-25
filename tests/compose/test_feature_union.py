@@ -46,9 +46,9 @@ class TestFeatureUnionFitTransform:
     def test_weighted_observe_rewind_preserve_time_dtype(self, time_series_factory):
         """Weighted observe/rewind keep the datetime "time" column.
 
-        Regression for the 2026-06-15 QA finding: the weighting path returned
-        ``X_transformed * weight``, which multiplied the whole DataFrame and
-        silently cast the datetime "time" column to f64.
+        The weighting path must scale only the feature columns, not the whole
+        DataFrame; multiplying the datetime "time" column by a weight would
+        silently cast it to f64.
         """
         X = time_series_factory(length=50)
         union = FeatureUnion(

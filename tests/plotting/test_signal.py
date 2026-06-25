@@ -370,7 +370,7 @@ class TestPlotSpectrumAutoDetectPanel:
 
 
 class TestPhasePanelColors:
-    """Regression: plot-phase-panel-colors-indexed-by-entity-idx-not-column-idx (2026-06-15 QA)."""
+    """plot_phase indexes panel palette colors by entity, so overlaid members get distinct colors."""
 
     def test_panel_palette_does_not_index_out_of_range(self):
         import numpy as np

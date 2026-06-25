@@ -2965,7 +2965,7 @@ class TestPlotForecastOptionalYTest:
 
 
 class TestForecastVintageTimeExcluded:
-    """Regression: vintage-time-excluded-from-test-value-cols (2026-06-15 QA)."""
+    """plot_forecast excludes vintage_time from the test value columns it plots."""
 
     def test_vintage_time_not_plotted_as_series(self):
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)
@@ -2986,7 +2986,7 @@ class TestForecastVintageTimeExcluded:
 
 
 class TestClassicalMultiplicativeNonPositive:
-    """Regression: classical-decomp-multiplicative-offset-mismatch (2026-06-15 QA)."""
+    """Classical multiplicative decomposition keeps observed equal to the original and seasonal_adjusted consistent."""
 
     def test_observed_matches_original_and_adjusted_consistent(self):
         t = np.arange(48)

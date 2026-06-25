@@ -149,9 +149,9 @@ class TestDeriveStepColumns:
     def test_coverage_warning_per_column_not_conflated(self):
         """Coverage warning fires when any single column under-covers the horizon.
 
-        Regression for the 2026-06-15 QA finding: coverage was tracked as the
-        global maximum covered step across all columns, so a column that fully
-        covered the horizon masked another column that did not.
+        Coverage is tracked per column, not as the global maximum covered step
+        across all columns, so a column that fully covers the horizon must not
+        mask another column that does not.
         """
         X_forecast = pl.DataFrame({
             "vintage_time": [datetime(2020, 1, 1)] * 2,

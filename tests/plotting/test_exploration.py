@@ -1367,7 +1367,7 @@ class TestPlotMissingDataCategorical:
 
 
 def _series_df(values):
-    """Build a simple single-column daily time series for QA regression tests."""
+    """Build a simple single-column daily time series for the exploration plot tests."""
     n = len(values)
     return pl.DataFrame({
         "time": pl.datetime_range(
@@ -1381,7 +1381,7 @@ def _series_df(values):
 
 
 class TestOutlierColor:
-    """Regression: outlier-color-param-never-used (2026-06-15 QA)."""
+    """plot_outliers applies the outlier_color param to outlier markers."""
 
     def test_outlier_markers_use_outlier_color(self):
         vals = [1.0] * 20 + [100.0] + [1.0] * 5
@@ -1392,7 +1392,7 @@ class TestOutlierColor:
 
 
 class TestRollingLineOpacity:
-    """Regression: rolling-stats-nonpanel-hardcoded-opacity (2026-06-15 QA)."""
+    """Non-panel rolling statistics apply line_opacity to the original series trace."""
 
     def test_original_series_uses_line_opacity(self):
         df = _series_df([float(i % 7) for i in range(60)])
@@ -1402,7 +1402,7 @@ class TestRollingLineOpacity:
 
 
 class TestMissingDataMatrixTimeAggregation:
-    """Regression: matrix-kind-ignores-time-aggregation (2026-06-15 QA)."""
+    """The matrix kind honors time_aggregation, matching the heatmap kind."""
 
     def test_matrix_and_heatmap_agree_under_time_aggregation(self):
         dates = pl.datetime_range(
@@ -1423,7 +1423,7 @@ class TestMissingDataMatrixTimeAggregation:
 
 
 class TestResamplingPanelColors:
-    """Regression: resampling-panel-resolve-color-inside-render-closure (2026-06-15 QA)."""
+    """Panel resampling comparison gives overlaid members distinct palette colors."""
 
     def test_panel_members_get_distinct_colors(self):
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 9), "1d", eager=True)

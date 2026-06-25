@@ -191,11 +191,10 @@ class TestObserveRewind:
     def test_observe_rewind_reject_unexpected_params(self, panel_y):
         """observe/rewind reject stray kwargs at the LocalPanelForecaster boundary.
 
-        Regression for the 2026-06-15 QA finding: observe/rewind accepted and
-        forwarded ``**params`` raw to child forecasters, so a stray keyword was
-        passed through and surfaced as a confusing error deep in the base class.
         Like the base ``observe``/``rewind``, these methods take no routable
-        metadata, so an unexpected keyword is rejected up front.
+        metadata, so an unexpected keyword is rejected up front rather than being
+        forwarded raw to child forecasters (which would surface as a confusing
+        error deep in the base class).
         """
         y = panel_y
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))

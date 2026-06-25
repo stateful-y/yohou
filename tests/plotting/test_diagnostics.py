@@ -1727,7 +1727,7 @@ class TestSeasonalHeatmapReverseY:
 
 
 class TestCcfNormalization:
-    """Regression: ccf-values-outside-minus1-plus1 (2026-06-15 QA)."""
+    """CCF values stay within [-1, 1]."""
 
     def test_ccf_within_unit_interval(self):
         rng = np.random.default_rng(0)

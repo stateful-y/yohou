@@ -3419,7 +3419,7 @@ class TestGroupScoresBoxKind:
 
 
 class TestCalibrationClassProbaParams:
-    """Regression: calibration-class-proba-drops-four-public-params (2026-06-15 QA)."""
+    """plot_calibration forwards its public styling params (such as reference_color) in class-probability mode."""
 
     def test_reference_color_is_forwarded(self):
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 20), "1d", eager=True)
@@ -3439,7 +3439,7 @@ class TestCalibrationClassProbaParams:
 
 
 class TestScoreDistributionKdeWarning:
-    """Regression: kde-failure-silently-omits-trace (2026-06-15 QA)."""
+    """A KDE failure warns instead of silently omitting the trace."""
 
     def test_zero_variance_scores_warn(self):
         dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 10), "1d", eager=True)

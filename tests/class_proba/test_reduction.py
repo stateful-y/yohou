@@ -264,11 +264,12 @@ class TestRecursivePredict:
     def test_recursive_predict_panel(self, class_proba_y_X_factory):
         """Recursive prediction on panel data re-encodes prefixed columns.
 
-        Regression for the 2026-06-15 QA finding: ``_encode_observation``
-        looked up ``label_to_code_`` by the raw column name, so panel columns
-        like ``group_0__weather`` raised ``KeyError`` (the dict is keyed by the
-        base target name ``weather``). Recursive prediction (horizon > fit
-        horizon, no X_actual) is the path that exercises it.
+        ``_encode_observation`` must look up ``label_to_code_`` by the base
+        target name, so panel columns like ``group_0__weather`` resolve
+        correctly (the dict is keyed by the base target name ``weather``)
+        rather than raising ``KeyError`` on the raw column name. Recursive
+        prediction (horizon > fit horizon, no X_actual) is the path that
+        exercises it.
         """
         y, _ = class_proba_y_X_factory(
             length=120,

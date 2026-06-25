@@ -457,7 +457,7 @@ class TestMultiQuantile:
 
         A MultiQuantile estimator is single-output and single-step, so the
         path is only valid for one target column at ``forecasting_horizon=1``;
-        it returns exactly one row (the 2026-06-15 QA fix).
+        it returns exactly one row.
         """
         y_train, y_test, X_actual_train, X_actual_test = standard_splits
         y_train = y_train.select(["time", "a"])
@@ -520,8 +520,9 @@ class TestMultiQuantile:
     def test_multiquantile_rejects_multi_target(self, standard_splits):
         """Multi-target input is rejected at fit (single-output estimator).
 
-        Regression for the 2026-06-15 QA finding: the predict path reused the
-        first target's quantiles for every target. The fit now rejects it.
+        A single-output estimator cannot serve distinct quantiles per target,
+        so multi-target input must be rejected at fit rather than silently
+        reusing the first target's quantiles for every target.
         """
         y_train, _, X_actual_train, _ = standard_splits
         forecaster = IntervalReductionForecaster(estimator=_MockMultiQuantileRegressor())
@@ -532,8 +533,9 @@ class TestMultiQuantile:
     def test_multiquantile_rejects_multi_step(self, standard_splits):
         """Horizon > 1 is rejected at fit (single-step estimator).
 
-        Regression for the 2026-06-15 QA finding: the predict path returned a
-        single row regardless of the fitted horizon.
+        A single-step estimator can only emit one row, so a horizon greater
+        than 1 must be rejected at fit rather than silently returning a single
+        row regardless of the fitted horizon.
         """
         y_train, _, X_actual_train, _ = standard_splits
         y_train = y_train.select(["time", "a"])
