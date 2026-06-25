@@ -242,6 +242,21 @@ class TestEdgeCases:
         assert len(search.cv_results_["params"]) == 1
         assert search.best_params_ == {"seasonality": 5}
 
+    def test_non_scorer_callable_scoring_raises(self, y_X_factory):
+        """A callable that is not a BaseScorer is rejected with a clear error at fit."""
+        y, X_actual = y_X_factory(length=100, seed=42)
+        y_train = y[:80]
+        X_actual_train = X_actual[:80] if X_actual is not None else None
+
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [5]},
+            scoring=lambda y_true, y_pred: 0.0,
+            cv=2,
+        )
+        with pytest.raises(ValueError, match="callable that is not a BaseScorer"):
+            search.fit(y_train, X_actual_train, forecasting_horizon=3)
+
     def test_get_metadata_routing_with_default_scoring(self):
         """get_metadata_routing must not raise on a fresh instance with scoring=None."""
         search = GridSearchCV(

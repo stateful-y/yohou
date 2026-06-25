@@ -418,7 +418,7 @@ def _derive_step_columns(
             per_col_max: dict[str, int] = {}
             for c, null_count in zip(step_cols_forecast, null_counts, strict=True):
                 m = re.search(r"^(.*)_step_(\d+)$", c)
-                if m is None:
+                if m is None:  # pragma: no cover - step_cols_forecast is pre-filtered by `_step_\d+$`
                     continue
                 base = m.group(1)
                 per_col_max.setdefault(base, 0)

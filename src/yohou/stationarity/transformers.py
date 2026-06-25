@@ -175,7 +175,7 @@ class BoxCoxTransformer(BaseTransformer):
 
         """
         tags = super().__sklearn_tags__()
-        if tags.input_tags is None:
+        if tags.input_tags is None:  # pragma: no cover - defensive: sklearn always sets input_tags
             raise RuntimeError("Expected input_tags to be set by __sklearn_tags__; got None")
         # Box-Cox requires strictly positive ``x + offset``, so the smallest
         # admissible input is the exclusive lower bound ``-offset`` (which is

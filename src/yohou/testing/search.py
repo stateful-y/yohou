@@ -607,7 +607,7 @@ def check_search_error_score_handling(
         finite_grids = [{key: [value] for key, value in candidate.items()} for candidate in concrete_valid]
         failing_dist = [*finite_grids, {failing_key: [_invalid]}]
         search_cv_clone.set_params(param_distributions=failing_dist, n_iter=len(failing_dist))
-    else:
+    else:  # pragma: no cover - the check suite only runs on searches that expose a tunable space
         # No tunable search space to corrupt; nothing to assert.
         return
 

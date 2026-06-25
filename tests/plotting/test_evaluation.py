@@ -3131,6 +3131,18 @@ class TestPlotGroupScores:
                 kind="scatter",
             )
 
+    @pytest.mark.parametrize("kind", ["bar", "box", "heatmap"])
+    def test_dataframe_scorer_reduced_to_scalar(self, panel_group_data, kind):
+        """A scorer that returns a per-component DataFrame is reduced to one score per group."""
+        scorer = MeanAbsoluteError(aggregation_method=["componentwise"])
+        fig = plot_group_scores(
+            scorer,
+            panel_group_data["y_truth"],
+            panel_group_data["y_pred"],
+            kind=kind,
+        )
+        assert_figure_valid(fig)
+
 
 class TestMultiScorerMultiModelFaceted:
     """Tests for multi-scorer + multi-model faceted subplot paths."""

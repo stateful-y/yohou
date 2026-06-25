@@ -264,7 +264,7 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
 
     horizon = transformer_clone.observation_horizon
 
-    if len(X) < horizon:
+    if len(X) < horizon:  # pragma: no cover - the check suite always supplies enough rows for the horizon
         # Precondition cannot be met with this data; skip like the other checks.
         return
 

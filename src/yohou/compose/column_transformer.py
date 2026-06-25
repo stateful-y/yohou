@@ -1011,7 +1011,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             diff = all_names - set(column_names)
             if diff:
                 raise ValueError(f"columns are missing: {diff}")
-        else:
+        else:  # pragma: no cover - yohou is polars-native, so column names are always available
             # ndarray was used for fitting or transforming, thus we only
             # check that n_features_in_ is consistent
             self._check_n_features(X_no_time, reset=False)
@@ -1172,7 +1172,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         # whose output is time-only (shape[1] == 1) carry no feature columns and
         # must be dropped from both lists in parallel.
         feature_Xs = [X for X in Xs if X.shape[1] != 1]
-        if not feature_Xs:
+        if not feature_Xs:  # pragma: no cover - defensive: a configured transformer emits at least one feature
             # Every transformer emitted only the time column; nothing to stack.
             return Xs[0].select(cs.by_name("time"))
         transformer_names = [name for name, X in zip(all_transformer_names, Xs, strict=False) if X.shape[1] != 1]

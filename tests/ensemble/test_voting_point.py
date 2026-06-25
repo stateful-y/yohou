@@ -582,3 +582,70 @@ class TestVotingSchemaValidation:
             ("b", {"sales": pl.Float64}),
         ])
         ensemble._validate_schemas_match()
+
+
+class TestVotingPointPredictTransformed:
+    """predict/observe_predict validate transformed schemas when predict_transformed=True."""
+
+    def _data(self):
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 2, 19), interval="1d", eager=True)
+        return pl.DataFrame({"time": time, "v": [float(i) for i in range(len(time))]})
+
+    def _ensemble(self):
+        return VotingPointForecaster(
+            forecasters=[("n1", SeasonalNaive(seasonality=1)), ("n7", SeasonalNaive(seasonality=7))],
+        )
+
+    def test_predict_transformed_validates_matching_schemas(self):
+        """predict(predict_transformed=True) runs the transformed-schema check and predicts."""
+        y = self._data()
+        forecaster = self._ensemble()
+        forecaster.fit(y[:40], forecasting_horizon=3)
+        y_pred = forecaster.predict(forecasting_horizon=3, predict_transformed=True)
+        assert "v" in y_pred.columns
+
+    def test_observe_predict_transformed(self):
+        """observe_predict(predict_transformed=True) also runs the check before predicting."""
+        y = self._data()
+        forecaster = self._ensemble()
+        forecaster.fit(y[:40], forecasting_horizon=3)
+        y_pred = forecaster.observe_predict(y[40:43], forecasting_horizon=3, predict_transformed=True)
+        assert "v" in y_pred.columns
+
+
+class TestValidateTransformedSchemas:
+    """Direct coverage of _validate_transformed_schemas_match branches."""
+
+    def test_no_transformed_schema_returns(self):
+        """Children without ``local_y_t_schema_`` are skipped and no error is raised."""
+        from types import SimpleNamespace
+
+        ensemble = VotingPointForecaster(forecasters=[("a", SeasonalNaive()), ("b", SeasonalNaive())])
+        ensemble.forecasters_ = [("a", SimpleNamespace()), ("b", SimpleNamespace())]
+        ensemble._validate_transformed_schemas_match()
+
+    def test_mismatched_transformed_schema_raises(self):
+        """Children whose transformed-space schemas differ raise a clear error."""
+        from types import SimpleNamespace
+
+        ensemble = VotingPointForecaster(forecasters=[("a", SeasonalNaive()), ("b", SeasonalNaive())])
+        ensemble.forecasters_ = [
+            ("a", SimpleNamespace(local_y_t_schema_={"v": pl.Float64})),
+            ("b", SimpleNamespace(local_y_t_schema_={"v": pl.Float32})),
+        ]
+        with pytest.raises(ValueError, match="transformed-space target schema"):
+            ensemble._validate_transformed_schemas_match()
+
+    def test_unknown_interval_strategy_raises(self):
+        """_aggregate_interval_values rejects an unknown aggregation strategy."""
+        from yohou.ensemble._base import _BaseEnsembleForecaster
+
+        pred1 = pl.DataFrame({"time": [1, 2], "x_lower_90": [1.0, 2.0]})
+        pred2 = pl.DataFrame({"time": [1, 2], "x_lower_90": [3.0, 4.0]})
+        with pytest.raises(ValueError, match="Unknown interval aggregation strategy"):
+            _BaseEnsembleForecaster._aggregate_interval_values(
+                predictions=[pred1, pred2],
+                interval_cols=["x_lower_90"],
+                strategy="bogus",
+                weights=None,
+            )

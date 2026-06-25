@@ -439,3 +439,21 @@ class TestMultiTargetReduction:
 
         assert "y_0" in y_pred.columns
         assert "y_1" in y_pred.columns
+
+
+class TestEstimatorPredictProbaDispatch:
+    """_estimator_predict_proba_one rejects estimators that mismatch the reduction strategy."""
+
+    def test_direct_strategy_requires_list(self):
+        """The 'direct' strategy expects a list of estimators, not a single one."""
+        forecaster = ClassProbaReductionForecaster(estimator=DecisionTreeClassifier(), reduction_strategy="direct")
+        with pytest.raises(TypeError, match="list of estimators for the 'direct' strategy"):
+            forecaster._estimator_predict_proba_one(estimator=DecisionTreeClassifier(), groups=[])
+
+    def test_multi_output_strategy_requires_single_estimator(self):
+        """The 'multi-output' strategy expects a single estimator, not a list."""
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(), reduction_strategy="multi-output"
+        )
+        with pytest.raises(TypeError, match="single estimator for the 'multi-output' strategy"):
+            forecaster._estimator_predict_proba_one(estimator=[DecisionTreeClassifier()], groups=[])

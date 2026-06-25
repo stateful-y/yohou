@@ -693,7 +693,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 None, y_pred_remainder, predictions, time_columns, time_col_names
             )
 
-        if time_columns is None:
+        if time_columns is None:  # pragma: no cover - defensive: a fitted ColumnForecaster always produces output
             raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         result = pl.concat([time_columns] + predictions, how="horizontal")
 
@@ -948,7 +948,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 None, y_pred_remainder, predictions, time_columns, time_col_names
             )
 
-        if time_columns is None:
+        if time_columns is None:  # pragma: no cover - defensive: a fitted ColumnForecaster always produces output
             raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         result = pl.concat([time_columns] + predictions, how="horizontal")
 
@@ -1092,7 +1092,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 None, y_pred_remainder, predictions, time_columns, time_col_names
             )
 
-        if time_columns is None:
+        if time_columns is None:  # pragma: no cover - defensive: a fitted ColumnForecaster always produces output
             raise ValueError("ColumnForecaster has no fitted forecasters to predict from.")
         return pl.concat([time_columns] + predictions, how="horizontal")
 
