@@ -415,7 +415,10 @@ class MaxAbsScaler(SklearnScaler):
     _estimator_default_class = sklearn_MaxAbsScaler
 
     def __init__(self, copy=True, clip=False, **kwargs):
-        super().__init__(copy=copy, clip=clip, **kwargs)
+        # ``clip`` was added to MaxAbsScaler in sklearn 1.7; drop it when running
+        # against an older sklearn that does not accept it, which otherwise raises.
+        params = _filter_estimator_params(sklearn_MaxAbsScaler, {"copy": copy, "clip": clip})
+        super().__init__(**params, **kwargs)
 
     @property
     def scale_(self) -> np.ndarray:
