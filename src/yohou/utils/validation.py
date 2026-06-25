@@ -2,7 +2,6 @@
 
 import calendar
 import re
-import warnings
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -19,7 +18,6 @@ __all__ = [
     "check_inputs",
     "check_interval_consistency",
     "check_groups",
-    "check_groups_exist",  # deprecated, use check_groups
     "check_panel_groups_match",
     "check_panel_internal_consistency",
     "check_schema",
@@ -400,7 +398,6 @@ def check_groups(
 
     See Also
     --------
-    - [`check_groups_exist`][yohou.utils.validation.check_groups_exist] : Validate requested panel groups exist (deprecated).
     - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
     - [`inspect_panel`][yohou.utils.panel.inspect_panel] : Detect panel groups in a DataFrame.
 
@@ -422,55 +419,6 @@ def check_groups(
         )
 
     return requested_panel_groups
-
-
-def check_groups_exist(
-    fitted_panel_groups: list[str],
-    requested_panel_groups: list[str] | None,
-    context: str,
-) -> None:
-    """Validate all requested panel groups exist in fitted forecaster.
-
-    .. deprecated:: 0.1.0a10
-        Use `check_groups` instead. Will be removed in 0.2.0.
-
-    Consolidates duplicated validation in predict, observe, rewind methods.
-
-    Parameters
-    ----------
-    fitted_panel_groups : list of str
-        Panel group names from fitted forecaster (groups_).
-    requested_panel_groups : list of str or None
-        Panel group names requested for operation.
-    context : str
-        Method name for error message (e.g., "predict", "observe", "rewind").
-
-    Raises
-    ------
-    ValueError
-        If any requested panel group was not present during fit.
-
-    See Also
-    --------
-    - [`check_groups`][yohou.utils.validation.check_groups] : Preferred replacement for this function.
-    - [`check_panel_groups_match`][yohou.utils.validation.check_panel_groups_match] : Validate y and X_actual have matching panel groups.
-
-    """
-    warnings.warn(
-        "check_groups_exist is deprecated and will be removed in 0.2.0; use check_groups instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    if requested_panel_groups is None:
-        return
-
-    missing_groups = set(requested_panel_groups) - set(fitted_panel_groups)
-    if missing_groups:
-        raise ValueError(
-            f"Panel groups {sorted(missing_groups)} not found in fitted forecaster. "
-            f"Available groups: {sorted(fitted_panel_groups)}. "
-            f"Cannot {context} for groups that were not present during fit."
-        )
 
 
 def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame") -> None:

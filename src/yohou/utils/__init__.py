@@ -38,7 +38,6 @@ from .validation import (
     check_continuity,
     check_forecasting_horizon_positive,
     check_groups,
-    check_groups_exist,
     check_inputs,
     check_interval_consistency,
     check_panel_groups_match,
@@ -76,7 +75,6 @@ __all__ = [
     "check_inputs",
     "check_interval_consistency",
     "check_groups",
-    "check_groups_exist",  # deprecated, use check_groups
     "check_panel_groups_match",
     "check_panel_internal_consistency",
     "check_schema",

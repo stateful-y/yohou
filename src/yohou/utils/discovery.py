@@ -25,8 +25,8 @@ def _ignore_third_party_future_warnings() -> None:
     Walking and importing every yohou module triggers FutureWarnings from
     upstream dependencies (e.g. sklearn). Those are pure import noise here, so
     they are silenced. The suppression is restricted to non-yohou modules via a
-    negative-lookahead ``module`` regex so that yohou's own deprecation
-    warnings stay visible to callers and the test suite.
+    negative-lookahead ``module`` regex so that yohou's own warnings stay
+    visible to callers and the test suite.
 
     This must be called inside a ``warnings.catch_warnings()`` block so the
     filter is scoped to the surrounding ``with`` statement.

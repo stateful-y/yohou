@@ -26,7 +26,6 @@ Validation, panel data, tags, discovery, and other utility functions.
 | [`panel_aware_prefix`](generated/yohou.utils.panel.panel_aware_prefix.md) | Add a prefix to a column name while preserving the panel group prefix. |
 | [`panel_aware_suffix`](generated/yohou.utils.panel.panel_aware_suffix.md) | Add a suffix to a column name while preserving the panel group prefix. |
 | [`check_groups`](generated/yohou.utils.validation.check_groups.md) | Validate and normalize panel group names for forecaster operations. |
-| [`check_groups_exist`](generated/yohou.utils.validation.check_groups_exist.md) | Validate all requested panel groups exist in fitted forecaster. **(deprecated)** Use `check_groups` instead. |
 | [`check_panel_groups_match`](generated/yohou.utils.validation.check_panel_groups_match.md) | Validate that y and X have matching panel group structures. |
 | [`check_panel_internal_consistency`](generated/yohou.utils.validation.check_panel_internal_consistency.md) | Validate that all panel groups in a DataFrame have the same local column structure. |
 | [`window_futures`](generated/yohou.utils.pivot.window_futures.md) | Window known-future feature values into per-vintage forecast horizons. |

@@ -17,7 +17,6 @@ from yohou.utils.validation import (
     check_continuity,
     check_forecasting_horizon_positive,
     check_groups,
-    check_groups_exist,
     check_inputs,
     check_interval_consistency,
     check_schema,
@@ -1535,31 +1534,6 @@ class TestCheckTimeColumnEdgeCases:
             check_time_column(df)
 
 
-class TestCheckPanelGroupNamesExistEdgeCases:
-    """Additional tests for check_groups_exist."""
-
-    def test_none_returns_early(self):
-        """Passing None for requested_panel_groups returns without error."""
-        with pytest.warns(DeprecationWarning, match="check_groups_exist is deprecated"):
-            check_groups_exist(
-                fitted_panel_groups=["a", "b"],
-                requested_panel_groups=None,
-                context="predict",
-            )
-
-    def test_missing_groups_raises(self):
-        """Requesting non-existent groups raises ValueError."""
-        with (
-            pytest.warns(DeprecationWarning, match="check_groups_exist is deprecated"),
-            pytest.raises(ValueError, match="not found in fitted"),
-        ):
-            check_groups_exist(
-                fitted_panel_groups=["a", "b"],
-                requested_panel_groups=["c"],
-                context="predict",
-            )
-
-
 class TestCheckIntervalSubDay:
     """Tests for check_interval_consistency with sub-day data."""
 
@@ -1649,23 +1623,6 @@ class TestCheckXActualRequired:
         """X_actual provided with positive horizon passes without error."""
         X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         check_X_actual_required(X, observation_horizon=5, context="predict")
-
-
-class TestCheckPanelGroupNamesExist:
-    """Tests for check_groups_exist."""
-
-    def test_missing_group_raises(self):
-        """Requesting a non-existent panel group raises ValueError."""
-        with (
-            pytest.warns(DeprecationWarning, match="check_groups_exist is deprecated"),
-            pytest.raises(ValueError, match="not found"),
-        ):
-            check_groups_exist(["g1"], ["g2", "g3"], "predict")
-
-    def test_valid_groups_pass(self):
-        """Requesting existing groups passes without error."""
-        with pytest.warns(DeprecationWarning, match="check_groups_exist is deprecated"):
-            check_groups_exist(["g1", "g2", "g3"], ["g1", "g2"], "predict")
 
 
 class TestValidateColumnNames:
