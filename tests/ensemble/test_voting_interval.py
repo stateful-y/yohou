@@ -643,8 +643,14 @@ class TestVotingIntervalForecasterPredictTransformed:
         y, _ = y_X_factory(length=80, n_targets=1, n_features=0, seed=42)
         ensemble = VotingIntervalForecaster(
             forecasters=[
-                ("conf_1", SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1), calibration_size=10)),
-                ("conf_7", SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=10)),
+                (
+                    "conf_1",
+                    SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1), calibration_size=10),
+                ),
+                (
+                    "conf_7",
+                    SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=10),
+                ),
             ],
             point_method="mean",
         )
