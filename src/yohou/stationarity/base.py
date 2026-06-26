@@ -23,7 +23,8 @@ class _BaseTrendForecaster(BasePointForecaster):
     """Abstract base class for trend forecasters.
 
     Provides common infrastructure for trend-based forecasting methods,
-    including data validation and one-step-ahead prediction interface.
+    including data validation and a multi-step prediction interface (one
+    block of ``fit_forecasting_horizon_`` steps per call).
 
     Parameters
     ----------
@@ -103,6 +104,13 @@ class _BaseTrendForecaster(BasePointForecaster):
             Transformed target.
         X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             Transformed features.
+
+        Notes
+        -----
+        Sets ``self._first_observed_time`` to the first observed datetime (a
+        dict keyed by group name in panel mode) as a side effect; it is read
+        by ``_get_time_indices`` to compute relative time indices on every
+        predict call and restored by ``rewind``.
 
         """
         y_t, X_t = super()._pre_fit(
@@ -211,15 +219,22 @@ class _BaseTrendForecaster(BasePointForecaster):
 
         Parameters
         ----------
-        forecasting_horizon : int
-            Number of steps to predict.
+        forecasting_horizon : int or None, default=None
+            Number of steps to predict. When an int, the method returns the
+            prediction indices ``[current_time_index, current_time_index +
+            forecasting_horizon)``. When ``None``, it returns the historical
+            training-time indices ``[0, current_time_index)`` used during
+            ``_fit_estimator``.
         panel_group_name : str or None
             Panel group name for which to get time indices.
 
         Returns
         -------
         pl.Series
-            Time step indices for the next forecasting_horizon steps.
+            Time step indices. If ``forecasting_horizon`` is an int, the
+            prediction indices ``[current_time_index, current_time_index +
+            forecasting_horizon)``; if ``None``, the historical training
+            indices ``[0, current_time_index)``.
 
         """
         if panel_group_name is not None:
@@ -303,6 +318,12 @@ class _BaseTrendForecaster(BasePointForecaster):
         y_t : pl.DataFrame or dict of str to pl.DataFrame
             Transformed target time series, either a single DataFrame or a dict of panel-group DataFrames.
 
+        Notes
+        -----
+        Panel data is always handled with a single pooled estimator: all
+        group time series are vertically stacked into one training set
+        before fitting, regardless of ``panel_strategy``.
+
         """
         # Non-panel data
         if self.groups_ is None:
@@ -343,7 +364,10 @@ class _BaseTrendForecaster(BasePointForecaster):
         Returns
         -------
         pl.DataFrame
-            Predicted time series.
+            Predicted time series with ``vintage_time``, ``time``, and one
+            value column per target variable. Panel output has
+            group-prefixed value columns (``group__col``) with the
+            ``vintage_time`` / ``time`` pair present once.
 
         """
         y_t_columns = list(self.local_y_t_schema_.keys())

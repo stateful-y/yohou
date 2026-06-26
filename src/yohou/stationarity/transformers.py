@@ -360,7 +360,7 @@ class SeasonalDifferencing(BaseTransformer):
     n_features_in_ : int
         Number of features seen during fit.
     feature_names_in_ : list of str
-        Names of features seen during fit.
+        Names of features seen during fit (excluding "time" column).
 
     Notes
     -----
@@ -470,9 +470,11 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
     feature_names_in_ : list of str
         Names of features seen during fit (excluding "time" column).
     log_transform_ : LogTransformer
-        Fitted log transform component.
+        Fitted log transform component (internal; used by
+        ``inverse_transform`` only).
     seasonal_diff_transform_ : SeasonalDifferencing
-        Fitted seasonal differencing component.
+        Fitted seasonal differencing component (internal; used by
+        ``inverse_transform`` only).
 
     Examples
     --------
@@ -494,6 +496,11 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
     -----
     This is equivalent to computing ``log(x_t + offset) - log(x_{t-s} + offset)``
     which equals ``log((x_t + offset) / (x_{t-s} + offset))``.
+
+    This transformer is stateful with ``observation_horizon = seasonality``.
+    The first ``seasonality`` rows are dropped in the output. Inverse
+    transform requires the ``X_p`` prior-context argument (the untransformed
+    rows preceding the differenced output).
 
     References
     ----------
@@ -634,6 +641,13 @@ class SeasonalReturn(BaseTransformer):
     >>> X_t = transformer.transform(X)
     >>> len(X_t) == len(X) - 2  # First 2 rows dropped
     True
+
+    Notes
+    -----
+    This transformer is stateful with ``observation_horizon = seasonality``.
+    The first ``seasonality`` rows are dropped in the output since they lack
+    sufficient history. Inverse transform requires the ``X_p`` prior-context
+    argument.
 
     References
     ----------
@@ -792,6 +806,12 @@ class AbsoluteSeasonalReturn(SeasonalDifferencing):
     >>> X_t = transformer.transform(X)
     >>> len(X_t) == len(X) - 2  # First 2 rows dropped
     True
+
+    Notes
+    -----
+    This transformer is stateful with ``observation_horizon = seasonality``.
+    The first ``seasonality`` rows are dropped in the output. Inverse
+    transform requires the ``X_p`` prior-context argument.
 
     References
     ----------

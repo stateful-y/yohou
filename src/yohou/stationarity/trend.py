@@ -115,7 +115,8 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             Transformed features (unused).
         forecasting_horizon : int
-            Number of steps ahead to forecast.
+            Number of steps ahead to forecast (not used; stored by the base
+            class as ``fit_forecasting_horizon_``).
 
         """
         estimator = Pipeline([

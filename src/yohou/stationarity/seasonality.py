@@ -78,6 +78,9 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
     - Requires at least 2 complete seasonal cycles for "average"/"median" methods
     - "naive" method only requires 1 complete cycle
     - Works best with detrended data (consider using with differencing transformers)
+    - When fitted on panel data, a single seasonal pattern is learned by
+      pooling all group observations, and the same pattern is used for
+      every group at predict time (regardless of ``panel_strategy``)
 
     """
 
@@ -321,6 +324,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     harmonics : list of int or None, default=None
         List of Fourier harmonics to use (e.g., [1, 2, 3] uses first 3 harmonics).
         When ``None``, a single first harmonic ``[1]`` is used at fit time.
+        Must be non-empty if provided; all entries must be positive integers
+        not exceeding ``seasonality / 2`` (Nyquist limit). Raises ``ValueError``
+        at fit time otherwise.
     estimator : RegressorMixin, default=ElasticNet()
         Regression model used to fit Fourier coefficients.
     target_transformer : BaseTransformer, optional
@@ -370,7 +376,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     -----
     - Handles non-integer seasonality (e.g., 365.25 days/year)
     - Produces smooth seasonal curves
-    - Can represent multiple seasonalities by using more harmonics
+    - Can represent complex seasonality shapes by using multiple harmonics
+      (subharmonics of the single configured period)
     - Unlike pattern-based methods, representation is continuous and differentiable
 
     """
