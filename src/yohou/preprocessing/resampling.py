@@ -22,7 +22,7 @@ class Downsampler(BaseTransformer):
 
     Parameters
     ----------
-    interval : str
+    interval : str, default='1h'
         Target time interval (e.g., "1h", "1d", "5m", "30s").
         Uses polars duration string syntax. Must be greater than or equal to
         the input data's interval.
@@ -212,14 +212,14 @@ class Upsampler(BaseTransformer):
 
     Parameters
     ----------
-    interval : str
+    interval : str, default='1h'
         Target time interval (e.g., "1h", "1d", "5m", "30s").
         Uses polars duration string syntax. Must be smaller than the input
         data's interval.
     interpolation : {"linear", "nearest", "forward", "backward"}, default="linear"
         Interpolation method to fill new time points:
         - "linear": Linear interpolation between known points
-        - "nearest": Use the known value closest in time (ties go to the following value)
+        - "nearest": Use the known value closest in time (ties go to the preceding value)
         - "forward": Forward fill (carry last observation forward)
         - "backward": Backward fill (carry next observation backward)
 

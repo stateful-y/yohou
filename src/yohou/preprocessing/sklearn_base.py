@@ -2,7 +2,7 @@
 
 This module provides ``SklearnTransformer`` and ``SklearnScaler``, wrappers that integrate
 sklearn transformers and scalers into the Yohou pipeline. It preserves polars DataFrame
-structure and the "time" column while applying sklearn transformations to numeric
+structure and the "time" column while applying sklearn transformations to all non-time
 columns.
 """
 
@@ -58,7 +58,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     """Wrapper to integrate sklearn transformers into the Yohou pipeline.
 
     Preserves the polars DataFrame structure and "time" column while applying
-    sklearn transformations to numeric columns.
+    sklearn transformations to all non-time columns.
 
     This class can be used to:
 
@@ -188,7 +188,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
     def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transform the input time series.
 
-        Applies the learned scaling transformation to each feature.
+        Applies the fitted transformation to each feature.
 
         Parameters
         ----------
@@ -202,6 +202,16 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         -------
         pl.DataFrame
             Transformed time series with "time" column preserved.
+
+        Raises
+        ------
+        ValueError
+            If X does not have a valid "time" column.
+
+        Notes
+        -----
+        If the input DataFrame has no data rows (e.g. during rewind with
+        ``observation_horizon == 0``), the original frame is returned unchanged.
 
         """
         check_is_fitted(self, ["instance_", "X_schema_", "feature_names_in_"])
@@ -219,7 +229,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         if X_no_time.height == 0:
             return X
 
-        # Apply scaling transformation
+        # Apply transformation
         X_scaled_no_time = self.instance_.transform(X_no_time)
 
         # Reattach time column to the scaled features
@@ -232,7 +242,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         This method is only available if the underlying sklearn transformer
         supports inverse_transform (e.g., StandardScaler, PowerTransformer).
 
-        Reverts the scaling transformation, restoring the original data scale.
+        Reverts the fitted transformation, restoring the original feature values.
 
         Parameters
         ----------
@@ -259,7 +269,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         time = X_t.select(cs.by_name("time"))
         X_no_time = X_t.select(~cs.by_name("time"))
 
-        # Apply inverse scaling transformation (returns numpy array)
+        # sklearn inverse_transform returns a numpy array; reconstruct polars DataFrame below
         X_unscaled_array = self.instance_.inverse_transform(X_no_time)
 
         # Convert back to DataFrame with original column names
@@ -290,7 +300,7 @@ class SklearnScaler(SklearnTransformer):
     """Wrapper to integrate sklearn scalers into the Yohou pipeline.
 
     Preserves the polars DataFrame structure and "time" column while applying
-    sklearn scaling transformations to numeric columns.
+    sklearn scaling transformations to all non-time columns.
 
     This class can be used to:
 

@@ -63,10 +63,10 @@ class LagTransformer(BaseTransformer):
 
     See Also
     --------
-    `MeanLagTransformer` : Averages multiple lag multiples into a single feature.
-    `RollingStatisticsTransformer` : Compute rolling statistics (mean, std, etc.).
-    `SlidingWindowFunctionTransformer` : Apply custom functions to sliding windows.
-    `tabularize` : Underlying tabularization function.
+    - [`MeanLagTransformer`][yohou.preprocessing.window.MeanLagTransformer] : Averages multiple lag multiples into a single feature.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Compute rolling statistics (mean, std, etc.).
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Apply custom functions to sliding windows.
+    - `tabularize` : Underlying tabularization function.
 
     Notes
     -----
@@ -188,8 +188,8 @@ class MeanLagTransformer(BaseTransformer):
 
     See Also
     --------
-    `LagTransformer` : Creates individual lag features without averaging.
-    `RollingStatisticsTransformer` : Compute rolling statistics over consecutive windows.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Creates individual lag features without averaging.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Compute rolling statistics over consecutive windows.
 
     Notes
     -----
@@ -305,10 +305,13 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
     ----------
     func : callable
         Function to apply to each sliding window. It receives a polars DataFrame
-        with shape (window_size, n_features) and should return:
+        with shape (window_size, n_features + 1); the window is a full slice of the
+        input and includes the "time" column, which the function must handle or
+        exclude explicitly (see the example below). It should return:
         - A scalar (applied to all columns)
         - A dict mapping column names to scalars
         - A numpy array of shape (n_features,)
+        - Any other value castable to float (applied to all columns)
     window_size : int, default=1
         Size of the sliding window. Must be >= 1.
     kw_args : dict or None, default=None
@@ -345,9 +348,9 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
 
     See Also
     --------
-    `LagTransformer` : Create lagged features.
-    `RollingStatisticsTransformer` : Pre-built rolling statistics.
-    `FunctionTransformer` : Apply function element-wise.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Create lagged features.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Pre-built rolling statistics.
+    - `FunctionTransformer` : Apply function element-wise.
 
     """
 
@@ -502,8 +505,8 @@ class RollingStatisticsTransformer(BaseTransformer):
 
     See Also
     --------
-    `SlidingWindowFunctionTransformer` : Apply custom function over windows.
-    `LagTransformer` : Create lagged features.
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Apply custom function over windows.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Create lagged features.
 
     Notes
     -----
@@ -682,6 +685,11 @@ class ExponentialMovingAverage(BaseTransformer):
     - Technical indicators (e.g., EMA in finance)
     - Adaptive feature engineering
 
+    Unlike the other window transformers, this transformer is stateless: it has
+    no internal buffer, so ``observe``/``rewind`` fall through to the base no-op.
+    Each ``transform`` call must therefore receive the full history needed by the
+    EWMA computation.
+
     Examples
     --------
     >>> import polars as pl
@@ -702,8 +710,8 @@ class ExponentialMovingAverage(BaseTransformer):
 
     See Also
     --------
-    `RollingStatisticsTransformer` : Fixed-window rolling statistics.
-    `SlidingWindowFunctionTransformer` : Custom window functions.
+    - [`RollingStatisticsTransformer`][yohou.preprocessing.window.RollingStatisticsTransformer] : Fixed-window rolling statistics.
+    - [`SlidingWindowFunctionTransformer`][yohou.preprocessing.window.SlidingWindowFunctionTransformer] : Custom window functions.
 
     """
 

@@ -85,6 +85,11 @@ class OutlierThresholdHandler(BaseTransformer):
     high_ : float or None
         Validated upper threshold.
 
+    Raises
+    ------
+    ValueError
+        At fit time if both ``low`` and ``high`` are provided and ``low`` > ``high``.
+
     Examples
     --------
     >>> import polars as pl
@@ -213,6 +218,11 @@ class OutlierPercentileHandler(BaseTransformer):
     thresholds_ : dict
         Dictionary mapping column names to (low_value, high_value) tuples.
 
+    Raises
+    ------
+    ValueError
+        At fit time if both ``low`` and ``high`` are provided and ``low`` > ``high``.
+
     Examples
     --------
     >>> import polars as pl
@@ -234,7 +244,7 @@ class OutlierPercentileHandler(BaseTransformer):
     >>> "time" in X_handled.columns
     True
 
-    >>> # IQR-based outlier detection (clip to 25th-75th percentile)
+    >>> # Clip to the interquartile range (25th to 75th percentile)
     >>> handler = OutlierPercentileHandler(low=25, high=75)
     >>> handler.fit(X)  # doctest: +ELLIPSIS
     OutlierPercentileHandler(...)

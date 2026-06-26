@@ -77,6 +77,7 @@ class NumericalFilter(BaseTransformer):
     ...     start=datetime(2020, 1, 1), end=datetime(2020, 1, 1, 0, 1), interval="1s", eager=True
     ... )
     >>> t = np.arange(len(times))
+    >>> np.random.seed(42)  # deterministic noise for a reproducible example
     >>> signal = np.sin(2 * np.pi * 0.05 * t) + 0.5 * np.random.randn(len(t))
     >>> X = pl.DataFrame({"time": times, "signal": signal.tolist()})
 
@@ -227,10 +228,10 @@ class NumericalFilter(BaseTransformer):
     def observe_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
         """Transform new data and update state without clearing filter delays.
 
-        The base ``observe_transform`` routes through ``rewind()``, which would
-        clear the filter delay state ``zi_`` and reintroduce chunk-boundary
-        transients. This override preserves ``zi_`` so streaming/chunked
-        processing continues seamlessly.
+        The base ``observe_transform`` calls ``observe()``, which in turn calls
+        ``rewind()``, clearing the filter delay state ``zi_`` as a side effect and
+        reintroducing chunk-boundary transients. This override bypasses that chain
+        and preserves ``zi_`` so streaming/chunked processing continues seamlessly.
 
         Parameters
         ----------
@@ -325,7 +326,8 @@ class NumericalIntegrator(BaseTransformer):
 
     Use ``rewind()`` to clear the integration state and start fresh.
 
-    - For cumulative_trapezoid, the output has the same length as input
+    - Both methods produce output of the same length as the input because
+      ``initial=0.0`` is always supplied to scipy
     - Inverse transform uses numerical differentiation (np.gradient)
 
     See Also

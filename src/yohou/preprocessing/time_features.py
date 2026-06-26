@@ -50,6 +50,13 @@ class FourierFeatureTransformer(BaseTransformer):
         First observed timestamp, used as reference for index
         computation.
 
+    Raises
+    ------
+    ValueError
+        At fit time if the effective ``harmonics`` list is empty; if any
+        harmonic is less than 1; or if the maximum harmonic exceeds
+        ``seasonality / 2`` (the Nyquist limit).
+
     See Also
     --------
     - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).

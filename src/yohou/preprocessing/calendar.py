@@ -148,6 +148,14 @@ class CalendarFeatureTransformer(BaseTransformer):
     applicable_features_ : list of str
         Calendar features that will be extracted during transform.
 
+    Raises
+    ------
+    ValueError
+        At fit time if any requested feature name is not a valid calendar
+        feature; if a requested feature is not applicable to the detected time
+        interval (e.g. ``"hour"`` on daily data); or if any generated ``cal_*``
+        column name conflicts with an existing column in ``X``.
+
     See Also
     --------
     - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator from user-provided dates.
@@ -257,7 +265,7 @@ class HolidayFeatureTransformer(BaseTransformer):
 
     $$\text{is_holiday}(t) = \mathbb{1}[\text{date}(t) \in H]$$
 
-    When ``proximity=True``, the transformer also computes:
+    When ``days_to_next=True`` or ``days_since_last=True``, the transformer also computes:
 
     $$\text{days_to_next}(t) = \min_{h \in H, h \geq t} (h - t) \quad \text{(null if no future holiday)}$$
 
