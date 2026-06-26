@@ -1,6 +1,6 @@
 # Time Series Patterns
 
-Before choosing a forecasting method or a stationarity transform, you need to understand what kind of structure lives in the data. Time series patterns fall into a small number of categories, each with distinct implications for how yohou components should be configured. Getting this classification right is the single most important step in the forecasting workflow, because it determines whether you need decomposition, differencing, feature engineering, or simply a seasonal naive baseline.
+Time series patterns fall into a small number of categories, each with distinct implications for model and transform selection. Understanding this taxonomy is the prerequisite for every step in the forecasting workflow, from deciding whether to difference a series to choosing which feature transformer to apply. Classifying the structure that lives in the data is what determines whether a problem calls for decomposition, differencing, feature engineering, or simply a seasonal naive baseline.
 
 ## Trend
 

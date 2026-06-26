@@ -152,8 +152,12 @@ individual horizons short is advisable for memory-constrained deployments.
 
 Stateful transformers maintain an internal buffer of recent observations so that
 `observe_transform` can produce valid output on new data without reprocessing the
-entire history. The composition classes propagate `observe`, `rewind`,
-`observe_transform`, and `rewind_transform` calls to every component:
+entire history. These are the transformer-level analogues of the forecaster
+`observe`/`rewind` lifecycle described in
+[Core Concepts](core-concepts.md#observation-horizon): `observe_transform` combines
+observe-then-transform, and `rewind_transform` rolls the buffer back to an earlier
+time and retransforms from there. The composition classes propagate `observe`,
+`rewind`, `observe_transform`, and `rewind_transform` calls to every component:
 
 [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) forwards these calls **sequentially** through each step. When
 `observe_transform` is called, the first step observes and transforms the new

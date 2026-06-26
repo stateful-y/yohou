@@ -59,8 +59,10 @@ All forecasters inherit from a common `BaseForecaster` that provides:
   parameters for wrapping transforms around the forecasting step.
 - **Observation tracking**: `_y_observed` maintains the most recent
   `observation_horizon` rows, updated by `observe()`.
-- **Metadata routing**: `time_weight`, `vintage_weight`, and other metadata flow through
-  `set_fit_request()` / `set_score_request()` following sklearn's protocol.
+- **Metadata routing**: `sample_weight` (resolved from the `time_weighter` and
+  `vintage_weighter` constructor parameters by the framework) flows through
+  `set_fit_request()` following sklearn's protocol. Weighters are configured at
+  construction time, not passed as metadata (see [Weighting](weighting.md)).
 
 The three forecaster base classes ([`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/),
 [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/), [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/)) share this machinery.

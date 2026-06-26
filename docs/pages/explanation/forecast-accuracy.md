@@ -1,6 +1,6 @@
 # Forecast Accuracy
 
-A forecast is only useful if you can measure how good it is. Choosing the right metric is not a formality: different metrics reward different behaviors, and the "best" model under one metric may be mediocre under another. This page explains the reasoning behind metric families and common pitfalls, helping you make informed choices. For individual metric parameters and usage, see the [API Reference: yohou.metrics](/pages/api/metrics/).
+Measuring forecast quality requires choosing among metric families that reward fundamentally different behaviors. A model ranked best under mean absolute error may rank poorly under a proper scoring rule, because each metric encodes different assumptions about the cost of errors and the structure of uncertainty. This page maps those assumptions, the metric families that embody them, and the pitfalls they introduce. For individual metric parameters and usage, see the [API Reference: yohou.metrics](/pages/api/metrics/).
 
 ## Forecast Errors vs. Residuals
 
@@ -222,16 +222,18 @@ pipeline is inherited. See
 
 ## Weighting
 
-All scorers accept optional weight parameters that apply non-uniform emphasis
-before aggregation:
+Most scorers (for example
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/))
+accept optional weighter parameters that apply non-uniform emphasis before
+aggregation. Each takes a weighter estimator rather than a raw weight series:
 
-- `time_weight` weights per-timestep errors. This matters when recent errors
+- `time_weighter` weights per-timestep errors. This matters when recent errors
   carry more business value than older ones (rolling deployment), or when
   certain periods are critical (holiday weeks in retail).
-- `step_weight` weights per-forecasting-step errors (1-step-ahead,
+- `step_weighter` weights per-forecasting-step errors (1-step-ahead,
   2-step-ahead, etc.). Useful when near-term accuracy matters more than
   distant forecasts.
-- `vintage_weight` weights per-vintage (forecast origin) scores. Controls how
+- `vintage_weighter` weights per-vintage (forecast origin) scores. Controls how
   much each forecast origin contributes to the aggregated result.
 
 See [Weighting](/pages/explanation/weighting/) for weight types, formats, and

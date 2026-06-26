@@ -244,7 +244,7 @@ All composition forecasters propagate the three parameters to their children:
 - [**`DecompositionPipeline`**](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) passes all three parameters to the residual
   forecaster after trend/seasonality removal.
 
-- **ForecastedFeatureForecaster** uses `X_actual` as the target for the
+- [**`ForecastedFeatureForecaster`**](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) uses `X_actual` as the target for the
   feature forecaster (training it to predict the exogenous series). At predict
   time the feature forecaster produces a forecast that is passed to the target
   forecaster as `X_forecast` (merged with any caller-supplied `X_forecast`), so
@@ -253,7 +253,10 @@ All composition forecasters propagate the three parameters to their children:
   often the feature forecaster regenerates this forecast (every step by default),
   for cases where the feature model is too expensive to re-run on every step.
 
-- **VotingForecaster** passes all three parameters to every ensemble member.
+- [**`VotingPointForecaster`**](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
+  [**`VotingIntervalForecaster`**](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/),
+  and [**`VotingClassProbaForecaster`**](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/)
+  each pass all three parameters to every ensemble member.
 
 - [**`SplitConformalForecaster`**](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) forwards all parameters to the wrapped point
   forecaster.

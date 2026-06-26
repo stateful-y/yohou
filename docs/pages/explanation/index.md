@@ -2,6 +2,8 @@
 
 Conceptual background for understanding how Yohou works and why it is designed the way it is. These pages complement the tutorials and how-to guides by giving you the mental models needed to use Yohou confidently on unfamiliar problems.
 
+Pages that draw on external academic literature or published standards close with a `## References` section listing those sources; pages whose concepts are internal to Yohou rely on inline cross-links instead and omit the section. Both end with a `## Connections` block pointing to related pages, tutorials, and how-to guides.
+
 ## Foundations
 
 - [Core Concepts](core-concepts.md): The fit/observe/predict lifecycle, data formats, and the reduction approach to forecasting.

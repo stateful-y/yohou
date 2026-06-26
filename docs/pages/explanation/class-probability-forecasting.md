@@ -36,11 +36,13 @@ feature rows and trains a scikit-learn estimator on the result. The difference i
 the estimator is a *classifier* (any scikit-learn classifier implementing
 `predict_proba()`), and the target is categorical rather than numeric.
 
-The pipeline at fit time adds two steps before the standard tabularization:
+The pipeline at fit time prepends two steps to the standard tabularization:
 
 1. **Class discovery**: unique class labels are extracted from the target column(s) and sorted alphabetically.
 2. **Label encoding**: categorical targets are converted to integer codes (e.g., `{"cloudy": 0, "rainy": 1, "sunny": 2}`).
-3. **Tabularization and fitting**: the encoded series is tabularized and the classifier is trained, following the same mechanics as [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+
+The encoded series is then tabularized and the classifier is trained, following the
+same mechanics as [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
 
 At prediction time, the classifier's `predict_proba()` output is mapped back to
 columns named after the original class labels.

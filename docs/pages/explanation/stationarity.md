@@ -102,7 +102,7 @@ Seasonality forecasters model repeating periodic patterns. The module provides t
 
 [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) extracts a discrete seasonal profile by averaging (or taking the median of) values at each position within the seasonal cycle. With `method="average"` and `seasonality=12`, it computes the mean January value, the mean February value, and so on, then tiles this fixed pattern into the future. The "median" method is more robust to outliers in individual years. The "naive" method simply repeats the last observed cycle and requires only one complete seasonal cycle of training data, while "average" and "median" require at least two. This approach works well when the seasonal shape is stable and the period aligns exactly with the data frequency.
 
-[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) represents seasonality as a sum of sine and cosine waves at specified harmonics, fitted via ElasticNet regression. Fourier representation has two notable advantages: it handles non-integer seasonality (such as 365.25 days per year, accounting for leap years) and it produces smooth, differentiable seasonal curves rather than a piecewise-constant pattern. The `harmonics` parameter controls the complexity: more harmonics capture sharper seasonal features, while fewer harmonics produce a gentler curve.
+[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) represents seasonality as a sum of sine and cosine waves at specified harmonics, fitted via a regression model (ElasticNet by default, configurable through the `estimator` parameter). Fourier representation has two notable advantages: it handles non-integer seasonality (such as 365.25 days per year, accounting for leap years) and it produces smooth, differentiable seasonal curves rather than a piecewise-constant pattern. The `harmonics` parameter controls the complexity: more harmonics capture sharper seasonal features, while fewer harmonics produce a gentler curve.
 
 ## Standalone Transforms
 
@@ -191,6 +191,8 @@ statistical models assume Gaussian residuals (a stronger condition than stationa
 while conformal prediction requires only exchangeability of calibration errors.
 
 For practical recipes, see [How to Apply Stationarity Transforms](../how-to/apply-stationarity-transforms.md).
+For a hands-on exploration of seasonal structure, see the
+[Seasonal Analysis Tutorial](../tutorials/seasonal-analysis.md).
 
 Interactive examples: [Decomposition](/examples/decomposition/),
 [Decomposition Variations](/examples/decomposition_variations/),
