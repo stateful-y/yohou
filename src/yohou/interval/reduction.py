@@ -295,6 +295,14 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         self
             The fitted forecaster instance.
 
+        Raises
+        ------
+        ValueError
+            If the estimator exposes no quantile parameter, if it exposes
+            more than one quantile parameter, or if a MultiQuantile
+            estimator is used with more than one target column or with
+            ``forecasting_horizon > 1``.
+
         """
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
             forecasting_horizon, coverage_rates
@@ -412,7 +420,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts `fit_forecasting_horizon_` steps from the observation horizon.
 
         Parameters
         ----------

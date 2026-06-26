@@ -179,7 +179,11 @@ class DistanceSimilarity(BaseSimilarity):
         y_pred: pl.DataFrame,
         X_actual: pl.DataFrame | None = None,
     ) -> "DistanceSimilarity":
-        """Fits the similarity model.
+        """Store the calibration feature matrix for distance computation.
+
+        Combines ``y_pred`` and ``X_actual`` (if provided) via ``_get_X``
+        and saves the result as ``_X_observed``. Subsequent ``predict``
+        calls compute distances from new predictions to this stored matrix.
 
         Parameters
         ----------
@@ -475,6 +479,18 @@ class SeasonalSimilarity(BaseSimilarity):
         -------
         self
 
+        Notes
+        -----
+        When ``y_pred`` contains only a single timestamp, the time interval
+        cannot be inferred and ``interval_td_`` is set to ``timedelta(0)``;
+        the feature extractor then works in raw seconds and ``seasonalities``
+        must also be expressed in seconds to remain meaningful.
+
+        Raises
+        ------
+        ValueError
+            If ``seasonalities`` is ``None`` or empty.
+
         """
         if self.seasonalities is None or len(self.seasonalities) == 0:
             raise ValueError("seasonalities must be a non-empty list of floats")
@@ -604,6 +620,11 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
             shared per-row mass reservation.
         ``"mean"``
             Weighted average: ``w_combined = sum(alpha_i * w_i) / sum(alpha_i)``.
+            Unlike ``"multiply"``, the ``"mean"`` path does not re-apply the
+            per-row mass reservation; each row of the result sums to the
+            weighted average of the sub-similarity row sums, which may exceed
+            the strict ``(0, 1)`` mass-reservation guarantee of the
+            ``"multiply"`` path.
 
     weights : list of float or None, default=None
         Per-similarity exponents (multiply) or mixing coefficients

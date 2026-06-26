@@ -126,9 +126,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
-            lags, rolling statistics, and other derived features. If
-            ``None``, only target-derived features are used.
+            with ``y``. Passed directly to the wrapped
+            ``point_forecaster_``; any feature transformation is the
+            responsibility of that inner estimator. If ``None``, only
+            target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         coverage_rates : list of float or None, default=None
@@ -137,11 +138,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``[0.95]``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
+            values available for past and future dates.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -259,12 +259,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_actual : pl.DataFrame or None
             Exogenous features aligned with ``y``.
         X_future : pl.DataFrame or None, default=None
-            Known future features, forwarded to the point forecaster's
-            pre-observe ``predict`` call so post-observe conformity scores
-            match the features used at ``predict_interval`` time.
+            Known future features for the point forecaster's pre-observe
+            ``predict`` call. Note that ``observe()`` does not forward its
+            own ``X_future`` here, so this argument is ``None`` in practice;
+            the caller's ``X_future`` is applied only by the subsequent
+            ``point_forecaster_.observe()`` call.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts, forwarded to the point forecaster's
-            pre-observe ``predict`` call.
+            External forecasts for the point forecaster's pre-observe
+            ``predict`` call. As with ``X_future``, ``observe()`` does not
+            forward its own ``X_forecast`` here, so this argument is ``None``
+            in practice.
 
         Returns
         -------
@@ -375,9 +379,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
-            lags, rolling statistics, and other derived features. If
-            ``None``, only target-derived features are used.
+            with ``y``. Passed directly to the wrapped
+            ``point_forecaster_``; any feature transformation is the
+            responsibility of that inner estimator. If ``None``, only
+            target-derived features are used.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
@@ -547,8 +552,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     ) -> pl.DataFrame:
         """Alternate recursive observe and predict.
 
-        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
-        Returns point predictions.
+        Produces a rolling sequence of predictions, observing ``stride``
+        rows between each. Returns the concatenation of the initial
+        prediction and one prediction per stride step.
 
         Parameters
         ----------
@@ -669,7 +675,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             used at fit time.
         strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction intervals
-            during recursive multi-step forecasting.
+            during recursive multi-step forecasting:
+
+            - ``"mean"``: use the mean of the interval bounds
+            - ``"median"``: use the median of the interval bounds
+            - ``"point"``: use the point forecast directly (if available)
+
+            If ``None``, defaults to ``"mean"``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -690,6 +702,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         pl.DataFrame
             Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the forecaster has not been fitted yet.
+        ValueError
+            If ``y`` / ``X_actual`` have invalid structure, ``coverage_rates`` not in
+            [0, 1], or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(
