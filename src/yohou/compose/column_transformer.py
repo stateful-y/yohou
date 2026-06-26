@@ -83,7 +83,9 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             ``observe_transform``/``rewind_transform`` lifecycle is available.
             Special-cased strings 'drop' and 'passthrough' are accepted as
             well, to indicate to drop the columns or to pass them through
-            untransformed, respectively.
+            untransformed, respectively. A ``TypeError`` is raised at fit time
+            if the estimator is not a ``BaseTransformer`` (and not 'drop' or
+            'passthrough').
         columns :  str, array-like of str, int, array-like of int, \
                 array-like of bool, slice or callable
             Indexes the data on its second axis. Integers are interpreted as
@@ -576,13 +578,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        feature_names_out : Any
-            Feature names from transformers.
+        feature_names_out : list[tuple[str, list[str]]]
+            List of (transformer_name, column_names) pairs.
 
         Returns
         -------
-        prefixed_names : Any
-            Feature names with prefixes.
+        prefixed_names : list[str]
+            Flat list of prefixed feature names.
 
         """
         return [panel_aware_prefix(col, name) for name, cols in feature_names_out for col in cols]
@@ -903,12 +905,15 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        X_t : {array-like, sparse matrix} of \
-                shape (n_samples, sum_n_components)
-            Horizontally stacked results of transformers. sum_n_components is the
-            sum of n_components (output dimension) over transformers. If
-            any result is a sparse matrix, everything will be converted to
-            sparse matrices.
+        X_t : pl.DataFrame of shape (n_samples, sum_n_components)
+            Horizontally stacked results of transformers as a polars DataFrame.
+            sum_n_components is the sum of n_components (output dimension) over
+            transformers.
+
+        Raises
+        ------
+        ValueError
+            If a scalar (1D) column is passed to a transformer expecting 2D input.
         """
         _raise_for_params(params, self, "fit_transform")
 
@@ -970,12 +975,16 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        X_t : {array-like, sparse matrix} of \
-                shape (n_samples, sum_n_components)
-            Horizontally stacked results of transformers. sum_n_components is the
-            sum of n_components (output dimension) over transformers. If
-            any result is a sparse matrix, everything will be converted to
-            sparse matrices.
+        X_t : pl.DataFrame of shape (n_samples, sum_n_components)
+            Horizontally stacked results of transformers as a polars DataFrame.
+            sum_n_components is the sum of n_components (output dimension) over
+            transformers.
+
+        Raises
+        ------
+        ValueError
+            If columns seen during fit are missing from X, or if non-prefixed
+            output produces duplicate column names.
         """
         _raise_for_params(params, self, "transform")
         check_is_fitted(self)
@@ -1048,7 +1057,9 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             New data to observe with and transform.
 
         **params : dict, default=None
-            Parameters routed to the `transform` methods of the transformers.
+            Parameters routed to the `observe_transform` methods of the
+            transformers (falling back to `transform` for non-stateful
+            transformers).
 
             You can only pass this if metadata routing is enabled, which you
             can enable using ``sklearn.set_config(enable_metadata_routing=True)``.
@@ -1057,6 +1068,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         -------
         X_t : pl.DataFrame
             Horizontally stacked results of transformers.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the transformer has not been fitted yet.
 
         """
         _raise_for_params(params, self, "observe_transform")
@@ -1090,17 +1106,17 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         return result
 
     def rewind_transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
-        """Rewind internal state and transform using only observation horizon rows.
+        """Rewind state of each sub-transformer and transform X.
 
-        Discards accumulated observations and rewinds to a clean state using
-        the last `observation_horizon` rows for each transformer. This provides
-        a stateless transformation that can be used for reproducible results.
+        Delegates ``rewind_transform(X)`` to each column transformer; each
+        sub-transformer discards its own warmup rows. The combined output is
+        aligned by the time intersection across all sub-transformers.
 
         Parameters
         ----------
         X : pl.DataFrame
-            Input DataFrame with "time" column. The last `observation_horizon`
-            rows of each transformer will be used to initialize state.
+            Input DataFrame with "time" column, forwarded in full to each
+            sub-transformer's ``rewind_transform``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -1108,6 +1124,11 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         -------
         pl.DataFrame
             Transformed output with "time" column, after rewinding state.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the transformer has not been fitted yet.
 
         """
         _raise_for_params(params, self, "rewind_transform")

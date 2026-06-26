@@ -150,7 +150,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         This default differs from `ColumnTransformer` (which defaults to
         ``verbose_feature_names_out=True``): the forecaster side preserves
         original column names by default, while the transformer side prefixes
-        by default for feature clarity.
+        by default for feature clarity. Columns from the remainder forecaster
+        are never prefixed, even when this is ``True``.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -165,8 +166,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
     named_forecasters_ : Bunch
         Access any fitted forecaster by name.
-        ``forecaster.named_forecasters_['sales']`` returns the fitted
-        forecaster for the 'sales' group.
+        ``forecaster.named_forecasters_['sales']`` returns the forecaster
+        named 'sales' (a forecaster name from the ``forecasters`` argument,
+        not a panel-data group).
 
     remainder_forecaster_ : BaseForecaster or None
         The fitted remainder forecaster, or ``None`` if ``remainder`` is a
@@ -214,7 +216,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
       (no overlapping columns allowed)
     - Columns not assigned to any forecaster are handled according to
       ``remainder``: dropped, or forecasted by an estimator
-    - Forecasters are fitted in parallel when ``n_jobs > 1``
+    - Forecasters are fitted in parallel when ``n_jobs`` is not ``None`` or
+      ``1`` (e.g., ``-1`` uses all CPUs)
     - Predictions are concatenated in the order: forecasters, then remainder
     - All forecasters (including the remainder) receive the same exogenous
       inputs: ``X_actual``, ``X_future``, and ``X_forecast``
