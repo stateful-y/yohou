@@ -329,7 +329,9 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         strategy : {"mean", "median", "point"} or None, default=None
             Strategy each child uses to derive point predictions during
             recursive multi-step forecasting. Forwarded unchanged to every
-            base forecaster's ``predict_interval``.
+            base forecaster's ``predict_interval``; it does not affect the
+            ensemble-level aggregation, which is controlled by the
+            class-level ``method`` parameter.
         groups : list of str or None, default=None
             Panel group prefixes to predict.
         X_future : pl.DataFrame or None, default=None
@@ -346,7 +348,8 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         -------
         pl.DataFrame
             Aggregated interval predictions with ``"vintage_time"``,
-            ``"time"``, and lower/upper bound columns.
+            ``"time"``, and ``{target}_lower_{rate}`` /
+            ``{target}_upper_{rate}`` bound columns.
 
         """
         check_is_fitted(self, ["forecasters_"])
@@ -485,6 +488,12 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         pl.DataFrame
             Aggregated point predictions after rolling observe-predict.
 
+        Raises
+        ------
+        ValueError
+            If ``predict_transformed=True`` and the base forecasters
+            disagree on their transformed-space target schemas.
+
         """
         check_is_fitted(self, ["forecasters_"])
         if predict_transformed:
@@ -559,7 +568,9 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         Returns
         -------
         pl.DataFrame
-            Aggregated interval predictions after rolling observe-predict.
+            Aggregated interval predictions after rolling observe-predict,
+            with ``"vintage_time"``, ``"time"``, and ``{target}_lower_{rate}``
+            / ``{target}_upper_{rate}`` bound columns.
 
         """
         check_is_fitted(self, ["forecasters_"])

@@ -73,7 +73,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 "max_weight_step", "min_weight_step"}, default="first_step"
         Strategy for converting ``time_weighter`` weights to sklearn
         ``sample_weight`` across forecast horizons. Does not apply to
-        ``vintage_weighter`` (which uses direct lookup).
+        ``vintage_weighter`` (which uses direct lookup). See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for full per-option semantics.
 
     Examples
     --------
@@ -125,7 +127,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
 
     All strategies can be applied recursively for multi-step forecasting
     beyond the fit horizon by specifying a larger forecasting horizon
-    during prediction.
+    during prediction, unless ``X_forecast`` was provided at fit time, in
+    which case ``predict`` raises a ``ValueError``; use
+    [`ForecastedFeatureForecaster`][yohou.compose.ForecastedFeatureForecaster]
+    for that case.
 
     See Also
     --------
@@ -217,6 +222,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         -------
         self
             The fitted forecaster instance.
+
+        Raises
+        ------
+        ValueError
+            If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
+            invalid structure (e.g., missing ``"time"`` column, or
+            mismatched panel groups).
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)

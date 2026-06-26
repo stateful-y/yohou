@@ -93,7 +93,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
     weights : list of float or None, default=None
         Per-forecaster weights. Raw values are passed to
         ``numpy.average`` which normalizes internally. Only used with
-        ``method="soft"``. Silently ignored with ``method="hard"``.
+        ``method="soft"``. Silently ignored with ``method="hard"``, though
+        ``weights_`` is still populated after fit regardless of ``method``.
     n_jobs : int or None, default=None
         Number of parallel jobs for fitting base forecasters.
         ``None`` means 1 unless in a ``joblib.parallel_backend`` context.
@@ -323,11 +324,9 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
     ) -> pl.DataFrame:
         """Produce aggregated probability forecasts for one fit-horizon block.
 
-        Required by the abstract base class. ``predict_class_proba`` is
-        overridden to dispatch directly, so this delegates to the same
-        soft/hard helpers to keep a single voting implementation. The earlier
-        standalone body redundantly called every child's ``predict_class_proba``
-        before also calling ``predict`` on the hard path (predicting twice).
+        Single-block predict hook required by the abstract base class. It
+        delegates to the same soft/hard voting helpers used by
+        ``predict_class_proba`` so the voting logic lives in one place.
 
         Parameters
         ----------
@@ -422,8 +421,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Known future features override.
         X_forecast : pl.DataFrame or None, default=None
             External forecast override.
-        **params : dict
-            Routing parameters.
+        routed_params : Bunch
+            Pre-routed per-forecaster metadata for ``predict_class_proba``.
 
         Returns
         -------
@@ -479,8 +478,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             Known future features override.
         X_forecast : pl.DataFrame or None, default=None
             External forecast override.
-        **params : dict
-            Routing parameters.
+        routed_params : Bunch
+            Pre-routed per-forecaster metadata for ``predict_class_proba``.
 
         Returns
         -------

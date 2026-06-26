@@ -122,7 +122,8 @@ class _BaseEnsembleForecaster:
         ------
         ValueError
             If names are not unique, tuples are malformed, names are not
-            strings, or forecasters are not ``BaseForecaster`` instances.
+            strings, names contain ``"__"``, or forecasters are not
+            ``BaseForecaster`` instances.
 
         """
         names = []
@@ -448,7 +449,9 @@ class _BaseEnsembleForecaster:
             Aggregation strategy: ``"mean"``, ``"median"``, or
             ``"envelope"``.
         weights : list of float or None
-            Per-forecaster weights for weighted averaging.
+            Per-forecaster weights for weighted averaging. Only used when
+            ``strategy="mean"``; silently ignored for ``"median"`` and
+            ``"envelope"``.
 
         Returns
         -------
