@@ -95,6 +95,15 @@ from yohou.metrics import MeanAbsolutePercentageError
 scorer = MeanAbsolutePercentageError()
 ```
 
+When zero values may be present in the target, prefer sMAPE, which keeps the
+denominator bounded:
+
+```python
+from yohou.metrics import SymmetricMeanAbsolutePercentageError
+
+scorer = SymmetricMeanAbsolutePercentageError()
+```
+
 ## See Also
 
 - [Handle Long Series](handle-long-series.md) for the opposite problem:

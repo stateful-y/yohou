@@ -6,7 +6,7 @@ scenarios.
 
 ## Prerequisites
 
-- Yohou installed
+- Yohou installed ([Installation](installation.md))
 - Familiarity with the fit/predict lifecycle
   ([Exogenous Features Tutorial](../tutorials/exogenous-features.md))
 
@@ -31,9 +31,10 @@ predict time, wrap it with a `vintage_time` column and use `X_forecast`.
 
 ## Pass Exogenous Features to a Forecaster
 
-Supply any combination of the three parameters to `fit()`. At predict time,
-only `X_future` and `X_forecast` are accepted because `X_actual` comes from
-the forecaster's stored observation window.
+Supply any combination of the three parameters to `fit()` on a
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+At predict time, only `X_future` and `X_forecast` are accepted because
+`X_actual` comes from the forecaster's stored observation window.
 
 ```python
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -82,7 +83,7 @@ If your `X_future` or `X_forecast` columns evolve meaningfully across steps
 
 ## Use Composition Forecasters
 
-### ColumnForecaster
+### [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
 
 Each child forecaster receives all three exogenous parameters. Children that
 don't use exogenous features ignore them:
@@ -106,7 +107,7 @@ forecaster.fit(
 )
 ```
 
-### DecompositionPipeline
+### [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
 
 All three parameters pass through to the residual forecaster after trend
 and seasonality removal:
@@ -139,7 +140,7 @@ pipeline.fit(
 )
 ```
 
-### ForecastedFeatureForecaster
+### [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
 
 Use `ForecastedFeatureForecaster` when you want Yohou to forecast the
 exogenous feature itself. `X_actual` trains the feature forecaster (as its

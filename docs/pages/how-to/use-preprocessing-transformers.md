@@ -71,7 +71,7 @@ cv = SlidingWindowFunctionTransformer(
 
 ## Scale and Normalize Values
 
-Yohou provides native scaler wrappers that work directly with polars DataFrames, preserving the `"time"` column automatically:
+Use [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/) to normalize value columns to zero mean and unit variance. Yohou's native scaler wrappers work directly with polars DataFrames, preserving the `"time"` column automatically:
 
 ```python
 from yohou.preprocessing import StandardScaler

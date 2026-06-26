@@ -17,9 +17,10 @@ does not cover.
 ## 1. Subclass `BaseIntervalForecaster`
 
 Create a class that extends [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/)
-and implement two things:
+and implement three things:
 
 - **`_observation_horizon`** (property): how many recent observations the forecaster needs.
+- **`_fit(self, y_t, X_t, forecasting_horizon)`**: learns whatever fitted state `_predict_one` later reads (here, per-column mean and standard deviation).
 - **`_predict_one(groups, coverage_rates, **params)`**: produces a `pl.DataFrame` of interval predictions for exactly `self.fit_forecasting_horizon_` steps.
 
 The base class `fit()` handles coverage rate validation, `_pre_fit()` setup,
@@ -200,7 +201,7 @@ def test_naive_interval_forecaster(y_X_factory):
 
     run_checks(
         forecaster,
-        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test),
+        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
     )
 ```
 

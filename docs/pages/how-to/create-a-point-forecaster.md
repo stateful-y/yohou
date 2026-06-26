@@ -162,7 +162,7 @@ def test_window_mean_forecaster(y_X_factory):
 
     run_checks(
         forecaster,
-        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test),
+        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
     )
 ```
 
@@ -170,7 +170,7 @@ def test_window_mean_forecaster(y_X_factory):
     `run_checks` is an internal utility from Yohou's own `conftest.py`. If you are building a forecaster in an external package, iterate over the checks directly:
 
     ```python
-    for check in _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test):
+    for check in _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None):
         check(forecaster)
     ```
 

@@ -5,13 +5,13 @@ into yohou's scoring pipeline. Use this when the built-in metrics don't
 cover your evaluation needs. The guide follows the most common pattern
 (a per-row decomposable point metric) end to end.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with the fit/score API ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
+
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass the Base
 
@@ -31,6 +31,7 @@ If your metric is one where higher is better (R², accuracy), set `_lower_is_bet
 import polars as pl
 
 from yohou.metrics.base import BasePointScorer
+from yohou.weighting import BaseWeighter
 
 
 class MeanAbsoluteError(BasePointScorer):
@@ -46,11 +47,17 @@ class MeanAbsoluteError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_errors(
@@ -65,8 +72,9 @@ class MeanAbsoluteError(BasePointScorer):
 row per timestep, one column per component.
 
 Scorers that implement `_compute_raw_errors` inherit full weight support
-(`time_weight`, `step_weight`, `vintage_weight`) from `BasePointScorer.score()`
-with no additional code.
+(`time_weighter`, `step_weighter`, `vintage_weighter`) from
+`BasePointScorer.score()`, provided you declare those parameters on `__init__`
+and forward them to `super().__init__()` (shown below).
 
 If you are evaluating prediction intervals instead of point predictions,
 extend [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) and implement `_compute_raw_scores`.
@@ -100,11 +108,17 @@ class MeanAbsolutePercentageError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
         self.epsilon = epsilon
 
@@ -174,6 +188,7 @@ lifecycle, multi-vintage scoring):
 ```python
 import polars as pl
 from datetime import datetime
+from conftest import run_checks
 from yohou.testing import _yield_yohou_scorer_checks
 
 y_truth = pl.DataFrame({
@@ -189,17 +204,42 @@ y_pred = pl.DataFrame({
 scorer = MeanAbsoluteError()
 scorer.fit(y_truth)
 
-for check_name, check_func, check_kwargs in _yield_yohou_scorer_checks(
-    scorer, y_truth, y_pred
-):
-    check_func(scorer, **check_kwargs)
+run_checks(None, _yield_yohou_scorer_checks(scorer, y_truth, y_pred))
 ```
+
+Most scorer checks bundle the scorer inside their keyword arguments, so
+`run_checks(None, ...)` lets the helper dispatch each check correctly. (Passing
+the scorer positionally as well would raise `TypeError` for a duplicate
+argument.)
 
 The generator yields approximately 11 checks depending on scorer type.
 [`check_scorer_multi_vintage`](/pages/api/generated/yohou.testing.scorer.check_scorer_multi_vintage/) automatically builds a 2-vintage dataset
 from your test data and verifies the scorer produces a finite result.
 Add your own tests for numerical correctness alongside the generated
 checks.
+
+## 6. Use in Cross-Validation
+
+Because a custom scorer follows the same interface as the built-ins, it plugs
+directly into hyperparameter search and cross-validation as a `scoring`
+objective:
+
+```python
+from sklearn.linear_model import Ridge
+from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
+from yohou.point import PointReductionForecaster
+
+search = GridSearchCV(
+    PointReductionForecaster(estimator=Ridge()),
+    param_grid={"estimator__alpha": [0.1, 1.0, 10.0]},
+    scoring=MeanAbsoluteError(),
+    cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
+)
+search.fit(y_train, forecasting_horizon=12)
+```
+
+See [Tune Hyperparameters](tune-hyperparameters.md) for the full search
+workflow.
 
 ## See Also
 

@@ -1,6 +1,6 @@
 # How to Contribute to Yohou
 
-Thank you for your interest in contributing to Yohou! This document provides guidelines for contributing to the project.
+This guide shows you how to set up a development environment, run the test suite, and submit a pull request to Yohou.
 
 ## Code of Conduct
 
@@ -600,5 +600,3 @@ If you have any questions, feel free to:
 
 - [Open an issue on GitHub](https://github.com/stateful-y/yohou/issues/new)
 - [Start a discussion in the repository](https://github.com/stateful-y/yohou/discussions)
-
-Thank you for contributing!

@@ -40,7 +40,7 @@ Set `seasonality` to the number of observations per period (12 for monthly data 
 
 ## Decompose Trend and Seasonality
 
-If the series has both a trend and a seasonal component, use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) to model each explicitly. Each forecaster fits the residuals left by the previous ones:
+If the series has both a trend and a seasonal component, use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) to model each explicitly. Each forecaster in the list, [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) for a linear baseline and [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) for the periodic component, fits the residuals left by the previous ones:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -84,7 +84,7 @@ The log transform is applied before fitting and automatically inverted during pr
 
 ## Apply to Panel Data
 
-Stationarity transforms work automatically with panel data. Each group receives the transform independently:
+Stationarity transforms work automatically with panel data. Wrap the forecaster in [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) so each group receives the transform independently:
 
 ```python
 from yohou.compose import LocalPanelForecaster
@@ -104,3 +104,4 @@ forecaster = LocalPanelForecaster(
 
 - [Stationarity](../explanation/stationarity.md) for the conceptual background
 - [Decomposition](../tutorials/decomposition.md) tutorial for a step-by-step walkthrough
+- [How to Work with Panel Data](panel-data.md) for setting up panel DataFrames and choosing a panel strategy

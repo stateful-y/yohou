@@ -1,9 +1,10 @@
 # How to Forecast with Class Probabilities
 
-Point forecasters can predict categorical targets as hard labels. When you also
-need per-class probabilities (for risk-aware decisions, calibration analysis, or
-proper scoring rules), use a class-probability forecaster instead. This guide
-covers the probability-aware workflow.
+This guide shows you how to fit a class-probability forecaster, obtain per-class
+probability predictions, and evaluate them with classification metrics. Reach
+for this workflow when you need per-class probabilities (for risk-aware
+decisions, calibration analysis, or proper scoring rules) rather than the hard
+labels a point forecaster predicts for categorical targets.
 
 ## Prerequisites
 
@@ -55,14 +56,14 @@ forecaster.fit(y_train, forecasting_horizon=24)
 
 ```python
 y_proba = forecaster.predict_class_proba()
-# Columns: time, vintage_time, air_quality_proba_good, air_quality_proba_moderate, ...
+# Columns: vintage_time, time, air_quality_proba_good, air_quality_proba_moderate, ...
 ```
 
 **Hard labels** (argmax of probabilities):
 
 ```python
 y_pred = forecaster.predict()
-# Columns: time, vintage_time, air_quality
+# Columns: vintage_time, time, air_quality
 ```
 
 ## Evaluate with Classification Metrics

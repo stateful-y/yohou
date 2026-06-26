@@ -104,6 +104,26 @@ The `interpolation` parameter controls how gaps are filled:
 | `"backward"` | Fills from the next known value | Pre-announced values (scheduled rates, published targets) |
 | `"nearest"` | Uses the closest known value in either direction | Sparse data where directionality does not matter |
 
+## Fill Gaps After Resampling
+
+Resampling (or cleaning out implausible values) can leave `null` gaps that a
+forecaster cannot consume. Use
+[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/)
+to fill them with a time-aware method such as linear interpolation:
+
+```python
+from yohou.preprocessing import SimpleTimeImputer
+
+imputer = SimpleTimeImputer(method="linear")
+df_filled = imputer.fit_transform(df_monthly)
+```
+
+The `method` parameter accepts `"linear"`, `"forward"`, `"backward"`,
+`"nearest"`, or `"fill_both"`. When the gaps follow a repeating cycle, prefer
+[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/),
+which fills each missing value from the same seasonal position. See
+[Handle Missing Data](handle-missing-data.md) for the full imputation workflow.
+
 ## See Also
 
 - [Handle Missing Data](handle-missing-data.md) for imputation after resampling

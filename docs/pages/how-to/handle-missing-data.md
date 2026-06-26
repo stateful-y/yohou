@@ -73,6 +73,23 @@ leaving longer gaps as `null` for downstream inspection:
 imputer = SimpleTimeImputer(method="forward", limit=3)
 ```
 
+## Fill with a Global Statistic
+
+When temporal order does not matter and you just need a fast baseline, use
+[`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/),
+a wrapper around sklearn's imputer. It replaces gaps with a column-wide
+statistic (mean, median, most frequent, or a constant) and ignores the time
+axis entirely:
+
+```python
+from yohou.preprocessing.imputation import SimpleImputer
+
+imputer = SimpleImputer(strategy="mean")
+```
+
+Prefer this only when the series has no trend or seasonality to exploit;
+otherwise the time-aware methods above produce more faithful fills.
+
 ## Fill from Seasonal Patterns with SeasonalImputer
 
 [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/)
