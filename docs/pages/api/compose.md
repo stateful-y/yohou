@@ -6,6 +6,8 @@ template: api-submodule.html
 
 Composition classes for combining forecasters and transformers into complex workflows.
 
+**User guide**: See [Forecaster Composition](../explanation/forecaster-composition.md) for design rationale and usage patterns.
+
 ### Transformers
 
 | Name | Description |

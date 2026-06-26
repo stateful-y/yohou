@@ -5,10 +5,10 @@ template: api-submodule.html
 # yohou.weighting
 
 Weighter estimators for time-axis weighting of training and evaluation. Configure
-them on a forecaster's or scorer's `__init__` (`time_weighter`,
-`vintage_weighter`, `step_weighter`); see
-[Weighting](/pages/explanation/weighting/) and
-[How to Use Time Weighting](/pages/how-to/time-weighting/).
+them on a forecaster's `__init__` (`time_weighter`, `vintage_weighter`) or a
+scorer's `__init__` (`time_weighter`, `vintage_weighter`, `step_weighter`).
+
+**User guide**: See [Weighting](/pages/explanation/weighting/) and [How to Use Time Weighting](/pages/how-to/time-weighting/).
 
 ### Weighters
 

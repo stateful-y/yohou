@@ -35,4 +35,5 @@ Time series cross-validation splitters and hyperparameter search.
 | Name | Description |
 | --- | --- |
 | [`train_test_split`](generated/yohou.model_selection.split.train_test_split.md) | Split a time series into contiguous train and test sets. |
+| [`check_cv`](generated/yohou.model_selection.split.check_cv.md) | Coerce an integer or None into a BaseSplitter instance. |
 | [`check_cv_alignment`](generated/yohou.model_selection.split.check_cv_alignment.md) | Validate that a cross-validator's splits align with the data. |

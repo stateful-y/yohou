@@ -29,6 +29,7 @@ Validation, panel data, tags, discovery, and other utility functions.
 | [`check_panel_groups_match`](generated/yohou.utils.validation.check_panel_groups_match.md) | Validate that y and X have matching panel group structures. |
 | [`check_panel_internal_consistency`](generated/yohou.utils.validation.check_panel_internal_consistency.md) | Validate that all panel groups in a DataFrame have the same local column structure. |
 | [`window_futures`](generated/yohou.utils.pivot.window_futures.md) | Window known-future feature values into per-vintage forecast horizons. |
+| [`window_forecasts`](generated/yohou.utils.pivot.window_forecasts.md) | Window external forecast values into per-vintage forecast horizons. |
 
 ### Tags
 
@@ -87,4 +88,5 @@ Validation, panel data, tags, discovery, and other utility functions.
 | [`cast`](generated/yohou.utils.polars.cast.md) | Cast columns according to schema with integer rounding. |
 | [`get_numeric_columns`](generated/yohou.utils.polars.get_numeric_columns.md) | Get list of numeric column names from a DataFrame. |
 | [`get_categorical_columns`](generated/yohou.utils.polars.get_categorical_columns.md) | Get list of categorical column names from a DataFrame. |
+| [`is_categorical_dtype`](generated/yohou.utils.polars.is_categorical_dtype.md) | Check whether a Polars dtype is categorical. |
 | [`tabularize`](generated/yohou.utils.tabularization.tabularize.md) | Convert time series to tabular format using lags. |

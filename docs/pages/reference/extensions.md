@@ -31,9 +31,9 @@ For step-by-step implementation guides, see [Create a Point Forecaster](../how-t
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) | `yohou.metrics` | `score()`, `_compute_raw_errors()` |
-| [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) | `yohou.metrics` | `score()`, `_compute_raw_scores()` |
-| [`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.base.BaseClassProbaScorer/) | `yohou.metrics` | `score()`, `_compute_raw_errors()` |
+| [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
+| [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) | `yohou.metrics` | `_compute_raw_scores()` |
+| [`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.base.BaseClassProbaScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
 
 ### Transformers
 

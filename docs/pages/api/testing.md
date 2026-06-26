@@ -4,7 +4,7 @@ template: api-submodule.html
 
 # yohou.testing
 
-Systematic check functions for testing custom estimators. Use these to validate that your forecasters, transformers, scorers, and splitters conform to Yohou's API contracts.
+Systematic check functions that validate custom estimators against Yohou's API contracts. Covers forecasters, transformers, scorers, splitters, weighters, and similarity estimators.
 
 ### Forecaster checks
 
@@ -19,6 +19,7 @@ Systematic check functions for testing custom estimators. Use these to validate 
 | [`check_requires_exogenous_warns_on_X_future_X_forecast`](generated/yohou.testing.forecaster.check_requires_exogenous_warns_on_X_future_X_forecast.md) | Check a forecaster with requires_exogenous=False warns when X_future/X_forecast provided. |
 | [`check_observe_auto_rederives_step_columns`](generated/yohou.testing.forecaster.check_observe_auto_rederives_step_columns.md) | Check observe() re-derives step columns from stored raws. |
 | [`check_observe_predict_with_step_columns`](generated/yohou.testing.forecaster.check_observe_predict_with_step_columns.md) | Check observe_predict works with step columns. |
+| [`check_observe_predict_interval_with_step_columns`](generated/yohou.testing.forecaster.check_observe_predict_interval_with_step_columns.md) | Check observe_predict works with step columns for interval forecasters. |
 | [`check_forecaster_methods_call_check_is_fitted`](generated/yohou.testing.forecaster.check_forecaster_methods_call_check_is_fitted.md) | Check all forecaster methods (except fit) raise NotFittedError when unfitted. |
 | [`check_forecaster_not_fitted_error`](generated/yohou.testing.forecaster.check_forecaster_not_fitted_error.md) | Check accessing fitted attributes before fit() raises NotFittedError. |
 | [`check_forecaster_tags_accessible_before_fit`](generated/yohou.testing.forecaster.check_forecaster_tags_accessible_before_fit.md) | Check \_\_sklearn_tags\_\_() is accessible before fit(). |
