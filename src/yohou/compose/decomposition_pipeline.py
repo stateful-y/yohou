@@ -34,7 +34,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
     Parameters
     ----------
-    forecasters : list of (str, BaseForecaster) tuples
+    forecasters : list of (str, BasePointForecaster) tuples
         List of (name, forecaster) tuples specifying the forecaster objects
         to be applied sequentially. All forecasters must be point forecasters.
 
@@ -42,7 +42,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         name : str
             Unique name for the forecaster component.
-        forecaster : BaseForecaster
+        forecaster : BasePointForecaster
             Point forecaster object.
 
     store_residuals : bool, default=False
@@ -64,7 +64,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
     Attributes
     ----------
-    forecasters_ : list of (str, BaseForecaster) tuples
+    forecasters_ : list of (str, BasePointForecaster) tuples
         Fitted forecasters.
 
     residuals_ : dict of str to pl.DataFrame
@@ -725,8 +725,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         predict() reads ``_y_observed`` only as the prior context (``X_p``) for
         the target transformer's inverse transform, which needs at most
-        ``observation_horizon`` leading rows. Trimming keeps the buffer bounded
-        on long-running streams instead of growing with every observe/rewind.
+        ``observation_horizon`` most-recent (trailing) rows. Trimming keeps the
+        buffer bounded on long-running streams instead of growing with every
+        observe/rewind.
 
         Parameters
         ----------
@@ -764,9 +765,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Raises
         ------
         ValueError
-            If fewer rows survived the join than expected, signalling that
-            residual timestamps were silently dropped (e.g. stride
-            misalignment between residuals and predictions).
+            If the number of rows surviving the join differs from expected.
+            Fewer rows signal that residual timestamps were silently dropped;
+            more rows signal join fan-out (e.g. duplicate prediction
+            timestamps). Both typically indicate a stride or horizon
+            misalignment between residuals and predictions.
 
         """
         if aligned_height != expected_height:
@@ -814,7 +817,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             are used.
         stride : int or None, default=None
             Step size for rolling update then predict. If ``None``,
-            defaults to ``forecasting_horizon``.
+            defaults to ``fit_forecasting_horizon_`` (the horizon used at
+            fit time).
         predict_transformed : bool, default=False
             If ``True``, return predictions in the transformed space without
             applying inverse target transformation.
@@ -1038,6 +1042,10 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         was fitted on. The difference from ``observe`` is only that ``rewind``
         resets each component's observation buffer to a reference window rather
         than appending to it.
+
+        Unlike ``observe``, ``rewind`` does not modify ``residuals_``; any
+        entries accumulated by prior ``observe`` calls are preserved. To clear
+        them, reset ``self.residuals_`` manually or call ``fit`` again.
 
         """
         check_is_fitted(self, ["forecasters_", "groups_"])

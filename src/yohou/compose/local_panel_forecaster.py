@@ -133,6 +133,9 @@ class LocalPanelForecaster(BaseForecaster):
         provided.
     interval_ : timedelta
         Time interval between observations.
+    fit_forecasting_horizon_ : int
+        Forecasting horizon recorded at fit time, used as the fallback when
+        ``forecasting_horizon`` is ``None`` in the predict methods.
 
     Examples
     --------
@@ -256,7 +259,9 @@ class LocalPanelForecaster(BaseForecaster):
         Raises
         ------
         ValueError
-            If ``y`` is not panel data (no ``__`` separator found).
+            If ``y`` is not panel data (no ``__`` separator found), or if the
+            panel groups do not share the same local target column schema
+            (column names and dtypes must match across all groups).
 
         """
         _raise_for_params(params, self, "fit")

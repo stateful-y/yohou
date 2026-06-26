@@ -580,25 +580,21 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable or array-like, depending on transformers
-            Input data, used to fit transformers.
+        X : pl.DataFrame
+            Input data with a mandatory ``"time"`` column, used to fit
+            transformers.
 
-        y : array-like of shape (n_samples, n_outputs), default=None
-            Targets for supervised learning.
+        y : pl.DataFrame or None, default=None
+            Target time series passed to the sub-transformers.
 
         **fit_params : dict, default=None
-            - If `enable_metadata_routing=False` (default):
-              Parameters directly passed to the `fit` methods of the
-              sub-transformers.
-
-            - If `enable_metadata_routing=True`:
-              Parameters safely routed to the `fit` methods of the
-              sub-transformers. See the sklearn Metadata Routing User Guide
-              for more details.
+            Parameters routed to the `fit` methods of the sub-transformers via
+            the metadata routing API. See the sklearn Metadata Routing User
+            Guide for more details.
 
         Returns
         -------
-        self : object
+        self : FeatureUnion
             FeatureUnion class instance.
         """
         _raise_for_params(fit_params, self, "fit")
@@ -617,28 +613,23 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable or array-like, depending on transformers
-            Input data to be transformed.
+        X : pl.DataFrame
+            Input data with a mandatory ``"time"`` column to be transformed.
 
-        y : array-like of shape (n_samples, n_outputs), default=None
-            Targets for supervised learning.
+        y : pl.DataFrame or None, default=None
+            Target time series passed to the sub-transformers.
 
         **params : dict, default=None
-            - If `enable_metadata_routing=False` (default):
-              Parameters directly passed to the `fit` methods of the
-              sub-transformers.
-
-            - If `enable_metadata_routing=True`:
-              Parameters safely routed to the `fit` methods of the
-              sub-transformers. See the sklearn Metadata Routing User Guide
-              for more details.
+            Parameters routed to the `fit` methods of the sub-transformers via
+            the metadata routing API. See the sklearn Metadata Routing User
+            Guide for more details.
 
         Returns
         -------
-        X_t : array-like or sparse matrix of \
-                shape (n_samples, sum_n_components)
-            The `hstack` of results of transformers. `sum_n_components` is the
-            sum of `n_components` (output dimension) over transformers.
+        X_t : pl.DataFrame
+            Polars DataFrame with a ``"time"`` column and the horizontally
+            concatenated feature columns from all transformers, aligned to the
+            intersection of their time grids.
         """
         routed_params = process_routing(self, "fit_transform", **params)
         results = self._parallel_func(X, y, _fit_transform_one, routed_params)
@@ -660,8 +651,8 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable or array-like, depending on transformers
-            Input data to be transformed.
+        X : pl.DataFrame
+            Input data with a mandatory ``"time"`` column to be transformed.
 
         **params : dict, default=None
             Parameters routed to the `transform` method of the sub-transformers via the
@@ -669,9 +660,10 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        X_t : array-like or sparse matrix of shape (n_samples, sum_n_components)
-            The `hstack` of results of transformers. `sum_n_components` is the
-            sum of `n_components` (output dimension) over transformers.
+        X_t : pl.DataFrame
+            Polars DataFrame with a ``"time"`` column and the horizontally
+            concatenated feature columns from all transformers, aligned to the
+            intersection of their time grids.
         """
         _raise_for_params(params, self, "transform")
         routed_params = process_routing(self, "transform", **params)

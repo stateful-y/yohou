@@ -170,8 +170,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
     - A caller-supplied ``X_forecast`` (external forecasts for other features) is
       merged with the meta's feature forecast on ``(vintage_time, time)``; a value
       column-name collision raises ``ValueError``. ``X_future`` is forwarded untouched.
-    - ``observe`` and ``rewind`` require ``X_actual`` (the feature forecaster needs new
-      feature observations to advance in step with the target); passing ``None`` raises.
+    - ``observe``, ``rewind``, and all ``observe_predict`` variants require ``X_actual``
+      (the feature forecaster needs new feature observations to advance in step with the
+      target); passing ``None`` raises ``ValueError``.
     - ``observe_predict`` (and its interval/class-proba variants) roll over the data one
       ``stride``-sized slice at a time, predicting at each origin, and regenerate the
       feature forecast every ``feature_stride`` steps. See the ``feature_stride`` parameter.
@@ -265,10 +266,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X_actual : pl.DataFrame
+        X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Required. The feature forecaster uses these as
-            its target variable.
+            with ``y``. Required: passing ``None`` raises ``ValueError``. The
+            feature forecaster uses these as its target variable.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -290,7 +291,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ------
         ValueError
             If ``X_actual`` is None (exogenous features are required); if
-            ``forecasting_horizon < 1``; if ``strategy="rewind"`` and
+            ``forecasting_horizon < 1``; if the required feature horizon
+            ``forecasting_horizon + feature_stride - 1 >= len(X_actual)``
+            (reduce ``feature_stride`` or provide more data); if
+            ``strategy="rewind"`` and
             ``len(X_actual) <= observation_horizon + 1``; or if
             ``strategy="predicted"`` and the split leaves fewer than 2 rows
             for either the feature-forecaster fit or the rolling forecast.
@@ -676,6 +680,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
         pl.DataFrame
             Predictions with "vintage_time", "time", and target columns.
 
+        Notes
+        -----
+        The ``feature_stride`` cadence is not applied here; a fresh feature
+        forecast is always generated. For stride-aware rolling predictions use
+        ``observe_predict``.
+
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
@@ -739,7 +749,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with lower/upper bounds.
+            DataFrame with ``"vintage_time"``, ``"time"``, and interval columns
+            named ``<col>_lower_<rate>`` / ``<col>_upper_<rate>`` for each
+            requested coverage rate.
 
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
@@ -1174,8 +1186,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with "vintage_time", "time", and
-            probability columns.
+            Class-probability predictions with "vintage_time", "time", and one
+            probability column per class named ``{target}_proba_{class_label}``.
 
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
