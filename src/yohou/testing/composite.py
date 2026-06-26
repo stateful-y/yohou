@@ -29,7 +29,7 @@ def check_composite_rejects_bare_list(compositor, descriptor: dict, operate: Cal
         A ``{multiply, mean}`` compositor instance (for its type).
     descriptor : dict
         Carries ``"attr"`` (composition-attribute name) and ``"components"``
-        (valid named-tuple component list).
+        (a list of ``(name, component)`` tuples).
     operate : callable
         Invoked with a freshly-built compositor to trigger validation.
 

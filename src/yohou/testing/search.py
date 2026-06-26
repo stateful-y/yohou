@@ -66,6 +66,10 @@ def check_search_fit_sets_attributes(
         Training features with "time" column
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to fit().
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to fit().
 
     Raises
     ------
@@ -125,7 +129,12 @@ def check_search_fit_sets_attributes(
 
 
 def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X_actual: pl.DataFrame | None = None) -> None:
-    """Check accessing fitted attributes before fit() raises NotFittedError.
+    """Check fitted attributes before fit() raise NotFittedError.
+
+    Accessing fitted attributes before fit() must raise ``NotFittedError``.
+    Calling ``predict()`` before fit() must raise ``NotFittedError`` or
+    ``AttributeError`` (``AttributeError`` when ``refit=False`` is also
+    accepted).
 
     Parameters
     ----------
@@ -139,7 +148,7 @@ def check_search_not_fitted_error(search_cv, y: pl.DataFrame, X_actual: pl.DataF
     Raises
     ------
     AssertionError
-        If NotFittedError is not raised when accessing fitted attributes
+        If neither NotFittedError nor (for predict) AttributeError is raised
 
     """
     search_cv_clone = clone(search_cv)
@@ -349,6 +358,10 @@ def check_search_observe_delegates(
         Update target data
     X_actual_update : pl.DataFrame, optional
         Update features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to observe()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to observe()
 
     Raises
     ------
@@ -397,6 +410,10 @@ def check_search_rewind_delegates(
         Reset target data
     X_actual_reset : pl.DataFrame, optional
         Reset features
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to rewind()
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to rewind()
 
     Raises
     ------

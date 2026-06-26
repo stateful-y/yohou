@@ -261,7 +261,8 @@ def check_splitter_panel_data_support(
     splitter : BaseSplitter
         Splitter instance
     y_panel : pl.DataFrame
-        Panel data with prefixed columns (e.g., "sales__store_1")
+        Panel data with prefixed columns following group__column naming
+        (e.g., "store_1__sales")
     X_panel : pl.DataFrame, optional
         Panel exogenous features
 

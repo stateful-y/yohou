@@ -37,7 +37,7 @@ def _column_present(field: str, columns: list[str]) -> bool:
 def check_panel_data(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning with panel data predicts all groups by default.
 
-    Validates that when panel_group=None (default), predictions are
+    Validates that when groups=None (default), predictions are
     generated for all groups in the panel data columns.
 
     Parameters
@@ -65,14 +65,14 @@ def check_panel_data(forecaster, y_panel: pl.DataFrame) -> None:
             for field in expected_fields:
                 assert _column_present(field, y_pred.columns), (
                     f"Column '{field}' (or interval bounds) missing from predictions. "
-                    f"panel_group=None should predict all groups. Got columns: {y_pred.columns}"
+                    f"groups=None should predict all groups. Got columns: {y_pred.columns}"
                 )
 
 
 def check_panel_single_group(forecaster, y_panel: pl.DataFrame) -> None:
     """Check cross-learning filters to specified panel group.
 
-    Validates that when panel_group is specified, predictions are
+    Validates that when groups=[group_name] is specified, predictions are
     generated only for that panel group (all columns with that prefix).
 
     Parameters

@@ -186,7 +186,8 @@ def _yield_yohou_transformer_checks(
     Parameters
     ----------
     transformer : BaseTransformer
-        Fitted transformer instance
+        Transformer instance (fitted or unfitted; individual checks clone as
+        needed)
     X_train : pl.DataFrame
         Training data with "time" column
     y_train : pl.DataFrame, optional
@@ -196,21 +197,16 @@ def _yield_yohou_transformer_checks(
     y_test : pl.DataFrame, optional
         Test target data
     tags : dict, optional
-        Transformer metadata tags (if None, auto-detected from __sklearn_tags__):
+        Transformer metadata tags (if None, auto-detected from __sklearn_tags__).
+        Only the following keys gate which checks are yielded:
         - stateful: bool
-        - observation_horizon: int | None
-        - preserves_dtype: bool
         - invertible: bool
         - supports_panel_data: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -410,7 +406,8 @@ def _yield_yohou_forecaster_checks(
     Parameters
     ----------
     forecaster : BaseForecaster
-        Fitted forecaster instance
+        Forecaster instance (fitted or unfitted; checks that require a specific
+        state clone internally)
     y_train : pl.DataFrame
         Training target data with "time" column
     X_actual_train : pl.DataFrame, optional
@@ -426,16 +423,13 @@ def _yield_yohou_forecaster_checks(
         - supports_panel_data: bool
         - uses_target_transformer: bool
         - uses_feature_transformer: bool
-        - supports_scoring: bool
+        - requires_exogenous: bool
+        - tracks_observations: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -772,20 +766,14 @@ def _yield_yohou_splitter_checks(
     X_actual : pl.DataFrame, optional
         Exogenous features
     tags : dict, optional
-        Splitter metadata tags (if None, auto-detected from __sklearn_tags__):
-        - splitter_type: str | None
+        Splitter metadata tags (if None, auto-detected from __sklearn_tags__).
+        Only the following key gates which checks are yielded:
         - supports_panel_data: bool
-        - produces_non_overlapping_tests: bool
-        - stateful: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -905,16 +893,11 @@ def _yield_yohou_scorer_checks(
         Scorer metadata tags (if None, auto-detected from __sklearn_tags__):
         - prediction_type: str | None
         - lower_is_better: bool
-        - requires_calibration: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -1048,15 +1031,13 @@ def _yield_yohou_search_checks(
         - refit: bool (default True)
         - multimetric: bool (default False)
         - supports_panel_data: bool (default True)
+        - interval_scoring: bool (default False); True when the scorer is an
+          instance of BaseIntervalScorer
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:

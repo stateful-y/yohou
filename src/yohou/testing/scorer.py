@@ -229,9 +229,9 @@ def check_scorer_prediction_type_compatibility(
 def check_scorer_lower_is_better(scorer) -> None:
     """Check the ``lower_is_better`` tag is a boolean.
 
-    Validates that the scorer exposes a boolean ``lower_is_better`` tag.
-    Error metrics typically set ``lower_is_better=True`` while score
-    metrics (R-squared and the like) set it to ``False``.
+    Validates only that the scorer exposes a boolean ``lower_is_better`` tag;
+    it does not assert a particular value, so the caller is responsible for
+    pinning the expected direction (e.g. via ``expected_tags``) elsewhere.
 
     Parameters
     ----------
@@ -278,8 +278,9 @@ def check_scorer_aggregation_methods(
 
     Notes
     -----
-    Single aggregation methods (e.g., ['stepwise']) may return DataFrames.
-    Only when using all available methods together does it return a scalar.
+    A scalar is returned only when stepwise, vintagewise, and componentwise
+    aggregations are all applied together; partial aggregations (e.g.,
+    ['stepwise'] only) return a DataFrame.
 
     """
     for agg_method in aggregation_methods:
@@ -439,8 +440,8 @@ def check_scorer_parameter_validation(
 ) -> None:
     """Check parameter validation raises ValueError for invalid inputs.
 
-    Tests that scorer._validate_parameters() properly validates inputs
-    during score() calls.
+    Tests that scorer._validate_parameters() properly rejects invalid inputs
+    when fit() is called (parameter validation happens in fit(), not score()).
 
     Parameters
     ----------
@@ -494,7 +495,7 @@ def check_scorer_methods_call_check_is_fitted(scorer, y_train: pl.DataFrame, y_p
     y_train : pl.DataFrame
         Training target data with "time" column
     y_pred : pl.DataFrame
-        Predicted values with "time" column
+        Predicted values with "vintage_time" and "time" columns
 
     Raises
     ------

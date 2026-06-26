@@ -30,7 +30,12 @@ def check_estimator_parameter(forecaster) -> None:
 
 
 def check_reduction_strategy(forecaster) -> None:
-    """Check reduction_strategy parameter is valid.
+    """Check reduction_strategy is one of 'direct', 'dir-rec', 'multi-output'.
+
+    The same set is enforced by ``BaseReductionForecaster._parameter_constraints``
+    during ``_validate_params``; this check additionally guards against a value
+    set illegally after construction (e.g. by direct attribute assignment, which
+    bypasses constraint validation).
 
     Parameters
     ----------
@@ -40,7 +45,7 @@ def check_reduction_strategy(forecaster) -> None:
     Raises
     ------
     AssertionError
-        If reduction_strategy is invalid
+        If reduction_strategy is not one of the allowed values
 
     """
     if not hasattr(forecaster, "reduction_strategy"):

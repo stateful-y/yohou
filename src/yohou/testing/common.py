@@ -51,8 +51,7 @@ def check_metadata_routing_get_metadata_routing(estimator_fitted) -> None:
 
     Tests:
     - Method exists and returns MetadataRouter or MetadataRequest
-    - Router has correct owner
-    - Router includes child estimators if applicable
+    - Router has an owner set
 
     Parameters
     ----------

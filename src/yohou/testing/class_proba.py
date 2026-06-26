@@ -22,8 +22,10 @@ def check_class_proba_prediction_structure(forecaster, y_test: pl.DataFrame) -> 
     """Check class-probability predictions have correct column structure.
 
     Validates that ``predict_class_proba`` output contains ``"vintage_time"``
-    and ``"time"`` columns, plus ``{target}_proba_{class}`` columns for every
-    target and class.
+    and ``"time"`` columns, plus one probability column per target and class.
+    For non-panel data the columns follow ``{target}_proba_{class}``; for panel
+    data the format is ``{group_prefix}__{target}_proba_{class}`` where
+    ``group_prefix`` is the entity identifier (e.g. ``store_1``).
 
     Parameters
     ----------
@@ -94,7 +96,7 @@ def check_class_proba_prediction_bounds(forecaster, y_test: pl.DataFrame) -> Non
 
 
 def check_class_proba_prediction_sums(forecaster, y_test: pl.DataFrame) -> None:
-    """Check probabilities sum to approximately 1.0 per row per target.
+    """Check probabilities sum to 1.0 per row per target (tolerance: 1e-6).
 
     Parameters
     ----------

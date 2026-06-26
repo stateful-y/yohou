@@ -138,7 +138,11 @@ def check_interval_prediction_types(forecaster) -> None:
 
 
 def check_coverage_rates_parameter(forecaster) -> None:
-    """Check coverage_rates is list of floats in [0, 1].
+    """Check fit_coverage_rates_ fitted attribute is a non-empty list of floats in [0, 1].
+
+    Inspects the post-fit resolved ``fit_coverage_rates_`` attribute (the
+    constructor ``coverage_rates`` param may be ``None`` and is resolved to a
+    concrete list during fit), not the constructor argument.
 
     Parameters
     ----------
@@ -148,7 +152,7 @@ def check_coverage_rates_parameter(forecaster) -> None:
     Raises
     ------
     AssertionError
-        If coverage_rates is invalid
+        If fit_coverage_rates_ is missing or invalid
 
     """
     coverage_rates = forecaster.fit_coverage_rates_
