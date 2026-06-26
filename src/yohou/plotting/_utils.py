@@ -30,6 +30,7 @@ __all__ = [
     "LegendTracker",
     "PanelColorManager",
     "RenderContext",
+    "VALID_LINE_SHAPES",
     "apply_default_layout",
     "build_category_map",
     "config_context",
@@ -52,7 +53,15 @@ _global_config: dict = {
     "resampler_gap_handler": None,
     "resampler_trace_prefix_suffix": None,
     "resampler_show_mean_aggregation_size": None,
+    "line_shape": None,
 }
+
+VALID_LINE_SHAPES: frozenset[str] = frozenset({"linear", "spline", "hv", "vh", "hvh", "vhh"})
+"""Plotly ``line.shape`` interpolation styles accepted by `set_config`.
+
+``"hv"`` / ``"vh"`` draw step lines, ``"hvh"`` / ``"vhh"`` draw centred steps,
+``"spline"`` smooths, and ``"linear"`` connects points directly.
+"""
 
 LINE_DASH_SEQUENCE: list[str] = [
     "solid",
@@ -144,6 +153,14 @@ def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
     return max(floor, base / max(n, 1))
 
 
+def _validate_line_shape(line_shape: str) -> None:
+    """Raise ``ValueError`` if *line_shape* is not a valid Plotly ``line.shape``."""
+    if line_shape not in VALID_LINE_SHAPES:
+        allowed = ", ".join(sorted(VALID_LINE_SHAPES))
+        msg = f"line_shape must be one of {{{allowed}}}, got {line_shape!r}"
+        raise ValueError(msg)
+
+
 def set_config(
     *,
     resampler: bool | Literal["widget"] | None = None,
@@ -152,6 +169,7 @@ def set_config(
     resampler_gap_handler: AbstractGapHandler | None = None,
     resampler_trace_prefix_suffix: tuple[str, str] | None = None,
     resampler_show_mean_aggregation_size: bool | None = None,
+    line_shape: str | None = None,
 ) -> None:
     """Set global plotting configuration.
 
@@ -179,6 +197,13 @@ def set_config(
     resampler_show_mean_aggregation_size : bool | None, default=None
         Whether to show the mean aggregation bin size as a legend suffix.
         ``None`` leaves current value unchanged (library default: ``True``).
+    line_shape : str | None, default=None
+        Line interpolation applied to every scatter line trace produced by
+        the yohou plotting functions.  One of `VALID_LINE_SHAPES` (e.g.
+        ``"hv"`` for step lines, ``"spline"`` for smoothing).  When set, the
+        shape overrides each function's own per-trace default; ``None``
+        leaves the current value unchanged (default ``None`` keeps every
+        trace's built-in shape).
 
     Examples
     --------
@@ -187,6 +212,10 @@ def set_config(
     >>> get_config()["resampler"]
     'widget'
     >>> set_config(resampler=False)
+    >>> set_config(line_shape="hv")
+    >>> get_config()["line_shape"]
+    'hv'
+    >>> set_config(line_shape="linear")
 
     See Also
     --------
@@ -205,6 +234,9 @@ def set_config(
         _global_config["resampler_trace_prefix_suffix"] = resampler_trace_prefix_suffix
     if resampler_show_mean_aggregation_size is not None:
         _global_config["resampler_show_mean_aggregation_size"] = resampler_show_mean_aggregation_size
+    if line_shape is not None:
+        _validate_line_shape(line_shape)
+        _global_config["line_shape"] = line_shape
 
 
 def get_config() -> dict:
@@ -238,6 +270,7 @@ def config_context(
     resampler_gap_handler: AbstractGapHandler | None = None,
     resampler_trace_prefix_suffix: tuple[str, str] | None = None,
     resampler_show_mean_aggregation_size: bool | None = None,
+    line_shape: str | None = None,
 ) -> Generator[None, None, None]:
     """Context manager to temporarily override plotting configuration.
 
@@ -256,6 +289,9 @@ def config_context(
         Temporary legend prefix/suffix.  ``None`` leaves unchanged.
     resampler_show_mean_aggregation_size : bool | None, default=None
         Temporary aggregation size display.  ``None`` leaves unchanged.
+    line_shape : str | None, default=None
+        Temporary line interpolation for every scatter line trace (one of
+        `VALID_LINE_SHAPES`).  ``None`` leaves unchanged.
 
     Examples
     --------
@@ -264,6 +300,9 @@ def config_context(
     >>> with config_context(resampler="widget"):
     ...     assert get_config()["resampler"] == "widget"
     >>> assert get_config()["resampler"] is False
+    >>> with config_context(line_shape="hv"):
+    ...     assert get_config()["line_shape"] == "hv"
+    >>> assert get_config()["line_shape"] is None
 
     See Also
     --------
@@ -279,6 +318,7 @@ def config_context(
             resampler_gap_handler=resampler_gap_handler,
             resampler_trace_prefix_suffix=resampler_trace_prefix_suffix,
             resampler_show_mean_aggregation_size=resampler_show_mean_aggregation_size,
+            line_shape=line_shape,
         )
         yield
     finally:
@@ -796,6 +836,47 @@ DEFAULT_LAYOUT: dict[str, Any] = {
 }
 
 
+def _resolve_line_shape(line_shape: str | None = None) -> str | None:
+    """Resolve the effective ``line.shape``.
+
+    Returns *line_shape* when given, otherwise the global ``line_shape``
+    config value (``None`` means "leave each trace's own shape untouched").
+    """
+    if line_shape is not None:
+        return line_shape
+    return _global_config["line_shape"]
+
+
+def _apply_line_shape(fig: go.Figure, line_shape: str | None = None) -> go.Figure:
+    """Force the configured ``line.shape`` onto every scatter line trace.
+
+    When the resolved shape (explicit *line_shape* or the global config) is
+    ``None`` the figure is returned untouched, preserving each trace's own
+    ``shape``.  Otherwise the shape is applied to all ``scatter`` and
+    ``scattergl`` traces - including faceted subplots - overriding any
+    per-trace value.  Non-scatter traces (bars, heatmaps, ...) are skipped.
+
+    Parameters
+    ----------
+    fig : go.Figure
+        Figure whose line traces should be normalised.
+    line_shape : str | None, default=None
+        Explicit shape override.  ``None`` reads from `get_config`.
+
+    Returns
+    -------
+    go.Figure
+        The same figure, mutated in place.
+    """
+    shape = _resolve_line_shape(line_shape)
+    if shape is None:
+        return fig
+    for trace in fig.data:
+        if trace.type in ("scatter", "scattergl"):
+            trace.line.shape = shape
+    return fig
+
+
 def apply_default_layout(
     fig: go.Figure,
     title: str | None = None,
@@ -855,6 +936,7 @@ def apply_default_layout(
         layout_update["hovermode"] = hovermode
 
     fig.update_layout(layout_update)
+    _apply_line_shape(fig)
     return fig
 
 

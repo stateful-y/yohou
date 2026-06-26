@@ -207,6 +207,27 @@ function also accepts a `resampler` parameter to override the global setting
 per call. The [`config_context`](/pages/api/generated/yohou.plotting._utils.config_context/) context manager temporarily changes the
 configuration and restores it on exit.
 
+### Line Shape for Step Plots
+
+The same configuration system controls how line traces interpolate between
+points. By default each function keeps its own shape: numeric series connect
+points linearly, while categorical state series already render as steps. Setting
+`line_shape` through [`set_config`](/pages/api/generated/yohou.plotting._utils.set_config/) forces every scatter line trace,
+across all plotting functions and faceted subplots, to use that interpolation.
+The accepted values are listed in [`VALID_LINE_SHAPES`](/pages/api/generated/yohou.plotting._utils.VALID_LINE_SHAPES/): `"hv"` and
+`"vh"` draw step lines, `"hvh"` and `"vhh"` draw centred steps, `"spline"`
+smooths, and `"linear"` is the direct default. As with the resampler setting,
+[`config_context`](/pages/api/generated/yohou.plotting._utils.config_context/) applies the shape for a single block and restores the
+previous value on exit.
+
+```python
+from yohou.plotting import config_context, plot_time_series
+
+# Render every line as a step plot for one figure only.
+with config_context(line_shape="hv"):
+    fig = plot_time_series(df)
+```
+
 ## Connections
 
 [Core Concepts](core-concepts.md) covers the `"time"` column contract and panel
