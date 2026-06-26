@@ -125,8 +125,9 @@ def plot_forecast(
         Historical training data with 'time' column. If provided, shown
         before the forecast period.
     columns : str | list[str] | None, default=None
-        Target column(s) to plot from *y_test*.  When ``None``, all
-        non-time columns are used.  Associated interval columns
+        Target column(s) to plot.  When ``None``, all non-time columns are
+        used, taken from *y_test* if provided, otherwise from *y_pred*.
+        Associated interval columns
         (``{col}_lower_{rate}`` / ``{col}_upper_{rate}``) are kept
         automatically.
     coverage_rates : list[float] | None, default=None
@@ -142,11 +143,13 @@ def plot_forecast(
         group, ``"member"`` one per member.  ``None`` disables faceting.
         Ignored for non-panel data.
     facet_n_cols : int, default=2
-        Number of columns in facet grid for panel data.
+        Number of columns in the facet grid when multiple subplots are shown
+        (applies to both panel and multi-column non-panel data).
     color_palette : list[str] | None, default=None
         Custom color palette.
     show_legend : bool, default=True
-        Whether to show the legend.
+        Whether to show the legend.  Has no effect when ``y_pred`` contains
+        class-probability or categorical columns.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -158,18 +161,20 @@ def plot_forecast(
     height : int | None, default=None
         Plot height in pixels.
     connect_gaps : bool, default=False
-        Whether to connect gaps in the data with lines.
+        Whether to connect gaps in the data with lines.  Has no effect when
+        ``y_pred`` contains class-probability or categorical columns.
     resampler : bool | Literal["widget"] | None, default=None
         Enable plotly-resampler for large datasets.  ``True`` or
         ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
+        ``None`` uses a plain ``go.Figure``.  Has no effect when ``y_pred``
+        contains class-probability or categorical columns.
     line_width : float, default=2.0
         Width of line traces.
     band_opacity : float, default=0.25
         Opacity of prediction interval bands.
     show_transition : bool, default=True
-        Whether to show a dashed connector between the last training
-        point and the first forecast point.
+        Whether to extend the forecast trace back to the last training
+        observation, visually bridging the gap between history and forecast.
 
     Returns
     -------
@@ -182,6 +187,8 @@ def plot_forecast(
         If inputs are not Polars DataFrames.
     ValueError
         If DataFrames are empty or missing 'time' column.
+        If ``y_test`` is ``None`` when ``y_pred`` contains class-probability
+        or categorical columns.
 
     Examples
     --------
@@ -1036,8 +1043,9 @@ def _plot_forecast_multi_model(
 
     Parameters
     ----------
-    y_test : pl.DataFrame
-        Actual test values.
+    y_test : pl.DataFrame or None
+        Actual test values.  When ``None``, column names are inferred from
+        the first prediction DataFrame.
     y_preds : dict[str, pl.DataFrame]
         Model name to prediction DataFrame mapping.
     y_train : pl.DataFrame | None
@@ -1667,8 +1675,8 @@ def _plot_forecast_panel(
     """Plot forecast with panel data as faceted subplots.
 
     Supports both single-model (DataFrame) and multi-model (dict) predictions.
-    Each subplot receives its own legend positioned inside the subplot area.
-    The ``facet_by`` parameter determines the subplot axis:
+    A single shared legend is rendered; ``show_legend`` controls its
+    visibility.  The ``facet_by`` parameter determines the subplot axis:
 
     * ``"group"`` - one subplot per panel group, members overlaid by colour.
     * ``"member"`` - one subplot per member, groups overlaid by colour.
@@ -2866,7 +2874,9 @@ def plot_decomposition(
     Returns
     -------
     go.Figure | dict[str, go.Figure]
-        Plotly figure (or dict of figures for panel data).
+        A dict mapping member names to figures when multiple panel members
+        are present; a single ``go.Figure`` for non-panel data or a
+        single-member panel.
 
     Raises
     ------

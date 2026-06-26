@@ -79,7 +79,10 @@ def plot_autocorrelation(
     columns : str | list[str] | None, default=None
         Column(s) to analyze. If None, uses all numeric columns except 'time'.
     max_lags : int | None, default=None
-        Maximum number of lags to compute. If None, uses min(len(df)//2, 40).
+        Maximum number of lags to compute. If None, uses
+        ``min(len(df) // 2, 40)`` in non-panel mode; for panel data the limit
+        is computed per series as ``min(n // 2, 40)`` where *n* is the number
+        of non-null observations in that series.
     confidence_level : float, default=0.95
         Confidence level for confidence bands (e.g. ``0.95`` for 95%).
     show_confidence : bool, default=True
@@ -301,7 +304,9 @@ def _compute_pacf(
     Returns
     -------
     tuple[list[float], list[float] | None, list[float] | None]
-        ``(pacf_values, ci_lower, ci_upper)``.
+        ``(pacf_values, ci_lower, ci_upper)`` where ``ci_lower`` and
+        ``ci_upper`` are the confidence-band limits **relative to zero** (not
+        absolute bounds), suitable for passing to ``_add_confidence_bands``.
 
     Raises
     ------
@@ -369,7 +374,10 @@ def plot_partial_autocorrelation(
     columns : str | list[str] | None, default=None
         Column(s) to analyze. If None, uses all numeric columns except 'time'.
     max_lags : int | None, default=None
-        Maximum number of lags to compute. If None, uses min(len(df)//2, 40).
+        Maximum number of lags to compute. If None, uses
+        ``min(len(df) // 2, 40)`` in non-panel mode; for panel data the limit
+        is computed per series as ``min(n // 2, 40)`` where *n* is the number
+        of non-null observations in that series.
     method : str, default="yw"
         PACF estimation method passed to ``statsmodels.tsa.stattools.pacf``.
         Options: ``"yw"`` (Yule-Walker), ``"ols"`` (OLS), ``"ywm"``
@@ -908,6 +916,9 @@ def plot_seasonality(
     position within each season (e.g. month 1-12) on the x-axis.  This makes
     it easy to compare how the same season changes across cycles.
 
+    For panel data, a bold mean line across all cycles is overlaid on each
+    subplot; the non-panel path does not add this mean line.
+
     Parameters
     ----------
     df : pl.DataFrame
@@ -1310,13 +1321,16 @@ def plot_subseasonality(
         - ``"box"`` - one box per cycle showing value distribution.
         - ``"violin"`` - one violin per cycle showing value distribution.
     show_mean : bool, default=True
-        Show a horizontal mean line within each season subplot.
+        Show a horizontal mean line within each season subplot.  Only applies
+        when ``kind`` is ``"mean"`` or ``"lines"``; ignored for ``"box"`` and
+        ``"violin"``.
     groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_n_cols : int, default=4
         Number of columns in the subplot grid.
     color_palette : list[str] | None, default=None
-        Custom color palette (one color per group).
+        Custom color palette.  For panel data, one color per group; for
+        non-panel data, one color per column.
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -1685,7 +1699,9 @@ def plot_lag_scatter(
     show_diagonal : bool, default=True
         Show a diagonal reference line (y = x).
     show_regression : bool, default=False
-        Show a linear regression line fitted to the data.
+        Show a linear regression line fitted to the data.  Only applied when
+        a single lag is requested and data is non-panel; silently ignored for
+        multi-lag subplot layouts and panel data.
     groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_n_cols : int, default=3
@@ -2201,6 +2217,12 @@ def plot_cross_correlation(
     -------
     go.Figure
         Plotly figure object.
+
+    Raises
+    ------
+    ValueError
+        If fewer than two numeric columns are available, or if no panel
+        group contains at least two members.
 
     Examples
     --------
@@ -3255,7 +3277,9 @@ def plot_seasonal_heatmap(
     columns : str, list of str, or None, default=None
         Numeric column(s) to aggregate and visualise.  When ``None``,
         all numeric columns (excluding ``"time"``) are used.  For panel
-        data this selects member postfixes within each group.
+        data this selects member postfixes within each group.  Unlike the
+        other diagnostic plot functions, *columns* accepts a positional
+        argument for concise single-column calls.
     x_period : str, default="hour"
         Temporal period for the x-axis.  Options: "hour", "day_of_week",
         "day_of_month", "week", "month", "quarter", "year".

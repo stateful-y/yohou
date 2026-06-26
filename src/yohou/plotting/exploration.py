@@ -72,10 +72,13 @@ def plot_time_series(
     Parameters
     ----------
     df : pl.DataFrame
-        Input DataFrame with 'time' column and numeric columns to plot.
+        Input DataFrame with 'time' column and numeric or categorical
+        columns to plot.
     columns : str | list[str] | None, default=None
         Column(s) to plot. If None, plots all numeric columns except 'time'.
         If str, plots single column. If list, plots multiple columns.
+        Categorical columns are rendered as stepped line+marker traces with
+        a labelled integer y-axis.
     groups : list[str] | None, default=None
         Panel group prefixes to plot. Creates separate subplots per group.
         If None and panel data is detected, plots all groups.
@@ -102,9 +105,10 @@ def plot_time_series(
     connect_gaps : bool, default=False
         Whether to connect gaps in the data with lines.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``False`` disables resampling, and ``None`` reads from
+        `get_config`.
     line_width : float, default=2.0
         Width of the line traces in pixels.
     line_dash : str, default="solid"
@@ -373,9 +377,10 @@ def plot_rolling_statistics(
     connect_gaps : bool, default=False
         Whether to connect gaps in the data with lines.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``False`` disables resampling, and ``None`` reads from
+        `get_config`.
     line_width : float, default=2.0
         Width of the original series line in pixels.
     line_opacity : float, default=0.3
@@ -923,7 +928,8 @@ def plot_missing_data(
         Visualization kind:
         - "heatmap": time x columns grid showing missing/present
         - "bars": bar chart of missing percentage per column
-        - "matrix": binary matrix (missingno-style, time on x-axis)
+        - "matrix": alias of "heatmap" (renders the identical missing/present
+          grid; no separate missingno-style output)
     groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_by : Literal["group", "member"] | None, default="member"
@@ -1193,10 +1199,15 @@ def plot_distribution(
     """
     Plot histogram with optional KDE overlay for one or more columns.
 
+    For categorical columns a frequency bar chart of value counts is
+    rendered instead of a histogram; ``n_bins``, ``histnorm``, ``show_kde``,
+    ``kde_width``, and ``kde_points`` are ignored in that case.
+
     Parameters
     ----------
     df : pl.DataFrame
-        Input DataFrame with 'time' column and numeric columns to plot.
+        Input DataFrame with 'time' column and numeric or categorical
+        columns to plot.
     columns : str | list[str] | None, default=None
         Column(s) to plot. If None, uses all numeric columns except 'time'.
     n_bins : int, default=50
@@ -1514,7 +1525,7 @@ def plot_outliers(
     TypeError
         If df is not a Polars DataFrame.
     ValueError
-        If method is unknown or threshold is invalid.
+        If method is unknown.
 
     Examples
     --------
@@ -1793,9 +1804,10 @@ def plot_resampling_comparison(
     connect_gaps : bool, default=False
         Whether to connect gaps in the data with lines.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
-        ``None`` uses a plain ``go.Figure``.
+        Enable plotly-resampler for large datasets.  ``True`` returns a
+        ``FigureResampler``, ``"widget"`` a ``FigureWidgetResampler``,
+        ``False`` disables resampling, and ``None`` reads from
+        `get_config`.
     original_line_width : float, default=1.0
         Width of the original series line in pixels.
     original_line_opacity : float, default=0.4

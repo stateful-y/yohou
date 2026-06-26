@@ -328,7 +328,8 @@ def plot_residuals(
     color_palette : list[str] | None, default=None
         Custom color palette. If None, uses yohou palette.
     show_legend : bool, default=True
-        Whether to show the legend.
+        Whether to show the legend.  Has no effect in single-column
+        diagnostic mode (the 4-panel layout always hides the legend).
     title : str | None, default=None
         Plot title.
     x_label : str | None, default=None
@@ -908,11 +909,13 @@ def plot_calibration(
     line_width : float, default=2.0
         Width of the calibration line.
     line_opacity : float, default=1.0
-        Opacity of the calibration line.
+        Opacity of the calibration line.  Ignored for class-probability
+        predictions.
     reference_color : str, default="#1e293b"
         Colour of the perfect-calibration reference line.
     reference_width : float, default=3.0
-        Width of the reference line.
+        Width of the reference line.  Ignored for class-probability
+        predictions (the reference width is fixed at 2.0 there).
     reference_dash : str, default="dash"
         Dash style of the reference line.
 
@@ -941,13 +944,15 @@ def plot_calibration(
     >>> n = 100
     >>> rng = np.random.default_rng(0)
     >>> times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
-    >>> y_truth = pl.DataFrame({"time": times, "y": rng.standard_normal(n)})
+    >>> y = rng.standard_normal(n)
+    >>> y_truth = pl.DataFrame({"time": times, "y": y})
+    >>> # Deterministic symmetric prediction intervals centred on y.
     >>> y_pred_int = pl.DataFrame({
     ...     "time": times,
-    ...     "y_upper_0.9": rng.standard_normal(n) + 1.65,
-    ...     "y_lower_0.9": rng.standard_normal(n) - 1.65,
-    ...     "y_upper_0.95": rng.standard_normal(n) + 1.96,
-    ...     "y_lower_0.95": rng.standard_normal(n) - 1.96,
+    ...     "y_upper_0.9": y + 1.65,
+    ...     "y_lower_0.9": y - 1.65,
+    ...     "y_upper_0.95": y + 1.96,
+    ...     "y_lower_0.95": y - 1.96,
     ... })
 
     >>> # Plot calibration
@@ -1641,8 +1646,10 @@ def plot_score_time_series(
 
     Notes
     -----
-    - Scorer is automatically configured with aggregation_method="componentwise"
-    - For interval scorers, use aggregation_method=["componentwise", "coveragewise"]
+    - The scorer is automatically cloned and configured with the appropriate
+      componentwise aggregation method; interval scorers receive
+      ``["componentwise", "coveragewise"]`` automatically. Do not set
+      ``aggregation_method`` yourself.
     - Requires scorer to support componentwise aggregation
     - All scores are computed independently at each timestep
     - Use ``facet_by="vintage"`` to compare score curves across forecast
@@ -2569,9 +2576,10 @@ def plot_score_per_step(
 ) -> go.Figure:
     """Plot scorer value by forecast horizon step.
 
-    For each step *h* in the forecast window, compute the scorer between
-    ``y_truth`` and ``y_pred`` at row *h* and plot the result. This
-    reveals how forecast accuracy degrades as the horizon increases.
+    Evaluates forecast quality using componentwise aggregation and treats the
+    resulting score sequence as a horizon-step profile, plotting ``score[i]``
+    against step ``i = 1, 2, ...``. This reveals how forecast accuracy
+    degrades as the horizon increases.
 
     Parameters
     ----------
@@ -3103,7 +3111,10 @@ def plot_score_per_vintage(
     Raises
     ------
     ValueError
-        If ``y_pred`` has only a single vintage (single vintage_time).
+        If ``y_pred`` has only a single vintage (single ``vintage_time``).
+        If ``y_pred`` has no ``vintage_time`` column, a ``ValueError`` is
+        raised later (from the scorer) reporting that ``vintage_time`` is
+        missing.
 
     Examples
     --------
@@ -3382,7 +3393,9 @@ def plot_score_heatmap(
     color_palette : str or None, default=None
         Plotly colorscale name. If None, auto-selects based on
         ``scorer._lower_is_better``: ``"Blues"`` when lower is better,
-        ``"Blues_r"`` otherwise.
+        ``"Blues_r"`` otherwise.  Unlike the other evaluation plots, this
+        parameter expects a Plotly colorscale name string (e.g. ``"RdBu"``),
+        not a list of hex codes.
     text_format : str, default=".2f"
         Format string for cell text annotations.
     show_text : bool, default=True
@@ -3592,7 +3605,7 @@ def plot_group_scores(
         - ``"vintage"``: per-vintage score variability.
         - ``"step"``: per-step score variability.
 
-        Ignored for ``kind="bar"``.
+        Ignored for ``kind="bar"`` and ``kind="heatmap"``.
     color_palette : list[str] | None, default=None
         Custom colour palette.
     show_legend : bool, default=True
