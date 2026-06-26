@@ -39,9 +39,10 @@ try:
         return _original_parse_see_also(self, cleaned)
 
     # Assign through an ``Any`` alias so the monkeypatch needs no type-checker
-    # suppression: a ``# ty: ignore`` here is flagged as unused under some ``ty``
-    # versions and as required under others (it depends on the resolved sklearn
-    # stubs), which breaks CI either way.
+    # suppression comment. A direct assignment is reported as invalid-assignment
+    # by some resolved ty versions but not others (it depends on the sklearn
+    # stubs), so any inline suppression would be unused under one of them and
+    # break CI either way.
     _patched: Any = NumpyDocString
     _patched._parse_see_also = _parse_see_also_strip_backticks
 except (ImportError, AttributeError):
