@@ -11,7 +11,7 @@ In this tutorial, we will build a forecasting model that uses all three types of
 
 ## 1. Load the Data
 
-[`make_exogenous_regression()`](/pages/api/generated/yohou.datasets._generators.make_exogenous_regression/) creates a synthetic electricity price scenario: hourly prices driven by temperature and a holiday indicator.
+Start by generating a synthetic electricity dataset that includes all three exogenous types. [`make_exogenous_regression()`](/pages/api/generated/yohou.datasets._generators.make_exogenous_regression/) creates hourly electricity prices driven by temperature (actual), a holiday indicator (future), and weather model forecasts (forecast vintage).
 
 ```python
 from yohou.datasets import make_exogenous_regression
@@ -33,7 +33,7 @@ print("X_forecast:", X_forecast.shape)
 y: (200, 2)
 X_actual: (200, 2)
 X_future: (200, 2)
-X_forecast: (1164, 3)
+X_forecast: (1143, 3)
 ```
 
 `X_actual` contains realized temperature (known only after it occurs), `X_future` contains a holiday indicator (deterministic, known for all dates), and `X_forecast` carries weather forecasts with a `vintage_time` column identifying when each forecast was issued. See [Exogenous Features](../explanation/exogenous-features.md) for the full conceptual model.
@@ -50,7 +50,7 @@ y_train, y_test, X_actual_train, X_actual_test, X_forecast_train, _ = train_test
 )
 ```
 
-Now we build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with the `"direct"` strategy and `HistGradientBoostingRegressor`:
+Now we build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with the `"direct"` strategy and `HistGradientBoostingRegressor`, using a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) to build lag features:
 
 ```python
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -123,7 +123,7 @@ Notice that the predictions differ because the weather forecasts differ. The acc
 
 ## 4. Walk-Forward Evaluation
 
-`observe_predict` steps through `y_test` one stride at a time, observing new `X_actual` and issuing fresh forecasts:
+`observe_predict` steps through `y_test` one stride at a time, observing new `X_actual` and issuing fresh forecasts, with accuracy computed using [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
 
 ```python
 from yohou.metrics import MeanAbsoluteError

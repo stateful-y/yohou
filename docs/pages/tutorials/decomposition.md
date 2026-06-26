@@ -11,7 +11,7 @@ In this tutorial, we will build a [`DecompositionPipeline`](/pages/api/generated
 
 ## 1. Prepare Data
 
-We will use the Australian tourism dataset, a monthly series tracking tourist arrivals:
+Load the Australian tourism dataset, a monthly series tracking tourist arrivals, with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/):
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -135,7 +135,7 @@ Notice that the values are close to `PatternSeasonalityForecaster` but smoother.
 
 Now that we have seen trend and seasonality individually, let's combine them. [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) chains forecasters in sequence: each one models the residuals left by all previous forecasters, and the final prediction is the sum of all components.
 
-We add a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) as the third stage to capture any structure remaining in the residuals after removing trend and seasonality:
+We add a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) as the third stage, wrapping a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), to capture any structure remaining in the residuals after removing trend and seasonality:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -194,6 +194,8 @@ fig.show()
 The plot shows the trend, seasonality, and residual contributions separately. Check that the trend line rises gradually, that seasonality shows a repeating monthly pattern, and that the residuals are small relative to the other components.
 
 ## 6. Score the Pipeline
+
+Score the full pipeline against the test set with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
 
 ```python
 from yohou.metrics import MeanAbsoluteError

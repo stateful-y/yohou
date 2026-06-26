@@ -11,7 +11,7 @@ In this tutorial, we will create temporal cross-validation folds that respect ti
 
 ## 1. Prepare Data
 
-We use a single series from the Tourism Monthly dataset: 187 months of visitor arrivals from January 1979 to July 1994.
+We use a single series loaded with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/) from the Tourism Monthly dataset: 187 months of visitor arrivals from January 1979 to July 1994.
 
 ```python
 from yohou.datasets import fetch_tourism_monthly

@@ -175,6 +175,8 @@ We answered eight diagnostic questions about a raw time series:
 
 These answers directly inform which preprocessing transforms to apply and which forecaster architecture to choose in subsequent tutorials.
 
+The companion notebook also covers [`plot_distribution`](/pages/api/generated/yohou.plotting.exploration.plot_distribution/), which summarizes the overall value distribution as a histogram with an optional density curve.
+
 ## Next Steps
 
 - [Seasonal Analysis](seasonal-analysis.md) for deeper seasonal diagnostics with ACF/PACF and heatmaps

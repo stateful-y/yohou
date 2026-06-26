@@ -7,9 +7,10 @@ In this tutorial, we will install Yohou, load a real time series dataset, establ
 
 ## Prerequisites
 
-No prior experience with Yohou is needed. For conda, mamba, or development installation, see [Installation](../how-to/installation.md).
+- No prior experience with Yohou is required
+- For conda, mamba, or development installation, see [Installation](../how-to/installation.md)
 
-## Install
+## 1. Install
 
 We include the `plotting` extra so we can visualise the forecast later.
 
@@ -35,7 +36,7 @@ print(yohou.__version__)
 
 You should see the installed version number printed.
 
-## Load and Resample the Data
+## 2. Load and Resample the Data
 
 Sunspot numbers track solar activity and exhibit a well-known cycle of roughly 11 years. The dataset contains daily observations from 1818 to 2020. Yohou ships with loaders that fetch datasets from [Monash/Zenodo](https://forecastingdata.org) and cache them locally. Each loader returns a `Bunch` object whose `.frame` attribute is a Polars DataFrame with a `time` column plus one or more value columns.
 
@@ -90,7 +91,7 @@ shape: (5, 2)
 └─────────────────────┴────────────────┘
 ```
 
-## Train/Test Split
+## 3. Train/Test Split
 
 Solar cycle 24 (2009 to 2019) was significantly weaker than cycle 23 (1996 to 2008). We will use this as our test period: we hold out the last 125 months (roughly the full cycle 24 era) with [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) and forecast the first 24 of those months, covering cycle 24's early rise.
 
@@ -107,7 +108,7 @@ print(f"Train: {len(y_train)} months, Test: {forecasting_horizon} months")
 Train: 2304 months, Test: 24 months
 ```
 
-## 1. Seasonal Baseline
+## 4. Seasonal Baseline
 
 A good starting point is [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/), which repeats values from one seasonal cycle ago. The sunspot cycle is roughly 11 years, or 132 months:
 
@@ -139,7 +140,7 @@ Notice that predictions include both a `vintage_time` column (when the model las
 
 Also notice the predicted values: 86, 98, 103, 93, 149 monthly sunspots. These are the actual values from January to May 1999, exactly 132 months earlier. At that time, solar cycle 23 was rising strongly toward its 2001 peak. But solar cycle 24 rose much more slowly. We will see how badly this assumption breaks down.
 
-## 2. Reduction Forecaster with Ridge
+## 5. Reduction Forecaster with Ridge
 
 [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts the forecasting problem into supervised learning. It tabularizes the time series, fits an sklearn regressor, and generates multi-step predictions. When no `feature_transformer` is provided, the forecaster uses the default tabularization, which creates a single lag feature from the most recent observation:
 
@@ -156,7 +157,7 @@ Notice that even without any explicit feature engineering, Ridge already capture
 
 For targets that are categorical classes rather than continuous values, see the [Class-Probability Forecasting](class-proba-forecasting.md) tutorial for the equivalent pattern using a classifier estimator.
 
-## 3. Add Lag Features
+## 6. Add Lag Features
 
 A [`feature_transformer`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) engineers input features for the regressor. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) creates autoregressive features from past values, letting the regressor learn patterns across multiple time steps. Wrap it in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) (the same pattern as sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)):
 
@@ -176,7 +177,7 @@ y_pred_ridge_lags = ridge_lags.predict(forecasting_horizon=forecasting_horizon)
 
 The lags `[1, 2, 3, 6, 12]` give the model access to the previous month, two and three months back, half a year ago, and a full year ago. Notice that `feature_transformer` adds input features for the regressor without modifying the target values.
 
-## 4. Add Rolling Statistics
+## 7. Add Rolling Statistics
 
 [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) adds rolling mean and standard deviation over a window. The rolling mean provides a smooth estimate of the current solar activity level, while the standard deviation captures recent volatility. Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to combine it with the lag features in parallel:
 
@@ -213,7 +214,7 @@ shape: (3, 3)
 
 Notice that [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) combines transformers in parallel, stacking their output columns. [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains them sequentially. Together they give you the full sklearn composition vocabulary for feature engineering.
 
-## 5. Evaluate with Multiple Metrics
+## 8. Evaluate with Multiple Metrics
 
 Now let's score all four models. Scorers in Yohou are stateful: `scorer.fit(y_train)` stores the training data so that scale-dependent metrics like [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) can normalise correctly.
 
@@ -245,7 +246,7 @@ Ridge + Lags + Rolling    MAE=13.73   MSE=465.88
 
 SeasonalNaive fails badly because solar cycle 23 (11 years back) was much stronger than cycle 24 (which we are predicting). Each pipeline step reduces error: lag features add momentum and rolling statistics provide a stable trend estimate.
 
-## 6. Visualize
+## 9. Visualize
 
 [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) accepts a dict of predictions to overlay multiple models on one chart:
 
@@ -279,7 +280,7 @@ plot_score_summary(
 
 You should see SeasonalNaive with a dramatically taller bar than the Ridge pipeline models, reflecting the failure to account for the weaker cycle 24 amplitude.
 
-## 7. Try a Stronger Model
+## 10. Try a Stronger Model
 
 The pipeline is regressor-agnostic. `ExtraTreesRegressor` supports multi-output natively, so it can replace Ridge without any other changes:
 
@@ -327,6 +328,7 @@ We installed Yohou and built a complete forecasting pipeline from scratch. Along
 ## Next Steps
 
 - **[Forecasting Workflow](forecasting-workflow.md)**: Evaluate with cross-validation, hyperparameter search, and residual diagnostics
+- **[Choose a Forecasting Method](../how-to/choose-forecasting-method.md)**: Compare estimator families and pick between reduction, naive baselines, and composition
 - **[Class-Probability Forecasting](class-proba-forecasting.md)**: Forecast categorical outcomes as probability distributions
 - **[Interval Forecasting](interval-forecasting.md)**: Produce prediction intervals with coverage guarantees
 - **[Core Concepts](../explanation/core-concepts.md)**: Observe/rewind, panel data, and metadata routing
