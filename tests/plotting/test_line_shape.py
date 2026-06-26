@@ -50,9 +50,6 @@ def _line_trace_shapes(fig: go.Figure) -> set:
     return shapes
 
 
-# Config plumbing
-
-
 class TestConfigPlumbing:
     def test_default_is_none(self):
         assert get_config()["line_shape"] is None
@@ -88,9 +85,6 @@ class TestConfigPlumbing:
     def test_config_context_validates(self):
         with pytest.raises(ValueError, match="line_shape must be one of"), config_context(line_shape="bogus"):
             pass
-
-
-# _apply_line_shape / _resolve_line_shape
 
 
 class TestApplyLineShape:
@@ -134,9 +128,6 @@ class TestApplyLineShape:
         with config_context(line_shape="vh"):
             _apply_line_shape(fig)
         assert fig.data[0].line.shape == "vh"
-
-
-# End-to-end across both finalisation paths and every plotting module
 
 
 @pytest.fixture
