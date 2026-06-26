@@ -132,7 +132,8 @@ class ExponentialDecayWeighter(BaseWeighter):
     scale : {"elapsed", "position"} or None, default=None
         Decay basis. ``"elapsed"`` decays by real elapsed time (datetime keys);
         ``"position"`` decays by rank index. When None, inferred from the key
-        dtype (datetime -> ``"elapsed"``, numeric -> ``"position"``).
+        dtype (any temporal dtype, i.e. Date, Datetime, Duration, or Time ->
+        ``"elapsed"``; numeric -> ``"position"``).
 
     Notes
     -----
@@ -208,21 +209,28 @@ class ExponentialDecayWeighter(BaseWeighter):
 class LinearDecayWeighter(BaseWeighter):
     r"""Linear decay weights giving more weight to recent keys.
 
-    Computes rank-based linear decay:
+    Computes rank-based linear decay. When ``max_steps`` is None:
 
     $$w(k) = \frac{\text{rank}(k)}{n - 1}$$
 
     where $\text{rank}(k) = 0$ for the oldest key and $n - 1$ for the most
-    recent. When ``max_steps`` is set, keys older than ``max_steps`` from the
-    most recent receive weight 0. Rank-based, so usable for datetime or integer
-    keys without a scale parameter.
+    recent. When ``max_steps`` is set, the denominator becomes
+    ``max_steps - 1`` and the window is shifted:
+
+    $$w(k) = \max\!\left(0,\ \frac{\text{rank}(k) - (n - \text{max\_steps})}{\text{max\_steps} - 1}\right)$$
+
+    so only the ``max_steps - 1`` most-recent keys receive a strictly positive
+    weight; the boundary key at rank ``n - max_steps`` maps to exactly 0.0, as
+    do all older keys. Rank-based, so usable for datetime or integer keys
+    without a scale parameter.
 
     Parameters
     ----------
     max_steps : int or None, default=None
         Window over which to decay. If None, decays linearly across the whole
-        range. If set, keys older than ``max_steps`` from the most recent receive
-        weight 0.
+        range. If set, keys at rank ``< n - max_steps`` receive weight 0, and so
+        does the boundary key at rank ``n - max_steps``; only the
+        ``max_steps - 1`` most-recent keys receive strictly positive weights.
 
     See Also
     --------
@@ -284,13 +292,19 @@ class LinearDecayWeighter(BaseWeighter):
 class SeasonalEmphasisWeighter(BaseWeighter):
     r"""Weights emphasizing keys in phase with the most recent seasonal position.
 
-    Gives higher weight to keys matching the most recent seasonal position
-    (e.g. same weekday). Rank-based, so usable for datetime or integer keys.
+    Gives higher weight to keys whose ordinal rank shares the same value modulo
+    the seasonal period as the most-recent key. This coincides with "same
+    weekday" (for ``seasonality=7``) only when the series is contiguous and its
+    length is an exact multiple of the period; in general it is a rank-phase
+    match, not a calendar match. Rank-based, so usable for datetime or integer
+    keys.
 
     Parameters
     ----------
-    seasonality : int or list of int
+    seasonality : int or list of int, default=1
         Seasonal period(s). If a list, keys matching ANY period receive emphasis.
+        With ``seasonality=1`` every key is in phase (all receive ``emphasis``),
+        making the weighter equivalent to a constant weighter.
     emphasis : float, default=2.0
         Weight multiplier for in-phase keys (out-of-phase keys receive 1.0).
 
@@ -363,8 +377,9 @@ class LookupWeighter(BaseWeighter):
 
     Parameters
     ----------
-    mapping : dict
-        Mapping from key value to weight.
+    mapping : dict or None, default=None
+        Mapping from key value to weight. ``None`` is treated as an empty
+        mapping, so every key receives ``default``.
     default : float, default=1.0
         Weight for keys absent from ``mapping``. If ``mapping`` contains a
         ``"*"`` key, that entry takes precedence over this parameter as the
@@ -431,7 +446,10 @@ class TableWeighter(BaseWeighter):
     ----------
     frame : pl.DataFrame
         Weight table with the join column ``on`` and a ``"weight"`` column
-        (and/or ``"{group}_weight"`` columns for panel data).
+        (and/or ``"{group}_weight"`` columns for panel data). Note that
+        per-group weight columns use a single underscore (``{group_name}_weight``),
+        which intentionally departs from the library-wide ``group__column``
+        double-underscore panel convention.
     on : str, default="time"
         Join column name (``"time"``, ``"vintage_time"``, or
         ``"forecasting_step"``).

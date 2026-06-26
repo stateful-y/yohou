@@ -45,13 +45,15 @@ def _parse_tsf(
     source : str or file-like
         Path to a ``.tsf`` file, or an open file-like object (binary mode).
     value_column_name : str
-        Name for the value column(s). For panel data, the column prefix
-        depends on the series attributes: when a series has no extra
-        attributes beyond ``series_name``, columns become
-        ``"{series_name}__{value_column_name}"``; when extra attributes are
-        present, their values (joined with underscores, lowercased, spaces
-        replaced by underscores) are used as the prefix instead, giving
-        ``"{joined_attributes}__{value_column_name}"``.
+        Name for the value column(s). For a single-series file the value
+        column is named exactly ``value_column_name`` (no ``__`` separator and
+        no series-name prefix). For panel data (multiple series) the column
+        prefix depends on the series attributes: when a series has no extra
+        attributes beyond ``series_name`` and ``start_timestamp``, columns
+        become ``"{series_name}__{value_column_name}"``; when other extra
+        attributes are present, their values (joined with underscores,
+        lowercased, spaces replaced by underscores) are used as the prefix
+        instead, giving ``"{joined_attributes}__{value_column_name}"``.
     n_series : int or None
         Maximum number of series to parse. ``None`` parses all series.
         Use this to limit memory consumption for large datasets.
@@ -67,8 +69,14 @@ def _parse_tsf(
     Raises
     ------
     ValueError
-        If the file contains no ``@data`` section, or if the frequency
-        string cannot be parsed into a polars duration.
+        In any of the following cases:
+
+        - the file contains no ``@data`` section;
+        - the file is missing a required ``@frequency`` directive;
+        - a ``start_timestamp`` attribute value cannot be parsed as a
+          datetime string;
+        - the frequency string cannot be parsed into a polars duration
+          (raised indirectly via :func:`_generate_time_index`).
 
     """
     line_iter = _iter_text_lines(source)

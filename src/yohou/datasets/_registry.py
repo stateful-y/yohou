@@ -180,8 +180,10 @@ KDD Cup 2018 Air Quality Dataset
 London (24 stations), from January 2017 to March 2018.
 
 Each station records up to six pollutant measurements: PM2.5, PM10,
-NO2, CO, O3, and SO2. All Beijing stations have all six measurements;
-London stations have a subset (typically PM2.5, PM10, NO2).
+NO2, CO, O3, and SO2. All Beijing stations have all six measurements
+(35 x 6 = 210 series); the remaining 60 series come from the 24 London
+stations, which record a subset (on average 2-3 measurements per
+station: typically PM2.5 and PM10, sometimes NO2).
 
 This is the only multivariate panel dataset in yohou: each panel
 group (station) contains multiple member columns (measurements),

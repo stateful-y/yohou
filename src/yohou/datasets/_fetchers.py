@@ -175,7 +175,10 @@ def _fetch_dataset(
     -------
     Bunch
         Dictionary-like object with ``frame``, ``feature_names``,
-        ``DESCR``, ``frequency``, ``n_series``, ``filename`` keys.
+        ``DESCR``, ``frequency``, ``n_series``, ``filename`` keys. The
+        ``filename`` value is the path to the cached parquet file on the
+        native path, or the CDN URL of the pre-processed binary on the
+        WASM/Pyodide path.
 
     """
     if _is_wasm():
@@ -1003,7 +1006,11 @@ def fetch_air_quality_classification(
             ``"hazardous"``.
         X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 5 pollutant feature columns
-            (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``).
+            (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``). The
+            station prefix is stripped from these columns to yield bare
+            measurement names. (By contrast,
+            [`fetch_demand_classification`][yohou.datasets._fetchers.fetch_demand_classification]
+            preserves the ``__`` panel column names.)
         feature_names : list of str
             Feature column names (excludes ``"time"``).
         target_names : list of str
@@ -1141,7 +1148,11 @@ def fetch_demand_classification(
         X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 4 state demand columns
             (``"nsw__demand"``, ``"qun__demand"``, ``"sa__demand"``,
-            ``"tas__demand"``).
+            ``"tas__demand"``). These columns keep the ``__`` panel-naming
+            convention because the state abbreviations are meaningful column
+            names. (By contrast,
+            [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification]
+            strips the station prefix from its ``X_actual`` columns.)
         feature_names : list of str
             Feature column names (excludes ``"time"``).
         target_names : list of str
