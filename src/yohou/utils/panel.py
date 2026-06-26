@@ -23,13 +23,13 @@ def inspect_panel(df: pl.DataFrame) -> tuple[list[str], dict[str, list[str]]]:
     Global columns apply to all time series (e.g., single univariate series or
     features common across all panels). Local columns use the __ separator to
     indicate panel data groups following the pattern <GROUP>__<SERIES>
-    (e.g., sales__store_1, sales__store_2).
+    (e.g., store_1__sales, store_2__sales).
 
     Parameters
     ----------
     df : pl.DataFrame
         Input DataFrame with potential mix of global and group columns.
-        Must contain a "time" column (which is ignored in the output).
+        The "time" column, if present, is excluded from the output.
 
     Returns
     -------

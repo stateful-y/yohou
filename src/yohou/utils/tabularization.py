@@ -17,7 +17,9 @@ def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFram
     Parameters
     ----------
     df_time_series : pl.DataFrame
-        Time series DataFrame with columns to be lagged (excluding "time").
+        Time series DataFrame with columns to be lagged. Columns with
+        ``pl.Datetime`` dtype are excluded from lag creation; all other
+        non-Datetime columns receive lag features.
 
     lags : Sequence of int
         Lag values to create. Each value i creates features shifted by i time steps.

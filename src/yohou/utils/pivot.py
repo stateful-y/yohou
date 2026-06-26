@@ -76,7 +76,10 @@ def window_futures(
     -------
     pl.DataFrame
         Wide DataFrame with ``[time, <col>_step_1, ..., <col>_step_H]``.
-        One row per observation time.
+        One row per unique observation time. Duplicate timestamps in
+        ``observation_times`` are deduplicated, so the output contains at
+        most one row per distinct observation time. This diverges from
+        ``window_forecasts``, which preserves duplicate observation times.
 
     Raises
     ------

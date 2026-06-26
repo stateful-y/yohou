@@ -44,7 +44,7 @@ def cast(
     Integer casting behavior:
     - Values are rounded to nearest integer before casting
     - Prevents data loss from truncation (1.9 → 2, not 1)
-    - Follows standard statistical rounding rules
+    - Uses banker's rounding (round-half-to-even): 0.5 rounds to 0, 1.5 rounds to 2, etc.
 
     Columns in df but not in schema are left unchanged, allowing
     preservation of extra columns from model predictions.
