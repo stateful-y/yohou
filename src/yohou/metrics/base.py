@@ -44,6 +44,15 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict). If None,
         all components are included with equal weight.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Notes
     -----
@@ -138,8 +147,9 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             more numeric value columns.
         forecaster : BaseForecaster or None, default=None
             If provided, metadata is extracted directly from the fitted
-            forecaster (``interval_``, ``groups_``, ``forecaster_horizon_``)
-            instead of being re-inferred from ``y_train``.
+            forecaster (``interval_``, ``forecaster_horizon_``) instead of
+            being inferred from ``y_train``. ``groups_`` is always inferred
+            from ``y_train`` regardless of this argument.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -295,6 +305,13 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             Aggregation dimensions.
         agg_fn : str, default="mean"
             Polars aggregation function name ("mean", "sum", "max").
+
+        Notes
+        -----
+        When ``df`` contains a ``"coverage_rate"`` column (interval scorer
+        output), the per-row context dimension values are tiled by the number
+        of unique coverage rates before grouping, so they realign with the
+        coverage-rate-expanded rows.
 
         """
         collapse_steps = "stepwise" in dims
@@ -1139,11 +1156,10 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
         Returns
         -------
-        pl.DataFrame or float or dict
+        pl.DataFrame or float
             Aggregated score(s).  A ``float`` when
-            ``aggregation_method="all"``, a ``pl.DataFrame`` for partial
-            aggregations, or a ``dict`` mapping coverage rates to scores
-            for interval scorers.
+            ``aggregation_method="all"`` and a ``pl.DataFrame`` for partial
+            aggregations.
 
         Raises
         ------
@@ -1362,6 +1378,14 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         float or pl.DataFrame
             Aggregated metric score.
 
+        Warns
+        -----
+        UserWarning
+            If ``step_weighter`` is set but the scoring context has no
+            forecasting-step axis, or ``vintage_weighter`` is set but the
+            scoring context has no ``vintage_time``; the corresponding
+            weights have no effect.
+
         """
         check_is_fitted(self, ["_is_fitted"])
 
@@ -1435,6 +1459,15 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict). If None,
         all components are included with equal weight.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     See Also
     --------
@@ -1627,6 +1660,14 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         -------
         float or pl.DataFrame
             Aggregated metric score.
+
+        Warns
+        -----
+        UserWarning
+            If ``step_weighter`` is set but the scoring context has no
+            forecasting-step axis, or ``vintage_weighter`` is set but the
+            scoring context has no ``vintage_time``; the corresponding
+            weights have no effect.
 
         """
         check_is_fitted(self, ["_is_fitted"])
@@ -1954,6 +1995,14 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         float or pl.DataFrame
             Aggregated metric score.
 
+        Warns
+        -----
+        UserWarning
+            If ``step_weighter`` is set but the scoring context has no
+            forecasting-step axis, or ``vintage_weighter`` is set but the
+            scoring context has no ``vintage_time``; the corresponding
+            weights have no effect.
+
         """
         check_is_fitted(self, ["_is_fitted"])
 
@@ -2003,7 +2052,13 @@ class BaseHardLabelScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
     zero_division : float, default=0.0
         Value to return when a metric denominator is zero.
     aggregation_method : list of str or str, default="all"
-        Which dimensions to aggregate.
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter or filter with weights.
     components : list of str, dict of str to float, or None, default=None
@@ -2285,11 +2340,23 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         Class averaging strategy: ``"macro"`` (unweighted mean across
         classes) or ``"weighted"`` (support-weighted mean).
     aggregation_method : list of str or str, default="all"
-        Which dimensions to aggregate.
+        Dimensions to aggregate over. Options:
+        - "stepwise": Aggregate across forecasting steps.
+        - "vintagewise": Aggregate across vintages (observed times).
+        - "componentwise": Aggregate across components, return per-timestep DataFrame
+        - "groupwise": Aggregate across panel groups (panel data only)
+        - "all": Aggregate across all dimensions (returns scalar). Same as
+          ["stepwise", "vintagewise", "componentwise", "groupwise"].
     groups : list of str, dict of str to float, or None, default=None
         Panel group filter or filter with weights.
     components : list of str, dict of str to float, or None, default=None
         Component filter or filter with weights.
+
+    Notes
+    -----
+    Panel-aware (dict) weights for ``time_weighter`` and ``step_weighter``
+    are not supported by ranking scorers and are ignored with a
+    ``UserWarning``; only flat array weights apply.
 
     """
 
@@ -2375,6 +2442,16 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         -------
         float or pl.DataFrame
             Aggregated metric score.
+
+        Warns
+        -----
+        UserWarning
+            If ``step_weighter`` is set but the scoring context has no
+            forecasting-step axis, or ``vintage_weighter`` is set but the
+            scoring context has no ``vintage_time``; the corresponding
+            weights have no effect. Also raised when ``time_weighter`` or
+            ``step_weighter`` resolves to panel-aware (dict) weights, which
+            ranking scorers do not support and silently ignore.
 
         """
         check_is_fitted(self, ["_is_fitted"])

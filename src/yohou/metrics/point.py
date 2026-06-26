@@ -356,9 +356,10 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
     The RootMeanSquaredScaledError is defined as:
 
-    $$\\text{RMSSE} = \\sqrt{\\frac{1}{h}\\sum_{t=1}^{h}\\left(\\frac{y_t - \\hat{y}_t}{\\text{scale}}\\right)^2}$$
+    $$\\text{RMSSE} = \\sqrt{\\frac{1}{h}\\sum_{t=1}^{h}\\frac{(y_t - \\hat{y}_t)^2}{\\text{scale}_j}}$$
 
-    where the scale is computed from training data as:
+    where the scale is the mean squared seasonal-naive error computed from
+    training data as:
 
     $$\\text{scale}_j = \\frac{1}{T-m}\\sum_{t=m+1}^{T}(y_{t,j} - y_{t-m,j})^2$$
 
@@ -504,6 +505,12 @@ class RootMeanSquaredScaledError(BasePointScorer):
         ValueError
             If y_train is None or seasonality > len(y_train) - 1.
 
+        Warns
+        -----
+        UserWarning
+            If any training column has zero variance for the given
+            seasonality; a scale floor of 1e-10 is used instead.
+
         """
         # Call parent fit() to validate parameters (aggregation_method, groups, etc.)
         super().fit(y_train, forecaster=forecaster, **params)
@@ -618,7 +625,7 @@ class MeanAbsolutePercentageError(BasePointScorer):
     - MAPE is scale-independent and useful for comparing forecasts across different series
     - Asymmetric: penalizes over-predictions more heavily than under-predictions
     - Undefined when actual values are zero; epsilon parameter prevents division by zero
-    - Values are expressed as percentages (0-100 scale)
+    - Values are expressed as percentages; they are unbounded above (unlike sMAPE which is bounded to 200)
     - May be sensitive to very small actual values even with epsilon protection
 
     See Also
@@ -934,6 +941,12 @@ class MeanAbsoluteScaledError(BasePointScorer):
         ValueError
             If y_train is None or seasonality > len(y_train) - 1.
 
+        Warns
+        -----
+        UserWarning
+            If any training column has zero variance for the given
+            seasonality; a scale floor of 1e-10 is used instead.
+
         """
         # Call parent fit() to validate parameters (aggregation_method, groups, etc.)
         super().fit(y_train, forecaster=forecaster, **params)
@@ -1010,6 +1023,9 @@ class MedianAbsoluteError(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1171,6 +1187,15 @@ class MaxAbsoluteError(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1274,6 +1299,9 @@ class R2Score(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1428,6 +1456,9 @@ class MeanDirectionalAccuracy(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1471,7 +1502,9 @@ class MeanDirectionalAccuracy(BasePointScorer):
     - MDA = 0.5 is equivalent to random guessing for direction
     - MDA = 0.0 means all directional predictions were wrong
     - Requires at least 2 time steps (N-1 comparisons from ``.diff()``)
-    - Returns 0.0 when fewer than 2 rows are available
+    - Returns 0.0 when fewer than 2 rows are available and
+      ``aggregation_method='all'``; raises ``ValueError`` for all other
+      aggregation settings
     - Overrides ``score()`` because computing direction requires ``.diff()``
       on the full columns, not per-row errors
 

@@ -38,6 +38,15 @@ class LogLoss(BaseClassProbaScorer):
         Panel group filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -147,6 +156,15 @@ class BrierScore(BaseClassProbaScorer):
         Panel group filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict). See `BaseClassProbaScorer`.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -270,19 +288,19 @@ class RankedProbabilityScore(BaseClassProbaScorer):
     >>> from yohou.metrics import RankedProbabilityScore
     >>> y_true = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
-    ...     "weather": ["sunny", "rainy", "cloudy"],
+    ...     "severity": ["low", "high", "medium"],
     ... })
     >>> y_pred = pl.DataFrame({
     ...     "vintage_time": [datetime(2019, 12, 31)] * 3,
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
-    ...     "weather_proba_sunny": [0.7, 0.1, 0.2],
-    ...     "weather_proba_rainy": [0.2, 0.8, 0.1],
-    ...     "weather_proba_cloudy": [0.1, 0.1, 0.7],
+    ...     "severity_proba_low": [0.7, 0.1, 0.2],
+    ...     "severity_proba_medium": [0.2, 0.1, 0.7],
+    ...     "severity_proba_high": [0.1, 0.8, 0.1],
     ... })
-    >>> scorer = RankedProbabilityScore()
+    >>> scorer = RankedProbabilityScore(class_order=["low", "medium", "high"])
     >>> _ = scorer.fit(y_true)
     >>> scorer.score(y_true, y_pred)  # doctest: +ELLIPSIS
-    0.041...
+    0.033...
 
     Notes
     -----

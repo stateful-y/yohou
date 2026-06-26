@@ -371,7 +371,10 @@ class IntervalScore(BaseIntervalScorer):
     - Lower is better
     - Penalizes both wide intervals and poor coverage
     - Scale-dependent (same units as target)
-    - Also known as "Winkler score" in literature
+    - Related to the Winkler score; here ``α`` denotes the nominal coverage
+      rate, so the penalty denominator is the coverage rate rather than the
+      significance level ``1 - coverage_rate`` used in the classical
+      Winkler/interval-score formulation (Gneiting & Raftery 2007)
     - Widely used in forecasting competitions (M4, M5)
 
     See Also
@@ -638,7 +641,7 @@ class CalibrationError(BaseIntervalScorer):
     - Lower is better (0 = perfect calibration)
     - Aggregates coverage errors across all rates
     - Scale-independent (always between 0 and 1)
-    - Requires at least 2 coverage rates for meaningful metric
+    - Raises ValueError if fewer than 2 coverage rates are provided
     - Missing values are excluded from computation
 
     See Also

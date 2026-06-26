@@ -388,6 +388,15 @@ class ROCAuC(BaseRankingScorer):
         Panel group filter or filter with weights.
     components : list of str, dict of str to float, or None, default=None
         Component filter or filter with weights.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -452,6 +461,15 @@ class PRAuC(BaseRankingScorer):
         Panel group filter or filter with weights.
     components : list of str, dict of str to float, or None, default=None
         Component filter or filter with weights.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------

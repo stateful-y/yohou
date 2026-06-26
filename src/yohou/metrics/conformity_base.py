@@ -63,10 +63,23 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         Returns
         -------
         lower_quantile : float
-            Lower quantile value.
+            Lower quantile value. When ``coverage_rate == 0`` this is the
+            median (quantile 0.5) of the scores.
 
         upper_quantile : float
-            Upper quantile value.
+            Upper quantile value. When ``coverage_rate == 0`` this is the
+            median (quantile 0.5) of the scores.
+
+        Raises
+        ------
+        ValueError
+            If conformity_scores is empty.
+
+        Notes
+        -----
+        When ``coverage_rate == 0`` both bounds are set to the median of the
+        scores, producing a degenerate (zero-width) interval rather than an
+        alpha-derived quantile.
 
         """
         # Convert to numpy array for quantile computation
