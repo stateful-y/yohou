@@ -694,8 +694,11 @@ def _predict(
     Returns
     -------
     pl.DataFrame
-        Predictions deduplicated by ``"time"`` (keeping the last
-        occurrence) and sorted by ``"time"``.
+        Predictions deduplicated on ``("vintage_time", "time")`` when a
+        ``"vintage_time"`` column is present (otherwise on ``"time"``),
+        keeping the last occurrence per unique key, and sorted by
+        ``("time", "vintage_time")``. Rows that share a ``"time"`` but
+        differ in ``"vintage_time"`` are all preserved.
     """
     predict_func_params = {} if predict_func_params is None else dict(predict_func_params)
 
@@ -759,8 +762,10 @@ def _score(
 ) -> float | dict[str, float | str] | str:
     """Compute the score(s) of a forecaster from pre-computed predictions.
 
-    Will return a dict of floats if ``scorer`` is a ``_MultiMetricScorer``,
-    otherwise a single float is returned.
+    Returns a float for single scorers, or a dict of ``{name: float}`` if
+    ``scorer`` is a ``_MultimetricScorer``.  When ``error_score != "raise"``
+    and scoring raises an exception, a string traceback is returned instead
+    (or stored per-metric for the multimetric case).
 
     Parameters
     ----------

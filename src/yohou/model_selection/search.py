@@ -89,23 +89,6 @@ def _search_forecaster_has(attr):
         A function that checks if the best_forecaster_ has the attribute.
         The returned function accepts a SearchCV instance and returns bool.
 
-    Examples
-    --------
-    >>> # Check for point prediction support via forecaster_type tag
-    >>> def predict(self, forecasting_horizon=1):
-    ...     return self.best_forecaster_.predict(forecasting_horizon)
-    >>> predict = available_if(_search_forecaster_has("point"))(predict)
-    >>>
-    >>> # Check for specific method existence
-    >>> def rewind(self, y, X_actual=None):
-    ...     return self.best_forecaster_.rewind(y, X_actual)
-    >>> rewind = available_if(_search_forecaster_has("rewind"))(rewind)
-    >>>
-    >>> # Check for interval prediction support
-    >>> def predict_interval(self, forecasting_horizon=1, coverage_rates=None):
-    ...     return self.best_forecaster_.predict_interval(...)
-    >>> predict_interval = available_if(_search_forecaster_has("interval"))(predict_interval)
-
     """
 
     def check(self):
@@ -203,7 +186,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
         A dict with keys as column headers and values as columns, that can be
-        imported into a pandas ``DataFrame``.
+        converted to a ``polars.DataFrame`` (e.g. via ``pl.from_dict``).
 
         For instance the below given table::
 
@@ -1151,7 +1134,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     ) -> pl.DataFrame:
         """Observe new data and generate point forecasts.
 
-        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
+        Incrementally observes ``y`` in stride-sized steps and emits one
+        prediction per step, returning all predictions concatenated.
 
         Parameters
         ----------
@@ -1217,8 +1201,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     ) -> pl.DataFrame:
         """Observe new data and generate interval forecasts.
 
-        Equivalent to calling ``observe(y, X_actual)`` then
-        ``predict_interval()``.
+        Incrementally observes ``y`` in stride-sized steps and emits one
+        interval prediction per step, returning all predictions concatenated.
 
         Parameters
         ----------
@@ -1468,7 +1452,7 @@ class GridSearchCV(BaseSearchCV):
 
         Examples::
 
-            refit = True  # Use single scorer or first scorer for multi-metric
+            refit = True  # Valid for a single scorer only; for multi-metric, pass a scorer name string
             refit = "mae"  # For multi-metric: use 'mae' scorer to select best
             refit = False  # Don't refit, only evaluate
             refit = lambda cv_results: cv_results["rank_test_mae"].argmin()
@@ -1478,7 +1462,8 @@ class GridSearchCV(BaseSearchCV):
 
         Possible inputs for cv are:
 
-        - None, to use the default 5-fold expanding window splitter
+        - None, to use a 5-fold ``ExpandingWindowSplitter`` whose
+          ``test_size`` equals the forecasting horizon passed to ``fit``
         - int, to specify the number of folds in an
           ``ExpandingWindowSplitter``.
         - An object to be used as a cross-validation generator (must have
@@ -1534,7 +1519,7 @@ class GridSearchCV(BaseSearchCV):
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
         A dict with keys as column headers and values as columns, that can be
-        imported into a pandas ``DataFrame``.
+        converted to a ``polars.DataFrame`` (e.g. via ``pl.from_dict``).
 
         For instance the below given table::
 
@@ -1758,7 +1743,7 @@ class GridSearchCV(BaseSearchCV):
 class RandomizedSearchCV(BaseSearchCV):
     """Randomized search on hyperparameters.
 
-    Important members are fit, predict, predict_interval, observe, and score.
+    Important members are fit, predict, predict_interval, observe, and rewind.
 
     RandomizedSearchCV implements a "fit" method that samples ``n_iter``
     parameter settings from the specified distributions using time series
@@ -1868,7 +1853,7 @@ class RandomizedSearchCV(BaseSearchCV):
 
         Examples::
 
-            refit = True  # Use single scorer or first scorer for multi-metric
+            refit = True  # Valid for a single scorer only; for multi-metric, pass a scorer name string
             refit = "mae"  # For multi-metric: use 'mae' scorer to select best
             refit = False  # Don't refit, only evaluate
             refit = lambda cv_results: cv_results["rank_test_mae"].argmin()
@@ -1878,7 +1863,8 @@ class RandomizedSearchCV(BaseSearchCV):
 
         Possible inputs for cv are:
 
-        - None, to use the default 5-fold expanding window splitter
+        - None, to use a 5-fold ``ExpandingWindowSplitter`` whose
+          ``test_size`` equals the forecasting horizon passed to ``fit``
         - int, to specify the number of folds in an
           ``ExpandingWindowSplitter``.
         - An object to be used as a cross-validation generator (must have
@@ -1940,7 +1926,7 @@ class RandomizedSearchCV(BaseSearchCV):
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
         A dict with keys as column headers and values as columns, that can be
-        imported into a pandas ``DataFrame``.
+        converted to a ``polars.DataFrame`` (e.g. via ``pl.from_dict``).
 
         For instance the below given table::
 

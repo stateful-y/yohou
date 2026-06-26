@@ -86,7 +86,8 @@ def cross_validate(
     return_indices : bool, default=False
         Whether to include train/test indices per fold.
     error_score : float or "raise", default=np.nan
-        Value to assign if an error occurs during fitting.
+        Value to assign if an error occurs during fitting or scoring.
+        If ``"raise"``, the error is re-raised immediately.
 
     Returns
     -------
@@ -107,6 +108,10 @@ def cross_validate(
         ``"forecaster"`` (list of fitted forecasters), and/or
         ``"indices"`` (dict with ``"train"`` and ``"test"`` lists
         of ``np.ndarray``).
+
+        Scores from lower-is-better scorers (e.g. MAE, RMSE) are negated
+        so that higher values always indicate better performance,
+        following the sklearn sign convention.
     """
     scorers: BaseScorer | _MultimetricScorer
     if isinstance(scoring, dict):
@@ -232,11 +237,14 @@ def cross_val_score(
         are rejected; use ``cross_validate`` for multi-metric
         evaluation.
     cv : int, BaseSplitter, or None, default=5
-        Cross-validation splitting strategy.
+        Cross-validation splitting strategy. ``None`` or int creates
+        an ``ExpandingWindowSplitter``.
     predict_forecasting_horizon : int or None, default=None
         Override forecasting horizon for ``observe_predict``.
+        ``None`` uses the forecaster's fit-time default.
     predict_stride : int or None, default=None
         Override stride for ``observe_predict``.
+        ``None`` uses the forecaster's default.
     n_jobs : int or None, default=None
         Number of parallel jobs.
     verbose : int, default=0
@@ -244,13 +252,18 @@ def cross_val_score(
     pre_dispatch : str or int, default="2*n_jobs"
         Controls pre-dispatched jobs for parallel execution.
     error_score : float or "raise", default=np.nan
-        Value to assign if an error occurs during fitting.
+        Value to assign if an error occurs during fitting or scoring.
+        If ``"raise"``, the error is re-raised immediately.
 
     Returns
     -------
     pl.DataFrame
         DataFrame with columns ``split`` (int, 0-indexed fold
         identifier) and ``score`` (float, test score per fold).
+
+        Scores from lower-is-better scorers (e.g. MAE, RMSE) are negated
+        so that higher values always indicate better performance,
+        following the sklearn sign convention.
     """
     if isinstance(scoring, dict):
         raise ValueError(
@@ -325,8 +338,10 @@ def cross_val_predict(
     predict_stride : int or None, default=None
         Override stride for ``observe_predict``.
     coverage_rates : list of float or None, default=None
-        Coverage rates for interval predictions.  Only used when
-        ``method="predict_interval"``.
+        Coverage rates injected into ``forecaster.fit()`` (whenever not
+        ``None``, regardless of ``method``) and used in the prediction
+        step when ``method="predict_interval"``.  Pass ``None`` with
+        other methods.
     n_jobs : int or None, default=None
         Number of parallel jobs.
     verbose : int, default=0
@@ -342,6 +357,12 @@ def cross_val_predict(
     pl.DataFrame
         Concatenated predictions from all folds with an integer
         ``"split"`` column identifying the originating fold.
+
+    Notes
+    -----
+    Unlike ``cross_validate`` and ``cross_val_score``, there is no
+    ``error_score`` parameter: fitting and prediction errors always
+    raise rather than being replaced by a fallback value.
     """
     valid_methods = {"predict", "predict_interval", "predict_class_proba"}
     if method not in valid_methods:
