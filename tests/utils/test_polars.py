@@ -21,32 +21,21 @@ class TestCast:
         assert result.schema["a"] == pl.Int32
         assert result["a"].to_list() == [1, 2, 4, 5]  # Rounds: 1.2→1, 2.5→2, 3.7→4, 4.9→5
 
-    def test_cast_float_to_int8(self):
-        """Test casting float to Int8 (small integer type)."""
-        df = pl.DataFrame({"value": [10.3, 20.7, 30.4]})
-        schema = {"value": pl.Int8}
-        result = cast(df, schema)
+    @pytest.mark.parametrize(
+        ("target_dtype", "values", "expected"),
+        [
+            (pl.Int8, [10.3, 20.7, 30.4], [10, 21, 30]),
+            (pl.Int16, [100.5, 200.9, 300.1], [100, 201, 300]),
+            (pl.Int64, [1000.5, 2000.9, 3000.1], [1000, 2001, 3000]),
+        ],
+    )
+    def test_cast_float_to_integer_widths(self, target_dtype, values, expected):
+        """Test casting float to each integer width applies the same rounding."""
+        df = pl.DataFrame({"value": values})
+        result = cast(df, {"value": target_dtype})
 
-        assert result.schema["value"] == pl.Int8
-        assert result["value"].to_list() == [10, 21, 30]
-
-    def test_cast_float_to_int16(self):
-        """Test casting float to Int16."""
-        df = pl.DataFrame({"value": [100.5, 200.9, 300.1]})
-        schema = {"value": pl.Int16}
-        result = cast(df, schema)
-
-        assert result.schema["value"] == pl.Int16
-        assert result["value"].to_list() == [100, 201, 300]
-
-    def test_cast_float_to_int64(self):
-        """Test casting float to Int64."""
-        df = pl.DataFrame({"value": [1000.5, 2000.9, 3000.1]})
-        schema = {"value": pl.Int64}
-        result = cast(df, schema)
-
-        assert result.schema["value"] == pl.Int64
-        assert result["value"].to_list() == [1000, 2001, 3000]
+        assert result.schema["value"] == target_dtype
+        assert result["value"].to_list() == expected
 
     def test_cast_float64_to_float32(self):
         """Test casting Float64 to Float32 (no rounding)."""
@@ -130,7 +119,7 @@ class TestCast:
         result = cast(df, schema)
 
         assert result.schema["a"] == pl.Int32
-        # Polars round() uses "half away from zero": -2.5→-2 (not -3)
+        # Polars uses banker's rounding (round-half-to-even): -2.5→-2 (even), not -3.
         assert result["a"].to_list() == [-1, -2, -4, -5]
 
     def test_cast_with_nulls(self):

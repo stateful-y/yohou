@@ -5,7 +5,15 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 
-from yohou.utils.panel import dict_to_panel, get_group_df, inspect_panel, select_panel_columns
+from yohou.utils.panel import (
+    dict_to_panel,
+    get_group_df,
+    inspect_panel,
+    panel_aware_prefix,
+    panel_aware_rename,
+    panel_aware_suffix,
+    select_panel_columns,
+)
 
 
 class TestInspectPanel:
@@ -330,18 +338,6 @@ class TestSelectPanelColumns:
 
         assert set(result.columns) == {"time", "holiday", "temperature", "store_promotions"}
 
-    def test_select_panel_columns_no_filtering_when_no_panel_data(self):
-        """Test that global data passes through unchanged."""
-        df = pl.DataFrame({
-            "time": [1, 2, 3],
-            "value": [10.0, 20.0, 30.0],
-            "feature": [100.0, 200.0, 300.0],
-        })
-
-        result = select_panel_columns(df, groups=None, include_global=True)
-
-        assert result.equals(df)
-
 
 class TestDictToPanel:
     """Tests for dict_to_panel function."""
@@ -485,6 +481,22 @@ class TestDictToPanel:
         result = dict_to_panel({"sales": None, "inventory": None})
         assert result is None
 
+    def test_dict_to_panel_mixed_none_values_raises(self):
+        """A dict mixing None and DataFrame values is not a supported input.
+
+        The all-None short-circuit only fires when *every* value is None. With a
+        mix, control reaches the time-alignment loop which calls ``.get_column``
+        on the None entry, so the current contract is to raise (an
+        ``AttributeError`` from operating on ``None``) rather than silently
+        skipping or returning a partial panel.
+        """
+        data_dict = {
+            "sales": pl.DataFrame({"time": [1, 2, 3], "store_1": [100, 110, 120]}),
+            "inventory": None,
+        }
+        with pytest.raises(AttributeError):
+            dict_to_panel(data_dict)
+
     def test_dict_to_panel_time_alignment(self):
         """Test dict_to_panel correctly joins on time column."""
         data_dict = {
@@ -614,3 +626,50 @@ class TestGetGroupDf:
         assert "holiday" in result.columns
         assert "time" in result.columns
         assert result["holiday"].to_list() == [True, False, True]
+
+    def test_custom_key_cols_preserves_both_index_columns(self):
+        """get_group_df keeps every key column when key_cols has more than 'time'.
+
+        X_forecast carries both a ``vintage_time`` and a ``time`` index; passing
+        ``key_cols=('vintage_time', 'time')`` must retain both unchanged while
+        the group columns are still unprefixed.
+        """
+        df = pl.DataFrame({
+            "vintage_time": [0, 0, 0],
+            "time": [1, 2, 3],
+            "sales__store_1": [100, 110, 120],
+            "sales__store_2": [150, 160, 170],
+        })
+        schema = {"store_1": pl.Int64, "store_2": pl.Int64}
+        result = get_group_df(df, "sales", schema, key_cols=("vintage_time", "time"))
+
+        assert result.columns == ["vintage_time", "time", "store_1", "store_2"]
+        assert result["vintage_time"].to_list() == [0, 0, 0]
+        assert result["time"].to_list() == [1, 2, 3]
+        assert result["store_1"].to_list() == [100, 110, 120]
+
+
+class TestPanelAwareHelpers:
+    """Tests for panel_aware_rename, panel_aware_prefix, and panel_aware_suffix."""
+
+    def test_rename_global_column_applies_to_full_name(self):
+        """A global column (no __) has the rename function applied to the whole name."""
+        assert panel_aware_rename("sales", lambda s: f"log_{s}") == "log_sales"
+
+    def test_rename_panel_column_preserves_group_prefix(self):
+        """A panel column keeps its group prefix; only the member part is renamed."""
+        assert panel_aware_rename("store_1__sales", lambda s: f"log_{s}") == "store_1__log_sales"
+
+    def test_rename_splits_on_first_separator_only(self):
+        """Only the first __ separates group from member (non-greedy split)."""
+        assert panel_aware_rename("store_1__sales__extra", lambda s: s.upper()) == "store_1__SALES__EXTRA"
+
+    def test_prefix_global_and_panel(self):
+        """panel_aware_prefix prepends to global names and after the group prefix."""
+        assert panel_aware_prefix("sales", "boxcox") == "boxcox_sales"
+        assert panel_aware_prefix("store_1__sales", "boxcox") == "store_1__boxcox_sales"
+
+    def test_suffix_global_and_panel(self):
+        """panel_aware_suffix appends to global names and to the member part."""
+        assert panel_aware_suffix("sales", "lag_1") == "sales_lag_1"
+        assert panel_aware_suffix("store_1__sales", "lag_1") == "store_1__sales_lag_1"

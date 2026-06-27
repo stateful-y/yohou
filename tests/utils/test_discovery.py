@@ -27,8 +27,9 @@ class TestAllDisplays:
     """Tests for all_displays discovery function."""
 
     def test_all_displays(self):
-        """Test all_displays returns empty list (no displays currently)."""
+        """Test all_displays returns an empty list (no displays currently)."""
         displays = all_displays()
+        assert isinstance(displays, list)
         assert len(displays) == 0
 
 
@@ -127,18 +128,6 @@ class TestIsCheckedFunction:
 
         my_func.__module__ = "yohou.utils.panel"
         assert _is_checked_function(my_func) is True
-
-
-class TestAllDisplaysContent:
-    """Tests for all_displays content validation."""
-
-    def test_displays_returns_list(self):
-        """all_displays returns a list of tuples."""
-        displays = all_displays()
-        assert isinstance(displays, list)
-        for item in displays:
-            assert isinstance(item, tuple)
-            assert len(item) == 2
 
 
 class TestAllFunctionsContent:

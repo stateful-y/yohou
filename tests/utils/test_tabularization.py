@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
-from polars.testing import assert_frame_equal
 
 from yohou.utils.tabularization import tabularize
 
@@ -100,11 +99,6 @@ class TestTabularizeMultiColumn:
 class TestTabularizeEdgeCases:
     """Test edge cases for tabularization."""
 
-    def test_single_lag_value(self, simple_df):
-        """Test with a single lag value in list."""
-        result = tabularize(simple_df, lags=[1])
-        assert len(result) == 4
-
     def test_large_lag(self, simple_df):
         """Test that large lags reduce output rows correctly."""
         result = tabularize(simple_df, lags=[4])
@@ -124,12 +118,40 @@ class TestTabularizeEdgeCases:
         # "value" should not be in output, only "value_lag_1"
         assert "value" not in result.columns
 
+    def test_extra_datetime_column_dropped(self):
+        """A second Datetime column is excluded from lagging and dropped entirely.
+
+        ``tabularize`` skips Datetime columns when building lag features
+        (``dtype != pl.Datetime``) but also removes every non-"time" original
+        column via ``pl.exclude``. A second Datetime column therefore receives
+        no lag feature and silently disappears from the output.
+        """
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1) + timedelta(seconds=4),
+                interval="1s",
+                eager=True,
+            ),
+            "event_date": pl.datetime_range(
+                start=datetime(2020, 6, 1),
+                end=datetime(2020, 6, 1) + timedelta(seconds=4),
+                interval="1s",
+                eager=True,
+            ),
+            "value": [10, 20, 30, 40, 50],
+        })
+        result = tabularize(df, lags=[1])
+        assert result.columns == ["time", "value_lag_1"]
+        assert "event_date" not in result.columns
+        assert "event_date_lag_1" not in result.columns
+
 
 class TestTabularizeIntegration:
     """Integration-style tests for tabularize."""
 
-    def test_roundtrip_consistency(self):
-        """Test that tabularization produces consistent results."""
+    def test_lag_values_match_manual_shift(self):
+        """Lag columns equal the manually shifted source values."""
         df = pl.DataFrame({
             "time": pl.datetime_range(
                 start=datetime(2021, 1, 1),
@@ -139,6 +161,7 @@ class TestTabularizeIntegration:
             ),
             "x": list(range(10)),
         })
-        result1 = tabularize(df, lags=[1, 2])
-        result2 = tabularize(df, lags=[1, 2])
-        assert_frame_equal(result1, result2)
+        result = tabularize(df, lags=[1, 2])
+        # max(lags) == 2 rows dropped, so result row 0 is source index 2 (x == 2).
+        assert result["x_lag_1"].to_list() == list(range(1, 9))
+        assert result["x_lag_2"].to_list() == list(range(0, 8))

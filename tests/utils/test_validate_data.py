@@ -167,6 +167,65 @@ class TestValidateForecasterData:
         assert "store_1" in forecaster.local_y_schema_
         assert "store_2" in forecaster.local_y_schema_
 
+    def test_validate_data_panel_observe_with_X_actual(self):
+        """Panel observe validates and reconstructs X_actual via the local schema.
+
+        Exercises the reset=False panel branch of validate_forecaster_data that
+        validates ``local_X_actual_schema_`` (and shared) when ``groups_`` is set.
+        """
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 15),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "sales__store_1": range(15),
+            "sales__store_2": range(15, 30),
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "sales__feat_1": [float(i) for i in range(15)],
+            "sales__feat_2": [float(i) for i in range(15, 30)],
+        })
+
+        forecaster = SeasonalNaive(seasonality=2)
+        forecaster.fit(y[:10], X[:10], forecasting_horizon=2)
+        assert forecaster.local_X_actual_schema_ == {"feat_1": pl.Float64, "feat_2": pl.Float64}
+
+        forecaster.observe(y[10:], X[10:])
+
+        # Panel X_actual buffer is stored as a per-group dict with unprefixed columns.
+        assert isinstance(forecaster._X_t_observed, dict)
+        assert forecaster._X_t_observed["sales"].columns == ["time", "feat_1", "feat_2"]
+
+    def test_validate_data_panel_observe_X_actual_schema_mismatch_raises(self):
+        """Panel observe with a mismatched X_actual schema raises on the missing column."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 15),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "sales__store_1": range(15),
+            "sales__store_2": range(15, 30),
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "sales__feat_1": [float(i) for i in range(15)],
+            "sales__feat_2": [float(i) for i in range(15, 30)],
+        })
+
+        forecaster = SeasonalNaive(seasonality=2)
+        forecaster.fit(y[:10], X[:10], forecasting_horizon=2)
+
+        X_bad = X[10:].rename({"sales__feat_1": "sales__wrong"})
+        with pytest.raises(ColumnNotFoundError):
+            forecaster.observe(y[10:], X_bad)
+
     def test_validate_data_panel_observe(self):
         """Test validate_data with panel data in observe context."""
         time = pl.datetime_range(
@@ -230,14 +289,18 @@ class TestValidateForecasterData:
             forecaster.fit(y, X_actual=None, forecasting_horizon=3)
 
     def test_validate_data_preserves_column_order(self):
-        """Test that validate_data ensures time column is handled correctly."""
+        """validate_data preserves the input column order in the observation buffer.
+
+        The schema-validated buffer keeps columns in their incoming order
+        ("time" first here), so the stored ``_y_observed`` frame has exactly
+        ``["time", "target"]`` rather than an arbitrary or alphabetised order.
+        """
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 10),
             interval="1d",
             eager=True,
         )
-        # Create with columns in expected order
         y = pl.DataFrame({
             "time": time,
             "target": range(10),
@@ -246,9 +309,7 @@ class TestValidateForecasterData:
         forecaster = SeasonalNaive(seasonality=2)
         forecaster.fit(y, forecasting_horizon=2)
 
-        # Verify that forecaster stores observations correctly
-        assert "time" in forecaster._y_observed.columns
-        assert "target" in forecaster._y_observed.columns
+        assert forecaster._y_observed.columns == ["time", "target"]
         assert forecaster._y_observed.shape[0] == 2  # observation_horizon = seasonality = 2
 
 
@@ -361,6 +422,32 @@ class TestValidateTransformerData:
         # Memory should be rewound to observation_horizon rows
         assert transformer._X_observed.shape[0] == transformer.observation_horizon
 
+    def test_validate_transformer_observe_continuity_consecutive_passes(self, sample_transformer_data):
+        """observe() runs the check_continuity=True branch and accepts a consecutive window.
+
+        ``transform()`` deliberately disables the continuity check
+        (check_continuity=False); the buffered-vs-new continuity validation in
+        validate_transformer_data is reached through ``observe()`` instead.
+        """
+        X = sample_transformer_data
+        transformer = LagTransformer(lag=[1, 2])
+        transformer.fit(X[:10])
+
+        # Buffer ends at the last fitted timestamp; the next slice continues it.
+        transformer.observe(X[10:13])
+
+        assert transformer._X_observed.shape[0] == transformer.observation_horizon
+
+    def test_validate_transformer_observe_gap_raises(self, sample_transformer_data):
+        """observe() with a non-consecutive window raises a continuity gap error."""
+        X = sample_transformer_data
+        transformer = LagTransformer(lag=[1, 2])
+        transformer.fit(X[:10])
+
+        # Skip rows so the new window starts after a gap relative to the buffer.
+        with pytest.raises(ValueError, match="Gap detected"):
+            transformer.observe(X[12:15])
+
 
 class TestValidateScorerData:
     """Tests for validate_scorer_data."""
@@ -374,8 +461,9 @@ class TestValidateScorerData:
         scorer.fit(y_true)
         score = scorer.score(y_true, y_pred)
 
-        # Should return a scalar or DataFrame depending on aggregation
-        assert isinstance(score, float | int | pl.DataFrame)
+        # sample_scorer_data has identical y_true and y_pred, so MAE is exactly 0.
+        assert isinstance(score, float)
+        assert score == pytest.approx(0.0)
 
     def test_validate_scorer_missing_column(self, sample_scorer_data):
         """Test that scorer validation checks column presence."""
@@ -428,7 +516,12 @@ class TestValidateScorerData:
             scorer.score(y_true, y_pred)
 
     def test_validate_scorer_none_inputs(self):
-        """Test that scorer validation rejects None inputs."""
+        """Test that scorer.fit and scorer.score reject None inputs.
+
+        Each None scenario gets its own ``pytest.raises`` block so the asserted
+        call is actually reached: a single block would short-circuit on the
+        first raising statement, leaving any later statement unverified.
+        """
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 10),
@@ -436,65 +529,26 @@ class TestValidateScorerData:
             eager=True,
         )
         y_valid = pl.DataFrame({"time": time, "target": range(10)})
-        scorer = MeanAbsoluteError()
 
+        # fit(None) is rejected.
         with pytest.raises(ValueError, match="Cannot be None"):
-            scorer.fit(None)
+            MeanAbsoluteError().fit(None)
+
+        # score(y_true=None, ...) is rejected after a successful fit.
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_valid)
+        with pytest.raises(ValueError, match="cannot be None"):
             scorer.score(None, y_valid)
 
+        # score(..., y_pred=None) is rejected after a successful fit.
+        scorer = MeanAbsoluteError()
+        scorer.fit(y_valid)
         with pytest.raises(ValueError, match="cannot be None"):
-            scorer.fit(y_valid)
             scorer.score(y_valid, None)
 
-    def test_point_scorer_strips_interval_columns(self):
-        """Point scorer validation strips _lower_/_upper_ columns from y_pred."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 10),
-            interval="1d",
-            eager=True,
-        )
-        y_true = pl.DataFrame({
-            "time": time,
-            "target": list(range(10)),
-        })
-        # y_pred with extra interval columns (as in mixed multimetric scenarios)
-        y_pred = pl.DataFrame({
-            "vintage_time": time,
-            "time": time,
-            "target": [float(x) for x in range(10)],
-            "target_lower_0.9": [float(x - 1) for x in range(10)],
-            "target_upper_0.9": [float(x + 1) for x in range(10)],
-        })
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        # Should not raise despite extra _lower_/_upper_ columns
-        score = scorer.score(y_true, y_pred)
-        assert isinstance(score, float | int)
-
-    def test_point_scorer_no_extra_columns_unchanged(self):
-        """Point scorer with matching columns does not strip anything."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 10),
-            interval="1d",
-            eager=True,
-        )
-        y_true = pl.DataFrame({
-            "time": time,
-            "target": list(range(10)),
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": time,
-            "time": time,
-            "target": [float(x) for x in range(10)],
-        })
-
-        scorer = MeanAbsoluteError()
-        scorer.fit(y_true)
-        score = scorer.score(y_true, y_pred)
-        assert isinstance(score, float | int)
+    # Interval-column stripping is covered (with stronger column-level
+    # assertions) by TestValidateScorerDataPointStripExtra; the no-extra-columns
+    # baseline is covered by test_validate_scorer_basic.
 
     def test_validate_scorer_y_true_none_at_score_time_raises(self):
         """validate_scorer_data raises ValueError when y_true is None in score mode."""
@@ -679,7 +733,13 @@ class TestValidateScorerDataInverse:
         y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
         scores = pl.DataFrame({"time": times, "value": [0.1, 0.1, 0.1]})
         result = validate_scorer_data(scorer, y_pred=y_pred, scores=scores, inverse=True)
-        assert result is not None
+        # validate_scorer_data returns a 3-tuple: (y_pred, scores, context).
+        assert len(result) == 3
+        result_y_pred, result_scores, _context = result
+        assert isinstance(result_y_pred, pl.DataFrame)
+        assert isinstance(result_scores, pl.DataFrame)
+        # The validated scores frame retains the value column unchanged.
+        assert result_scores["value"].to_list() == [0.1, 0.1, 0.1]
 
 
 class TestValidateTransformerDataInverse:
@@ -720,23 +780,19 @@ class TestValidateTransformerDataInverse:
             X_p=X_p,
             observation_horizon=1,
         )
-        assert result is not None
+        # The inverse path returns the (X_t, X_p) pair; X_t is used as primary.
+        result_X_t, _result_X_p = result
+        assert result_X_t.equals(X_t)
 
 
 class TestValidateScorerDataEdgeCases:
-    """Edge case tests for validate_scorer_data."""
+    """Edge case tests for validate_scorer_data.
 
-    def test_y_true_none_raises(self):
-        """y_true=None raises ValueError."""
-        from yohou.utils.validate_data import validate_scorer_data
-
-        times = [datetime(2024, 1, i) for i in range(1, 4)]
-        scorer = MeanAbsoluteError()
-        scorer.fit(pl.DataFrame({"time": times, "value": [1.0, 2.0, 3.0]}))
-
-        y_pred = pl.DataFrame({"time": times, "value": [1.1, 2.1, 3.1]})
-        with pytest.raises(ValueError):
-            validate_scorer_data(scorer, y_true=None, y_pred=y_pred)
+    The y_true=None score-time path is covered by
+    ``test_validate_scorer_y_true_none_at_score_time_raises`` (which uses a
+    stronger ``match=`` and explicit ``reset=False``), so it is not duplicated
+    here.
+    """
 
     def test_y_pred_none_raises(self):
         """y_pred=None raises ValueError."""
@@ -975,7 +1031,10 @@ class TestValidateTransformerInversePaths:
             X_p=X_p,
             observation_horizon=3,
         )
-        assert result is not None
+        # The inverse path returns the validated (X_t, X_p) pair unchanged.
+        result_X_t, result_X_p = result
+        assert result_X_t.equals(X_t)
+        assert result_X_p.equals(X_p)
 
 
 class TestValidateScorerDataClassProba:

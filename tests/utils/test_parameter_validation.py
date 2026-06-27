@@ -8,38 +8,18 @@ from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
 from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import LagTransformer
 from yohou.stationarity import LogTransformer, SeasonalDifferencing
-
-# Add parent directory to path for imports
-from yohou.testing import check_coverage_rates_validation, check_forecasting_horizon_validation
+from yohou.testing import check_coverage_rates_validation
 from yohou.utils._compat import InvalidParameterError
 
 
 class TestHorizonValidation:
-    """Tests for forecasting_horizon validation."""
+    """Tests for forecasting_horizon validation.
 
-    def test_point_horizon_validation(self, y_X_factory):
-        """Test that point forecasters validate forecasting_horizon in fit and predict."""
-        y, X = y_X_factory(length=50, seed=42)
-
-        # Test PointReductionForecaster
-        forecaster = PointReductionForecaster()
-        check_forecasting_horizon_validation(forecaster, y, X)
-
-        # Test SeasonalNaive
-        forecaster = SeasonalNaive(seasonality=7)
-        check_forecasting_horizon_validation(forecaster, y, X)
-
-    def test_interval_horizon_validation(self, y_X_factory):
-        """Test that interval forecasters validate forecasting_horizon in fit and predict."""
-        y, X = y_X_factory(length=50, seed=42)
-
-        # Test IntervalReductionForecaster
-        forecaster = IntervalReductionForecaster()
-        check_forecasting_horizon_validation(forecaster, y, X)
-
-        # Test SplitConformalForecaster
-        forecaster = SplitConformalForecaster()
-        check_forecasting_horizon_validation(forecaster, y, X)
+    Fit-time horizon validation is covered by ``check_forecasting_horizon_validation``
+    (yielded by ``_yield_yohou_forecaster_checks`` for every forecaster in its
+    dedicated test file), so it is not re-asserted here. The predict-time path
+    below is distinct from that generic check.
+    """
 
     def test_predict_validates_horizon(self, y_X_factory):
         """Test that predict() validates forecasting_horizon parameter."""
@@ -70,22 +50,9 @@ class TestCoverageRatesValidation:
         check_coverage_rates_validation(forecaster, y, X)
 
         # Note: SplitConformalForecaster has implementation issues, tested separately
-
-    def test_predict_interval_validates_coverage_rates(self, y_X_factory):
-        """Test that predict_interval() validates coverage_rates parameter."""
-        y, X = y_X_factory(length=50, seed=42)
-        y_train, _y_test = y[:40], y[40:]
-        X_train, _X_test = X[:40], X[40:]
-
-        forecaster = IntervalReductionForecaster()
-        forecaster.fit(y_train, X_train, forecasting_horizon=3, coverage_rates=[0.95])
-
-        # Test invalid coverage_rates in predict_interval
-        with pytest.raises(ValueError, match="coverage"):
-            forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[1.5])
-
-        with pytest.raises(ValueError, match="coverage"):
-            forecaster.predict_interval(forecasting_horizon=3, coverage_rates=[-0.5])
+        # predict_interval-time coverage_rates validation is covered by
+        # check_coverage_rates_validation (yielded by _yield_yohou_forecaster_checks),
+        # so it is not re-asserted here.
 
 
 class TestForecasterParameterConstraints:
