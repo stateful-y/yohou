@@ -1,7 +1,6 @@
 """Tests for yohou.testing.common check functions."""
 
 import pytest
-from sklearn.utils.metadata_routing import MetadataRequest, MetadataRouter
 
 from yohou.point.naive import SeasonalNaive
 from yohou.preprocessing.window import LagTransformer
@@ -46,16 +45,6 @@ class TestMetadataRoutingDefaultRequest:
         # Should not raise - default requests are empty
         check_metadata_routing_default_request(transformer)
 
-    def test_always_empty(self, y_X_factory):
-        """Test check passes because yohou forecasters have empty default requests."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
-        forecaster = SeasonalNaive(seasonality=12)
-        forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
-
-        # By default, metadata requests should be empty
-        # Should not raise
-        check_metadata_routing_default_request(forecaster)
-
 
 class TestMetadataRoutingGetMetadataRouting:
     """Tests for check_metadata_routing_get_metadata_routing."""
@@ -66,13 +55,8 @@ class TestMetadataRoutingGetMetadataRouting:
         forecaster = SeasonalNaive(seasonality=12)
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
-        # Should not raise
+        # Should not raise; the check verifies the router type and owner itself.
         check_metadata_routing_get_metadata_routing(forecaster)
-
-        # Verify it returns correct type
-        router = forecaster.get_metadata_routing()
-        assert isinstance(router, MetadataRouter | MetadataRequest)
-        assert router.owner is not None
 
     def test_transformer(self, y_X_factory):
         """Test check_metadata_routing_get_metadata_routing for transformers."""
@@ -80,13 +64,8 @@ class TestMetadataRoutingGetMetadataRouting:
         transformer = LagTransformer(lag=3)
         transformer.fit(X[:40], y[:40])
 
-        # Should not raise
+        # Should not raise; the check verifies the router type and owner itself.
         check_metadata_routing_get_metadata_routing(transformer)
-
-        # Verify it returns correct type
-        router = transformer.get_metadata_routing()
-        assert isinstance(router, MetadataRouter | MetadataRequest)
-        assert router.owner is not None
 
     def test_missing_method(self):
         """Test check fails when get_metadata_routing is missing."""

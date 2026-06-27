@@ -29,10 +29,9 @@ from yohou.testing.transformer import (
     check_panel_group_preservation,
     check_rewind_transform_behavior,
     check_rewind_updates_memory,
-    check_tags_accessible_before_fit,
-    check_tags_match_capabilities,
-    check_tags_static_after_fit,
+    check_transform_drops_warmup_rows,
     check_transform_output_structure,
+    check_transformer_methods_call_check_is_fitted,
     check_transformer_preserve_dtypes,
     check_transformers_unfitted_stateless,
 )
@@ -231,34 +230,53 @@ class TestTransformerInverseChecks:
         check_inverse_transform_round_trip(transformer, X[:40], y[:40])
 
 
-class TestTransformerTagChecks:
-    """Tests for transformer tag check functions."""
+class TestTransformerMethodsFittedAndWarmup:
+    """Dedicated tests for the fitted-guard and warmup-drop check functions.
 
-    def test_tags_accessible_before_fit(self, y_X_factory):
-        """Test check_tags_accessible_before_fit passes for valid transformer."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+    Both checks are yielded unconditionally by _yield_yohou_transformer_checks
+    but are otherwise only exercised incidentally via run_checks; these tests
+    pin their behavior directly, including a negative case.
+    """
+
+    def test_methods_call_check_is_fitted_passes(self, y_X_factory):
+        """check_transformer_methods_call_check_is_fitted passes for a guarded transformer."""
+        _, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         transformer = LagTransformer(lag=3)
 
-        # Should not raise
-        check_tags_accessible_before_fit(transformer, X)
+        # Should not raise: transform/observe_transform/inverse_transform all
+        # raise NotFittedError before fit.
+        check_transformer_methods_call_check_is_fitted(transformer, X[:40])
 
-    def test_tags_static_after_fit(self, y_X_factory):
-        """Test check_tags_static_after_fit passes for valid transformer."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+    def test_methods_call_check_is_fitted_flags_unguarded_transform(self, y_X_factory):
+        """The check fails when transform does not raise NotFittedError before fit."""
+        _, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+
+        class _UnguardedLag(LagTransformer):
+            """LagTransformer whose transform skips the fitted guard."""
+
+            def transform(self, X, y=None):
+                # Bypass check_is_fitted entirely so the check should fail.
+                return X
+
+        with pytest.raises(AssertionError):
+            check_transformer_methods_call_check_is_fitted(_UnguardedLag(lag=3), X[:40])
+
+    def test_transform_drops_warmup_rows_stateful(self, y_X_factory):
+        """check_transform_drops_warmup_rows passes for a stateful transformer."""
+        _, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         transformer = LagTransformer(lag=3)
-        transformer.fit(X[:40], y[:40])
 
-        # Should not raise
-        check_tags_static_after_fit(transformer, X[:40], y[:40])
+        # LagTransformer has observation_horizon > 0, so warmup rows are dropped.
+        check_transform_drops_warmup_rows(transformer, X[:40])
 
-    def test_tags_match_capabilities(self, y_X_factory):
-        """Test check_tags_match_capabilities passes for valid transformer."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
-        transformer = LagTransformer(lag=3)
-        transformer.fit(X[:40], y[:40])
+    def test_transform_drops_warmup_rows_stateless(self, y_X_factory):
+        """check_transform_drops_warmup_rows is a no-op for stateless transformers."""
+        _, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
+        transformer = FunctionTransformer(func=lambda df: df)
 
-        # Should not raise
-        check_tags_match_capabilities(transformer, X[:40])
+        # Stateless transformers have observation_horizon == 0; the check returns
+        # without raising.
+        assert check_transform_drops_warmup_rows(transformer, X[:40]) is None
 
 
 class TestTransformerPanelGroupPreservation:
@@ -442,7 +460,10 @@ class TestTransformerCheckEarlyReturns:
     """Tests for early return branches in check functions.
 
     These test that check functions gracefully handle edge cases like
-    short data, non-invertible transformers, and non-panel data.
+    short data, non-invertible transformers, and non-panel data. Each guard
+    path returns ``None`` without raising; asserting on that return value
+    pins the early-return contract (a check that started raising on these
+    inputs would fail here).
     """
 
     @pytest.fixture
@@ -489,23 +510,23 @@ class TestTransformerCheckEarlyReturns:
     def test_observe_transform_sequential_short_data(self, short_data):
         """check_observe_transform_sequential_consistency returns early for short data."""
         t = LagTransformer(lag=2)
-        check_observe_transform_sequential_consistency(t, short_data)
+        assert check_observe_transform_sequential_consistency(t, short_data) is None
 
     def test_rewind_transform_short_data(self, short_data):
         """check_rewind_transform_behavior returns early for short data."""
         t = LagTransformer(lag=3)
-        check_rewind_transform_behavior(t, short_data)
+        assert check_rewind_transform_behavior(t, short_data) is None
 
     def test_insufficient_data_stateless(self, medium_data):
         """check_insufficient_data_raises returns early for stateless transformers."""
         t = FunctionTransformer(func=lambda X: X)
-        check_insufficient_data_raises(t, medium_data)
+        assert check_insufficient_data_raises(t, medium_data) is None
 
     def test_inverse_observe_transform_non_invertible(self, medium_data):
         """check_inverse_observe_transform_identity returns for non-invertible."""
         t = LagTransformer(lag=2)
         t.fit(medium_data)
-        check_inverse_observe_transform_identity(t, medium_data)
+        assert check_inverse_observe_transform_identity(t, medium_data) is None
 
     def test_inverse_observe_transform_short_data(self):
         """check_inverse_observe_transform_identity returns for short data."""
@@ -518,28 +539,28 @@ class TestTransformerCheckEarlyReturns:
         X = pl.DataFrame({"time": times, "val": [float(i) + 1 for i in range(8)]})
         t = LogTransformer()
         t.fit(X)
-        check_inverse_observe_transform_identity(t, X.head(5))
+        assert check_inverse_observe_transform_identity(t, X.head(5)) is None
 
     def test_inverse_round_trip_non_invertible(self, medium_data):
         """check_inverse_transform_round_trip returns for non-invertible."""
         t = LagTransformer(lag=2)
         t.fit(medium_data)
-        check_inverse_transform_round_trip(t, medium_data)
+        assert check_inverse_transform_round_trip(t, medium_data) is None
 
     def test_panel_data_support_non_panel(self, non_panel_data):
         """check_panel_data_support returns early for non-panel data."""
         t = LagTransformer(lag=2)
-        check_panel_data_support(t, non_panel_data)
+        assert check_panel_data_support(t, non_panel_data) is None
 
     def test_unfitted_stateless_with_stateful_transformer(self, medium_data):
         """check_transformers_unfitted_stateless returns early for stateful transformer."""
         t = LagTransformer(lag=2)
-        check_transformers_unfitted_stateless(t, medium_data)
+        assert check_transformers_unfitted_stateless(t, medium_data) is None
 
     def test_unfitted_stateless_with_stateless_transformer(self, medium_data):
         """check_transformers_unfitted_stateless succeeds for stateless transformer."""
         t = FunctionTransformer(func=lambda X: X)
-        check_transformers_unfitted_stateless(t, medium_data)
+        assert check_transformers_unfitted_stateless(t, medium_data) is None
 
     def test_memory_bounded_short_test_data(self):
         """check_memory_bounded hits break for short test data."""
@@ -554,4 +575,4 @@ class TestTransformerCheckEarlyReturns:
         X_train = X[:20]
         X_test = X[20:22]
         t = LagTransformer(lag=2)
-        check_memory_bounded(t, X_train, X_test, n_updates=10)
+        assert check_memory_bounded(t, X_train, X_test, n_updates=10) is None

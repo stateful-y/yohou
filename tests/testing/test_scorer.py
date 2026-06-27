@@ -96,15 +96,32 @@ class TestScorerChecks:
         check_scorer_parameter_validation(scorer_class, param_name, invalid_value, error_match)
 
     def test_yield_yohou_scorer_checks(self, scorers, y_truth, y_pred):
-        """Test that generator produces checks for all scorers."""
+        """Generator yields well-formed tuples and emits every expected point-scorer check.
+
+        Execution of each check on these scorers is covered systematically in
+        test_scorer_registry_checks.py; this test guards generator completeness
+        so a regression dropping (e.g.) the fitted-guard or multi-vintage check
+        is caught.
+        """
+        # Names that must always be emitted for a point scorer.
+        required_names = {
+            "check_scorer_lower_is_better",
+            "check_scorer_aggregation_methods",
+            "check_scorer_tags_accessible_before_fit",
+            "check_scorer_tags_static_after_fit",
+            "check_scorer_tags_match_capabilities",
+            "check_scorer_methods_call_check_is_fitted",
+            "check_scorer_multi_vintage",
+        }
         for scorer in scorers:
             checks = list(_yield_yohou_scorer_checks(scorer, y_truth, y_pred))
-
-            # Should yield multiple checks
-            assert len(checks) >= 4, f"Expected at least 4 checks, got {len(checks)}"
 
             # Each check should be a tuple (name, func, kwargs)
             for check_name, check_func, check_kwargs in checks:
                 assert isinstance(check_name, str), "Check name should be string"
                 assert callable(check_func), "Check function should be callable"
                 assert isinstance(check_kwargs, dict), "Check kwargs should be dict"
+
+            names = {name for name, _, _ in checks}
+            missing = required_names - names
+            assert not missing, f"Generator dropped expected checks: {missing}"

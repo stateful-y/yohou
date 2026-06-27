@@ -303,6 +303,7 @@ class TestForecasterGeneratorConditions:
         )
         assert "check_panel_data" in names
         assert "check_panel_single_group" in names
+        assert "check_panel_invalid_group_raises" in names
 
     def test_non_panel_data_skips_panel_checks(self, y_X_factory):
         """Non-panel data should skip panel checks."""
@@ -465,10 +466,12 @@ class TestSplitterGeneratorConditions:
         y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
 
+        # ExpandingWindowSplitter defines _parameter_constraints, so the
+        # generator must emit parameter-constraint checks unconditionally.
+        assert hasattr(ExpandingWindowSplitter, "_parameter_constraints")
         names = _check_names(_yield_yohou_splitter_checks(splitter, y, X, tags={"supports_panel_data": False}))
         constraint_checks = [n for n in names if "check_splitter_parameter_constraints" in n]
-        if hasattr(ExpandingWindowSplitter, "_parameter_constraints"):
-            assert len(constraint_checks) > 0, "Should yield parameter constraint checks"
+        assert len(constraint_checks) > 0, "Should yield parameter constraint checks"
 
 
 class TestScorerGeneratorConditions:

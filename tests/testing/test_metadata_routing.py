@@ -143,21 +143,47 @@ class TestAssertRequestEqual:
 
 
 class TestRegistryCopy:
-    """Tests for _Registry copy semantics."""
+    """Tests for _Registry copy semantics.
 
-    def test_deepcopy_returns_same(self):
-        """Deep copy returns the same registry instance."""
+    The registry must survive (deep)copy as the *same* list object so that
+    metadata recorded after an estimator is cloned still lands in the registry
+    the test holds a reference to. A plain ``list`` would be duplicated by
+    ``copy.deepcopy``, breaking that contract; these tests would fail if the
+    ``__deepcopy__``/``__copy__`` overrides were removed.
+    """
+
+    def test_deepcopy_preserves_identity_and_late_writes(self):
+        """Deep copy returns the same instance; writes after copy are visible."""
         reg = _Registry()
         reg.append("item")
+
         deep = copy.deepcopy(reg)
+
         assert deep is reg
         assert deep == ["item"]
+        # A write through the original is observable via the copy because they
+        # are the same object; a duplicated plain list would not see this.
+        reg.append("after-copy")
+        assert deep[-1] == "after-copy"
 
-    def test_copy_returns_same(self):
+    def test_deepcopy_inside_container_shares_registry(self):
+        """Deep-copying a container holding a registry keeps the same list."""
+        holder = {"registry": _Registry()}
+        holder["registry"].append("orig")
+
+        cloned = copy.deepcopy(holder)
+
+        # The override forces the deepcopied container to alias the original
+        # registry rather than receiving an independent copy.
+        assert cloned["registry"] is holder["registry"]
+
+    def test_copy_preserves_identity(self):
         """Shallow copy returns the same registry instance."""
         reg = _Registry()
         reg.append("other")
+
         shallow = copy.copy(reg)
+
         assert shallow is reg
 
 

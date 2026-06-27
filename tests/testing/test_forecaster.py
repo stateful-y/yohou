@@ -61,15 +61,7 @@ class TestForecasterFitChecks:
         forecaster = SeasonalNaive(seasonality=12)
 
         # Should not raise - unfitted forecaster correctly raises NotFittedError
-        check_forecaster_not_fitted_error(forecaster, y, X)
-
-    def test_not_fitted_error_raises_on_predict(self, y_X_factory):
-        """Test check validates predict raises NotFittedError."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
-        forecaster = SeasonalNaive(seasonality=12)
-
-        # Check validates predict/observe/rewind all raise NotFittedError
-        # Should not raise - unfitted forecaster correctly raises
+        # on predict, observe, and rewind (all three covered by the check).
         check_forecaster_not_fitted_error(forecaster, y, X)
 
 
