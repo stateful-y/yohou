@@ -14,6 +14,7 @@ Each pipeline represents a real-world forecasting scenario:
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 import pytest
 from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
@@ -146,12 +147,16 @@ class TestRetailDemandPipeline:
         )
         forecaster.fit(y_train, forecasting_horizon=7)
 
+        # A longer-horizon predict() must also succeed from the fitted state.
+        assert len(forecaster.predict(forecasting_horizon=14)) == 14
+
         # Observe with new week
         y_new_week = df[train_size : train_size + 7]
         forecaster.observe(y_new_week)
 
         # Predict
         y_pred = forecaster.predict(forecasting_horizon=7)
+        assert len(y_pred) == 7
 
         # Score
         y_test = df[train_size + 7 : train_size + 14]
@@ -214,53 +219,6 @@ class TestRetailDemandPipeline:
         # All should complete without crash
         assert len(scores) >= 3  # At least 3 full cycles
         assert all(np.isfinite(s) for s in scores)
-
-    def test_pipeline_a_no_crash_realistic_lifecycle(self):
-        """Pipeline A: Verify no crashes through realistic lifecycle."""
-        # Generate data
-        n = 150
-        t = np.arange(n)
-        y_values = np.exp(0.01 * t + 5) * (1 + 0.3 * np.sin(2 * np.pi * t / 7))
-
-        df = pl.DataFrame({
-            "time": pl.datetime_range(
-                start=pl.datetime(2020, 1, 1),
-                end=pl.datetime(2020, 1, 1) + pl.duration(days=n - 1),
-                interval="1d",
-                eager=True,
-            ),
-            "demand": y_values,
-        })
-
-        forecaster = PointReductionForecaster(
-            estimator=Ridge(alpha=0.1),
-            target_transformer=FeaturePipeline([
-                ("log", LogTransformer(offset=1.0)),
-                ("deseason", SeasonalDifferencing(seasonality=7)),
-            ]),
-            feature_transformer=FeaturePipeline([
-                ("lags", LagTransformer([1, 7, 14])),
-                ("rolling", RollingStatisticsTransformer(window_size=7, statistics=["mean", "std"])),
-            ]),
-        )
-
-        # Fit
-        forecaster.fit(df[:100], forecasting_horizon=7)
-
-        # Predict different horizons
-        y_pred1 = forecaster.predict(forecasting_horizon=7)
-        y_pred2 = forecaster.predict(forecasting_horizon=14)
-
-        # Observe
-        forecaster.observe(df[100:110])
-
-        # Predict again
-        y_pred3 = forecaster.predict(forecasting_horizon=7)
-
-        # All should succeed
-        assert len(y_pred1) == 7
-        assert len(y_pred2) == 14
-        assert len(y_pred3) == 7
 
     def test_pipeline_a_observation_horizon(self):
         """Pipeline A: Verify observation_horizon calculation."""
@@ -393,13 +351,17 @@ class TestMultiStorePanelPipeline:
         forecaster.fit(y_train, forecasting_horizon=7)
         y_pred = forecaster.predict(forecasting_horizon=7)
 
-        # Score groupwise (aggregates across panel groups, returns per-timestep scores)
+        # Score groupwise (aggregates across panel groups, returns per-group scores)
         scorer = MeanAbsoluteError(aggregation_method="groupwise")
         scorer.fit(y_train)
         scores = scorer.score(y_test, y_pred)
 
-        # Should return a finite score
-        assert np.isfinite(scores) if isinstance(scores, int | float) else isinstance(scores, pl.DataFrame)
+        # groupwise scoring returns a per-group DataFrame; every numeric value
+        # in it must be finite (a corrupted all-NaN frame must not pass).
+        assert isinstance(scores, pl.DataFrame)
+        finite_flags = scores.select(cs.numeric().is_finite()).to_numpy()
+        assert finite_flags.size > 0
+        assert bool(finite_flags.all()), f"groupwise scores contain non-finite values: {scores}"
 
     def test_pipeline_b_panel_group_filtering(self):
         """Pipeline B: predict(groups=[...]) filters output."""
@@ -693,16 +655,22 @@ class TestDecompositionConformalPipeline:
         # Fit
         forecaster.fit(df[:80], forecasting_horizon=6)
 
-        # Predict interval
+        # Predict interval anchored at the fit boundary (t=80)
         y_pred1 = forecaster.predict_interval(coverage_rates=[0.9], forecasting_horizon=6)
 
-        # Predict interval again (SplitConformalForecaster doesn't support observe)
+        # Observe newly arrived ground truth, then predict_interval again. The
+        # second forecast is anchored later, so its vintage_time advances and
+        # the predicted timestamps shift forward.
+        forecaster.observe(df[80:86])
         y_pred2 = forecaster.predict_interval(coverage_rates=[0.9], forecasting_horizon=6)
 
-        # Should work without crash
         assert len(y_pred1) == 6
         assert len(y_pred2) == 6
         assert y_pred1.columns == y_pred2.columns
+        # The observe() advanced state: the new vintage is strictly later and
+        # the forecast window starts after the previous one ended.
+        assert y_pred2["vintage_time"][0] > y_pred1["vintage_time"][0]
+        assert y_pred2["time"].min() > y_pred1["time"].min()
 
     def test_pipeline_c_decomposition_interval_combination(self):
         """Pipeline C: Decomposition + interval produces valid structure."""
@@ -1281,8 +1249,15 @@ class TestHyperparameterTunedPipeline:
 class TestMaxNestingPipeline:
     """Pipeline F: Everything composed (maximum nesting depth)."""
 
-    def test_pipeline_f_get_params_deep_nesting(self):
-        """Pipeline F: get_params returns deeply nested dict."""
+    def test_pipeline_f_params_contract(self):
+        """Pipeline F: deep get_params/set_params reach and round-trip leaf params.
+
+        Consolidates the deep-nesting get_params, deep-access set_params, and
+        get/set round-trip checks on the same maximally nested topology. The
+        systematic suite (check_composition_nested_param_addressable,
+        check_get_set_params_round_trip) enforces the generic contract; this
+        test confirms it holds on a real, deeply nested pipeline.
+        """
         forecaster = ColumnForecaster([
             (
                 "demand",
@@ -1321,22 +1296,36 @@ class TestMaxNestingPipeline:
             ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
         ])
 
-        # Get params
-        params = forecaster.get_params(deep=True)
+        alpha_key = "demand__target_forecaster__point_forecaster__residual__estimator__alpha"
 
-        # Check key structure (sample keys)
+        # get_params(deep=True) exposes the full nested key structure.
+        params = forecaster.get_params(deep=True)
         assert "demand" in params
         assert "auxiliary" in params
-
-        # Check deep nesting
-        assert "demand__target_forecaster__point_forecaster__residual__estimator__alpha" in params
-        assert params["demand__target_forecaster__point_forecaster__residual__estimator__alpha"] == 0.1
-
-        assert "demand__target_forecaster__calibration_size" in params
+        assert params[alpha_key] == 0.1
         assert params["demand__target_forecaster__calibration_size"] == 30
-
-        assert "auxiliary__seasonality" in params
         assert params["auxiliary__seasonality"] == 7
+
+        # set_params reaches arbitrary leaves at any depth.
+        forecaster.set_params(**{
+            alpha_key: 0.5,
+            "demand__target_forecaster__calibration_size": 50,
+            "auxiliary__seasonality": 14,
+        })
+        updated = forecaster.get_params(deep=True)
+        assert updated[alpha_key] == 0.5
+        assert updated["demand__target_forecaster__calibration_size"] == 50
+        assert updated["auxiliary__seasonality"] == 14
+
+        # Round-trip: feeding scalar params back through set_params is a no-op.
+        scalar_params = {
+            k: v for k, v in updated.items() if isinstance(v, int | float | str | bool | type(None) | list | tuple)
+        }
+        forecaster.set_params(**scalar_params)
+        final = forecaster.get_params(deep=True)
+        assert final[alpha_key] == 0.5
+        assert final["demand__target_forecaster__calibration_size"] == 50
+        assert final["auxiliary__seasonality"] == 14
 
     def test_pipeline_f_full_lifecycle_no_crash(self):
         """Pipeline F: fit → predict → predict_interval without crash."""
@@ -1408,8 +1397,14 @@ class TestMaxNestingPipeline:
         # sub-forecaster is point-only (SeasonalNaive doesn't support intervals).
         # Interval prediction is tested in test_pipeline_f_mixed_metrics.
 
-    def test_pipeline_f_clone_deep_structure(self):
-        """Pipeline F: clone() works on deeply nested structure."""
+    def test_pipeline_f_clone_independent_of_fitted_original(self):
+        """Pipeline F: fitting the original leaves a deep clone unfitted.
+
+        The generic clone-equality contract (same params, distinct objects) is
+        covered by check_composition_clone_deep_clones_components; this test
+        adds the integration-specific guarantee that fitting the original does
+        not leak fitted state into a clone of a maximally nested pipeline.
+        """
         forecaster = ColumnForecaster([
             (
                 "demand",
@@ -1440,14 +1435,8 @@ class TestMaxNestingPipeline:
             ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
         ])
 
-        # Clone
+        # Clone before fitting
         forecaster_cloned = clone(forecaster)
-
-        # Should be different objects
-        assert forecaster is not forecaster_cloned
-
-        # But same structure
-        assert forecaster.get_params(deep=False).keys() == forecaster_cloned.get_params(deep=False).keys()
 
         # Fit original (needs X_actual for ForecastedFeatureForecaster)
         # Need enough data so ForecastedFeatureForecaster's feature_forecaster (20% split)
@@ -1475,131 +1464,6 @@ class TestMaxNestingPipeline:
         # Clone should still be unfitted
         with pytest.raises(NotFittedError, match="is not fitted"):
             forecaster_cloned.predict(forecasting_horizon=5)
-
-    def test_pipeline_f_set_params_deep_access(self):
-        """Pipeline F: set_params can reach any leaf parameter."""
-        forecaster = ColumnForecaster([
-            (
-                "demand",
-                ForecastedFeatureForecaster(
-                    target_forecaster=SplitConformalForecaster(
-                        point_forecaster=DecompositionPipeline([
-                            ("trend", PolynomialTrendForecaster(1)),
-                            (
-                                "residual",
-                                PointReductionForecaster(
-                                    Ridge(alpha=0.1),
-                                    feature_transformer=FeaturePipeline([
-                                        (
-                                            "lags",
-                                            FeatureUnion([
-                                                ("recent", LagTransformer([1, 2, 3])),
-                                                ("seasonal", LagTransformer([7, 14])),
-                                            ]),
-                                        ),
-                                        ("scale", StandardScaler()),
-                                    ]),
-                                ),
-                            ),
-                        ]),
-                        conformity_scorer=AbsoluteResidual(),
-                        calibration_size=30,
-                    ),
-                    feature_forecaster=PointReductionForecaster(
-                        LR(),
-                        feature_transformer=LagTransformer([1, 7]),
-                    ),
-                    strategy="predicted",
-                ),
-                ["demand"],
-            ),
-            ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
-        ])
-
-        # Set deep parameter
-        forecaster.set_params(**{"demand__target_forecaster__point_forecaster__residual__estimator__alpha": 0.5})
-
-        # Verify it changed
-        params = forecaster.get_params(deep=True)
-        assert params["demand__target_forecaster__point_forecaster__residual__estimator__alpha"] == 0.5
-
-        # Set another deep parameter
-        forecaster.set_params(**{"demand__target_forecaster__calibration_size": 50})
-
-        params = forecaster.get_params(deep=True)
-        assert params["demand__target_forecaster__calibration_size"] == 50
-
-        # Set auxiliary parameter
-        forecaster.set_params(**{"auxiliary__seasonality": 14})
-
-        params = forecaster.get_params(deep=True)
-        assert params["auxiliary__seasonality"] == 14
-
-    def test_pipeline_f_get_set_params_roundtrip(self):
-        """Pipeline F: get_params(deep=True) returns consistent params."""
-        forecaster = ColumnForecaster([
-            (
-                "demand",
-                ForecastedFeatureForecaster(
-                    target_forecaster=SplitConformalForecaster(
-                        point_forecaster=DecompositionPipeline([
-                            ("trend", PolynomialTrendForecaster(1)),
-                            (
-                                "residual",
-                                PointReductionForecaster(
-                                    Ridge(alpha=0.1),
-                                    feature_transformer=FeaturePipeline([
-                                        (
-                                            "lags",
-                                            FeatureUnion([
-                                                ("recent", LagTransformer([1, 2, 3])),
-                                                ("seasonal", LagTransformer([7, 14])),
-                                            ]),
-                                        ),
-                                        ("scale", StandardScaler()),
-                                    ]),
-                                ),
-                            ),
-                        ]),
-                        conformity_scorer=AbsoluteResidual(),
-                        calibration_size=30,
-                    ),
-                    feature_forecaster=PointReductionForecaster(
-                        LR(),
-                        feature_transformer=LagTransformer([1, 7]),
-                    ),
-                    strategy="predicted",
-                ),
-                ["demand"],
-            ),
-            ("auxiliary", SeasonalNaive(7), ["auxiliary"]),
-        ])
-
-        # Get params twice - should be consistent
-        params_before = forecaster.get_params(deep=True)
-        params_after = forecaster.get_params(deep=True)
-
-        # Should be identical
-        assert params_before.keys() == params_after.keys()
-
-        # Check a few key parameters
-        assert params_after["demand__target_forecaster__point_forecaster__residual__estimator__alpha"] == 0.1
-        assert params_after["demand__target_forecaster__calibration_size"] == 30
-        assert params_after["auxiliary__seasonality"] == 7
-
-        # Verify scalar-only set_params roundtrip works
-        scalar_params = {
-            k: v
-            for k, v in params_before.items()
-            if isinstance(v, int | float | str | bool | type(None) | list | tuple)
-        }
-        forecaster.set_params(**scalar_params)
-
-        # Should still match
-        params_final = forecaster.get_params(deep=True)
-        assert params_final["demand__target_forecaster__point_forecaster__residual__estimator__alpha"] == 0.1
-        assert params_final["demand__target_forecaster__calibration_size"] == 30
-        assert params_final["auxiliary__seasonality"] == 7
 
     def test_pipeline_f_mixed_metrics(self):
         """Pipeline F: Score with both point and interval metrics."""

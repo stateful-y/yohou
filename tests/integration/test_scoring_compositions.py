@@ -12,10 +12,11 @@ Test coverage:
 - ~6 tests: Scorer with time_weight
 """
 
+from datetime import timedelta
+
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import LinearRegression
 
 from yohou.compose import ColumnForecaster, DecompositionPipeline
@@ -148,10 +149,24 @@ class TestPointScorerCompositions:
         ids=["mae", "mse", "rmse", "medae"],
     )
     def test_point_scorer_on_constant_data(self, constant_series, scorer):
-        """Test that scorers return 0.0 when truth and prediction are both constant."""
-        # Generate constant data
+        """Test scorers return 0.0 on a contract-shaped, directly-built prediction.
+
+        Unlike test_point_scorer_perfect_prediction (which routes through a
+        forecaster), this builds y_pred directly to exercise the prediction
+        contract: predictions must carry a ``vintage_time`` column alongside
+        ``time``. The truth and prediction are identical constant series, so every
+        error metric must be exactly 0.0.
+        """
+        # Generate constant truth
         y_true = constant_series(value=42.0, length=10)
-        y_pred = constant_series(value=42.0, length=10)
+
+        # Build a contract-shaped prediction: vintage_time (one step before the
+        # first forecast timestamp) + time + value, matching what forecasters emit.
+        first_time = y_true["time"][0]
+        vintage = first_time - timedelta(days=1)
+        y_pred = y_true.with_columns(pl.lit(vintage).cast(pl.Datetime("us")).alias("vintage_time")).select(
+            "vintage_time", "time", "value"
+        )
 
         # Fit scorer and score
         scorer.fit(y_true)
@@ -163,49 +178,10 @@ class TestPointScorerCompositions:
 class TestScaledScorers:
     """Test MASE and RMSSE scaled scorers requiring fit and baseline comparison."""
 
-    def test_mase_requires_fit(self, linear_series):
-        """Test that MASE requires fit() before score()."""
-        scorer = MeanAbsoluteScaledError(seasonality=1)
-
-        y = linear_series(slope=2.0, intercept=10.0, length=100)
-        y_train = y[:80]
-        y_test = y[80:85]
-
-        # Fit forecaster and get predictions
-        forecaster = SeasonalNaive(seasonality=1)
-        forecaster.fit(y_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(forecasting_horizon=5)
-
-        # Score without fit should raise NotFittedError
-        with pytest.raises(NotFittedError, match="is not fitted"):
-            scorer.score(y_test, y_pred)
-
-        # After fit, should work
-        scorer.fit(y_train)
-        score = scorer.score(y_test, y_pred)
-        assert np.isfinite(score)
-
-    def test_rmsse_requires_fit(self, linear_series):
-        """Test that RMSSE requires fit() before score()."""
-        scorer = RootMeanSquaredScaledError(seasonality=1)
-
-        y = linear_series(slope=2.0, intercept=10.0, length=100)
-        y_train = y[:80]
-        y_test = y[80:85]
-
-        # Fit forecaster and get predictions
-        forecaster = SeasonalNaive(seasonality=1)
-        forecaster.fit(y_train, forecasting_horizon=5)
-        y_pred = forecaster.predict(forecasting_horizon=5)
-
-        # Score without fit should raise NotFittedError
-        with pytest.raises(NotFittedError, match="is not fitted"):
-            scorer.score(y_test, y_pred)
-
-        # After fit, should work
-        scorer.fit(y_train)
-        score = scorer.score(y_test, y_pred)
-        assert np.isfinite(score)
+    # NOTE: the requires-fit (NotFittedError before fit) contract for MASE and RMSSE
+    # is covered systematically by check_scorer_methods_call_check_is_fitted, run for
+    # both scaled scorers in tests/metrics/test_point.py. Only the scaled-baseline
+    # value behavior (MASE/RMSSE on a naive forecaster) is kept below.
 
     def test_mase_equals_one_when_matches_naive(self, linear_series):
         """Test that MASE=1.0 when prediction accuracy equals naive seasonal forecast."""
@@ -737,11 +713,13 @@ class TestScorerEdgeCases:
         scorer = MeanAbsolutePercentageError()
         y_test = y[80:85]
         scorer.fit(y_train)
-        _score = scorer.score(y_test, y_pred)
+        score = scorer.score(y_test, y_pred)
 
-        # MAPE with zeros can be inf or nan, just check it doesn't crash
-        # (behavior depends on implementation)
-        assert True  # Just verify no crash
+        # MAPE on zero-valued data must return a defined numeric value rather than
+        # crashing. The denominator may be zero, so inf/nan are acceptable; any
+        # finite result must be non-negative (MAPE is an absolute error metric).
+        assert isinstance(score, float)
+        assert np.isinf(score) or np.isnan(score) or score >= 0.0
 
     def test_conformity_scorer_residual(self, linear_series):
         """Test conformity scorers (Residual, AbsoluteResidual) work directly."""

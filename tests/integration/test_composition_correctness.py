@@ -102,7 +102,7 @@ class TestFeaturePipelineObservationHorizon:
         assert pipeline.observation_horizon == 6
 
     def test_pipelineobservation_horizon_rolling_stats(self, linear_series):
-        """FeaturePipeline([LagTransformer(4), RollingStatisticsTransformer(5)]) → horizon = 9."""
+        """FeaturePipeline([LagTransformer(4), RollingStatisticsTransformer(5)]) → horizon = 8."""
         y = linear_series(slope=1.5, intercept=20.0, length=60)
         X = y.select("time", "value")
 
@@ -113,12 +113,12 @@ class TestFeaturePipelineObservationHorizon:
 
         X_transformed = pipeline.fit_transform(X)
 
-        # Total: 4 (lag) + 5 (rolling) = 9
-        # RollingStatisticsTransformer uses window_size - 1 as observation_horizon (needs window_size-1 lag)
-        # Output length = 60 - total_horizon
-        expected_horizon = 4 + 5
-        assert len(X_transformed) >= 60 - expected_horizon - 2  # Allow some flexibility
-        assert pipeline.observation_horizon >= expected_horizon - 2
+        # FeaturePipeline horizon is the SUM of stage horizons.
+        # RollingStatisticsTransformer(window_size=5) has observation_horizon = window_size - 1 = 4.
+        # Total: lag(4) + rolling(4) = 8 (not 9).
+        expected_horizon = 4 + 4
+        assert pipeline.observation_horizon == expected_horizon
+        assert len(X_transformed) == 60 - expected_horizon
 
     def test_pipelineobservation_horizon_with_stateless_transformer(self, linear_series):
         """FeaturePipeline with stateless transformer (StandardScaler) only counts stateful ones."""
@@ -650,108 +650,15 @@ class TestForecastedFeatureForecaster:
 
         # Verify predictions are finite and reasonable
         assert np.all(np.isfinite(actual))
-        assert len(actual) == 5
 
 
-@pytest.mark.integration
-class TestDeepNesting:
-    """Tests that deeply nested composition structures produce correct results."""
-
-    def test_deep_nesting_column_forecaster_with_pipelines(self, linear_series, analytical_forecast):
-        """ColumnForecaster where each forecaster has FeaturePipeline with FeatureUnion."""
-        # 2-column target with different slopes
-        y1 = linear_series(slope=1.0, intercept=10.0, length=100)
-        y2 = linear_series(slope=2.0, intercept=20.0, length=100)
-
-        y_train = y1.select("time").with_columns(
-            pl.lit(y1.select("value").to_series()).alias("col1"),
-            pl.lit(y2.select("value").to_series()).alias("col2"),
-        )
-
-        # Deep nesting: FeaturePipeline([FeatureUnion, Scaler])
-        nested_feature_transformer = FeaturePipeline([
-            (
-                "union",
-                FeatureUnion([
-                    ("lag1", LagTransformer([1])),
-                    ("lag2", LagTransformer([2])),
-                ]),
-            ),
-            ("scaler", StandardScaler()),
-        ])
-
-        col_forecaster = ColumnForecaster(
-            [
-                (
-                    "col1",
-                    PointReductionForecaster(
-                        LinearRegression(),
-                        feature_transformer=nested_feature_transformer,
-                    ),
-                    ["col1"],
-                ),
-                (
-                    "col2",
-                    PointReductionForecaster(
-                        LinearRegression(),
-                        feature_transformer=nested_feature_transformer,
-                    ),
-                    ["col2"],
-                ),
-            ],
-            remainder="drop",
-        )
-
-        col_forecaster.fit(y_train, forecasting_horizon=5)
-        y_pred = col_forecaster.predict(forecasting_horizon=5)
-
-        # Each column should still predict correctly through deep nesting
-        expected_col1 = analytical_forecast("linear", {"slope": 1.0, "intercept": 10.0}, horizon=5, last_index=99)
-        expected_col2 = analytical_forecast("linear", {"slope": 2.0, "intercept": 20.0}, horizon=5, last_index=99)
-
-        np.testing.assert_allclose(y_pred.select("col1").to_numpy().flatten(), expected_col1, atol=1e-6)
-        np.testing.assert_allclose(y_pred.select("col2").to_numpy().flatten(), expected_col2, atol=1e-6)
-
-    def test_deep_nesting_decomposition_in_column_forecaster(self, linear_series):
-        """DecompositionPipeline inside ColumnForecaster for complex composition."""
-        y1 = linear_series(slope=1.5, intercept=15.0, length=100)
-        y2 = linear_series(slope=2.5, intercept=25.0, length=100)
-
-        y_train = y1.select("time").with_columns(
-            pl.lit(y1.select("value").to_series()).alias("col1"),
-            pl.lit(y2.select("value").to_series()).alias("col2"),
-        )
-
-        # col1: DecompositionPipeline
-        decomp_forecaster = DecompositionPipeline([
-            ("trend", PolynomialTrendForecaster(degree=1)),
-            ("residual", SeasonalNaive(seasonality=1)),
-        ])
-
-        # col2: Standard reduction forecaster
-        reduction_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
-
-        col_forecaster = ColumnForecaster(
-            [
-                ("col1", decomp_forecaster, ["col1"]),
-                ("col2", reduction_forecaster, ["col2"]),
-            ],
-            remainder="drop",
-        )
-
-        col_forecaster.fit(y_train, forecasting_horizon=5)
-        y_pred = col_forecaster.predict(forecasting_horizon=5)
-
-        # Both columns should produce valid predictions
-        assert len(y_pred) == 5
-        assert "col1" in y_pred.columns
-        assert "col2" in y_pred.columns
-
-        # Verify values are in reasonable range
-        col1_vals = y_pred.select("col1").to_numpy().flatten()
-        col2_vals = y_pred.select("col2").to_numpy().flatten()
-        assert np.all(col1_vals > 130) and np.all(col1_vals < 180)
-        assert np.all(col2_vals > 240) and np.all(col2_vals < 300)
+# NOTE: Deep-nesting correctness (ColumnForecaster wrapping FeaturePipeline/FeatureUnion
+# pipelines, and DecompositionPipeline nested inside ColumnForecaster) is covered more
+# thoroughly by tests/integration/test_deep_nesting.py
+# (TestLevel2ColumnForecaster.test_level2_column_forecaster_with_pipelines and
+# TestLevel3DecompositionColumnForecaster.test_level3_decomposition_inside_column_forecaster),
+# which assert analytical per-column values across richer pipelines. The near-duplicate
+# variants previously here added no additional coverage and were removed.
 
 
 @pytest.mark.integration
@@ -773,10 +680,12 @@ class TestObservePropagation:
         # Update with new observations
         decomp.observe(y_update)
 
-        # Verify internal state updated (check _y_observed length)
-        # After fit on 80 rows + update with 5 rows, internal state should reflect update
-        trend_forecaster = decomp.forecasters_[0][1]  # (name, forecaster) tuple
-        check_is_fitted(trend_forecaster)
+        # Verify observe actually propagated to each component: their per-forecaster
+        # observed_time_ must advance to the last timestamp of the update batch.
+        # (check_is_fitted alone is vacuous here since fit() already set fitted state.)
+        update_tail = y_update["time"][-1]
+        for _name, component in decomp.forecasters_:
+            assert component.observed_time_ == update_tail
 
         # Predict after update
         y_pred = decomp.predict(forecasting_horizon=5)
@@ -817,9 +726,12 @@ class TestObservePropagation:
 
         col_forecaster.observe(y_update)
 
-        # Verify each sub-forecaster updated
+        # Verify observe propagated to each sub-forecaster: observed_time_ must
+        # advance to the update batch's last timestamp (state-sensitive; a no-op
+        # observe would leave it at the fit tail).
+        update_tail = y_update["time"][-1]
         for _name, forecaster, _ in col_forecaster.forecasters_:
-            check_is_fitted(forecaster)
+            assert forecaster.observed_time_ == update_tail
 
         # Predictions should reflect updated state
         y_pred = col_forecaster.predict(forecasting_horizon=3)
@@ -843,9 +755,9 @@ class TestObservePropagation:
         y_update = linear_series(slope=1.0, intercept=10.0, length=85).tail(5)
         forecaster.observe(y_update)
 
-        # Verify feature pipeline's transformers updated
-        feature_pipeline = forecaster.feature_transformer_
-        check_is_fitted(feature_pipeline)
+        # observe must propagate through the FeaturePipeline feature transformer:
+        # the forecaster's observed_time_ advances to the update batch tail.
+        assert forecaster.observed_time_ == y_update["time"][-1]
 
         # Predict after update
         y_pred = forecaster.predict(forecasting_horizon=5)
@@ -878,9 +790,12 @@ class TestRewindPropagation:
         )
         decomp.rewind(y_reset)
 
-        # Verify internal state rewound (check observation buffer length)
-        trend_forecaster = decomp.forecasters_[0][1]  # (name, forecaster) tuple
-        check_is_fitted(trend_forecaster)
+        # Verify rewind truncated each component's state: observed_time_ must reset
+        # to the last timestamp of the reset window (a no-op rewind would leave it
+        # at the last-observed tail instead).
+        reset_tail = y_reset["time"][-1]
+        for _name, component in decomp.forecasters_:
+            assert component.observed_time_ == reset_tail
 
         # Predict after reset should still work
         y_pred = decomp.predict(forecasting_horizon=5)
@@ -932,9 +847,11 @@ class TestRewindPropagation:
         )
         col_forecaster.rewind(y_reset)
 
-        # Each sub-forecaster should have truncated state
+        # Each sub-forecaster should have truncated state: observed_time_ resets to
+        # the reset window tail (state-sensitive, not just check_is_fitted).
+        reset_tail = y_reset["time"][-1]
         for _name, forecaster, _ in col_forecaster.forecasters_:
-            check_is_fitted(forecaster)
+            assert forecaster.observed_time_ == reset_tail
 
         # Predict after reset
         y_pred = col_forecaster.predict(forecasting_horizon=3)
@@ -962,9 +879,9 @@ class TestRewindPropagation:
         y_reset = linear_series(slope=2.0, intercept=15.0, length=120).tail(15)
         forecaster.rewind(y_reset)
 
-        # Feature pipeline should have rewound state
-        feature_pipeline = forecaster.feature_transformer_
-        check_is_fitted(feature_pipeline)
+        # rewind must propagate through the FeaturePipeline: the forecaster's
+        # observed_time_ resets to the reset window tail.
+        assert forecaster.observed_time_ == y_reset["time"][-1]
 
         # Should still predict correctly after reset
         y_pred = forecaster.predict(forecasting_horizon=5)

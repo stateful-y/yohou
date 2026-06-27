@@ -26,66 +26,13 @@ from yohou.utils.tabularization import tabularize
 
 @pytest.mark.integration
 class TestTabularization:
-    """Verify tabularization produces correct shapes, column names, and values."""
+    """Verify tabularization on a constant series (case absent from utils unit tests).
 
-    @pytest.mark.parametrize(
-        "length,lags",
-        [
-            (10, [1]),
-            (10, [1, 2]),
-            (10, [1, 2, 3, 5]),
-            (20, [1, 2, 3]),
-            (20, [1, 3, 7]),
-            (50, [1]),
-            (50, [1, 5, 10]),
-            (100, [1]),
-            (100, [1, 2, 3, 4, 5]),
-            (100, [1, 5, 10, 20]),
-        ],
-    )
-    def test_tabularization_shape(self, linear_series, length, lags):
-        """Verify tabularization produces correct number of rows after dropping NaN lags."""
-        y = linear_series(slope=1.0, intercept=0.0, length=length)
-
-        result = tabularize(df_time_series=y, lags=lags)
-
-        # Number of rows should be length - max(lags)
-        expected_rows = length - max(lags)
-        assert len(result) == expected_rows, f"Expected {expected_rows} rows, got {len(result)}"
-
-    @pytest.mark.parametrize("lags", [[1], [1, 2], [1, 2, 3, 5]])
-    def test_tabularization_feature_names(self, linear_series, lags):
-        """Verify feature column names match {col}_lag_{i} pattern."""
-        y = linear_series(slope=1.0, intercept=0.0, length=100)
-
-        result = tabularize(df_time_series=y, lags=lags)
-
-        # Expected feature names: value_lag_1, value_lag_2, ...
-        expected_features = [f"value_lag_{lag}" for lag in lags]
-        feature_cols = [c for c in result.columns if c != "time"]
-
-        # Sort both for comparison
-        assert sorted(feature_cols) == sorted(expected_features), (
-            f"Feature names mismatch: expected {expected_features}, got {feature_cols}"
-        )
-
-    @pytest.mark.parametrize("lags", [[1], [1, 2], [1, 2, 3]])
-    def test_tabularization_output_columns(self, linear_series, lags):
-        """Verify output has time column and lagged columns, not original value."""
-        y = linear_series(slope=1.0, intercept=0.0, length=50)
-
-        result = tabularize(df_time_series=y, lags=lags)
-
-        # Should have "time" column
-        assert "time" in result.columns, "Missing 'time' column in output"
-
-        # Should NOT have original "value" column
-        assert "value" not in result.columns, "Original 'value' column should be excluded from output"
-
-        # Should have lagged columns
-        for lag in lags:
-            col_name = f"value_lag_{lag}"
-            assert col_name in result.columns, f"Missing column {col_name}"
+    Shape, feature-name, output-column, and linear-value tabularization behaviors
+    are covered by tests/utils/test_tabularization.py (TestTabularizeBasic,
+    TestTabularizeMultiColumn, TestTabularizeEdgeCases). Only the constant-series
+    value check, which those unit tests do not cover, is retained here.
+    """
 
     def test_tabularization_values_constant(self, constant_series):
         """Verify tabularized lagged values are correct for constant series."""
@@ -99,28 +46,6 @@ class TestTabularization:
             actual = result[col].to_numpy()
             expected = np.full(len(result), value)
             np.testing.assert_allclose(actual, expected, atol=1e-10)
-
-    def test_tabularization_values_linear(self, linear_series):
-        """Verify tabularized lagged values are correct for linear series."""
-        slope = 2.0
-        intercept = 10.0
-        length = 20
-        y = linear_series(slope=slope, intercept=intercept, length=length)
-
-        result = tabularize(df_time_series=y, lags=[1, 2])
-
-        # After dropping first 2 rows (max lag = 2), result starts at original index 2
-        # Row 0 of result corresponds to original index 2:
-        #   value_lag_1 = y[1] = slope*1 + intercept
-        #   value_lag_2 = y[0] = slope*0 + intercept
-        first_lag_1 = result["value_lag_1"][0]
-        first_lag_2 = result["value_lag_2"][0]
-
-        expected_lag_1 = slope * 1 + intercept  # y at original index 1
-        expected_lag_2 = slope * 0 + intercept  # y at original index 0
-
-        np.testing.assert_allclose(first_lag_1, expected_lag_1, atol=1e-10)
-        np.testing.assert_allclose(first_lag_2, expected_lag_2, atol=1e-10)
 
 
 @pytest.mark.integration
@@ -167,10 +92,15 @@ class TestConstantSeries:
 class TestLinearTrend:
     """Verify exact predictions for linear trend time series."""
 
-    @pytest.mark.parametrize("slope", [0.5, 1.0, 2.0, 100.0])
+    @pytest.mark.parametrize("slope", [0.0, 0.5, 1.0, 2.0, 100.0])
     @pytest.mark.parametrize("forecasting_horizon", [1, 5, 10])
     def test_linear_trend_prediction(self, linear_series, analytical_forecast, slope, forecasting_horizon):
-        """Verify linear trend predictions match analytical forecast."""
+        """Verify linear trend predictions match analytical forecast.
+
+        slope=0.0 covers the zero-slope (constant) degenerate case; forecasting_horizon=1
+        covers the exact next-step case. These subsume the previously separate
+        test_linear_trend_horizon_1_exact and test_zero_slope_linear tests.
+        """
         intercept = 10.0
         train_length = 80
         y = linear_series(slope=slope, intercept=intercept, length=100)
@@ -193,26 +123,6 @@ class TestLinearTrend:
         )
 
         np.testing.assert_allclose(pred_values, expected, atol=1e-10)
-
-    @pytest.mark.parametrize("slope", [1.0, 5.0])
-    def test_linear_trend_horizon_1_exact(self, linear_series, slope):
-        """Verify horizon=1 predicts exact next value for linear trend."""
-        intercept = 0.0
-        train_length = 50
-        y = linear_series(slope=slope, intercept=intercept, length=60)
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-        )
-        forecaster.fit(y[:train_length], forecasting_horizon=1)
-
-        y_pred = forecaster.predict()
-        pred_value = y_pred["value"][0]
-
-        # Next value at t=train_length
-        expected = slope * train_length + intercept
-
-        np.testing.assert_allclose(pred_value, expected, atol=1e-10)
 
     @pytest.mark.parametrize("slope", [2.0, 10.0])
     def test_linear_trend_recursive_horizon_5(self, linear_series, analytical_forecast, slope):
@@ -265,20 +175,36 @@ class TestLinearTrend:
 
         np.testing.assert_allclose(pred_values, expected, atol=1e-8)
 
-    def test_zero_slope_linear(self, linear_series):
-        """Verify zero-slope linear series (equivalent to constant)."""
-        y = linear_series(slope=0.0, intercept=42.0, length=100)
+    @pytest.mark.parametrize("reduction_strategy", ["multi-output", "direct", "dir-rec"])
+    def test_linear_trend_reduction_strategies(self, linear_series, analytical_forecast, reduction_strategy):
+        """Verify all three reduction strategies recover the linear trend exactly.
+
+        The other tests in this module use the default multi-output strategy; the
+        direct (H independent models) and dir-rec (augmented-feature sequential)
+        branches in BaseReductionForecaster have distinct code paths that must
+        preserve analytical correctness on closed-form data.
+        """
+        slope = 2.0
+        intercept = 5.0
+        train_length = 80
+        y = linear_series(slope=slope, intercept=intercept, length=100)
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
+            reduction_strategy=reduction_strategy,
         )
-        forecaster.fit(y[:80], forecasting_horizon=5)
+        forecaster.fit(y[:train_length], forecasting_horizon=5)
 
-        y_pred = forecaster.predict()
-        pred_values = y_pred["value"].to_numpy()
+        pred_values = forecaster.predict().select("value").to_numpy().flatten()
 
-        expected = np.full(5, 42.0)
-        np.testing.assert_allclose(pred_values, expected, atol=1e-10)
+        expected = analytical_forecast(
+            series_type="linear",
+            params={"slope": slope, "intercept": intercept},
+            horizon=5,
+            last_index=train_length - 1,
+        )
+
+        np.testing.assert_allclose(pred_values, expected, atol=1e-9)
 
     def test_negative_slope_linear(self, linear_series, analytical_forecast):
         """Verify negative slope linear trend."""

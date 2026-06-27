@@ -16,7 +16,11 @@ import pytest
 from conftest import run_checks
 from yohou.metrics.base import BasePointScorer
 from yohou.model_selection import GridSearchCV, SlidingWindowSplitter
-from yohou.testing import _yield_yohou_scorer_checks
+from yohou.testing import (
+    _yield_yohou_scorer_checks,
+    check_scorer_component_subselection,
+    check_scorer_panel_subselection,
+)
 
 
 class _MaxAbsoluteError(BasePointScorer):
@@ -90,6 +94,56 @@ def scorer_data():
     return y_truth, y_pred
 
 
+@pytest.fixture
+def panel_scorer_data():
+    """Two-group panel y_truth and contract-shaped y_pred for subselection checks."""
+    n = 20
+    times = pl.datetime_range(
+        pl.lit("2020-01-01").str.to_datetime(),
+        pl.lit("2020-01-01").str.to_datetime() + pl.duration(days=n - 1),
+        interval="1d",
+        eager=True,
+    )
+    y_truth = pl.DataFrame({
+        "time": times,
+        "g1__value": [float(i) for i in range(n)],
+        "g2__value": [float(i * 2) for i in range(n)],
+    })
+    y_pred = pl.DataFrame({
+        "vintage_time": [times[0]] * n,
+        "time": times,
+        "g1__value": [float(i + 1) for i in range(n)],
+        "g2__value": [float(i * 2 + 1) for i in range(n)],
+    })
+    return y_truth, y_pred
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("scorer_cls", [_MaxAbsoluteError, _RootMeanSquaredError])
+class TestCustomScorerSubselection:
+    """Cover panel/component subselection for custom scorers.
+
+    check_scorer_panel_subselection and check_scorer_component_subselection are
+    exported from yohou.testing but are not yielded by _yield_yohou_scorer_checks,
+    so the test_systematic_checks tests below do not exercise groups/components
+    filtering. These tests call those checks directly to close that gap, ensuring a
+    custom scorer that crashed on groups=[...] or components=[...] would be caught.
+    """
+
+    def test_panel_subselection(self, panel_scorer_data, scorer_cls):
+        y_truth, y_pred = panel_scorer_data
+        scorer = scorer_cls()
+        scorer.fit(y_truth)
+        check_scorer_panel_subselection(scorer, y_truth, y_pred, groups=["g1"])
+
+    def test_component_subselection(self, scorer_data, scorer_cls):
+        y_truth, y_pred = scorer_data
+        components = [c for c in y_truth.columns if c != "time"]
+        scorer = scorer_cls()
+        scorer.fit(y_truth)
+        check_scorer_component_subselection(scorer, y_truth, y_pred, components=components)
+
+
 @pytest.mark.integration
 class TestMaxAbsoluteError:
     """Verify custom scorer with overridden _collapse_rows."""
@@ -103,13 +157,10 @@ class TestMaxAbsoluteError:
             _yield_yohou_scorer_checks(scorer, y_truth, y_pred),
         )
 
-    def test_score_value(self, scorer_data):
-        y_truth, y_pred = scorer_data
-        scorer = _MaxAbsoluteError()
-        scorer.fit(y_truth)
-        result = scorer.score(y_truth, y_pred)
-        # Every row has |actual - pred| = 1.0, max is 1.0
-        assert result == pytest.approx(1.0)
+    # NOTE: a uniform-error (all errors == 1.0) score_value test cannot distinguish
+    # max from sqrt-mean (both equal 1.0), so it was removed. The differentiating
+    # behavior is covered by test_score_asymmetric_errors (max picks the largest
+    # error), and the no-crash/aggregation path by test_systematic_checks.
 
     def test_score_asymmetric_errors(self):
         times = pl.datetime_range(
@@ -143,13 +194,10 @@ class TestRootMeanSquaredError:
             _yield_yohou_scorer_checks(scorer, y_truth, y_pred),
         )
 
-    def test_score_value(self, scorer_data):
-        y_truth, y_pred = scorer_data
-        scorer = _RootMeanSquaredError()
-        scorer.fit(y_truth)
-        result = scorer.score(y_truth, y_pred)
-        # Every row has error = 1.0, so MSE = 1.0, RMSE = 1.0
-        assert result == pytest.approx(1.0)
+    # NOTE: a uniform-error (all errors == 1.0) score_value test cannot distinguish
+    # sqrt-mean from max (both equal 1.0), so it was removed. The distinguishing
+    # sqrt(mean(e^2)) behavior is covered by test_score_known_rmse, and the
+    # no-crash/aggregation path by test_systematic_checks.
 
     def test_score_known_rmse(self):
         times = pl.datetime_range(

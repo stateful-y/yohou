@@ -228,57 +228,12 @@ class TestGridSearchMultiMetric:
 class TestRandomizedSearch:
     """RandomizedSearchCV with continuous distributions and reproducibility."""
 
-    def test_randomized_search_n_iter_count(self, linear_series):
-        """Verify n_iter produces exactly n candidates."""
-        y = linear_series(slope=2.0, intercept=10.0, length=100)
-
-        forecaster = PointReductionForecaster(
-            estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
-        )
-        param_distributions = {
-            "estimator__alpha": uniform(0, 10),
-            "feature_transformer__lag": [1, [1, 2], [1, 2, 3]],
-        }
-        scorer = MeanAbsoluteError()
-        cv = SlidingWindowSplitter(n_splits=3, test_size=10)
-
-        search = RandomizedSearchCV(forecaster, param_distributions, n_iter=5, scoring=scorer, cv=cv, random_state=42)
-        search.fit(y, forecasting_horizon=5)
-
-        # Should have exactly 5 candidates
-        assert len(search.cv_results_["params"]) == 5
-
-    def test_randomized_search_reproducibility(self, linear_series):
-        """Verify reproducibility with same random_state."""
-        y = linear_series(slope=2.0, intercept=10.0, length=100)
-
-        forecaster = PointReductionForecaster(
-            estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
-        )
-        param_distributions = {
-            "estimator__alpha": uniform(0, 10),
-            "feature_transformer__lag": [1, [1, 2]],
-        }
-        scorer = MeanAbsoluteError()
-        cv = SlidingWindowSplitter(n_splits=3, test_size=10)
-
-        # First search
-        search1 = RandomizedSearchCV(forecaster, param_distributions, n_iter=8, scoring=scorer, cv=cv, random_state=123)
-        search1.fit(y, forecasting_horizon=5)
-
-        # Second search with same seed
-        search2 = RandomizedSearchCV(forecaster, param_distributions, n_iter=8, scoring=scorer, cv=cv, random_state=123)
-        search2.fit(y, forecasting_horizon=5)
-
-        # Should produce identical parameter samples
-        params1 = search1.cv_results_["params"]
-        params2 = search2.cv_results_["params"]
-
-        for p1, p2 in zip(params1, params2, strict=False):
-            assert p1["estimator__alpha"] == p2["estimator__alpha"]
-            assert p1["feature_transformer__lag"] == p2["feature_transformer__lag"]
+    # NOTE: the n_iter-count and same-seed reproducibility contracts are covered
+    # systematically by check_randomized_search_n_iter and
+    # check_randomized_search_reproducibility, run for RandomizedSearchCV in
+    # tests/model_selection/test_search.py. The integration value retained here is
+    # test_randomized_search_different_seeds (different seeds -> different samples),
+    # which has no equivalent systematic check.
 
     def test_randomized_search_different_seeds(self, linear_series):
         """Verify different random_state produces different samples."""
@@ -365,9 +320,10 @@ class TestGridSearchCVSplitters:
         search_sliding = GridSearchCV(forecaster, param_grid, scoring=scorer, cv=cv_sliding)
         search_sliding.fit(y, forecasting_horizon=5)
 
-        # Both should find a best_params_ (may differ due to different validation sets)
-        assert search_expanding.best_params_ is not None
-        assert search_sliding.best_params_ is not None
+        # Both should select an alpha from the tested grid (content-level check,
+        # not merely "is not None").
+        assert search_expanding.best_params_["estimator__alpha"] in [0.0, 0.5, 1.0]
+        assert search_sliding.best_params_["estimator__alpha"] in [0.0, 0.5, 1.0]
 
         # Both should have same number of parameter combinations
         assert len(search_expanding.cv_results_["params"]) == 3
@@ -399,9 +355,9 @@ class TestGridSearchConformalForecaster:
         search = GridSearchCV(forecaster, param_grid, scoring=scorer, cv=cv)
         search.fit(y, forecasting_horizon=5)
 
-        # Should complete without error
+        # Should complete without error and select a lag from the tested grid.
         assert len(search.cv_results_["params"]) == 2
-        assert search.best_params_ is not None
+        assert search.best_params_["point_forecaster__feature_transformer__lag"] in [1, [1, 2]]
         check_is_fitted(search.best_forecaster_)
 
     def test_grid_search_conformal_predict_interval(self, linear_series):
@@ -483,8 +439,8 @@ class TestGridSearchConfiguration:
         search = GridSearchCV(forecaster, param_grid, scoring=scorer, cv=cv, verbose=1)
         search.fit(y, forecasting_horizon=5)
 
-        # Should complete successfully with verbose output
-        assert search.best_params_ is not None
+        # Should complete successfully with verbose output and select a grid alpha.
+        assert search.best_params_["estimator__alpha"] in [0.0, 0.1, 1.0]
         assert len(search.cv_results_["params"]) == 3
 
     def test_grid_search_error_score_nan(self, linear_series):
@@ -504,8 +460,8 @@ class TestGridSearchConfiguration:
         search = GridSearchCV(forecaster, param_grid, scoring=scorer, cv=cv, error_score=np.nan)
         search.fit(y, forecasting_horizon=5)
 
-        # Should complete successfully even if some fits fail
-        assert search.best_params_ is not None
+        # Should complete successfully even if some fits fail, selecting a grid alpha.
+        assert search.best_params_["estimator__alpha"] in [0.0, 0.5, 1.0]
         assert len(search.cv_results_["params"]) == 3
 
 
@@ -537,10 +493,11 @@ class TestNestedCVColumnForecaster:
 
         column_forecaster.fit(y_multi, forecasting_horizon=5)
 
-        # inner_search clone should be fitted inside column_forecaster
+        # inner_search clone should be fitted inside column_forecaster and have
+        # selected an alpha from its tested grid.
         _name, fitted_search, _cols = column_forecaster.forecasters_[0]
         check_is_fitted(fitted_search)
-        assert fitted_search.best_params_ is not None
+        assert fitted_search.best_params_["estimator__alpha"] in [0.0, 1.0]
 
     def test_nested_cv_column_forecaster_best_forecaster_populated(self, linear_series):
         """Verify best_forecaster_ is populated inside ColumnForecaster."""

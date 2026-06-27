@@ -26,6 +26,7 @@ from yohou.stationarity import (
     PatternSeasonalityForecaster,
     PolynomialTrendForecaster,
 )
+from yohou.utils.panel import inspect_panel
 
 
 @pytest.mark.integration
@@ -600,11 +601,21 @@ class TestFourComponentDecomposition:
 class TestComponentSpecificTransformers:
     """Verify decomposition with component-specific target_transformers."""
 
+    @pytest.mark.xfail(
+        reason=(
+            "Bug (Wave C): DecompositionPipeline.predict() sums component "
+            "predictions with predict_transformed=True but never inverts "
+            "component-level target_transformers, while fit() computes residuals "
+            "in original scale. A component-level StandardScaler therefore yields "
+            "predictions in scaled space (off by orders of magnitude)."
+        ),
+        strict=True,
+    )
     def test_component_specific_transformers_mixed(self):
-        """Verify decomposition with component-specific target_transformers.
+        """A component-level target_transformer must not corrupt the scale.
 
-        One component has StandardScaler, others don't.
-        Scaling should not corrupt additive recomposition.
+        One component has StandardScaler, others don't. The recomposed
+        prediction must still match the analytical signal in original scale.
         """
         n = 100
         t = np.arange(n)
@@ -632,32 +643,31 @@ class TestComponentSpecificTransformers:
         pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        # Get component predictions in transformed space (matching what pipeline sums)
-        forecasters_dict = dict(pipeline.forecasters_)
-        trend_pred = forecasters_dict["trend"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-        seasonal_pred = forecasters_dict["seasonal"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-        residual_pred = forecasters_dict["residual"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-
+        # The recomposed prediction must be in the ORIGINAL scale and track the
+        # known signal. This is the non-tautological check: comparing predict()
+        # against the analytical values exercises the inverse-transform path that
+        # the previous "transformed-space additive identity" assertion bypassed.
         target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
-        # Component predictions in transformed space share column names
-        comp_col = [c for c in trend_pred.columns if c not in ["time", "vintage_time"]][0]
+        t_pred = np.arange(80, 80 + forecasting_horizon)
+        expected = 10.0 * t_pred + 100.0 + 5.0 * np.sin(2 * np.pi * t_pred / 7)
 
-        # Verify additive identity in transformed space (pipeline sums transformed predictions)
         np.testing.assert_allclose(
             y_pred[target_col].to_numpy(),
-            (trend_pred[comp_col].to_numpy() + seasonal_pred[comp_col].to_numpy() + residual_pred[comp_col].to_numpy()),
-            atol=1e-6,
-            err_msg="Component transformers should not corrupt additive identity",
+            expected,
+            rtol=0.05,
+            err_msg="Component StandardScaler must not change the prediction scale",
         )
 
+    @pytest.mark.xfail(
+        reason=(
+            "Bug (Wave C): see test_component_specific_transformers_mixed. "
+            "predict() does not invert component-level target_transformers, so "
+            "all-scaled components produce predictions in scaled space."
+        ),
+        strict=True,
+    )
     def test_component_specific_transformers_all_scaled(self):
-        """Verify decomposition where ALL components have StandardScaler."""
+        """All components scaled: recomposition must stay in original scale."""
         n = 100
         t = np.arange(n)
         y_values = 5.0 * t + 50.0 + 3.0 * np.sin(2 * np.pi * t / 7)
@@ -684,28 +694,15 @@ class TestComponentSpecificTransformers:
         pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
         y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        # Get component predictions in transformed space (matching what pipeline sums)
-        forecasters_dict = dict(pipeline.forecasters_)
-        trend_pred = forecasters_dict["trend"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-        seasonal_pred = forecasters_dict["seasonal"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-        residual_pred = forecasters_dict["residual"].predict(
-            forecasting_horizon=forecasting_horizon, predict_transformed=True
-        )
-
         target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
-        # Component predictions in transformed space may have different column names
-        comp_col = [c for c in trend_pred.columns if c not in ["time", "vintage_time"]][0]
+        t_pred = np.arange(80, 80 + forecasting_horizon)
+        expected = 5.0 * t_pred + 50.0 + 3.0 * np.sin(2 * np.pi * t_pred / 7)
 
-        # Verify additive identity in transformed space
         np.testing.assert_allclose(
             y_pred[target_col].to_numpy(),
-            (trend_pred[comp_col].to_numpy() + seasonal_pred[comp_col].to_numpy() + residual_pred[comp_col].to_numpy()),
-            atol=1e-6,
-            err_msg="All-scaled components should still satisfy additive identity",
+            expected,
+            rtol=0.05,
+            err_msg="All-scaled components must not change the prediction scale",
         )
 
     def test_component_specific_transformers_none(self):
@@ -738,7 +735,6 @@ class TestComponentSpecificTransformers:
         # Get component predictions
         forecasters_dict = dict(pipeline.forecasters_)
         trend_pred = forecasters_dict["trend"].predict(forecasting_horizon=forecasting_horizon)
-        forecasters_dict = dict(pipeline.forecasters_)
         seasonal_pred = forecasters_dict["seasonal"].predict(forecasting_horizon=forecasting_horizon)
 
         target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
@@ -843,7 +839,6 @@ class TestDifferentForecastingHorizons:
         # Verify additive identity
         forecasters_dict = dict(pipeline.forecasters_)
         trend_pred = forecasters_dict["trend"].predict(forecasting_horizon=forecasting_horizon)
-        forecasters_dict = dict(pipeline.forecasters_)
         seasonal_pred = forecasters_dict["seasonal"].predict(forecasting_horizon=forecasting_horizon)
 
         target_col = [c for c in y_pred.columns if c not in ["time", "vintage_time"]][0]
@@ -954,10 +949,12 @@ class TestObserveRewindStateManagement:
             err_msg="Observe should shift predictions by expected amount",
         )
 
-    def test_rewind_reverts_to_observation_horizon_state(self, linear_series):
-        """Verify rewind() reverts to last observation_horizon rows.
+    def test_rewind_resets_buffer_to_rewind_window(self, linear_series):
+        """Verify rewind() resets the observation buffer to the rewind window.
 
-        fit() → observe() → rewind() → predict(): should match prediction from observation_horizon.
+        fit() -> observe() -> rewind(window): the observation buffer reflects the
+        rewound window (not the prior observe), the next forecast is anchored at
+        the window's end, and predictions continue the linear trend.
         """
         y = linear_series(slope=2.0, intercept=10.0, length=150)
         X_actual = y.select("time")
@@ -977,26 +974,29 @@ class TestObserveRewindStateManagement:
 
         pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
-        # Update with next 30 points
+        # Observe next 30 points, advancing observed_time_ to t=109
         y_update = y[80:110]
         X_actual_update = X_actual[80:110]
         pipeline.observe(y_update, X_actual_update)
 
-        # Now rewind (should keep only observation_horizon rows)
-        pipeline.rewind(y_update, X_actual_update)
+        # Rewind to a shorter window (rows 90..109) and confirm the observation
+        # buffer now reflects that window rather than the prior 30-row observe.
+        rewind_window = y[90:110]
+        pipeline.rewind(rewind_window, X_actual[90:110])
 
-        # After reset, internal state should be trimmed
-        # Verify by checking that prediction still works and produces correct shape
+        assert pipeline._y_observed.height == rewind_window.height
+        assert pipeline._y_observed["time"].max() == rewind_window["time"].max()
+
         y_pred_reset = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        # Verify it runs without error and produces correct shape
-        assert len(y_pred_reset) == forecasting_horizon, "Reset should still predict correct horizon"
+        # Forecast is anchored just after the rewind window (t=110 onwards).
+        assert len(y_pred_reset) == forecasting_horizon
+        assert y_pred_reset["time"].min() > rewind_window["time"].max()
 
         target_col = [c for c in y_pred_reset.columns if c not in ["time", "vintage_time"]][0]
         pred_values = y_pred_reset[target_col].to_numpy()
 
-        # After reset, predictions should still follow a linear trend pattern
-        # (exact time offset depends on internal state management)
+        # Predictions continue the linear trend (step == slope).
         diffs = np.diff(pred_values)
         np.testing.assert_allclose(
             diffs,
@@ -1005,8 +1005,13 @@ class TestObserveRewindStateManagement:
             err_msg="Rewind should maintain linear trend pattern in predictions",
         )
 
-    def test_observe_predict_atomic_two_component(self):
-        """Verify observe_predict() is atomic operation for 2-component decomposition."""
+    def test_observe_predict_matches_separate_observe_then_predict(self):
+        """observe_predict() equals separate observe() then predict() (atomicity).
+
+        The final vintage of observe_predict() over a stride-sized block must be
+        identical to calling observe() on that block then predict(), confirming
+        the combined call is equivalent to the two-step sequence.
+        """
         n = 120
         t = np.arange(n)
         y_values = 1.5 * t + 20.0
@@ -1019,35 +1024,52 @@ class TestObserveRewindStateManagement:
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
         X_actual = y.select("time")
 
-        pipeline = DecompositionPipeline([
-            ("trend", PolynomialTrendForecaster(degree=1)),
-            ("residual", SeasonalNaive(seasonality=1)),
-        ])
+        def _make_pipeline():
+            return DecompositionPipeline([
+                ("trend", PolynomialTrendForecaster(degree=1)),
+                ("residual", SeasonalNaive(seasonality=1)),
+            ])
 
         y_train = y[:80]
         X_actual_train = X_actual[:80]
         forecasting_horizon = 5
 
-        pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+        y_update = y[80:85]
+        X_actual_update = X_actual[80:85]
 
-        # Use separate update + predict to verify atomic behavior
-        y_update = y[80:90]
-        X_actual_update = X_actual[80:90]
-        pipeline.observe(y_update, X_actual_update)
-        y_pred_atomic = pipeline.predict(forecasting_horizon=forecasting_horizon)
+        # Two-step path: observe() then predict().
+        pipeline_steps = _make_pipeline()
+        pipeline_steps.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+        pipeline_steps.observe(y_update, X_actual_update)
+        y_pred_steps = pipeline_steps.predict(forecasting_horizon=forecasting_horizon)
 
-        # Verify prediction has correct length
-        assert len(y_pred_atomic) == forecasting_horizon
+        # Combined path: observe_predict() over the same stride-sized block.
+        pipeline_atomic = _make_pipeline()
+        pipeline_atomic.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+        y_pred_combined = pipeline_atomic.observe_predict(
+            y_update, X_actual_update, forecasting_horizon=forecasting_horizon, stride=forecasting_horizon
+        )
 
-        target_col = [c for c in y_pred_atomic.columns if c not in ["time", "vintage_time"]][0]
-        pred_values = y_pred_atomic[target_col].to_numpy()
+        target_col = [c for c in y_pred_steps.columns if c not in ["time", "vintage_time"]][0]
 
-        # Should predict for t=90..94 (allow boundary offset from polynomial fit)
-        t_pred = np.arange(90, 95)
-        expected_values = 1.5 * t_pred + 20.0
+        # The forecast made after observing the whole block (the last vintage of
+        # observe_predict) must equal the explicit observe()+predict() result.
+        last_vintage = y_pred_combined["vintage_time"].max()
+        y_pred_combined_last = y_pred_combined.filter(pl.col("vintage_time") == last_vintage)
 
+        assert len(y_pred_steps) == forecasting_horizon
         np.testing.assert_allclose(
-            pred_values,
+            y_pred_combined_last[target_col].to_numpy(),
+            y_pred_steps[target_col].to_numpy(),
+            atol=1e-8,
+            err_msg="observe_predict's final vintage must equal observe()+predict()",
+        )
+
+        # And that shared forecast tracks the analytical linear series at t=85..89.
+        t_pred = np.arange(85, 90)
+        expected_values = 1.5 * t_pred + 20.0
+        np.testing.assert_allclose(
+            y_pred_steps[target_col].to_numpy(),
             expected_values,
             atol=3.0,  # Allow tolerance for polynomial fit boundary effects
             err_msg="observe + predict should give correct predictions",
@@ -1144,20 +1166,67 @@ class TestObserveRewindStateManagement:
             pred_values, expected_values, atol=0.1, err_msg="Multiple observes should accumulate correctly"
         )
 
-    def test_rewind_with_groups(self):
-        """Verify rewind() works with groups parameter (if supported).
+    def test_store_residuals_observe_appends_and_preserves_invariant(self):
+        """observe() with store_residuals=True appends aligned residual rows.
 
-        Note: This test may need adjustment based on actual panel data support in DecompositionPipeline.
+        Exercises the store_residuals=True branch of observe() (not covered by
+        the default store_residuals=False tests in this file): sequential
+        observe() calls extend residuals_['trend'], and for a purely linear
+        series the trend residual stays near zero (decomposition invariant).
         """
-        n = 100
+        n = 120
         t = np.arange(n)
-        y_values = 2.0 * t + 10.0
-
         time = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
 
         y = pl.DataFrame({
             "time": time,
-            "target": y_values,
+            "target": 2.0 * t + 30.0,
+        }).with_columns(pl.col("time").cast(pl.Datetime("us")))
+        X_actual = y.select("time")
+
+        pipeline = DecompositionPipeline(
+            [
+                ("trend", PolynomialTrendForecaster(degree=1)),
+                ("residual", SeasonalNaive(seasonality=1)),
+            ],
+            store_residuals=True,
+        )
+
+        y_train = y[:80]
+        pipeline.fit(y_train, X_actual[:80], forecasting_horizon=5)
+
+        assert "trend" in pipeline.residuals_
+        height_after_fit = pipeline.residuals_["trend"].height
+
+        # Two sequential observes append residual rows for the new data.
+        pipeline.observe(y[80:90], X_actual[80:90])
+        pipeline.observe(y[90:100], X_actual[90:100])
+
+        assert pipeline.residuals_["trend"].height == height_after_fit + 20
+
+        # Decomposition invariant: for a purely linear series the trend residual
+        # of the newly appended observe rows stays near zero (the earliest fit
+        # warmup rows carry the usual polynomial boundary offset, so we check the
+        # 20 rows added by observe()).
+        appended_residual = pipeline.residuals_["trend"].select(pl.exclude("time")).to_numpy().flatten()[-20:]
+        assert np.max(np.abs(appended_residual)) < 0.5
+
+    def test_rewind_with_panel_groups(self):
+        """Verify observe/rewind dispatch through the real panel-groups path.
+
+        Uses a genuine two-group panel (``g0__value``, ``g1__value``) so the
+        panel branch of observe/rewind/predict is exercised, and asserts each
+        group's predictions track its own linear trend after rewind.
+        """
+        n = 100
+        t = np.arange(n)
+        time = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+
+        # Two groups with distinct linear trends.
+        y = pl.DataFrame({
+            "time": time,
+            "g0__value": 2.0 * t + 10.0,
+            "g1__value": 3.0 * t + 20.0,
         }).with_columns(pl.col("time").cast(pl.Datetime("us")))
         X_actual = y.select("time")
 
@@ -1171,15 +1240,28 @@ class TestObserveRewindStateManagement:
         forecasting_horizon = 5
 
         pipeline.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
+        assert pipeline.groups_ == ["g0", "g1"]
 
-        # Update and reset with groups=None (should work as normal reset)
+        # Observe then rewind the same window, exercising the panel dispatch.
         y_update = y[80:90]
         X_actual_update = X_actual[80:90]
+        pipeline.observe(y_update, X_actual_update)
+        pipeline.rewind(y_update, X_actual_update)
 
-        pipeline.observe(y_update, X_actual_update, groups=None)
-        pipeline.rewind(y_update, X_actual_update, groups=None)
+        y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon)
 
-        # Verify prediction still works
-        y_pred = pipeline.predict(forecasting_horizon=forecasting_horizon, groups=None)
+        # Panel structure preserved and each group continues its own trend
+        # for t=90..94 (allow slack for the polynomial-fit boundary offset).
+        assert len(y_pred) == forecasting_horizon
+        _, panel_groups = inspect_panel(y_pred)
+        assert set(panel_groups.keys()) == {"g0", "g1"}
 
-        assert len(y_pred) == forecasting_horizon, "Rewind with groups should work"
+        t_pred = np.arange(90, 95)
+        for prefix, slope, intercept in [("g0", 2.0, 10.0), ("g1", 3.0, 20.0)]:
+            expected = slope * t_pred + intercept
+            np.testing.assert_allclose(
+                y_pred[f"{prefix}__value"].to_numpy(),
+                expected,
+                atol=float(slope + 3.0),
+                err_msg=f"Group {prefix} should continue its linear trend after rewind",
+            )

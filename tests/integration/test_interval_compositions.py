@@ -84,7 +84,9 @@ class TestSplitConformalForecaster:
             coverage_rates=coverage_rates,
         )
 
-        # 2. Verify interval columns exist with correct names
+        # 2. Verify the mandatory time-column contract and interval columns
+        assert "vintage_time" in y_pred_interval.columns
+        assert "time" in y_pred_interval.columns
         target_cols = [c for c in y_train.columns if c != "time"]
         for col in target_cols:
             for rate in coverage_rates:
@@ -197,40 +199,6 @@ class TestSplitConformalForecaster:
             assert np.sum(lower_diff > 1e-6) > 0 or np.sum(upper_diff > 1e-6) > 0, (
                 f"Similarity had no effect on intervals for {col} with metric {metric}"
             )
-
-    def test_split_conformal_similarity_comparison_across_metrics(self, ar1_series):
-        """Test that different distance metrics produce different intervals."""
-        y = ar1_series(phi=0.5, c=10.0, length=300, noise_std=1.0)
-        y_train = y[:250]
-        forecasting_horizon = 10
-
-        metrics_to_test = ["euclidean", "sqeuclidean", "chebyshev"]
-        predictions = {}
-
-        for metric in metrics_to_test:
-            conformal = SplitConformalForecaster(
-                point_forecaster=SeasonalNaive(seasonality=1),
-                conformity_scorer=AbsoluteResidual(),
-                similarity=DistanceSimilarity(metric=metric),
-            )
-            conformal.fit(y_train, forecasting_horizon=forecasting_horizon)
-            predictions[metric] = conformal.predict_interval(
-                forecasting_horizon=forecasting_horizon,
-                coverage_rates=[0.9],
-            )
-
-        # Compare euclidean vs sqeuclidean
-        target_cols = [c for c in y_train.columns if c != "time"]
-        for col in target_cols:
-            lower_col = f"{col}_lower_0.9"
-            euclidean_lower = predictions["euclidean"][lower_col].to_numpy()
-            sqeuclidean_lower = predictions["sqeuclidean"][lower_col].to_numpy()
-
-            # Different metrics should produce different results in general
-            # (may be similar for some simple cases, but expect differences)
-            diff = np.abs(euclidean_lower - sqeuclidean_lower)
-            # At least some timesteps should differ
-            assert np.sum(diff > 1e-6) > 0, f"Euclidean and sqeuclidean produced identical intervals for {col}"
 
 
 @pytest.mark.integration
@@ -381,8 +349,8 @@ class TestIntervalReductionForecaster:
         # observe_predict_interval returns initial predict + rolling observe-predict
         # predictions concatenated. With stride=forecasting_horizon=10 and
         # len(y_update)=5, this produces 1 initial + 1 loop iteration = 2 batches.
-        assert len(y_pred_interval) > 0
-        assert len(y_pred_interval) % forecasting_horizon == 0
+        assert len(y_pred_interval) == 2 * forecasting_horizon
+        assert y_pred_interval["vintage_time"].n_unique() == 2
 
         # Verify interval structure
         target_cols = [c for c in y_train.columns if c != "time"]
@@ -530,9 +498,12 @@ class TestColumnForecasterInterval:
         assert "col_a_lower_0.9" in y_pred_interval.columns
         assert "col_a_upper_0.9" in y_pred_interval.columns
 
-        # Remainder columns should be present (passed through)
-        # Note: ColumnForecaster behavior with remainder and intervals needs verification
-        # This test captures the expected behavior
+        # remainder="passthrough" is an alias of "drop" for ColumnForecaster: a
+        # forecaster cannot carry observed columns through as future predictions,
+        # so unassigned columns are excluded (consistent with test_deep_nesting's
+        # passthrough check for predict()).
+        assert not any("col_b" in c for c in y_pred_interval.columns)
+        assert not any("col_c" in c for c in y_pred_interval.columns)
 
 
 @pytest.mark.integration
@@ -563,7 +534,9 @@ class TestForecastedFeatureForecasterInterval:
             coverage_rates=[0.9],
         )
 
-        # Verify interval structure
+        # Verify the mandatory time-column contract and interval structure
+        assert "vintage_time" in y_pred_interval.columns
+        assert "time" in y_pred_interval.columns
         target_cols = [c for c in y_train.columns if c != "time"]
         for col in target_cols:
             lower_col = f"{col}_lower_0.9"

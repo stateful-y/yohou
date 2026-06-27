@@ -136,7 +136,13 @@ class TestFeaturePipelineTransform:
         pipeline_steps,
         expected_horizon,
     ):
-        """FeaturePipeline observe_transform preserves row count."""
+        """FeaturePipeline observe_transform preserves row count.
+
+        check_observe_transform_sequential_consistency covers the row-count and
+        value contract for a single registered transformer; this exercises the
+        same contract across multi-stage pipeline compositions (e.g. lag3+roll3,
+        log+diff+lag) that the systematic suite does not instantiate.
+        """
         # Generate data using fixture
         X_actual = linear_series(slope=1.0, intercept=0.0, length=100)
         X_actual_train = X_actual[:50]
@@ -210,11 +216,10 @@ class TestFeaturePipelineTransform:
         # Must fit before calling rewind_transform
         pipeline.fit(X_actual)
 
-        # rewind_transform rewinds state, drops first observation_horizon rows
+        # rewind_transform rewinds state and drops exactly observation_horizon rows,
+        # matching fit_transform's warmup-row contract.
         X_actual_reset = pipeline.rewind_transform(X_actual)
-        # Note: Actual row count depends on which transformers drop rows
-        # rewind_transform behavior matches fit_transform for stateless transformers
-        assert len(X_actual_reset) <= len(X_actual)
+        assert len(X_actual_reset) == len(X_actual) - expected_horizon
 
         # Verify time column preserved
         assert "time" in X_actual_reset.columns
@@ -408,7 +413,7 @@ class TestFeatureUnion:
         union_steps,
         expected_horizon,
     ):
-        """FeatureUnion rewind_transform preserves row count (pads with nulls)."""
+        """FeatureUnion rewind_transform drops exactly observation_horizon rows."""
         # Generate data using fixture
         X_actual = linear_series(slope=1.0, intercept=0.0, length=100)
         union = FeatureUnion(union_steps)
@@ -416,10 +421,10 @@ class TestFeatureUnion:
         # Must fit before calling rewind_transform
         union.fit(X_actual)
 
-        # rewind_transform rewinds state
+        # rewind_transform rewinds state and drops exactly observation_horizon
+        # rows (the max of the branch horizons), matching fit_transform.
         X_actual_reset = union.rewind_transform(X_actual)
-        # FeatureUnion pads to preserve all rows
-        assert len(X_actual_reset) <= len(X_actual)
+        assert len(X_actual_reset) == len(X_actual) - expected_horizon
 
         # Verify time column preserved
         assert "time" in X_actual_reset.columns
@@ -754,23 +759,34 @@ class TestInverseTransform:
 
         assert np.allclose(recovered_values, original_values, atol=1e-6)
 
-    def test_inverse_transform_three_step_chain(self, linear_series):
-        """Three-step inverse transform chain (log -> std -> minmax) recovers original."""
-        # Generate data using fixture (positive values for log)
-        X_actual = linear_series(slope=1.0, intercept=100.0, length=100)
+    # NOTE: the three-step log->std->minmax inverse chain is already covered by the
+    # 'log_std_minmax' parametrization of test_inverse_transform_round_trip_linear_data
+    # above (same pipeline, data, and tolerance), so the standalone duplicate was removed.
 
+    def test_inverse_transform_uses_only_observation_horizon_context(self, linear_series):
+        """inverse_transform needs only observation_horizon rows of X_p context.
+
+        The stateful diff_std pipeline has observation_horizon=1. Passing only the
+        first ``oh`` rows of X_actual as past context must produce the same result
+        as passing the full 100-row frame; otherwise the round-trip tests above
+        would be relying on excess context rather than the documented minimum-slice
+        semantics.
+        """
+        X_actual = linear_series(slope=1.0, intercept=100.0, length=100)
         pipeline = FeaturePipeline([
-            ("log", LogTransformer(offset=1.0)),
+            ("diff", SeasonalDifferencing(1)),
             ("std", StandardScaler()),
-            ("minmax", MinMaxScaler()),
         ])
 
         X_transformed = pipeline.fit_transform(X_actual)
-        X_recovered = pipeline.inverse_transform(X_transformed, X_actual)
+        oh = pipeline.observation_horizon
+        assert oh == 1
 
-        # All transformers have oh=0
-        original_values = X_actual["value"].to_numpy()
-        recovered_values = X_recovered["value"].to_numpy()
+        recovered_full = pipeline.inverse_transform(X_transformed, X_actual)
+        recovered_min = pipeline.inverse_transform(X_transformed, X_actual[:oh])
 
-        # Three-step chain may accumulate more numerical error
-        assert np.allclose(recovered_values, original_values, atol=1e-5)
+        assert np.allclose(
+            recovered_full["value"].to_numpy(),
+            recovered_min["value"].to_numpy(),
+            atol=1e-9,
+        )

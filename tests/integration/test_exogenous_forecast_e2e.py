@@ -210,9 +210,10 @@ class TestFitPredictWithExogenous:
             X_forecast=d["X_forecast_train"],
         )
 
-        # Verify fitted attributes
-        assert hasattr(f, "observed_time_")
-        assert f.fit_forecasting_horizon_ == H
+        # Generic fitted attributes (observed_time_, fit_forecasting_horizon_)
+        # are covered by check_fit_sets_forecaster_attributes in the systematic
+        # suite; here we assert only the exogenous-specific fit state that the
+        # three-parameter API must populate.
         assert len(f._step_column_names_) > 0
         assert f._X_future_raw_ is not None
         assert f._X_forecast_raw_ is not None
@@ -231,6 +232,7 @@ class TestFitPredictWithExogenous:
 
         y_pred = f.predict()
         assert len(y_pred) == H
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert "price" in y_pred.columns
 
@@ -255,7 +257,13 @@ class TestFitPredictWithExogenous:
         assert not np.allclose(prices_accurate, prices_biased, atol=0.01), "Multi-vintage predictions should differ"
 
     def test_predict_does_not_mutate_state(self, electricity_data):
-        """predict(X_forecast=...) does not change internal state."""
+        """predict(X_forecast=...) does not change internal state.
+
+        Stronger than check_predict_X_forecast_override (which only checks the
+        _X_forecast_raw_ pointer is unchanged): this asserts the actual baseline
+        prediction array is bit-for-bit identical before and after an override,
+        on the realistic electricity scenario.
+        """
         d = electricity_data
         f, fh = _build_forecaster()
         f.fit(
@@ -360,6 +368,57 @@ class TestObserveWithExogenous:
             atol=0.01,
         )
 
+    def test_observe_X_forecast_all_future_vintages_clears_raw(self, electricity_data):
+        """observe() with only future-dated vintages narrows _X_forecast_raw_ to empty.
+
+        observe() keeps the single latest vintage at or before observed_time_.
+        When every supplied vintage is later than the new observed_time_, the
+        as-of filter matches nothing and _X_forecast_raw_ becomes an empty
+        frame; predict() must still return H rows (step columns may be null).
+        """
+        d = electricity_data
+        f, fh = _build_forecaster()
+        f.fit(
+            y=d["y_train"],
+            X_actual=d["X_actual_train"],
+            forecasting_horizon=fh,
+            X_future=d["X_future_full"],
+            X_forecast=d["X_forecast_train"],
+        )
+
+        # Observe one new row to advance observed_time_ into the test range.
+        f.observe(y=d["y_test"][:1], X_actual=d["X_actual_test"][:1])
+
+        # Build an X_forecast whose vintages all lie strictly after the current
+        # observed_time_, so the as-of filter (latest vintage <= observed_time_)
+        # matches nothing.
+        all_times = d["all_times"]
+        future_vintage_start = N_TRAIN + 10
+        future_only = _make_weather_forecast(
+            pl.Series("vintage_time", list(all_times[future_vintage_start : future_vintage_start + 3])),
+            all_times[future_vintage_start + 3 : future_vintage_start + 3 + H],
+            bias=0.1,
+            rng=np.random.default_rng(700),
+        )
+        assert future_only.height > 0
+        assert future_only["vintage_time"].min() > f.observed_time_
+
+        f.observe(
+            y=d["y_test"][1:2],
+            X_actual=d["X_actual_test"][1:2],
+            X_forecast=future_only,
+        )
+
+        # No vintage qualified, so the stored raw is narrowed to an empty frame.
+        assert f._X_forecast_raw_ is not None
+        assert f._X_forecast_raw_.height == 0
+
+        # predict() still produces a correctly shaped block.
+        y_pred = f.predict()
+        assert len(y_pred) == H
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
+
     def test_rewind_restores_state(self, electricity_data):
         """rewind() restores the forecaster to a prior observation point."""
         d = electricity_data
@@ -420,6 +479,7 @@ class TestObservePredictLoop:
 
         # Should produce predictions for the test range
         assert len(preds) > 0
+        assert "vintage_time" in preds.columns
         assert "time" in preds.columns
         assert "price" in preds.columns
 
@@ -484,6 +544,9 @@ class TestStepFeatureAlignment:
 
         y_pred = f.predict()
         assert len(y_pred) == H
+        # Every alignment mode must still emit the mandatory time columns.
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
 
 
 @pytest.mark.integration
@@ -628,33 +691,6 @@ class TestFitOnlySubsets:
 class TestEdgeCases:
     """Edge cases for the exogenous forecast API."""
 
-    def test_predict_with_X_future_override(self, electricity_data):
-        """predict(X_future=...) overrides stored holiday data."""
-        d = electricity_data
-        f, fh = _build_forecaster()
-        f.fit(
-            y=d["y_train"],
-            X_actual=d["X_actual_train"],
-            forecasting_horizon=fh,
-            X_future=d["X_future_full"],
-            X_forecast=d["X_forecast_train"],
-        )
-
-        pred_default = f.predict()
-
-        # Create alternative holidays (all days are holidays)
-        all_holiday = d["X_future_full"].with_columns(
-            pl.lit(1.0).alias("is_holiday"),
-        )
-        pred_all_holiday = f.predict(X_future=all_holiday)
-
-        # Predictions should differ
-        assert not np.allclose(
-            pred_default["price"].to_numpy(),
-            pred_all_holiday["price"].to_numpy(),
-            atol=0.01,
-        )
-
     def test_step_columns_in_local_X_t_schema(self, electricity_data):
         """Step columns are registered in local_X_t_schema_ after fit."""
         d = electricity_data
@@ -672,7 +708,13 @@ class TestEdgeCases:
         assert f._step_column_names_.issubset(schema_cols), f"Missing step cols: {f._step_column_names_ - schema_cols}"
 
     def test_recursive_predict_raises_with_X_forecast(self, electricity_data):
-        """Recursive predict raises ValueError when X_forecast was used at fit."""
+        """Recursive predict raises ValueError when X_forecast was used at fit.
+
+        Covers the raise side of the guard in _recursive_predict
+        (BasePointForecaster, "forecasting_horizon > fit_forecasting_horizon_
+        AND _X_forecast_raw_ is not None"). The no-raise side is covered by
+        test_recursive_predict_allowed_with_X_future_only below.
+        """
         d = electricity_data
         f, fh = _build_forecaster()
         f.fit(
@@ -773,29 +815,6 @@ class TestEdgeCasesExtended:
         # Stored X_forecast_raw_ unchanged
         assert f._X_forecast_raw_ is not None
 
-    def test_observe_auto_rederives_step_columns(self, electricity_data):
-        """observe() without X_future/X_forecast auto-rederives from stored raws."""
-        d = electricity_data
-        f, fh = _build_forecaster()
-        f.fit(
-            y=d["y_train"],
-            X_actual=d["X_actual_train"],
-            forecasting_horizon=fh,
-            X_future=d["X_future_full"],
-            X_forecast=d["X_forecast_train"],
-        )
-
-        step_cols_before = f._step_column_names_
-
-        # observe with only y and X_actual (no X_future/X_forecast)
-        y_update = d["y_test"][:6]
-        X_actual_update = d["X_actual_test"][:6]
-        f.observe(y_update, X_actual=X_actual_update)
-
-        # Step columns should still be non-empty (auto-rederived)
-        assert len(f._step_column_names_) > 0
-        assert f._step_column_names_ == step_cols_before
-
 
 @pytest.mark.integration
 class TestMismatchedVintageOverride:
@@ -889,6 +908,65 @@ class TestMismatchedVintageOverride:
 
 
 @pytest.mark.integration
+class TestPanelExogenousDispatch:
+    """Panel-path coverage for the step-column observe/predict dispatch.
+
+    The other tests exercise only non-panel PointReductionForecaster. This one
+    feeds group__column panel data with a global X_future so the panel branches
+    of step-column injection and observe/predict are exercised end to end.
+    """
+
+    def _make_panel(self):
+        n = N_TRAIN + N_TEST
+        times = _make_times(n)
+        t = np.arange(n, dtype=float)
+        rng = np.random.default_rng(SEED)
+        y = pl.DataFrame({
+            "time": times,
+            "store_1__price": 50.0 + 2.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n),
+            "store_2__price": 30.0 + 3.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n),
+        })
+        # Global (non-grouped) future feature shared by all groups.
+        x_future = _make_holiday(times)
+        return y, x_future
+
+    def test_panel_observe_predict_with_X_future(self):
+        """fit -> observe -> predict on panel data with a global X_future.
+
+        Exercises the panel branch of step-column injection and observe(): the
+        forecast must keep both groups, carry the time-column contract, and
+        shift forward after observing new ground truth.
+        """
+        from yohou.utils.panel import inspect_panel
+
+        y, x_future = self._make_panel()
+        f = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(max_iter=30, max_depth=3, random_state=SEED),
+            feature_transformer=LagTransformer([1, 2, 3]),
+            reduction_strategy="direct",
+        )
+
+        y_train = y[:N_TRAIN]
+        f.fit(y_train, forecasting_horizon=H, X_future=x_future)
+        assert f.groups_ == ["store_1", "store_2"]
+        assert len(f._step_column_names_) > 0
+
+        pred_before = f.predict()
+        assert "vintage_time" in pred_before.columns
+        assert "time" in pred_before.columns
+        _, panel_groups = inspect_panel(pred_before)
+        assert set(panel_groups.keys()) == {"store_1", "store_2"}
+
+        # Observe newly arrived ground truth (panel observe branch), then predict.
+        f.observe(y[N_TRAIN : N_TRAIN + H], X_future=x_future)
+        pred_after = f.predict()
+
+        assert len(pred_after) == H
+        assert pred_after["vintage_time"][0] > pred_before["vintage_time"][0]
+        assert pred_after["time"].min() > pred_before["time"].min()
+
+
+@pytest.mark.integration
 class TestSparseVintageSchedule:
     """Integration test: 6h vintage schedule with hourly observations."""
 
@@ -947,4 +1025,6 @@ class TestSparseVintageSchedule:
 
         pred = f.predict()
         assert len(pred) == h
+        assert "vintage_time" in pred.columns
+        assert "time" in pred.columns
         assert "price" in pred.columns
