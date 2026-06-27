@@ -149,16 +149,6 @@ def multi_model_forecast_data(sample_forecast_data):
     }
 
 
-@pytest.fixture
-def sample_comparison_results():
-    """Create sample model comparison results."""
-    return {
-        "Naive": {"MAE": 12.3, "RMSE": 15.1, "MAPE": 8.5},
-        "LinearRegression": {"MAE": 8.7, "RMSE": 10.4, "MAPE": 5.2},
-        "Ridge": {"MAE": 9.1, "RMSE": 11.0, "MAPE": 5.8},
-    }
-
-
 class TestPlotResiduals:
     """Tests for plot_residuals function."""
 
@@ -856,7 +846,7 @@ class TestPlotScoreTimeSeriesPanel:
         return {"y_truth": y_truth, "y_pred": y_pred}
 
     def test_panel_produces_figure(self, panel_forecast):
-        """Panel forecast data produces a valid figure."""
+        """Panel forecast data produces a single aggregated score line."""
         scorer = MeanAbsoluteError()
         fig = plot_score_time_series(
             scorer,
@@ -865,17 +855,8 @@ class TestPlotScoreTimeSeriesPanel:
             groups=["value"],
         )
         assert_figure_valid(fig)
-
-    def test_panel_has_traces(self, panel_forecast):
-        """Panel score time series has at least one trace."""
-        scorer = MeanAbsoluteError()
-        fig = plot_score_time_series(
-            scorer,
-            panel_forecast["y_truth"],
-            panel_forecast["y_pred"],
-            groups=["value"],
-        )
-        assert len(fig.data) >= 1
+        # The panel score is aggregated across members into one line trace.
+        assert len(fig.data) == 1
 
     def test_panel_with_step_and_vintage_weight(self, panel_forecast):
         """Panel score time series forwards step_weight and vintage_weight."""
@@ -1086,32 +1067,6 @@ class TestPlotScoreTimeSeriesNonPanel:
             scorer,
             y_truth,
             y_pred,
-        )
-        assert_figure_valid(fig)
-
-
-class TestPlotScoreTimeSeriesPanelFacet:
-    """Tests for plot_score_time_series panel faceted path."""
-
-    def test_panel_score_time_series(self):
-        """Panel data delegates to faceted panel rendering."""
-        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True)
-        y_truth = pl.DataFrame({
-            "time": dates,
-            "value__a": [100 + i for i in range(91)],
-            "value__b": [200 + i for i in range(91)],
-        })
-        y_pred = pl.DataFrame({
-            "time": dates,
-            "value__a": [102 + i for i in range(91)],
-            "value__b": [198 + i for i in range(91)],
-        })
-        scorer = MeanAbsoluteError()
-        fig = plot_score_time_series(
-            scorer,
-            y_truth,
-            y_pred,
-            groups=["value"],
         )
         assert_figure_valid(fig)
 
@@ -1595,8 +1550,11 @@ class TestPlotResidualsColumnsParam:
             "a": [11.0 + i for i in range(10)],
             "b": [19.0 + i for i in range(10)],
         })
-        fig = plot_residuals(y_truth, y_pred, columns="a")
+        fig = plot_residuals(y_pred, y_truth, columns="a")
         assert_figure_valid(fig)
+        # Residuals are y_truth - y_pred; column "a" gives (10 + i) - (11 + i) = -1.
+        residual_trace = next(t for t in fig.data if t.name == "Residuals")
+        assert {round(float(v), 6) for v in residual_trace.y} == {-1.0}
 
 
 class TestPlotScoreTimeSeriesPanelGroupScoreCols:
@@ -2888,6 +2846,28 @@ class TestPlotScoreSummary:
         )
         assert_figure_valid(fig)
 
+    def test_summary_sort_descending(self, multi_scorer_data):
+        """sort_ascending=False orders score categories from highest to lowest."""
+        scorers = {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()}
+        ascending = plot_score_summary(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+            sort_ascending=True,
+        )
+        descending = plot_score_summary(
+            scorers,
+            multi_scorer_data["y_truth"],
+            multi_scorer_data["y_preds"],
+            sort_ascending=False,
+        )
+        asc_bar = next(t for t in ascending.data if isinstance(t, go.Bar))
+        desc_bar = next(t for t in descending.data if isinstance(t, go.Bar))
+        # Descending sort reverses the category order relative to ascending,
+        # so the first descending category is the last ascending one.
+        assert list(desc_bar.x) == list(asc_bar.x)[::-1]
+        assert desc_bar.y[0] >= desc_bar.y[-1]
+
 
 class TestPlotScorePerVintage:
     """Tests for plot_score_per_vintage function."""
@@ -2900,7 +2880,6 @@ class TestPlotScorePerVintage:
             multi_vintage_data["y_pred"],
         )
         assert_figure_valid(fig)
-        assert len(fig.data) >= 1
 
     def test_bar_kind(self, multi_vintage_data):
         """Per-vintage bar chart."""
@@ -2913,6 +2892,16 @@ class TestPlotScorePerVintage:
             kind="bar",
         )
         assert_figure_valid(fig)
+
+    def test_invalid_kind_raises(self, multi_vintage_data):
+        """An unsupported kind raises ValueError."""
+        with pytest.raises(ValueError, match="kind must be one of"):
+            plot_score_per_vintage(
+                MeanAbsoluteError(),
+                multi_vintage_data["y_truth"],
+                multi_vintage_data["y_pred"],
+                kind="scatter",
+            )
 
     def test_multi_scorer(self, multi_vintage_data):
         """Dict scorer overlays scorers."""

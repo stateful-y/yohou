@@ -317,6 +317,53 @@ class TestFacetFigureColumnsContextFields:
         assert contexts[0].facet_name == "combo"
 
 
+class TestFacetFigurePanelGroupMode:
+    """Tests for panel-mode faceting with facet_by='group'."""
+
+    @pytest.fixture
+    def two_group_panel(self):
+        return pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "sales__a": [1, 2, 3, 4, 5],
+            "sales__b": [5, 4, 3, 2, 1],
+            "demand__a": [2, 3, 4, 5, 6],
+            "demand__b": [6, 5, 4, 3, 2],
+        })
+
+    def test_facet_by_group_one_facet_per_group(self, two_group_panel):
+        """facet_by='group' creates one facet per group with members overlaid."""
+        contexts: list[RenderContext] = []
+
+        def _capture(ctx: RenderContext) -> None:
+            contexts.append(ctx)
+
+        facet_figure(two_group_panel, _capture, groups=["sales", "demand"], facet_by="group")
+        # Two groups x two members overlaid = four render contexts.
+        assert len(contexts) == 4
+        assert all(ctx.facet_by == "group" for ctx in contexts)
+        # Each facet is a group; the overlaid display_name is the member name.
+        assert sorted({ctx.facet_name for ctx in contexts}) == ["demand", "sales"]
+        assert sorted({ctx.display_name for ctx in contexts}) == ["a", "b"]
+
+    def test_facet_by_group_subplot_titles_are_group_names(self, two_group_panel):
+        """Subplot titles in group mode are the group names."""
+        fig = facet_figure(two_group_panel, lambda ctx: None, groups=["sales", "demand"], facet_by="group")
+        annotation_texts = [a.text for a in fig.layout.annotations]
+        assert "sales" in annotation_texts
+        assert "demand" in annotation_texts
+
+    def test_member_mode_asymmetric_panel_warns(self):
+        """facet_by='member' warns when a (group, member) pair is missing."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 1, 5), "1d", eager=True),
+            "sales__a": [1, 2, 3, 4, 5],
+            "sales__b": [5, 4, 3, 2, 1],
+            "demand__a": [2, 3, 4, 5, 6],
+        })
+        with pytest.warns(UserWarning, match="Asymmetric panel"):
+            facet_figure(df, lambda ctx: None, groups=["sales", "demand"], facet_by="member")
+
+
 class TestBuildCategoryMap:
     """Tests for the build_category_map utility function."""
 

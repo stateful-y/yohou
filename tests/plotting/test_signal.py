@@ -154,18 +154,6 @@ class TestPlotSpectrum:
 class TestPlotPhaseAssertions:
     """Error path and stronger assertion tests for plot_phase."""
 
-    def test_returns_go_figure(self):
-        """Phase plot always returns a go.Figure instance."""
-        import numpy as np
-
-        n = 50
-        df = pl.DataFrame({
-            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
-            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
-        })
-        fig = plot_phase(df, columns="y")
-        assert_figure_valid(fig)
-
     def test_trace_type_is_scatter(self):
         """Phase plot traces are Scatter type."""
         import numpy as np
@@ -202,21 +190,45 @@ class TestPlotPhaseAssertions:
         fig = plot_phase(df, columns="y", width=900, height=600)
         assert_layout(fig, width=900, height=600)
 
+    def test_missing_time_column_raises(self):
+        """plot_phase raises ValueError when the 'time' column is absent."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "not_time": list(range(n)),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        with pytest.raises(ValueError, match="time"):
+            plot_phase(df, columns="y")
+
+    def test_nonexistent_group_raises(self):
+        """plot_phase raises ValueError when requested panel group has no columns."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y__a": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        with pytest.raises(ValueError, match="panel"):
+            plot_phase(df, groups=["nonexistent"])
+
+    def test_invalid_dimensions_raise(self):
+        """plot_phase raises ValueError for invalid width."""
+        import numpy as np
+
+        n = 50
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 2, 19), "1d", eager=True),
+            "y": np.sin(np.linspace(0, 4 * np.pi, n)).tolist(),
+        })
+        with pytest.raises(ValueError, match="width"):
+            plot_phase(df, columns="y", width=0)
+
 
 class TestPlotSpectrumAssertions:
     """Error path and stronger assertion tests for plot_spectrum."""
-
-    def test_returns_go_figure(self):
-        """Spectrum always returns a go.Figure instance."""
-        import numpy as np
-
-        t = np.arange(100)
-        df = pl.DataFrame({
-            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 4, 9), "1d", eager=True),
-            "y": np.sin(2 * np.pi * 0.1 * t),
-        })
-        fig = plot_spectrum(df, columns="y")
-        assert_figure_valid(fig)
 
     def test_custom_title(self):
         """Custom title is applied to spectrum figure."""
@@ -259,7 +271,7 @@ class TestConnectGaps:
     """Tests for connect_gaps parameter across signal functions."""
 
     def test_plot_phase_connect_gaps_false(self):
-        """connect_gaps=False (default) leaves Scatter traces without connectgaps."""
+        """connect_gaps=False forwards connectgaps=False to all Scatter traces."""
         import numpy as np
 
         n = 50
@@ -269,7 +281,7 @@ class TestConnectGaps:
         })
         fig = plot_phase(df, columns="y", connect_gaps=False)
         assert_figure_valid(fig)
-        assert not any(t.connectgaps for t in fig.data if hasattr(t, "connectgaps"))
+        assert all(t.connectgaps is False for t in fig.data if isinstance(t, go.Scatter))
 
     def test_plot_phase_connect_gaps_true(self):
         """connect_gaps=True sets connectgaps on all Scatter traces."""
@@ -285,7 +297,7 @@ class TestConnectGaps:
         assert all(t.connectgaps for t in fig.data if hasattr(t, "connectgaps"))
 
     def test_plot_spectrum_connect_gaps_true(self):
-        """connect_gaps=True does not raise for plot_spectrum."""
+        """connect_gaps=True forwards connectgaps=True to plot_spectrum traces."""
         import numpy as np
 
         t = np.arange(100)
@@ -295,6 +307,7 @@ class TestConnectGaps:
         })
         fig = plot_spectrum(df, columns="y", connect_gaps=True)
         assert_figure_valid(fig)
+        assert all(t.connectgaps is True for t in fig.data if isinstance(t, go.Scatter))
 
 
 class TestPlotPhaseAutoDetectPanel:

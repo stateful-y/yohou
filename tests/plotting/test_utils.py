@@ -1,5 +1,7 @@
 """Unit tests for plotting utilities."""
 
+import importlib.util
+
 import pytest
 
 pytest.importorskip("plotly", reason="plotting extra not installed")
@@ -364,7 +366,10 @@ class TestResamplerImportErrors:
 class TestResamplerSuccessPaths:
     """Tests for the resampler success paths when plotly-resampler is installed."""
 
-    _has_resampler = pytest.importorskip("plotly_resampler", reason="plotly-resampler not installed") is not None
+    pytestmark = pytest.mark.skipif(
+        importlib.util.find_spec("plotly_resampler") is None,
+        reason="plotly-resampler not installed",
+    )
 
     def test_create_figure_resampler(self):
         """_create_figure(resampler=True) returns a FigureResampler."""

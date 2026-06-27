@@ -238,12 +238,26 @@ def panel_hourly_df():
 
 
 @pytest.fixture
-def panel_3year_daily_df():
-    """3-year daily panel DataFrame, 2 members. For subseasonality tests."""
-    dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
-    n = len(dates)
+def monthly_decomposition_df():
+    """Monthly series (72 rows, trend + annual seasonality) for decomposition tests."""
+    rng = np.random.default_rng(42)
+    return pl.DataFrame({
+        "time": pl.date_range(pl.date(2018, 1, 1), pl.date(2023, 12, 1), "1mo", eager=True),
+        "y": [100 + 2 * i + 10 * np.sin(2 * np.pi * i / 12) + rng.standard_normal() for i in range(72)],
+    })
+
+
+@pytest.fixture
+def missing_panel_df():
+    """Panel DataFrame with 2 groups x 2 members and scattered nulls.
+
+    For plot_missing_data panel tests.
+    """
+    dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 6, 1), "1mo", eager=True)
     return pl.DataFrame({
         "time": dates,
-        "y__a": [100 + i % 30 + (i % 7) * 3 for i in range(n)],
-        "y__b": [200 + i % 20 + (i % 5) * 5 for i in range(n)],
+        "T3__a": [100.0, None, 120.0, None, 140.0, 150.0],
+        "T3__b": [None, 210.0, 220.0, 230.0, None, 250.0],
+        "T4__a": [300.0, 310.0, None, 330.0, 340.0, None],
+        "T4__b": [400.0, None, 420.0, None, 440.0, 450.0],
     })

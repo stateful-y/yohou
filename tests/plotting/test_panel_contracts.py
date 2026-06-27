@@ -68,18 +68,6 @@ def panel_3member_df():
 
 
 @pytest.fixture
-def panel_hourly_df():
-    """Hourly panel DataFrame, ~1440 rows, 2 members."""
-    dates = pl.datetime_range(pl.datetime(2020, 1, 1), pl.datetime(2020, 2, 29, 23), "1h", eager=True)
-    n = len(dates)
-    return pl.DataFrame({
-        "time": dates,
-        "y__a": [10.0 + np.sin(i * 0.3) * 5 for i in range(n)],
-        "y__b": [20.0 + np.cos(i * 0.3) * 3 for i in range(n)],
-    })
-
-
-@pytest.fixture
 def panel_3year_df():
     """3-year daily panel, 2 members. For subseasonality."""
     dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
@@ -135,15 +123,23 @@ class TestOutliersPanelLegend:
         assert len(groups) >= 1
 
     def test_default_outlier_symbol_is_x(self, panel_df):
-        fig = plot_outliers(panel_df)
-        scatter_traces = [t for t in fig.data if isinstance(t, go.Scatter | go.Scattergl)]
-        for t in scatter_traces:
-            if (
-                getattr(t, "marker", None)
-                and getattr(t.marker, "symbol", None)
-                and t.marker.symbol not in (None, "circle")
-            ):
-                assert t.marker.symbol == "x"
+        # Inject extreme values so both members actually trigger outlier markers;
+        # without them plot_outliers adds no marker trace and the contract is untested.
+        df = panel_df.with_columns(
+            pl.when(pl.int_range(pl.len()) == 60).then(5000.0).otherwise(pl.col("y__a")).alias("y__a"),
+            pl.when(pl.int_range(pl.len()) == 40).then(-3000.0).otherwise(pl.col("y__b")).alias("y__b"),
+        )
+        fig = plot_outliers(df)
+        outlier_symbols = [
+            t.marker.symbol
+            for t in fig.data
+            if isinstance(t, go.Scatter | go.Scattergl)
+            and getattr(t, "marker", None)
+            and getattr(t.marker, "symbol", None)
+            and t.marker.symbol not in (None, "circle")
+        ]
+        assert outlier_symbols, "Expected at least one outlier marker trace"
+        assert all(s == "x" for s in outlier_symbols)
 
 
 class TestRollingStatisticsPanelLegend:
@@ -156,10 +152,12 @@ class TestRollingStatisticsPanelLegend:
     def test_panel_traces_share_legendgroup(self, panel_df):
         fig = plot_rolling_statistics(panel_df, window_size=7, statistics=["mean"])
         groups = legend_groups(fig)
-        # Original + stat traces should share the same legendgroup per member
+        assert groups, "Expected at least one legendgroup"
+        # The raw trace and the rolling-mean trace must share a legendgroup, so
+        # every group must link at least two traces together.
         for g in groups:
             count = sum(1 for t in fig.data if getattr(t, "legendgroup", None) == g)
-            assert count >= 1
+            assert count >= 2, f"Group '{g}' links only {count} trace(s); expected >= 2"
 
 
 class TestComponentsPanelLayout:
@@ -255,37 +253,35 @@ class TestLagScatterPanelColors:
         assert len(traces_with_title) >= 1
 
 
-class TestACFPanelLegend:
-    def test_panel_shows_legend(self, panel_df):
-        fig = plot_autocorrelation(panel_df, max_lags=10)
-        names = visible_legend_names(fig)
-        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
-        assert len(names) >= 1
+class TestAutocorrelationPanelLegend:
+    """Legend and color contracts for plot_autocorrelation and plot_partial_autocorrelation."""
 
-    def test_panel_legendgroup_per_member(self, panel_df):
-        fig = plot_autocorrelation(panel_df, max_lags=10)
-        groups = legend_groups(fig)
-        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
-        assert len(groups) >= 1
-
-    def test_panel_consistent_colors(self, panel_df):
-        fig = plot_autocorrelation(panel_df, max_lags=10)
+    @pytest.mark.parametrize(
+        "func",
+        [plot_autocorrelation, plot_partial_autocorrelation],
+        ids=["acf", "pacf"],
+    )
+    def test_member_mode_single_group_overlaid(self, func, panel_df):
+        # facet_by="member" (default): the single group prefix "y" is overlaid
+        # across the per-member subplots, so it appears once as legend and group.
+        fig = func(panel_df, max_lags=10)
+        assert visible_legend_names(fig) == ["y"]
+        assert legend_groups(fig) == {"y"}
         for g in legend_groups(fig):
             assert_consistent_colors(fig, g)
 
-
-class TestPACFPanelLegend:
-    def test_panel_shows_legend(self, panel_df):
-        fig = plot_partial_autocorrelation(panel_df, max_lags=10)
-        names = visible_legend_names(fig)
-        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
-        assert len(names) >= 1
-
-    def test_panel_legendgroup_per_member(self, panel_df):
-        fig = plot_partial_autocorrelation(panel_df, max_lags=10)
-        groups = legend_groups(fig)
-        # facet_by="member" (default): 1 group ("y") overlaid across member subplots
-        assert len(groups) >= 1
+    @pytest.mark.parametrize(
+        "func",
+        [plot_autocorrelation, plot_partial_autocorrelation],
+        ids=["acf", "pacf"],
+    )
+    def test_group_mode_member_names_are_legendgroups(self, func, panel_df):
+        # facet_by="group": each member ("a", "b") becomes its own legend group.
+        fig = func(panel_df, max_lags=10, facet_by="group")
+        assert legend_groups(fig) == {"a", "b"}
+        assert set(visible_legend_names(fig)) == {"a", "b"}
+        for g in legend_groups(fig):
+            assert_consistent_colors(fig, g)
 
 
 class TestCrossCorrelation:
@@ -509,18 +505,6 @@ class TestPanelLayoutContract:
         for fig in result.values():
             assert_figure_valid(fig)
 
-    @pytest.mark.parametrize(
-        "name,func,kw",
-        _PANEL_LAYOUT_CASES,
-        ids=[c[0] for c in _PANEL_LAYOUT_CASES],
-    )
-    def test_facet_returns_dict(self, name, func, kw):
-        """Panel call returns dict."""
-        result = func(**kw)
-        assert isinstance(result, dict), f"{name}: should return dict"
-        for fig in result.values():
-            assert_figure_valid(fig)
-
 
 class TestRollingStatsRawColor:
     """Raw trace color must match the rolling statistics traces of the same member."""
@@ -666,14 +650,6 @@ class TestSeasonalityLegend:
 
 class TestSubseasonalityPanelLayout:
     """plot_subseasonality with panel data returns dict keyed by member name."""
-
-    def test_returns_dict(self):
-        df = _make_3year_daily()
-        result = plot_subseasonality(df, seasonality="month")
-        assert isinstance(result, dict)
-        assert "a" in result
-        for fig in result.values():
-            assert_figure_valid(fig)
 
     def test_non_panel_ignores_panel_layout(self):
         dates = pl.date_range(pl.date(2018, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)

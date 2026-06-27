@@ -134,6 +134,19 @@ class TestPlotSplits:
         legend_names = [t.name for t in fig.data if t.showlegend]
         assert legend_names == ["Fit", "Scored"]
 
+    def test_panel_data_accepted(self):
+        """plot_splits accepts panel data (group__member columns) without rejecting it."""
+        y = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True),
+            "value__a": list(range(366)),
+            "value__b": [x * 2 for x in range(366)],
+        })
+        splitter = ExpandingWindowSplitter(n_splits=3, test_size=30)
+        fig = plot_splits(y, splitter)
+        # Split intervals are derived from the shared time axis, so the panel
+        # produces the same train/test trace structure as a single series.
+        assert len(fig.data) >= 6
+
 
 class TestPlotNestedSplits:
     """Tests for plot_nested_splits function."""

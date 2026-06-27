@@ -2,12 +2,15 @@
 
 import polars as pl
 import pytest
-from plotly import graph_objects as go
-from plotly_resampler import FigureResampler, FigureWidgetResampler
-from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator
-from plotly_resampler.aggregation.gap_handlers import NoGapHandler
 
-from yohou.plotting._utils import (
+pytest.importorskip("plotly_resampler", reason="plotly-resampler not installed")
+
+from plotly import graph_objects as go  # noqa: E402
+from plotly_resampler import FigureResampler, FigureWidgetResampler  # noqa: E402
+from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator  # noqa: E402
+from plotly_resampler.aggregation.gap_handlers import NoGapHandler  # noqa: E402
+
+from yohou.plotting._utils import (  # noqa: E402
     _build_resampler_kwargs,
     _create_figure,
     _create_subplots,

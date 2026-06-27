@@ -274,16 +274,17 @@ class TestPlotLagScatter:
         assert len(legend_groups) >= 4
 
     def test_season_coloring_quarter(self, yearly_2col_df):
-        """Test seasonality='quarter' produces 4 season traces."""
+        """Test seasonality='quarter' produces exactly 4 season traces."""
         fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1], seasonality="quarter")
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
-        assert len(legend_groups) <= 4
+        # The full 2020 daily dataset spans all four quarters.
+        assert legend_groups == {"Q1", "Q2", "Q3", "Q4"}
 
     def test_season_with_grid(self, yearly_2col_df):
         """Test season coloring combined with multi-lag subplot grid."""
         fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1, 4, 8], seasonality="quarter")
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
-        assert len(legend_groups) <= 4
+        assert legend_groups == {"Q1", "Q2", "Q3", "Q4"}
         assert len(fig.data) > 6
 
     def test_seasonality_invalid(self, yearly_2col_df):
@@ -352,6 +353,19 @@ class TestPlotCrossCorrelation:
         fig = plot_cross_correlation(short_df, columns=["x", "y"], x_label="Offset", y_label="CCF Value")
         assert fig.layout.xaxis.title.text == "Offset"
         assert fig.layout.yaxis.title.text == "CCF Value"
+
+    def test_three_columns_subplot_per_pair(self):
+        """Three columns build the multi-pair subplot path with one CCF per upper-triangle pair."""
+        df = pl.DataFrame({
+            "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 3, 31), "1d", eager=True),
+            "x": [100 + i % 20 for i in range(91)],
+            "y": [150 + (i % 15) * 2 for i in range(91)],
+            "z": [90 + i * 2 for i in range(91)],
+        })
+        fig = plot_cross_correlation(df, columns=["x", "y", "z"], max_lags=10)
+        assert isinstance(fig, go.Figure)
+        # Three upper-triangle pairs: (x, y), (x, z), (y, z).
+        assert len(fig.data) == 3
 
 
 class TestPlotSubseasonality:
@@ -947,8 +961,10 @@ class TestLagScatterMultiLagShowDiagonal:
         })
         fig = plot_lag_scatter(df, columns="y", lags=[1], seasonality="month")
         assert_figure_valid(fig)
+        # A full year produces one season-colored legendgroup per month.
         legend_groups = {t.legendgroup for t in fig.data if t.legendgroup is not None}
-        assert len(legend_groups) >= 4
+        assert len(legend_groups) == 12
+        assert len(fig.data) >= 12
 
     def test_single_lag_show_diagonal(self):
         """Single lag + show_diagonal covers the single-lag diagonal path."""
@@ -1319,6 +1335,20 @@ class TestPlotScatterMatrixPanelPaths:
             assert isinstance(fig, go.Figure)
             assert len(fig.data) > 0
 
+    def test_panel_facet_by_member_returns_dict_per_member(self, panel_scatter_df):
+        """facet_by='member' returns one scatter-matrix figure per member."""
+        result = plot_scatter_matrix(panel_scatter_df, facet_by="member")
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"store_a", "store_b"}
+        for fig in result.values():
+            assert_figure_valid(fig)
+
+    def test_panel_facet_by_none_flattens_to_single_figure(self, panel_scatter_df):
+        """facet_by=None flattens all panel columns into a single scatter matrix."""
+        result = plot_scatter_matrix(panel_scatter_df, facet_by=None)
+        assert isinstance(result, go.Figure)
+        assert len(result.data) > 0
+
     def test_panel_with_seasonality(self, panel_scatter_df):
         """Season colouring works with panel scatter matrix."""
         result = plot_scatter_matrix(panel_scatter_df, seasonality="month")
@@ -1443,15 +1473,18 @@ class TestPlotLagScatterPanelAndExtras:
         for fig in result.values():
             assert_figure_valid(fig)
 
-    def test_seasonality_single_lag(self, yearly_2col_df):
-        """Seasonality colouring with a single lag."""
-        fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1], seasonality="month")
-        assert_figure_valid(fig)
-
     def test_seasonality_multi_lag(self, yearly_2col_df):
         """Seasonality colouring with multiple lags and subplot grid."""
         fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1, 7], seasonality="quarter")
         assert_figure_valid(fig)
+
+    def test_multi_column_non_panel_returns_dict(self, yearly_2col_df):
+        """Multiple non-panel columns produce one figure per column, returned as a dict."""
+        result = plot_lag_scatter(yearly_2col_df, columns=["y", "y2"], lags=[1])
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"y", "y2"}
+        for fig in result.values():
+            assert_figure_valid(fig)
 
     def test_show_regression(self, yearly_2col_df):
         """Regression line overlaid on lag scatter."""
@@ -1492,18 +1525,10 @@ class TestPlotSubseasonalityPanelModes:
         })
 
     def test_panel_separate(self, panel_subseas_df):
-        """Panel data returns a dict of figures per member."""
+        """Panel data returns a dict of one valid figure per member."""
         result = plot_subseasonality(panel_subseas_df, seasonality="month")
         assert isinstance(result, dict)
-        assert len(result) > 0
-        for fig in result.values():
-            assert isinstance(fig, go.Figure)
-
-    def test_panel_combined(self, panel_subseas_df):
-        """Default panel mode with single member returns a single figure."""
-        # With only 1 group and 2 members, returns dict
-        result = plot_subseasonality(panel_subseas_df, seasonality="month")
-        assert isinstance(result, dict)
+        assert set(result.keys()) == {"a", "b"}
         for fig in result.values():
             assert_figure_valid(fig)
 
@@ -1606,18 +1631,6 @@ class TestSeasonalityHighlightCycleMatch:
 
 class TestLagScatterSeasonality:
     """Season-colored branches in plot_lag_scatter (lines 1871, 1967)."""
-
-    def test_single_lag_with_seasonality(self):
-        """Single lag with month seasonality hits the non-panel season path."""
-        dates = pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1d", eager=True)
-        df = pl.DataFrame({
-            "time": dates,
-            "y": [100 + i % 30 for i in range(len(dates))],
-        })
-        fig = plot_lag_scatter(df, columns="y", lags=[1], seasonality="month")
-        assert_figure_valid(fig)
-        # Season-colored traces produce at least 12 season groups
-        assert len(fig.data) >= 12
 
     def test_multi_lag_with_seasonality(self):
         """Multi-lag grid with seasonality covers the panel path season branch."""
