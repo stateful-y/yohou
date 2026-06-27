@@ -213,10 +213,13 @@ The same configuration system controls how line traces interpolate between
 points. By default each function keeps its own shape: numeric series connect
 points linearly, while categorical state series already render as steps. Setting
 `line_shape` through [`set_config`](/pages/api/generated/yohou.plotting._utils.set_config/) forces every scatter line trace,
-across all plotting functions and faceted subplots, to use that interpolation.
-The accepted values are listed in [`VALID_LINE_SHAPES`](/pages/api/generated/yohou.plotting._utils.VALID_LINE_SHAPES/): `"hv"` and
+across the time-axis plotting functions and faceted subplots, to use that
+interpolation. The accepted values are listed in [`VALID_LINE_SHAPES`](/pages/api/generated/yohou.plotting._utils.VALID_LINE_SHAPES/): `"hv"` and
 `"vh"` draw step lines, `"hvh"` and `"vhh"` draw centred steps, `"spline"`
-smooths, and `"linear"` is the direct default. As with the resampler setting,
+smooths, and `"linear"` is the direct default. Plots whose lines are not time
+series are exempt: [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) keeps its reliability curve and
+diagonal linear regardless of the setting, so a step config never distorts the
+45-degree reference. As with the resampler setting,
 [`config_context`](/pages/api/generated/yohou.plotting._utils.config_context/) applies the shape for a single block and restores the
 previous value on exit.
 

@@ -16,6 +16,7 @@ from yohou.plotting import (  # noqa: E402
     config_context,
     get_config,
     plot_autocorrelation,
+    plot_calibration,
     plot_phase,
     plot_residuals,
     plot_spectrum,
@@ -183,3 +184,34 @@ class TestDefaultPreserved:
         })
         fig = plot_time_series(df, columns=["state"])
         assert fig.data[0].line.shape == "hv"
+
+
+class TestCalibrationExempt:
+    """Calibration reliability diagrams ignore the global line_shape override."""
+
+    @staticmethod
+    def _interval_data():
+        y_vals = [float(i) for i in range(30)]
+        y_truth = pl.DataFrame({"value": y_vals})
+        y_pred_int = pl.DataFrame({
+            "value_lower_0.9": [v - 2 for v in y_vals],
+            "value_upper_0.9": [v + 2 for v in y_vals],
+            "value_lower_0.95": [v - 3 for v in y_vals],
+            "value_upper_0.95": [v + 3 for v in y_vals],
+        })
+        return y_pred_int, y_truth
+
+    def test_calibration_stays_linear_under_hv(self):
+        y_pred_int, y_truth = self._interval_data()
+        with config_context(line_shape="hv"):
+            fig = plot_calibration(y_pred_int, y_truth, coverage_rates=[0.9, 0.95])
+        # The reliability curve and the diagonal must never become step lines.
+        assert "hv" not in _line_trace_shapes(fig)
+        assert _line_trace_shapes(fig) == {None}
+
+    def test_calibration_unchanged_with_and_without_config(self):
+        y_pred_int, y_truth = self._interval_data()
+        plain = plot_calibration(y_pred_int, y_truth, coverage_rates=[0.9, 0.95])
+        with config_context(line_shape="hv"):
+            overridden = plot_calibration(y_pred_int, y_truth, coverage_rates=[0.9, 0.95])
+        assert _line_trace_shapes(plain) == _line_trace_shapes(overridden)

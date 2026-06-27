@@ -885,6 +885,8 @@ def apply_default_layout(
     width: int | None = None,
     height: int | None = None,
     hovermode: str | None = None,
+    *,
+    apply_line_shape: bool = True,
 ) -> go.Figure:
     """
     Apply default layout configuration to a figure.
@@ -906,6 +908,11 @@ def apply_default_layout(
     hovermode : str | None, default=None
         Plotly hovermode (e.g. ``"x unified"``).  ``None`` keeps the
         default (``"closest"`` from :data:`DEFAULT_LAYOUT`).
+    apply_line_shape : bool, default=True
+        Whether to apply the global ``line_shape`` config to the figure's
+        scatter line traces.  Pass ``False`` for plots whose lines are not
+        time series and must stay linear regardless of the config - e.g. the
+        diagonal and curve of a calibration reliability diagram.
 
     Returns
     -------
@@ -936,7 +943,8 @@ def apply_default_layout(
         layout_update["hovermode"] = hovermode
 
     fig.update_layout(layout_update)
-    _apply_line_shape(fig)
+    if apply_line_shape:
+        _apply_line_shape(fig)
     return fig
 
 
