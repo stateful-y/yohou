@@ -101,54 +101,6 @@ class TestIntegrateTransformer:
             expected_failures=set(expected_failures),
         )
 
-
-class TestDifferentiateTransformer:
-    """Tests for NumericalDifferentiator."""
-
-    @pytest.mark.parametrize(
-        "transformer,expected_failures",
-        [
-            (
-                NumericalDifferentiator(order=1),
-                [
-                    "check_inverse_transform_identity",
-                    "check_inverse_transform_round_trip",
-                    "check_inverse_observe_transform_identity",
-                ],
-            ),
-            (
-                NumericalDifferentiator(order=2),
-                [
-                    "check_inverse_transform_identity",
-                    "check_inverse_transform_round_trip",
-                    "check_inverse_observe_transform_identity",
-                ],
-            ),
-        ],
-        ids=["Differentiate_order1", "Differentiate_order2"],
-    )
-    def test_systematic_checks(
-        self,
-        transformer,
-        expected_failures,
-        time_series_train_test_factory,
-    ):
-        """Run all applicable checks for NumericalDifferentiator."""
-        min_horizon = 10
-        X_train, X_test = time_series_train_test_factory(
-            train_length=min_horizon + 100,
-            test_length=min_horizon + 50,
-        )
-
-        transformer_fitted = clone(transformer)
-        transformer_fitted.fit(X_train)
-
-        run_checks(
-            transformer_fitted,
-            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
-            expected_failures=set(expected_failures),
-        )
-
     def test_integrate_basic(self, signal_data):
         """Test basic integration functionality."""
         transformer = NumericalIntegrator()
@@ -307,6 +259,54 @@ class TestDifferentiateTransformer:
         transformer = NumericalIntegrator()
         with pytest.raises(ValueError, match="2 time points"):
             transformer.fit(X_single)
+
+
+class TestDifferentiateTransformer:
+    """Tests for NumericalDifferentiator."""
+
+    @pytest.mark.parametrize(
+        "transformer,expected_failures",
+        [
+            (
+                NumericalDifferentiator(order=1),
+                [
+                    "check_inverse_transform_identity",
+                    "check_inverse_transform_round_trip",
+                    "check_inverse_observe_transform_identity",
+                ],
+            ),
+            (
+                NumericalDifferentiator(order=2),
+                [
+                    "check_inverse_transform_identity",
+                    "check_inverse_transform_round_trip",
+                    "check_inverse_observe_transform_identity",
+                ],
+            ),
+        ],
+        ids=["Differentiate_order1", "Differentiate_order2"],
+    )
+    def test_systematic_checks(
+        self,
+        transformer,
+        expected_failures,
+        time_series_train_test_factory,
+    ):
+        """Run all applicable checks for NumericalDifferentiator."""
+        min_horizon = 10
+        X_train, X_test = time_series_train_test_factory(
+            train_length=min_horizon + 100,
+            test_length=min_horizon + 50,
+        )
+
+        transformer_fitted = clone(transformer)
+        transformer_fitted.fit(X_train)
+
+        run_checks(
+            transformer_fitted,
+            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
+            expected_failures=set(expected_failures),
+        )
 
 
 class TestDifferentiateTransformerBehavior:

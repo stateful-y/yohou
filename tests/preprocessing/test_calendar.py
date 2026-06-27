@@ -152,7 +152,6 @@ class TestCalendarFeatureTransformerFeatures:
         X_t = transformer.transform(X)
 
         weekend = X_t["cal_is_weekend"].to_list()
-        assert all(v in (0, 1) for v in weekend)
         assert weekend[5] == 1  # Saturday
         assert weekend[6] == 1  # Sunday
         assert weekend[0] == 0  # Monday

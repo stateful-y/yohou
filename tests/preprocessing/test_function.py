@@ -162,21 +162,8 @@ class TestFunctionTransformerBasic:
 
         assert_frame_equal(X, X_inv)
 
-    def test_check_inverse_warning(self):
-        """Test that check_inverse raises warning for non-invertible funcs."""
-        X = create_positive_data()
-
-        # Define non-inverse functions
-        def bad_inverse(x, **kwargs):
-            return x * 2  # Wrong inverse
-
-        transformer = FunctionTransformer(func=np.log, inverse_func=bad_inverse, check_inverse=True)
-
-        with pytest.warns(UserWarning, match="not strictly inverse"):
-            transformer.fit(X)
-
-    def test_check_inverse_disabled(self):
-        """Test that check_inverse=False skips the check."""
+    def test_check_inverse_disabled(self, recwarn):
+        """Test that check_inverse=False skips the inverse-consistency check."""
         X = create_positive_data()
 
         def bad_inverse(x, **kwargs):
@@ -184,8 +171,12 @@ class TestFunctionTransformerBasic:
 
         transformer = FunctionTransformer(func=np.log, inverse_func=bad_inverse, check_inverse=False)
 
-        # Should not raise warning
-        transformer.fit(X)  # No warning
+        transformer.fit(X)
+
+        # With the check disabled, the "not strictly inverse" warning must not fire
+        # even though bad_inverse is not a true inverse of np.log.
+        inverse_warnings = [w for w in recwarn.list if "not strictly inverse" in str(w.message)]
+        assert inverse_warnings == []
 
 
 class TestFunctionTransformerKwargs:

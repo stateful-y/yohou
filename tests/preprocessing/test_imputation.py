@@ -48,35 +48,32 @@ class TestSimpleImputer:
             expected_failures=_IMPUTER_SKIP_CHECKS,
         )
 
-    def test_mean_fills_nulls(self, time_series_with_nulls_factory):
-        """Test SimpleImputer mean strategy fills all nulls."""
+    @pytest.mark.parametrize("strategy", ["mean", "median"])
+    def test_fills_nulls_with_strategy_statistic(self, strategy, time_series_with_nulls_factory):
+        """SimpleImputer fills every missing value with the column-wise mean/median.
+
+        Asserts both missing-value elimination and the strategy-specific fill
+        value, so a regression that imputed the wrong statistic (or zeros) would
+        be caught. The fixture marks missing values with float NaN.
+        """
         X = time_series_with_nulls_factory(length=50, n_components=2, null_fraction=0.1)
-        imputer = SimpleImputer(strategy="mean")
+        imputer = SimpleImputer(strategy=strategy)
         imputer.fit(X)
         X_imputed = imputer.transform(X)
 
-        # Check no nulls remain
+        # No missing values remain after imputation.
         assert X_imputed.null_count().sum_horizontal().item() == 0
+        for col in (c for c in X_imputed.columns if c != "time"):
+            assert X_imputed[col].is_nan().sum() == 0
 
-    def test_median_fills_nulls(self, time_series_with_nulls_factory):
-        """Test SimpleImputer median strategy fills all nulls."""
-        X = time_series_with_nulls_factory(length=50, n_components=2, null_fraction=0.1)
-        imputer = SimpleImputer(strategy="median")
-        imputer.fit(X)
-        X_imputed = imputer.transform(X)
-
-        # Check no nulls remain
-        assert X_imputed.null_count().sum_horizontal().item() == 0
-
-    def test_preserves_time_column(self, time_series_with_nulls_factory):
-        """Test SimpleImputer preserves time column."""
-        X = time_series_with_nulls_factory(length=50, n_components=2)
-        imputer = SimpleImputer(strategy="mean")
-        imputer.fit(X)
-        X_imputed = imputer.transform(X)
-
-        assert "time" in X_imputed.columns
-        assert len(X_imputed) == len(X)
+        # Imputed positions equal the per-column statistic over observed values.
+        for col in (c for c in X.columns if c != "time"):
+            missing_mask = X[col].is_nan()
+            assert missing_mask.sum() > 0, "fixture should produce at least one missing value"
+            observed = X[col].to_numpy()
+            expected = np.nanmean(observed) if strategy == "mean" else np.nanmedian(observed)
+            filled = X_imputed.filter(missing_mask)[col].to_numpy()
+            np.testing.assert_allclose(filled, expected, rtol=1e-6)
 
 
 class TestSeasonalImputer:
@@ -130,16 +127,6 @@ class TestSeasonalImputer:
         # The empty-bucket positions remain null, and no float NaN is emitted.
         assert X_imputed["value"].is_nan().sum() == 0
         assert X_imputed["value"].null_count() == 5
-
-    def test_preserves_time_column(self, time_series_with_nulls_factory):
-        """Test SeasonalImputer preserves time column."""
-        X = time_series_with_nulls_factory(length=70, n_components=1)
-        imputer = SeasonalImputer(period=7, fill_method="seasonal_mean")
-        imputer.fit(X)
-        X_imputed = imputer.transform(X)
-
-        assert "time" in X_imputed.columns
-        assert len(X_imputed) == len(X)
 
 
 class TestSimpleTimeImputer:
@@ -244,19 +231,6 @@ class TestTransformedSpaceKNNImputer:
         imputer_lag.fit(X)
         assert imputer_lag.observation_horizon == 5
 
-    def test_preserves_time_column(self, time_series_factory):
-        """Test time column is preserved in output."""
-        X = time_series_factory(length=30, n_components=2, seed=42)
-
-        imputer = TransformedSpaceKNNImputer(
-            n_neighbors=3,
-            transformer=LagTransformer(lag=2),
-        )
-        imputer.fit(X)
-        X_imputed = imputer.transform(X)
-
-        assert "time" in X_imputed.columns
-
     def test_degeneracy_matches_knn_imputer(self, time_series_with_nulls_factory):
         """Test that transformer=None produces same result as sklearn KNNImputer."""
         from sklearn.impute import KNNImputer as sklearn_KNNImputer
@@ -297,8 +271,12 @@ class TestSimpleImputerStatistics:
         imputer.fit(X)
 
         stats = imputer.statistics_
-        assert stats is not None
-        assert len(stats) > 0
+        # statistics_ must equal the per-column means of the observed values, in
+        # input column order. The fixture marks missing values with float NaN, so
+        # use nanmean (sklearn ignores NaN when fitting). A regression returning
+        # zeros or medians would be caught here.
+        expected = [np.nanmean(X[col].to_numpy()) for col in X.columns if col != "time"]
+        np.testing.assert_allclose(np.asarray(stats, dtype=float), expected, rtol=1e-6)
 
 
 class TestTimeSeriesInterpolatorMethods:
@@ -424,15 +402,22 @@ class TestSeasonalImputerIrregularInterval:
         # The gap aligns with a season that has another observed value, so it is filled.
         assert result["val"].null_count() == 0
 
-    def test_empty_seasons_remain_nan(self):
-        """A season with no observed data stays NaN (covers the missing-bucket branch)."""
+    def test_empty_seasons_remain_null_in_output(self):
+        """A season with no observed data leaves a polars null in the output.
+
+        Contract-based version of the missing-bucket branch: row 1 falls in a
+        season whose only observation is itself null, so it cannot be imputed.
+        The transform output must keep that position as a polars null and must
+        not emit a float NaN.
+        """
         # Only 3 monthly points but period=12, so seasons 3..11 have no rows at all.
         time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 3, 1), interval="1mo", eager=True)
         X = pl.DataFrame({"time": time, "val": [1.0, None, 3.0]})
 
         imputer = SeasonalImputer(period=12, fill_method="seasonal_mean")
         imputer.fit(X)
+        X_imputed = imputer.transform(X)
 
-        # Season index 1 (row 1) has only a null, so its seasonal value is NaN.
-        seasonal = imputer.seasonal_values_["val"]
-        assert np.isnan(seasonal[1])
+        # The un-imputable row stays null; the observed rows pass through unchanged.
+        assert X_imputed["val"].to_list() == [1.0, None, 3.0]
+        assert X_imputed["val"].is_nan().sum() == 0

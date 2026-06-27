@@ -49,6 +49,34 @@ class TestFourierFeatureTransformerSystematic:
         )
 
 
+class TestFourierFeatureTransformerPanel:
+    """Panel-data systematic checks for FourierFeatureTransformer."""
+
+    def test_panel_drops_group_columns(self, panel_time_series_factory):
+        """Fourier features are derived purely from the time axis.
+
+        The transformer intentionally replaces every input column (including
+        panel group columns) with global time-based features, so
+        ``check_panel_group_preservation`` is expected to fail. The
+        non-panel suite (``time_series_train_test_factory``) never feeds panel
+        data, so this is the only place the dropped-group contract is exercised.
+        """
+        X_train = panel_time_series_factory(length=60, n_series=2, n_groups=2)
+        X_test = panel_time_series_factory(length=30, n_series=2, n_groups=2)
+
+        transformer = FourierFeatureTransformer(seasonality=7.0).fit(X_train)
+
+        # Output retains only "time" plus global Fourier columns (no group prefix).
+        out = transformer.transform(X_train)
+        assert not any("__" in c for c in out.columns)
+
+        run_checks(
+            transformer,
+            _yield_yohou_transformer_checks(transformer, X_train, None, X_test),
+            expected_failures={"check_panel_group_preservation"},
+        )
+
+
 class TestFourierFeatureTransformerBasic:
     """Basic functionality tests for FourierFeatureTransformer."""
 
@@ -93,8 +121,13 @@ class TestFourierFeatureTransformerBasic:
         assert "fourier_7.0_sin_2" in X_t.columns
         assert "fourier_7.0_cos_2" in X_t.columns
 
-    def test_preserves_time_and_original(self):
-        """Test time column preserved and original features dropped."""
+    def test_drops_original_features(self):
+        """Test original input feature columns are dropped from the output.
+
+        The 'time'-preservation half of this is already covered by
+        check_transform_output_structure; only the drop-input contract is
+        asserted here.
+        """
         time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 15), interval="1d", eager=True)
         X = pl.DataFrame({"time": time, "value": range(len(time))})
 
@@ -102,7 +135,6 @@ class TestFourierFeatureTransformerBasic:
         transformer.fit(X)
         X_t = transformer.transform(X)
 
-        assert "time" in X_t.columns
         assert "value" not in X_t.columns
 
 
@@ -294,6 +326,34 @@ class TestTimeIndexTransformerSystematic:
         )
 
 
+class TestTimeIndexTransformerPanel:
+    """Panel-data systematic checks for TimeIndexTransformer."""
+
+    def test_panel_drops_group_columns(self, panel_time_series_factory):
+        """Time-index features are derived purely from the time axis.
+
+        The transformer intentionally replaces every input column (including
+        panel group columns) with global index features, so
+        ``check_panel_group_preservation`` is expected to fail. The non-panel
+        suite never feeds panel data, so this is the only place the
+        dropped-group contract is exercised.
+        """
+        X_train = panel_time_series_factory(length=60, n_series=2, n_groups=2)
+        X_test = panel_time_series_factory(length=30, n_series=2, n_groups=2)
+
+        transformer = TimeIndexTransformer().fit(X_train)
+
+        # Output retains only "time" plus global index columns (no group prefix).
+        out = transformer.transform(X_train)
+        assert not any("__" in c for c in out.columns)
+
+        run_checks(
+            transformer,
+            _yield_yohou_transformer_checks(transformer, X_train, None, X_test),
+            expected_failures={"check_panel_group_preservation"},
+        )
+
+
 class TestTimeIndexTransformerBasic:
     """Basic functionality tests for TimeIndexTransformer."""
 
@@ -309,8 +369,13 @@ class TestTimeIndexTransformerBasic:
         indices = X_t["time_index"].to_list()
         assert indices == list(range(len(time)))
 
-    def test_preserves_time_and_original(self):
-        """Test time column preserved and original features dropped."""
+    def test_drops_original_features(self):
+        """Test original input columns are dropped and replaced by time_index.
+
+        The 'time'-preservation half is already covered by
+        check_transform_output_structure; only the drop-input and
+        time_index-naming contracts are asserted here.
+        """
         time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 11), interval="1d", eager=True)
         X = pl.DataFrame({"time": time, "value": range(len(time))})
 
@@ -318,7 +383,6 @@ class TestTimeIndexTransformerBasic:
         transformer.fit(X)
         X_t = transformer.transform(X)
 
-        assert "time" in X_t.columns
         assert "value" not in X_t.columns
         assert "time_index" in X_t.columns
 

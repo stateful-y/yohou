@@ -13,6 +13,7 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 from sklearn.base import clone
+from sklearn.exceptions import NotFittedError
 from sklearn.preprocessing import Normalizer as SklearnNormalizer
 from sklearn.preprocessing import StandardScaler as SklearnStandardScaler
 
@@ -99,6 +100,66 @@ class TestSystematicChecks:
             expected_failures=set(expected_failures),
         )
 
+    @pytest.mark.parametrize(
+        "transformer,expected_failures",
+        [
+            (StandardScaler(), []),
+            (MinMaxScaler(), []),
+            (RobustScaler(), []),
+            (MaxAbsScaler(), []),
+            (Normalizer(), []),
+            (PolynomialFeatures(degree=2, include_bias=False), []),
+            (PowerTransformer(method="yeo-johnson"), []),
+            (QuantileTransformer(n_quantiles=10), ["check_inverse_observe_transform_identity"]),
+            (SplineTransformer(n_knots=4, degree=3), []),
+        ],
+        ids=[
+            "StandardScaler",
+            "MinMaxScaler",
+            "RobustScaler",
+            "MaxAbsScaler",
+            "Normalizer",
+            "PolynomialFeatures",
+            "PowerTransformer",
+            "QuantileTransformer",
+            "SplineTransformer",
+        ],
+    )
+    def test_panel_systematic_checks(
+        self,
+        transformer,
+        expected_failures,
+        panel_time_series_factory,
+    ):
+        """Run all applicable checks with panel data.
+
+        ``time_series_train_test_factory`` produces only non-panel columns, so
+        the generator silently drops ``check_panel_data_support`` and
+        ``check_panel_group_preservation``. Feeding panel-structured X_train here
+        forces those two checks to actually run for every scaler and transformer.
+
+        The panel fixture emits integer feature columns; cast them to Float64 so
+        the scalers' float inverse_transform does not trip the dtype-preservation
+        checks (the non-panel suite already uses float data).
+        """
+        import polars.selectors as cs
+
+        X_train = panel_time_series_factory(length=60, n_series=2, n_groups=2).with_columns(
+            cs.numeric().cast(pl.Float64)
+        )
+        X_test = panel_time_series_factory(length=20, n_series=2, n_groups=2).with_columns(
+            cs.numeric().cast(pl.Float64)
+        )
+
+        transformer_fitted = clone(transformer)
+        transformer_fitted.fit(X_train)
+
+        run_checks(
+            transformer_fitted,
+            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
+            expected_failures=set(expected_failures),
+        )
+
 
 class TestStandardScaler:
     """StandardScaler specific tests."""
@@ -123,29 +184,6 @@ class TestStandardScaler:
             std = X_scaled[col].std()
             assert abs(mean) < 1e-10, f"Column {col} mean should be ~0, got {mean}"
             assert abs(std - 1.0) < 0.1, f"Column {col} std should be ~1, got {std}"
-
-    def test_standard_scaler_inverse_transform(self, time_series_factory):
-        """Test StandardScaler inverse_transform recovers original data."""
-        X = time_series_factory(length=50, n_components=2)
-        scaler = StandardScaler()
-        scaler.fit(X)
-
-        X_scaled = scaler.transform(X)
-        X_recovered = scaler.inverse_transform(X_scaled)
-
-        # Time column preserved
-        assert "time" in X_recovered.columns
-
-        # Numeric values should match original (within tolerance)
-        for col in X.columns:
-            if col == "time":
-                continue
-            np.testing.assert_allclose(
-                X_recovered[col].to_numpy(),
-                X[col].to_numpy(),
-                rtol=1e-5,
-                err_msg=f"Column {col} not recovered correctly",
-            )
 
     def test_standard_scaler_fitted_attributes(self, time_series_factory):
         """Test StandardScaler exposes sklearn attributes after fit."""
@@ -251,24 +289,6 @@ class TestMinMaxScaler:
         n_features = len([c for c in X.columns if c != "time"])
         assert len(scaler.data_min_) == n_features
 
-    def test_minmax_scaler_inverse_transform(self, time_series_factory):
-        """Test MinMaxScaler inverse_transform recovers original data."""
-        X = time_series_factory(length=50, n_components=2)
-        scaler = MinMaxScaler()
-        scaler.fit(X)
-
-        X_scaled = scaler.transform(X)
-        X_recovered = scaler.inverse_transform(X_scaled)
-
-        for col in X.columns:
-            if col == "time":
-                continue
-            np.testing.assert_allclose(
-                X_recovered[col].to_numpy(),
-                X[col].to_numpy(),
-                rtol=1e-5,
-            )
-
 
 class TestRobustScaler:
     """RobustScaler specific tests."""
@@ -276,14 +296,13 @@ class TestRobustScaler:
     def test_robust_scaler_with_outliers(self, time_series_factory):
         """Test RobustScaler handles outliers better than StandardScaler."""
         X = time_series_factory(length=50, n_components=1)
-        # Add outlier
-        X_with_outlier = X.with_columns([
-            pl
-            .when(pl.col("time").dt.ordinal_day() == 1)
-            .then(pl.lit(1000.0))  # Outlier
-            .otherwise(pl.exclude("time"))
-            .alias(X.columns[1])
-        ])
+        col = X.columns[1]
+
+        # Inject a single extreme outlier in the last row. (The fixture uses a
+        # 1-second interval so calendar-day predicates would hit every row.)
+        values = X[col].to_list()
+        values[-1] = 1000.0
+        X_with_outlier = X.with_columns(pl.Series(col, values))
 
         scaler = RobustScaler()
         scaler.fit(X_with_outlier)
@@ -292,8 +311,16 @@ class TestRobustScaler:
         # Time column preserved
         assert "time" in X_scaled.columns
 
-        # Should still produce reasonable values (outlier won't dominate)
-        assert X_scaled[X_scaled.columns[1]].median() is not None
+        # RobustScaler centers on the median, so a single extreme outlier should
+        # not dominate: the scaled median stays near 0 and is closer to 0 than the
+        # StandardScaler (mean-centered) median on the same outlier-laden data.
+        std_scaled = StandardScaler().fit(X_with_outlier).transform(X_with_outlier)
+        robust_median = abs(X_scaled[col].median())
+        standard_median = abs(std_scaled[col].median())
+        assert robust_median < 1e-6, f"RobustScaler median should be ~0, got {robust_median}"
+        assert robust_median < standard_median, (
+            "RobustScaler should center closer to 0 than StandardScaler under outliers"
+        )
 
     def test_robust_scaler_fitted_attributes(self, time_series_factory):
         """Test RobustScaler exposes sklearn attributes after fit."""
@@ -372,24 +399,6 @@ class TestMaxAbsScaler:
         n_features = len([c for c in X.columns if c != "time"])
         assert len(scaler.scale_) == n_features
         assert len(scaler.max_abs_) == n_features
-
-    def test_maxabs_scaler_inverse_transform(self, time_series_factory):
-        """Test MaxAbsScaler inverse_transform recovers original data."""
-        X = time_series_factory(length=50, n_components=2)
-        scaler = MaxAbsScaler()
-        scaler.fit(X)
-
-        X_scaled = scaler.transform(X)
-        X_recovered = scaler.inverse_transform(X_scaled)
-
-        for col in X.columns:
-            if col == "time":
-                continue
-            np.testing.assert_allclose(
-                X_recovered[col].to_numpy(),
-                X[col].to_numpy(),
-                rtol=1e-5,
-            )
 
 
 class TestSklearnScaler:
@@ -482,32 +491,36 @@ class TestScalerObservationHorizon:
             assert scaler.observation_horizon == 0, f"{scaler_cls.__name__} should be stateless"
 
     def test_scaler_no_memory_stored(self, time_series_factory):
-        """Test that scalers don't store observations (stateless)."""
+        """Test that stateless scalers buffer no observations after fit."""
         X = time_series_factory(length=50)
         scaler = StandardScaler()
         scaler.fit(X)
 
-        # Stateless transformers should not have _X_observed
-        # Or if they do, it should be None or empty
-        if hasattr(scaler, "_X_observed"):
-            assert scaler._X_observed is None or len(scaler._X_observed) == 0
+        # Stateless transformers keep an empty observation buffer; a regression
+        # that stored rows on fit would make this non-empty.
+        assert hasattr(scaler, "_X_observed"), "BaseTransformer should expose _X_observed after fit"
+        assert scaler._X_observed is not None
+        assert len(scaler._X_observed) == 0, "Stateless scaler must not buffer observations"
 
 
 class TestScalerCloneAndParams:
     """Scaler cloning and serialization tests."""
 
     def test_scaler_clone(self, time_series_factory):
-        """Test that scalers can be cloned."""
+        """Test that cloning a fitted scaler yields an unfitted estimator."""
         X = time_series_factory(length=50)
 
         for scaler_cls in [StandardScaler, MinMaxScaler, RobustScaler, MaxAbsScaler]:
             scaler = scaler_cls()
             scaler.fit(X)
+            assert hasattr(scaler, "instance_"), f"{scaler_cls.__name__} should expose instance_ after fit"
 
             cloned = clone(scaler)
 
-            # Cloned should not be fitted
-            assert not hasattr(cloned, "instance_") or cloned.instance_ is None
+            # Cloned must drop the fitted instance and refuse to transform until refit
+            assert not hasattr(cloned, "instance_"), f"{scaler_cls.__name__} clone leaked fitted instance_"
+            with pytest.raises(NotFittedError):
+                cloned.transform(X)
 
     def test_scaler_get_set_params(self, time_series_factory):
         """Test get_params and set_params work correctly."""
@@ -715,27 +728,6 @@ class TestPowerTransformer:
         X_transformed = pt.transform(X_positive)
         assert "time" in X_transformed.columns
 
-    def test_power_transformer_inverse_transform(self, time_series_factory):
-        """Test PowerTransformer inverse_transform recovers original data."""
-        X = time_series_factory(length=50, n_components=2)
-        pt = PowerTransformer(method="yeo-johnson")
-        pt.fit(X)
-
-        X_transformed = pt.transform(X)
-        X_recovered = pt.inverse_transform(X_transformed)
-
-        # Numeric values should match original (within tolerance)
-        for col in X.columns:
-            if col == "time":
-                continue
-            np.testing.assert_allclose(
-                X_recovered[col].to_numpy(),
-                X[col].to_numpy(),
-                rtol=1e-5,
-                atol=1e-10,  # Allow small absolute tolerance for values near zero
-                err_msg=f"Column {col} not recovered correctly",
-            )
-
     def test_power_transformer_fitted_attributes(self, time_series_factory):
         """Test PowerTransformer exposes sklearn attributes after fit."""
         X = time_series_factory(length=50, n_components=3)
@@ -799,26 +791,6 @@ class TestQuantileTransformer:
             mean = X_transformed[col].mean()
             # Mean should be close to 0 for normal distribution
             assert abs(mean) < 0.5, f"Column {col} mean should be ~0, got {mean}"
-
-    def test_quantile_transformer_inverse_transform(self, time_series_factory):
-        """Test QuantileTransformer inverse_transform recovers original data."""
-        X = time_series_factory(length=100, n_components=2)
-        qt = QuantileTransformer(n_quantiles=50, random_state=42)
-        qt.fit(X)
-
-        X_transformed = qt.transform(X)
-        X_recovered = qt.inverse_transform(X_transformed)
-
-        # Numeric values should match original (within tolerance)
-        for col in X.columns:
-            if col == "time":
-                continue
-            np.testing.assert_allclose(
-                X_recovered[col].to_numpy(),
-                X[col].to_numpy(),
-                rtol=1e-3,  # Quantile transform is approximate
-                err_msg=f"Column {col} not recovered correctly",
-            )
 
     def test_quantile_transformer_fitted_attributes(self, time_series_factory):
         """Test QuantileTransformer exposes sklearn attributes after fit."""
@@ -1069,10 +1041,15 @@ class TestTransformerCloneAndParams:
 
         for transformer in transformer_instances:
             transformer.fit(X)
+            assert hasattr(transformer, "instance_"), (
+                f"{transformer.__class__.__name__} should expose instance_ after fit"
+            )
             cloned = clone(transformer)
 
-            # Cloned should not be fitted
-            assert not hasattr(cloned, "instance_") or cloned.instance_ is None
+            # Cloned must drop the fitted instance and refuse to transform until refit
+            assert not hasattr(cloned, "instance_"), f"{transformer.__class__.__name__} clone leaked fitted instance_"
+            with pytest.raises(NotFittedError):
+                cloned.transform(X)
 
     def test_transformer_get_set_params(self):
         """Test get_params and set_params work correctly for transformers."""

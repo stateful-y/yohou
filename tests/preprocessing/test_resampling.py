@@ -253,24 +253,6 @@ class TestUpsampler:
         assert X_daily["value"][1] == 20.0  # Backward fill
         assert X_daily["value"][2] == 20.0
 
-    def test_upsample_interpolation_nearest(self) -> None:
-        """Test nearest neighbor interpolation."""
-        time = [datetime(2021, 1, 1), datetime(2021, 1, 3)]
-        X = pl.DataFrame({
-            "time": time,
-            "value": [10.0, 20.0],
-        })
-        upsampler = Upsampler(interval="1d", interpolation="nearest")
-        upsampler.fit(X)
-        X_daily = upsampler.transform(X)
-
-        # Nearest should fill from forward then backward
-        assert len(X_daily) == 3
-        assert X_daily["value"][0] == 10.0
-        # Nearest can be either 10 or 20 depending on implementation
-        assert X_daily["value"][1] in [10.0, 20.0]
-        assert X_daily["value"][2] == 20.0
-
     def test_upsample_interpolation_nearest_by_distance(self) -> None:
         """'nearest' assigns each gap point the temporally closest anchor."""
         X = pl.DataFrame({
