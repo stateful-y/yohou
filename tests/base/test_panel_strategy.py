@@ -5,6 +5,7 @@ pools data, while panel_strategy="multivariate" bypasses panel detection
 and treats __-prefixed columns as regular multivariate features.
 """
 
+import numpy as np
 import polars as pl
 import pytest
 from sklearn.linear_model import LinearRegression
@@ -254,8 +255,6 @@ class TestGlobalOnlyExogenous:
     @pytest.fixture
     def panel_y_global_X(self, y_X_factory):
         """Panel y with global-only X (no __ prefixes)."""
-        import numpy as np
-
         y, _ = y_X_factory(length=100, n_targets=1, n_features=0, panel=True, n_groups=2)
         rng = np.random.default_rng(42)
         time = y["time"]
@@ -269,8 +268,6 @@ class TestGlobalOnlyExogenous:
     @pytest.fixture
     def panel_y_mixed_X(self, y_X_factory):
         """Panel y with mixed X (panel + global columns)."""
-        import numpy as np
-
         y, X_panel = y_X_factory(length=100, n_targets=1, n_features=1, panel=True, n_groups=2)
         rng = np.random.default_rng(99)
         X = X_panel.with_columns(

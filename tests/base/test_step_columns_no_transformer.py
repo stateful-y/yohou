@@ -127,7 +127,15 @@ class TestPanelStepColumnsNoTransformer:
         assert len(y_pred) == 3
 
     def test_panel_observe_with_step_columns_no_X_t(self):
-        """Panel observe re-derives step columns when _X_t_observed[group] was None."""
+        """Panel observe re-derives step columns when _X_t_observed[group] was None.
+
+        NOTE: this currently only smoke-tests that predict() still works.
+        _inject_step_columns_after_update_panel lacks the ``elif X_step is not
+        None`` branch that standard.py has, so step columns are silently lost
+        when ``_X_t_observed`` is None after observe (Wave C: panel.py parity
+        gap). Strengthen this to assert ``_X_t_observed`` is rebuilt from step
+        columns once that branch is added.
+        """
         y, X_future = _make_panel_data(length=50, forecasting_horizon=3)
         f = SeasonalNaive(seasonality=3)
         f.fit(y[:40], forecasting_horizon=3, X_future=X_future)

@@ -303,7 +303,12 @@ class TestObserveTransformersOne:
             target_as_feature="transformed",
         )
 
-        assert X_t is not None
+        # 1 time + 2 transformed target features + 3 exog columns over the window.
+        assert len(X_t.columns) == 1 + 2 + 3
+        assert len(X_t) == 5
+        # Target transformer adds 10 to feature_0; exog passes through unchanged.
+        assert X_t["feature_0"][0] == y_new["feature_0"][0] + 10.0
+        assert X_t["exog_0"][0] == X_new["exog_0"][0]
 
     def test_feature_only(self, time_series_factory, SimpleTransformer):
         """Test with only feature transformer."""
@@ -325,7 +330,11 @@ class TestObserveTransformersOne:
             target_as_feature="transformed",
         )
 
-        assert X_t is not None
+        assert len(X_t.columns) == 1 + 2 + 3
+        assert len(X_t) == 5
+        # Feature transformer adds 5 to every numeric column (target and exog).
+        assert X_t["feature_0"][0] == y_new["feature_0"][0] + 5.0
+        assert X_t["exog_0"][0] == X_new["exog_0"][0] + 5.0
 
     def test_both_transformers(self, time_series_factory, SimpleTransformer):
         """Test with both target and feature transformers."""
@@ -351,7 +360,12 @@ class TestObserveTransformersOne:
             target_as_feature="transformed",
         )
 
-        assert X_t is not None
+        assert len(X_t.columns) == 1 + 2 + 3
+        assert len(X_t) == 5
+        # Target adds 10 then feature adds 5 to the target column (+15 total);
+        # exog only sees the feature transformer (+5).
+        assert X_t["feature_0"][0] == y_new["feature_0"][0] + 15.0
+        assert X_t["exog_0"][0] == X_new["exog_0"][0] + 5.0
 
 
 class TestRewindTransformersOne:
@@ -371,7 +385,11 @@ class TestRewindTransformersOne:
             target_as_feature="transformed",
         )
 
-        assert X_t is not None
+        # 1 time + 2 raw target features + 3 exog columns; no transformer means
+        # the feature input is the full concatenation, ending at the last row.
+        assert len(X_t.columns) == 1 + 2 + 3
+        assert X_t["time"][-1] == y["time"][-1]
+        assert X_t["feature_0"][-1] == y["feature_0"][-1]
 
     def test_target_only(self, time_series_factory, SimpleTransformer):
         """Test with only target transformer."""
@@ -417,15 +435,7 @@ class TestRewindTransformersOne:
         assert len(X_t) == 1
 
     def test_both_transformers(self, time_series_factory, SimpleTransformer):
-        """Test with both transformers.
-
-        NOTE: This test currently fails due to a bug in _rewind_transformers_one.
-        The function calls _build_feature_input with full y, but y_t (transformed y)
-        has only observation_horizon rows. When concatenating y_t with X_actual (which has full length),
-        polars fills missing rows with null values, causing check_interval_consistency to fail.
-
-        Potential fix: Pass y[-observation_horizon:] to _build_feature_input instead of full y.
-        """
+        """Both transformers rewind to a single aligned feature row."""
         y = time_series_factory(length=20, n_components=2)
         X_actual = make_exog_data(20, 3)
 
