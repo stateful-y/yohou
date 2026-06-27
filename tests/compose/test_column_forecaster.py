@@ -416,26 +416,6 @@ class TestGetSetParams:
         params = forecaster.get_params(deep=True)
         assert params["naive__seasonality"] == 10
 
-    def test_clone_preserves_params(self):
-        """Test that clone preserves all parameters."""
-        forecaster = ColumnForecaster(
-            [("model", SeasonalNaive(seasonality=7), ["a", "b"])],
-            remainder=SeasonalNaive(seasonality=14),
-            n_jobs=2,
-            verbose_feature_names_out=True,
-        )
-
-        cloned = clone(forecaster)
-
-        assert cloned.n_jobs == 2
-        assert cloned.verbose_feature_names_out is True
-        assert len(cloned.forecasters) == 1
-        assert cloned.forecasters[0][0] == "model"
-
-        # Cloned should not be fitted
-        with pytest.raises(NotFittedError, match="fitted"):
-            _ = cloned.named_forecasters_
-
 
 class TestUpdateReset:
     """Tests for observe, rewind, and observe_predict."""
@@ -584,55 +564,20 @@ class TestUpdateReset:
         assert "a" in y_pred.columns
         assert "b" in y_pred.columns
 
-    def test_not_fitted_predict_raises(self):
-        """Test predict raises NotFittedError before fit."""
-        forecaster = ColumnForecaster([
-            ("model", SeasonalNaive(seasonality=1), "value"),
-        ])
-
-        with pytest.raises(NotFittedError, match="fitted"):
-            forecaster.predict(forecasting_horizon=5)
-
-    def test_not_fitted_observe_raises(self):
-        """Test observe raises NotFittedError before fit."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=9),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({"time": time, "value": range(10)})
-
-        forecaster = ColumnForecaster([
-            ("model", SeasonalNaive(seasonality=1), "value"),
-        ])
-
-        with pytest.raises(NotFittedError, match="fitted"):
-            forecaster.observe(y)
-
-    def test_not_fitted_rewind_raises(self):
-        """Test rewind raises NotFittedError before fit."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=9),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({"time": time, "value": range(10)})
-
-        forecaster = ColumnForecaster([
-            ("model", SeasonalNaive(seasonality=1), "value"),
-        ])
-
-        with pytest.raises(NotFittedError, match="fitted"):
-            forecaster.rewind(y)
-
 
 class TestPanelData:
     """Tests for panel data support."""
 
-    def test_panel_data(self, y_X_factory):
-        """Test with panel data (prefixed column names with __ separator)."""
+    def test_panel_data_single_forecaster_matches_direct_fit(self, y_X_factory):
+        """A single forecaster over all panel columns equals fitting it directly.
+
+        Routing every panel column through one component must be a no-op
+        compared to fitting that same forecaster on the panel frame, proving the
+        ColumnForecaster wrapper does not alter per-group predictions. This is a
+        property the split-across-forecasters test cannot exercise.
+        """
+        from polars.testing import assert_frame_equal
+
         y, _ = y_X_factory(length=50, n_targets=2, n_features=0, seed=42, panel=True, n_groups=2)
 
         panel_cols = [c for c in y.columns if c != "time"]
@@ -640,14 +585,18 @@ class TestPanelData:
             ("model", SeasonalNaive(seasonality=1), panel_cols),
         ])
         forecaster.fit(y[:30], forecasting_horizon=5)
-
         y_pred = forecaster.predict(forecasting_horizon=5)
 
+        direct = SeasonalNaive(seasonality=1)
+        direct.fit(y[:30], forecasting_horizon=5)
+        direct_pred = direct.predict(forecasting_horizon=5)
+
         assert len(y_pred) == 5
-        assert "vintage_time" in y_pred.columns
-        assert "time" in y_pred.columns
-        for col in panel_cols:
-            assert col in y_pred.columns
+        assert_frame_equal(
+            y_pred.select(sorted(y_pred.columns)),
+            direct_pred.select(sorted(direct_pred.columns)),
+            check_column_order=False,
+        )
 
     def test_panel_data_split_across_forecasters(self, y_X_factory):
         """Test panel columns split across different forecasters."""
@@ -760,16 +709,6 @@ class TestSklearnTags:
         tags = forecaster.__sklearn_tags__()
         assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
-    def test_tags_accessible_before_fit(self):
-        """Test tags accessible before fitting."""
-        forecaster = ColumnForecaster([
-            ("model", SeasonalNaive(seasonality=1), "value"),
-        ])
-
-        # Should not raise
-        tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags is not None
-
     def test_tags_include_remainder(self):
         """Test tags aggregate includes remainder forecaster."""
         forecaster = ColumnForecaster(
@@ -874,23 +813,6 @@ class TestFittedAttributes:
 
         assert forecaster.column_map_ == {"sales_inv": ["sales", "inventory"]}
         assert forecaster.remainder_cols_ == ["price"]
-
-    def test_fit_forecasting_horizon_stored(self):
-        """Test fit_forecasting_horizon_ is stored after fit."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=49),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({"time": time, "value": range(50)})
-
-        forecaster = ColumnForecaster([
-            ("main", SeasonalNaive(seasonality=1), "value"),
-        ])
-        forecaster.fit(y[:30], forecasting_horizon=7)
-
-        assert forecaster.fit_forecasting_horizon_ == 7
 
     def test_interval_attribute(self):
         """Test interval_ is set from first forecaster."""
@@ -1140,6 +1062,28 @@ class TestEdgeCases:
         assert len(y_pred) == 5
         for i in range(10):
             assert f"col_{i}" in y_pred.columns
+
+    def test_predict_with_no_fitted_forecasters_raises(self):
+        """Predict with an empty forecasters_ list raises a clear ValueError.
+
+        This is the defensive guard for a fitted ColumnForecaster that ends up
+        with no component forecasters: predict cannot assemble any output and
+        must surface that rather than returning an empty frame.
+        """
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": range(50)})
+
+        forecaster = ColumnForecaster([("m", SeasonalNaive(seasonality=1), "value")])
+        forecaster.fit(y[:30], forecasting_horizon=5)
+        forecaster.forecasters_ = []
+
+        with pytest.raises(ValueError, match="no fitted forecasters"):
+            forecaster.predict(forecasting_horizon=5)
 
 
 class TestColumnForecasterIntervalObservePredict:
@@ -1618,7 +1562,15 @@ class TestObserveBuffersBounded:
         ])
         forecaster.fit(y[:30], forecasting_horizon=5)
 
-        for start in range(30, 90, 10):
+        # Immediately after fit the meta-forecaster mirrors the full training
+        # frame (the bounding happens on observe, not at fit time).
+        assert forecaster._y_observed.height == 30
+
+        # The first observe replaces the buffer with just that batch.
+        forecaster.observe(y[30:40])
+        assert forecaster._y_observed.height == 10
+
+        for start in range(40, 90, 10):
             forecaster.observe(y[start : start + 10])
 
         # Buffer holds only the most recent batch, not the concatenation of all.

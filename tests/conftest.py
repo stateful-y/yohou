@@ -510,21 +510,6 @@ def time_series_with_outliers_factory():
 
 
 @pytest.fixture
-def dummy_transformers():
-    """Minimal transformers for composition testing.
-
-    Returns a dictionary of dummy transformer instances that can be
-    used to test composition classes (FeaturePipeline, FeatureUnion, etc.)
-    """
-    return {
-        "simple": SimpleTransformer(observation_horizon=1),
-        "stateless": StatelessTransformer(),
-        "invertible": InvertibleTransformer(observation_horizon=2),
-        "panel_aware": PanelAwareTransformer(observation_horizon=1),
-    }
-
-
-@pytest.fixture
 def transformer_registry():
     """Registry of transformers with metadata for parametrized tests.
 

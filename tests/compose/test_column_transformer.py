@@ -15,22 +15,28 @@ from yohou.preprocessing.window import LagTransformer
 from yohou.testing import _yield_yohou_transformer_checks
 
 
+def _make_3col(length: int = 20) -> pl.DataFrame:
+    """Build a 3-column (a, b, c) time series of the requested length."""
+    from datetime import datetime, timedelta
+
+    time = pl.datetime_range(
+        start=datetime(2021, 1, 1),
+        end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+        interval="1s",
+        eager=True,
+    )
+    return pl.DataFrame({
+        "time": time,
+        "a": [float(x) for x in range(length)],
+        "b": [float(x) * 10 for x in range(length)],
+        "c": [float(x) * 100 for x in range(length)],
+    })
+
+
 @pytest.fixture
 def time_series_3col():
     """Create a 3-column time series for column transformer tests."""
-    from datetime import datetime, timedelta
-
-    return pl.DataFrame({
-        "time": pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1) + timedelta(seconds=19),
-            interval="1s",
-            eager=True,
-        ),
-        "a": list(range(20)),
-        "b": [float(x) * 10 for x in range(20)],
-        "c": [float(x) * 100 for x in range(20)],
-    })
+    return _make_3col(20)
 
 
 class TestColumnTransformerBasic:
@@ -188,7 +194,10 @@ class TestColumnTransformerFeatureNames:
         )
         ct.fit(time_series_3col)
         feature_names = ct.get_feature_names_out()
-        assert isinstance(feature_names, list | type(None)) or hasattr(feature_names, "__iter__")
+        # Default verbose_feature_names_out=True prefixes each column with the
+        # transformer name, so the two transformed columns become t1_a, t1_b.
+        assert isinstance(feature_names, list)
+        assert feature_names == ["t1_a", "t1_b"]
 
     def test_verbose_feature_names(self, time_series_3col):
         """Test verbose_feature_names_out=True prefixes names."""
@@ -262,6 +271,35 @@ class TestColumnTransformerObserveRewindTransform:
         result = ct.rewind_transform(time_series_3col)
         assert isinstance(result, pl.DataFrame)
         assert "time" in result.columns
+
+    def test_observe_transform_updates_stateful_component_buffer(self, time_series_3col):
+        """observe_transform propagates the stateful update into the component.
+
+        With a real stateful component (observation_horizon=2), the buffered
+        state of the fitted child transformer must advance to the newly observed
+        data, not stay pinned at the fit-time tail. This exercises the
+        _observe_transform_one stateful path rather than the passthrough one.
+        """
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=2), ["a", "b"]),
+            ],
+            remainder="drop",
+        )
+        ct.fit(time_series_3col[:10])
+
+        component = ct["t1"]
+        fit_observed_time = component.observed_time_
+        assert component._X_observed.height == 2
+
+        new_batch = time_series_3col[10:]
+        ct.observe_transform(new_batch)
+
+        # The component buffer advanced to the latest observed timestamp and
+        # still holds exactly observation_horizon rows.
+        assert component.observed_time_ == new_batch["time"][-1]
+        assert component.observed_time_ > fit_observed_time
+        assert component._X_observed.height == 2
 
     def test_getitem_by_name(self, time_series_3col):
         """Accessing transformer by name via __getitem__."""
@@ -586,20 +624,7 @@ class TestColumnTransformerSystematicChecks:
 
     @staticmethod
     def _data(length: int = 100):
-        from datetime import datetime, timedelta
-
-        time = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
-            interval="1s",
-            eager=True,
-        )
-        return pl.DataFrame({
-            "time": time,
-            "a": [float(x) for x in range(length)],
-            "b": [float(x) * 10 for x in range(length)],
-            "c": [float(x) * 100 for x in range(length)],
-        })
+        return _make_3col(length)
 
     @pytest.mark.parametrize(
         "name,factory,extra_xfail",

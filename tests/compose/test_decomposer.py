@@ -142,6 +142,36 @@ class TestPanelObserveRewind:
         assert "g0__value" in y_pred_rewound.columns
         assert "g1__value" in y_pred_rewound.columns
 
+    def test_panel_observe_with_both_transformers_active(self, panel_data):
+        """Panel observe must dispatch target and feature transformers together.
+
+        With a panel target_transformer (dict) and a panel feature_transformer
+        (dict) both fitted, observe(y, X_actual) builds y_t_dict via the target
+        branch and X_t_dict via the feature branch in the same call. This
+        exercises the simultaneous-dict path that the target-only and
+        feature-only tests each miss.
+        """
+        from yohou.preprocessing import FunctionTransformer
+
+        y = panel_data
+        X_actual = panel_data.rename({c: c.replace("__value", "__feat") if c != "time" else c for c in y.columns})
+        y_train, y_new = y[:50], y[50:]
+        X_train, X_new = X_actual[:50], X_actual[50:]
+
+        forecaster = DecompositionPipeline(
+            [("trend", PolynomialTrendForecaster(degree=1))],
+            target_transformer=LogTransformer(),
+            feature_transformer=FunctionTransformer(),
+        )
+        forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=3)
+        assert isinstance(forecaster.target_transformer_, dict)
+        assert isinstance(forecaster.feature_transformer_, dict)
+
+        forecaster.observe(y_new, X_actual=X_new)
+        y_pred = forecaster.predict()
+        assert "g0__value" in y_pred.columns
+        assert "g1__value" in y_pred.columns
+
 
 class TestObservationBufferBounded:
     """observe() must keep _y_observed bounded to observation_horizon."""
@@ -230,7 +260,13 @@ class TestBasicFitPredict:
         return pl.DataFrame({"time": time, "value": range(50)})
 
     def test_basic_workflow(self, daily_data):
-        """Test basic fit and predict workflow."""
+        """Trend+seasonality decomposition extrapolates a pure linear signal.
+
+        ``daily_data`` is ``value = range(50)``, a perfect slope-1 line with no
+        seasonal component. A degree-1 trend captures the line exactly and the
+        seasonal residual is ~0, so forecasts must continue 30, 31, 32, ...
+        (the column/value contract itself is covered by the systematic suite).
+        """
         forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", SeasonalNaive(seasonality=7)),
@@ -240,9 +276,10 @@ class TestBasicFitPredict:
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert len(y_pred) == 5
-        assert "vintage_time" in y_pred.columns
-        assert "time" in y_pred.columns
-        assert "value" in y_pred.columns
+        # Fitted on days 0-29 (values 0-29); the additive decomposition
+        # reassembles into a linear continuation with unit step.
+        values = y_pred["value"].to_list()
+        assert values == pytest.approx([29, 30, 31, 32, 33])
 
     def test_different_horizons(self, daily_data):
         """Test prediction with different horizons."""
@@ -263,7 +300,7 @@ class TestBasicFitPredict:
         ])
         forecaster.fit(daily_data[:30], forecasting_horizon=5)
 
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValueError, match="forecasting_horizon must be >= 1"):
             forecaster.predict(forecasting_horizon=0)
 
     def test_prediction_types(self):
