@@ -63,11 +63,6 @@ _XFAIL_CHECKS: dict[str, set[str]] = {
         "check_inverse_transform_round_trip",
         "check_inverse_observe_transform_identity",
     },
-    "NumericalFilter": {
-        "check_inverse_transform_identity",
-        "check_inverse_transform_round_trip",
-        "check_inverse_observe_transform_identity",
-    },
     "NumericalIntegrator": {
         "check_inverse_transform_identity",
         "check_inverse_transform_round_trip",
@@ -427,7 +422,11 @@ class TestWeighterCommon:
     def test_weighter_checks(self, name, cls):
         """Run all applicable check-generator checks for a weighter."""
         instances = _weighter_instances()
-        assert name in instances, f"No representative instance registered for weighter {name}"
+        if name not in instances:
+            pytest.fail(
+                f"{name} is not registered in _weighter_instances(). Add a representative "
+                "instance there following the create-yohou-weighter skill pattern."
+            )
         weighter = instances[name]
         run_checks(weighter, _yield_yohou_weighter_checks(weighter, _weighter_key()))
 
@@ -465,7 +464,11 @@ class TestSimilarityCommon:
     def test_similarity_checks(self, name, cls):
         """Run all applicable check-generator checks for a similarity."""
         instances = _similarity_instances()
-        assert name in instances, f"No representative instance registered for similarity {name}"
+        if name not in instances:
+            pytest.fail(
+                f"{name} is not registered in _similarity_instances(). Add a representative "
+                "instance there following the create-yohou-similarity skill pattern."
+            )
         similarity = instances[name]
         y_calib, y_pred_calib = _similarity_calibration()
         run_checks(similarity, _yield_yohou_similarity_checks(similarity, y_calib, y_pred_calib))
@@ -528,7 +531,12 @@ class TestCompositionContractCommon:
     def test_composition_contract(self, name, cls):
         """Run clone + nested-param checks for a compositor."""
         descriptors = _composition_descriptors()
-        assert name in descriptors, f"No composition descriptor registered for {name}"
+        if name not in descriptors:
+            pytest.fail(
+                f"{name} is not registered in _composition_descriptors(). Add a descriptor "
+                "there (composition attribute plus representative components) following the "
+                "matching create-yohou-* skill pattern."
+            )
         descriptor = descriptors[name]
         compositor = cls(**{descriptor["attr"]: descriptor["components"]})
         run_checks(compositor, _yield_composition_contract_checks(compositor, descriptor))

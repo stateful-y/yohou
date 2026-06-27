@@ -23,53 +23,6 @@ def check_time_column_required(estimator, time_series_factory):
         clone(estimator).fit(X_no_time)
 
 
-def check_observation_horizon_property(estimator, time_series_factory):
-    """Check observation_horizon property exists after fit."""
-    X_actual = time_series_factory(length=20)
-    estimator_clone = clone(estimator)
-    estimator_clone.fit(X_actual)
-
-    assert hasattr(estimator_clone, "observation_horizon"), "Fitted transformer must have observation_horizon property"
-
-    horizon = estimator_clone.observation_horizon
-    assert isinstance(horizon, int), f"observation_horizon must be int, got {type(horizon)}"
-    assert horizon >= 0, f"observation_horizon must be non-negative, got {horizon}"
-
-
-def check_observe_rewind_contract(estimator, time_series_train_test_factory):
-    """Check observe() and rewind() methods exist and work."""
-    X_actual, X_new = time_series_train_test_factory(train_length=20, test_length=10)
-
-    estimator_clone = clone(estimator)
-    estimator_clone.fit(X_actual)
-
-    # observe should work
-    assert hasattr(estimator_clone, "observe"), "Transformer must have observe() method"
-    estimator_clone.observe(X_new)
-
-    # rewind should work
-    assert hasattr(estimator_clone, "rewind"), "Transformer must have rewind() method"
-    estimator_clone.rewind(X_new)
-
-
-def check_polars_dataframe_io(estimator, time_series_factory):
-    """Check transformer accepts and returns polars DataFrames."""
-    X_actual = time_series_factory(length=20)
-    estimator_clone = clone(estimator)
-
-    # Input should be polars DataFrame
-    assert isinstance(X_actual, pl.DataFrame), "Test data should be polars DataFrame"
-
-    estimator_clone.fit(X_actual)
-    X_trans = estimator_clone.transform(X_actual)
-
-    # Output should also be polars DataFrame
-    assert isinstance(X_trans, pl.DataFrame), f"transform() must return polars DataFrame, got {type(X_trans)}"
-
-    # Should have time column
-    assert "time" in X_trans.columns, "transform() output must contain 'time' column"
-
-
 class TestYohouSpecificChecks:
     """Time series-specific checks for yohou transformers."""
 
@@ -82,17 +35,21 @@ class TestYohouSpecificChecks:
         transformer_name,
         transformer_registry,
         time_series_factory,
-        time_series_train_test_factory,
     ):
-        """Run time series-specific checks for all transformers."""
+        """Run the missing-'time'-column rejection check.
+
+        The observation-horizon, observe/rewind, and polars-IO contracts are
+        already swept for every transformer by ``check_observation_horizon_after_fit``,
+        ``check_rewind_updates_memory`` / ``check_observe_concatenates_memory``, and
+        ``check_transform_output_structure`` in the systematic suite
+        (``TestTransformerCommon`` in ``tests/test_common.py``). Only the
+        missing-``time``-column rejection has no generator equivalent, so it is
+        the one behaviour exercised here.
+        """
         config = transformer_registry[transformer_name]
         estimator = config["transformer"]
 
-        # Run all time series-specific checks
         check_time_column_required(estimator, time_series_factory)
-        check_observation_horizon_property(estimator, time_series_factory)
-        check_observe_rewind_contract(estimator, time_series_train_test_factory)
-        check_polars_dataframe_io(estimator, time_series_factory)
 
 
 class TestTransformerSklearnCompat:
