@@ -214,6 +214,49 @@ class TestParseTsf:
         assert meta["missing"] is False
         assert meta["equallength"] is True
 
+    def test_str_filepath_source(self, tmp_path):
+        """A str file path is parsed identically to a BytesIO source."""
+        content = (
+            "@attribute series_name string\n"
+            "@attribute start_timestamp date\n"
+            "@frequency monthly\n"
+            "@data\n"
+            "T1:2000-01-01 00-00-00:10.0,20.0,30.0\n"
+        )
+        path = tmp_path / "sample.tsf"
+        path.write_text(content)
+
+        df_path, meta_path = _parse_tsf(str(path), value_column_name="val")
+        df_buf, meta_buf = _parse_tsf(self._make_tsf(content), value_column_name="val")
+
+        assert df_path.equals(df_buf)
+        assert meta_path == meta_buf
+        assert df_path["val"].to_list() == [10.0, 20.0, 30.0]
+
+    def test_empty_data_section_returns_empty_frame(self):
+        """A @data section with no data rows yields an empty Datetime frame."""
+        tsf = self._make_tsf(
+            "@attribute series_name string\n@attribute start_timestamp date\n@frequency monthly\n@data\n"
+        )
+        df, meta = _parse_tsf(tsf, value_column_name="val")
+
+        assert df.shape == (0, 1)
+        assert df.columns == ["time"]
+        assert df.schema["time"] == pl.Datetime
+        assert meta["n_series"] == 0
+
+    def test_invalid_polars_frequency_string_raises(self):
+        """A frequency that is unmapped and not <int><unit> raises ValueError."""
+        tsf = self._make_tsf(
+            "@attribute series_name string\n"
+            "@attribute start_timestamp date\n"
+            "@frequency special\n"
+            "@data\n"
+            "T1:2000-01-01 00-00-00:1.0,2.0,3.0\n"
+        )
+        with pytest.raises(ValueError, match="Cannot parse polars frequency string"):
+            _parse_tsf(tsf, value_column_name="val")
+
     def test_no_data_section_raises(self):
         """Missing @data section raises ValueError."""
         tsf = self._make_tsf("@attribute series_name string\n@frequency daily\n")

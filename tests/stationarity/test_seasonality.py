@@ -210,6 +210,28 @@ class TestPatternSeasonalityForecaster:
         with pytest.raises(ValueError, match="Insufficient data"):
             forecaster.fit(y, forecasting_horizon=1)
 
+    def test_seasonality_panel_insufficient_data_names_group(self):
+        """Panel data with a too-short group raises ValueError naming that group."""
+        from datetime import timedelta
+
+        seasonality = 4
+        length = 2 * seasonality - 1  # one short of the 'average' requirement
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "g0__v": [float(i) for i in range(length)],
+            "g1__v": [float(i) for i in range(length)],
+        })
+
+        forecaster = PatternSeasonalityForecaster(seasonality=seasonality, method="average")
+        with pytest.raises(ValueError, match=r"group 'g0'"):
+            forecaster.fit(y, forecasting_horizon=1)
+
     def test_seasonality_wraps_around_correctly(self):
         """Test that predictions wrap around seasonal cycle correctly."""
         pattern = [1, 2, 3, 4]
@@ -258,29 +280,40 @@ class TestPatternSeasonalityForecaster:
         y_pred_3 = forecaster.predict(forecasting_horizon=3)
         assert len(y_pred_3) == 3
 
-    def test_seasonality_panel_data(self, panel_time_series_factory):
-        """Test PatternSeasonalityForecaster with panel data."""
-        # Create panel data with different seasonal patterns per series
-        seasonality = 12
-        y_panel = panel_time_series_factory(length=3 * seasonality, n_series=3, seed=42)
+    def test_seasonality_panel_data(self):
+        """Each panel series recovers its own distinct seasonal pattern."""
+        from datetime import timedelta
 
-        # Add seasonal patterns
-        pattern1 = list(range(seasonality))
-        [x * 2 for x in pattern1]
-        [x * 0.5 for x in pattern1]
+        seasonality = 4
+        length = 3 * seasonality
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+            interval="1d",
+            eager=True,
+        )
 
-        # This is a simplified approach - in reality would need to properly set panel data
+        # Distinct repeating seasonal patterns per series.
+        pattern_0 = [1.0, 2.0, 3.0, 4.0]
+        pattern_1 = [x * 2 for x in pattern_0]
+        pattern_2 = [x * 0.5 for x in pattern_0]
+        y_panel = pl.DataFrame({
+            "time": time,
+            "panel__series_0": pattern_0 * 3,
+            "panel__series_1": pattern_1 * 3,
+            "panel__series_2": pattern_2 * 3,
+        })
+
         forecaster = PatternSeasonalityForecaster(seasonality=seasonality, method="naive")
-        forecaster.fit(y_panel[:30], forecasting_horizon=6)
+        forecaster.fit(y_panel, forecasting_horizon=seasonality)
 
-        # Predict all groups
-        y_pred = forecaster.predict(forecasting_horizon=6)
+        y_pred = forecaster.predict(forecasting_horizon=seasonality)
 
-        # Should have predictions for all series
-        assert "panel__series_0" in y_pred.columns
-        assert "panel__series_1" in y_pred.columns
-        assert "panel__series_2" in y_pred.columns
-        assert len(y_pred) == 6
+        assert len(y_pred) == seasonality
+        # Each series's prediction reproduces its own seasonal pattern.
+        assert y_pred["panel__series_0"].to_list() == pytest.approx(pattern_0)
+        assert y_pred["panel__series_1"].to_list() == pytest.approx(pattern_1)
+        assert y_pred["panel__series_2"].to_list() == pytest.approx(pattern_2)
 
     def test_seasonality_observe_predict(self):
         """Test observe_predict method."""
@@ -505,6 +538,28 @@ class TestFourierSeasonalityForecaster:
         forecaster = FourierSeasonalityForecaster(seasonality=12, harmonics=[3])
 
         with pytest.raises(ValueError, match="Insufficient data"):
+            forecaster.fit(y, forecasting_horizon=1)
+
+    def test_fourier_seasonality_panel_insufficient_data_names_group(self):
+        """Panel data shorter than one cycle raises ValueError naming the group."""
+        from datetime import timedelta
+
+        seasonality = 12
+        length = 8  # fewer than one seasonal cycle
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=length - 1),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "g0__v": [float(i) for i in range(length)],
+            "g1__v": [float(i) for i in range(length)],
+        })
+
+        forecaster = FourierSeasonalityForecaster(seasonality=seasonality, harmonics=[2])
+        with pytest.raises(ValueError, match=r"group 'g0'"):
             forecaster.fit(y, forecasting_horizon=1)
 
     def test_fourier_seasonality_different_horizons(self):

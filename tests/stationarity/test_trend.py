@@ -254,3 +254,39 @@ class TestPolynomialTrendWithoutExogenous:
 
         assert forecaster._group_target_observation_horizon("g0") == 2
         assert forecaster._group_target_observation_horizon("g1") == 5
+
+    def test_panel_rewind_updates_first_observed_time_per_group(self):
+        """A real panel fit -> observe -> rewind cycle updates each group's anchor.
+
+        Exercises the panel branch of ``_BaseTrendForecaster.rewind`` (which reads
+        each group's own ``get_group_df`` slice and per-group observation horizon)
+        rather than unit-testing the horizon helper in isolation.
+        """
+        from datetime import timedelta
+
+        from yohou.stationarity import SeasonalDifferencing
+
+        length = 60
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({
+            "time": time,
+            "g0__series_0": [float(i) for i in range(length)],
+            "g1__series_0": [float(i + 10) for i in range(length)],
+        })
+
+        forecaster = PolynomialTrendForecaster(degree=1, target_transformer=SeasonalDifferencing(seasonality=2))
+        forecaster.fit(y[:40], forecasting_horizon=5)
+        assert isinstance(forecaster.target_transformer_, dict)
+
+        forecaster.observe(y=y[40:50])
+        forecaster.rewind(y=y[30:40])
+
+        # Each group's first observed time is anchored at its own horizon (== 2)
+        # within the rewound slice that begins at index 30, i.e. time[32].
+        expected = time[32]
+        assert forecaster._first_observed_time == {"g0": expected, "g1": expected}

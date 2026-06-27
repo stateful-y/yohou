@@ -209,6 +209,19 @@ class TestFetchCommon:
         assert len(bunch_all.feature_names) == 2
         assert len(bunch_sub.feature_names) == 1
 
+    def test_corrupt_parquet_cache_triggers_redownload(self, tmp_path):
+        """A garbage parquet cache is discarded and the dataset re-downloaded."""
+        bunch = fetch_tourism_monthly(data_home=tmp_path)
+        parquet_path = bunch.filename
+        # Overwrite the cached parquet with bytes that are not a valid file so
+        # ``pl.read_parquet`` raises and the corrupt-cache branch re-downloads.
+        with open(parquet_path, "wb") as fh:
+            fh.write(b"not a parquet file")
+
+        recovered = fetch_tourism_monthly(data_home=tmp_path)
+        assert isinstance(recovered, Bunch)
+        assert recovered.frame.equals(bunch.frame)
+
 
 class TestFetchIntegration:
     """Integration tests that download from Zenodo (requires network)."""
@@ -340,24 +353,76 @@ class TestFetchAirQualityClassificationGuards:
             _fetchers.fetch_air_quality_classification()
 
 
-@pytest.fixture(scope="module")
-def air_quality_data():
-    """Fetch the air quality classification dataset once per module."""
+def _serve_classification_wasm(monkeypatch, y_frame, x_frame):
+    """Route the classification fetchers through the offline WASM path.
+
+    Stubs ``_is_wasm`` to True and ``urlopen`` to deserialize pre-built
+    polars frames, so the fixtures never hit the network during fast runs.
+    """
+    import io
+
+    from yohou.datasets import _fetchers
+
+    y_bytes = y_frame.serialize(format="binary")
+    x_bytes = x_frame.serialize(format="binary")
+
+    def _fake_urlopen(url):
+        return io.BytesIO(y_bytes if url.endswith("_y.bin") else x_bytes)
+
+    monkeypatch.setattr(_fetchers, "_is_wasm", lambda: True)
+    monkeypatch.setattr(_fetchers, "urlopen", _fake_urlopen)
+
+
+@pytest.fixture
+def air_quality_data(monkeypatch):
+    """Air quality classification data served from a stubbed WASM path.
+
+    Mirrors the real dataset's schema (string ``air_quality`` target with the
+    four WHO categories, five numeric panel feature columns) without any
+    network access, so the consuming tests run under ``just test-fast``.
+    """
+    time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1d", eager=True)
+    y = pl.DataFrame(
+        {"time": time, "air_quality": ["good", "moderate", "unhealthy", "hazardous"]},
+        schema={"time": pl.Datetime, "air_quality": pl.Utf8},
+    )
+    X_actual = pl.DataFrame({
+        "time": time,
+        "beijing__pm2.5": [10.0, 20.0, 30.0, 40.0],
+        "beijing__pm10": [11.0, 21.0, 31.0, 41.0],
+        "beijing__no2": [1.0, 2.0, 3.0, 4.0],
+        "beijing__co": [0.1, 0.2, 0.3, 0.4],
+        "beijing__o3": [5.0, 6.0, 7.0, 8.0],
+    })
+    _serve_classification_wasm(monkeypatch, y, X_actual)
     return fetch_air_quality_classification()
 
 
-@pytest.fixture(scope="module")
-def demand_data():
-    """Fetch the demand classification dataset once per module."""
+@pytest.fixture
+def demand_data(monkeypatch):
+    """Demand classification data served from a stubbed WASM path.
+
+    Mirrors the real dataset's schema (string ``demand_level`` target with three
+    categories, four numeric panel feature columns) without network access.
+    """
+    time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1d", eager=True)
+    y = pl.DataFrame(
+        {"time": time, "demand_level": ["low", "medium", "high", "medium"]},
+        schema={"time": pl.Datetime, "demand_level": pl.Utf8},
+    )
+    X_actual = pl.DataFrame({
+        "time": time,
+        "nsw__demand": [100.0, 200.0, 300.0, 250.0],
+        "vic__demand": [110.0, 210.0, 310.0, 260.0],
+        "qld__demand": [120.0, 220.0, 320.0, 270.0],
+        "sa__demand": [130.0, 230.0, 330.0, 280.0],
+    })
+    _serve_classification_wasm(monkeypatch, y, X_actual)
     return fetch_demand_classification()
 
 
 class TestFetchAirQualityClassification:
     """Tests for fetch_air_quality_classification."""
-
-    def test_returns_bunch(self, air_quality_data):
-        """Result is a sklearn Bunch."""
-        assert isinstance(air_quality_data, Bunch)
 
     def test_bunch_keys(self, air_quality_data):
         """Bunch contains required keys."""
@@ -408,7 +473,7 @@ class TestFetchAirQualityClassification:
 
     def test_no_nulls_in_y(self, air_quality_data):
         """y has no null values."""
-        assert air_quality_data.y.null_count().row(0) == (0, 0)
+        assert air_quality_data.y.null_count().sum_horizontal().item() == 0
 
     def test_descr_is_string(self, air_quality_data):
         """DESCR is a non-empty string."""
@@ -418,10 +483,6 @@ class TestFetchAirQualityClassification:
 
 class TestFetchDemandClassification:
     """Tests for fetch_demand_classification."""
-
-    def test_returns_bunch(self, demand_data):
-        """Result is a sklearn Bunch."""
-        assert isinstance(demand_data, Bunch)
 
     def test_bunch_keys(self, demand_data):
         """Bunch contains required keys."""
@@ -477,7 +538,7 @@ class TestFetchDemandClassification:
 
     def test_no_nulls_in_y(self, demand_data):
         """y has no null values."""
-        assert demand_data.y.null_count().row(0) == (0, 0)
+        assert demand_data.y.null_count().sum_horizontal().item() == 0
 
     def test_descr_is_string(self, demand_data):
         """DESCR is a non-empty string."""

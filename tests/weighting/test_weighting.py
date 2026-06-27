@@ -58,6 +58,13 @@ def test_linear_decay_max_steps_zeros_older() -> None:
     assert weights[-1] == 1.0
 
 
+def test_linear_decay_max_steps_one_keeps_only_most_recent() -> None:
+    """max_steps=1 zeros every key except the most recent, which gets 1.0."""
+    t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
+    weights = LinearDecayWeighter(max_steps=1).compute_weights(t).to_list()
+    assert weights == pytest.approx([0.0, 0.0, 1.0])
+
+
 def test_linear_decay_max_steps_exceeds_length() -> None:
     """max_steps > len(key) computes without an OverflowError.
 
@@ -69,6 +76,20 @@ def test_linear_decay_max_steps_exceeds_length() -> None:
     assert len(weights) == 3
     assert weights[-1] == 1.0
     assert all(w >= 0.0 for w in weights)
+
+
+def test_seasonal_emphasis_list_emphasizes_union_of_periods() -> None:
+    """A list of seasonalities emphasizes keys in phase with ANY period."""
+    t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 8)])
+    w_list = SeasonalEmphasisWeighter(seasonality=[2, 3], emphasis=2.0).compute_weights(t).to_list()
+    w2 = SeasonalEmphasisWeighter(seasonality=2, emphasis=2.0).compute_weights(t).to_list()
+    w3 = SeasonalEmphasisWeighter(seasonality=3, emphasis=2.0).compute_weights(t).to_list()
+
+    expected_union = [2.0 if (a == 2.0 or b == 2.0) else 1.0 for a, b in zip(w2, w3, strict=True)]
+    assert w_list == pytest.approx(expected_union)
+    # The union strictly differs from either single period, exercising the loop.
+    assert w_list != w2
+    assert w_list != w3
 
 
 def test_seasonal_emphasis_matches_legacy_values() -> None:
@@ -181,6 +202,12 @@ def test_composite_multiplies_components(times: pl.Series) -> None:
     expected = (a.compute_weights(times) * b.compute_weights(times)).to_list()
     got = CompositeWeighter([("a", a), ("b", b)]).compute_weights(times).to_list()
     assert got == pytest.approx(expected)
+
+
+def test_composite_empty_weighters_raises(times: pl.Series) -> None:
+    """An empty (but correctly named-list) weighters argument is rejected."""
+    with pytest.raises(ValueError, match="at least one weighter"):
+        CompositeWeighter(weighters=[]).compute_weights(times)
 
 
 def test_base_weighter_is_abstract() -> None:

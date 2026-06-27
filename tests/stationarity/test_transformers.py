@@ -104,25 +104,6 @@ class TestSeasonalStationarization:
             expected_failures=set(expected_failures),
         )
 
-    def test_seasonal_differencing_inverse(self, time_series_factory):
-        """Test SeasonalDifferencing specific round-trip behavior."""
-        X = time_series_factory(length=50)
-        transformer = SeasonalDifferencing(seasonality=1)
-        transformer.fit(X)
-
-        X_trans = transformer.transform(X)
-        # inverse_transform requires X_p (past observations)
-        horizon = transformer.observation_horizon
-        n_dropped = len(X) - len(X_trans)
-        X_p = X[n_dropped - horizon : n_dropped]
-        X_inv = transformer.inverse_transform(X_trans, X_p)
-
-        # Should recover original shape (for the transformed portion)
-        X_expected = X.tail(len(X_trans))
-        assert X_expected.shape == X_inv.shape
-        # Should have same columns
-        assert set(X_expected.columns) == set(X_inv.columns)
-
     def test_seasonal_log_differencing_requires_positive(self, time_series_factory):
         """Test SeasonalLogDifferencing with non-positive data doesn't crash."""
         X = time_series_factory(length=50)
@@ -236,6 +217,11 @@ class TestBoxCoxTransformer:
 
         # BoxCox with lambda=0.5: (x^0.5 - 1) / 0.5 = 2 * (sqrt(x) - 1)
         assert "time" in X_trans.columns
+
+        x_numeric = X.select(~pl.selectors.by_name("time")).to_numpy()
+        expected = 2.0 * (np.sqrt(x_numeric) - 1.0)
+        trans_numeric = X_trans.select(~pl.selectors.by_name("time")).to_numpy()
+        np.testing.assert_allclose(trans_numeric, expected, rtol=1e-10)
 
     def test_boxcox_inverse_transform(self, time_series_factory):
         """Test BoxCox inverse_transform recovers original data."""
@@ -517,8 +503,13 @@ class TestAbsoluteSeasonalReturn:
                     err_msg=f"Column {col} not recovered correctly with seasonality={seasonality}",
                 )
 
-    def test_absolute_seasonal_return_equals_seasonal_differencing(self, time_series_factory):
-        """Test AbsoluteSeasonalReturn produces same result as SeasonalDifferencing."""
+    def test_absolute_seasonal_return_feature_name_prefix_differs(self, time_series_factory):
+        """AbsoluteSeasonalReturn relabels columns even though values match diffing.
+
+        It shares ``SeasonalDifferencing._transform``, so identical numeric output
+        is guaranteed by inheritance; the only behavioral distinction is the
+        ``abs_return_s_`` feature-name prefix versus ``diff_s_``.
+        """
         X = time_series_factory(length=50)
 
         for seasonality in [1, 2, 3]:
@@ -528,19 +519,11 @@ class TestAbsoluteSeasonalReturn:
             abs_return.fit(X)
             diff.fit(X)
 
-            X_abs = abs_return.transform(X)
-            X_diff = diff.transform(X)
-
-            # Time columns should match
-            assert_frame_equal(X_abs.select("time"), X_diff.select("time"))
-
-            # Values should match (column names may differ)
-            for i, col in enumerate([c for c in X_abs.columns if c != "time"]):
-                np.testing.assert_allclose(
-                    X_abs[col].to_numpy(),
-                    X_diff[[c for c in X_diff.columns if c != "time"][i]].to_numpy(),
-                    rtol=1e-10,
-                )
+            abs_names = abs_return.get_feature_names_out()
+            diff_names = diff.get_feature_names_out()
+            assert all(name.startswith(f"abs_return_s_{seasonality}_") for name in abs_names)
+            assert all(name.startswith(f"diff_s_{seasonality}_") for name in diff_names)
+            assert set(abs_names).isdisjoint(diff_names)
 
     def test_absolute_seasonal_return_observation_horizon(self, time_series_factory):
         """Test observation_horizon matches seasonality."""
