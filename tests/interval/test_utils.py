@@ -25,18 +25,26 @@ class TestWeightedQuantile:
         assert isinstance(result, float)
 
     def test_high_quantile(self):
-        """Test high quantile returns large value."""
+        """Small q selects the largest element under the 1-q CDF threshold.
+
+        With equal weights on [1, 2, 3, 4, 5], q=0.1 walks the sorted CDF until
+        it reaches 1 - q = 0.9, which lands on the largest element, 5.0.
+        """
         x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
-        result = weighted_quantile(x, q=0.1, weights=weights)  # 90th percentile
-        assert result >= 1.0
+        result = weighted_quantile(x, q=0.1, weights=weights)
+        assert result == pytest.approx(5.0)
 
     def test_low_quantile(self):
-        """Test low quantile returns small value."""
+        """Large q selects the smallest element under the 1-q CDF threshold.
+
+        With equal weights on [1, 2, 3, 4, 5], q=0.9 reaches 1 - q = 0.1 at the
+        first sorted element, 1.0.
+        """
         x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
         weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
-        result = weighted_quantile(x, q=0.9, weights=weights)  # 10th percentile
-        assert result <= 5.0
+        result = weighted_quantile(x, q=0.9, weights=weights)
+        assert result == pytest.approx(1.0)
 
     def test_concentrated_weight(self):
         """Test with weight concentrated on one element."""
@@ -74,11 +82,15 @@ class TestWeightedQuantile:
         assert result == pytest.approx(5.0)
 
     def test_unsorted_input(self):
-        """Test that unsorted input is handled correctly."""
+        """Unsorted input yields the same median as sorted input.
+
+        The function sorts internally, so [5, 1, 3, 2, 4] with equal weights and
+        q=0.5 must give the median element, 3.0.
+        """
         x = np.array([5.0, 1.0, 3.0, 2.0, 4.0])
         weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
         result = weighted_quantile(x, q=0.5, weights=weights)
-        assert 1.0 <= result <= 5.0
+        assert result == pytest.approx(3.0)
 
     def test_boundary_q_zero(self):
         """Test with q=0 (100th percentile)."""

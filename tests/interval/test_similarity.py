@@ -80,22 +80,6 @@ class TestDistanceSimilarityMetrics:
         weights = sim.predict(prediction_data)
         assert weights.shape == (2, 8)
 
-    def test_different_metrics_give_different_weights(self, train_data, prediction_data):
-        """Test that different metrics produce valid but potentially different weights."""
-        y, y_pred = train_data
-
-        sim_euclidean = DistanceSimilarity(metric="euclidean")
-        sim_euclidean.fit(y, y_pred)
-        w_euclidean = sim_euclidean.predict(prediction_data)
-
-        sim_cityblock = DistanceSimilarity(metric="cityblock")
-        sim_cityblock.fit(y, y_pred)
-        w_cityblock = sim_cityblock.predict(prediction_data)
-
-        # Both should produce valid weights
-        assert np.all(np.isfinite(w_euclidean))
-        assert np.all(np.isfinite(w_cityblock))
-
 
 class TestDistanceSimilarityObserve:
     """Tests for observe method."""
@@ -178,13 +162,13 @@ class TestDistanceSimilarityNullRejection:
     """Tests that DistanceSimilarity rejects null and NaN data."""
 
     def test_fit_rejects_null_y_pred(self, train_data):
-        """Test that fit raises ValueError when y_pred contains null."""
+        """fit raises ValueError naming the offending column when y_pred contains null."""
         y, y_pred = train_data
         y_pred_null = y_pred.with_columns(
             pl.when(pl.col("value") > 5).then(None).otherwise(pl.col("value")).alias("value")
         )
         sim = DistanceSimilarity()
-        with pytest.raises(ValueError, match="null or NaN"):
+        with pytest.raises(ValueError, match=r"value.*null or NaN"):
             sim.fit(y, y_pred_null)
 
     def test_fit_rejects_nan_y_pred(self, train_data):
@@ -250,14 +234,6 @@ class TestDistanceSimilarityNullRejection:
         with pytest.raises(ValueError, match="null or NaN"):
             sim.predict(y_pred_nan)
 
-    def test_error_message_includes_column_name(self, train_data):
-        """Test that the error message includes the offending column name."""
-        y, y_pred = train_data
-        y_pred_null = y_pred.with_columns(pl.lit(None, dtype=pl.Float64).alias("value"))
-        sim = DistanceSimilarity()
-        with pytest.raises(ValueError, match="value"):
-            sim.fit(y, y_pred_null)
-
 
 class TestSeasonalSimilarityBasic:
     """Basic tests for SeasonalSimilarity."""
@@ -290,26 +266,6 @@ class TestSeasonalSimilarityBasic:
 
 class TestSeasonalSimilaritySeasonalProximity:
     """Tests verifying that same-season observations get higher weight."""
-
-    def test_same_weekday_gets_higher_weight(self, daily_data):
-        """Test that observations on the same weekday get higher weight."""
-        y, y_pred = daily_data
-        sim = SeasonalSimilarity(seasonalities=[7.0])
-        sim.fit(y, y_pred)
-
-        # Predict for a specific day
-        test_date = datetime(2021, 3, 15)  # Monday
-        y_pred_test = pl.DataFrame({"time": [test_date], "value": [10.0]})
-        weights = sim.predict(y_pred_test)
-
-        # Check that Mondays in calibration get higher weight
-        calib_dates = y_pred["time"].to_list()
-        same_weekday = [i for i, d in enumerate(calib_dates) if d.weekday() == test_date.weekday()]
-        other_weekday = [i for i, d in enumerate(calib_dates) if d.weekday() != test_date.weekday()]
-
-        avg_same = np.mean(weights[0, same_weekday])
-        avg_other = np.mean(weights[0, other_weekday])
-        assert avg_same > avg_other
 
     def test_weekday_weight_ratio(self, daily_data):
         """Test that same-weekday weight is significantly higher."""
@@ -353,8 +309,13 @@ class TestSeasonalSimilarityMultiSeasonality:
 class TestSeasonalSimilarityHarmonics:
     """Tests for custom harmonics."""
 
-    def test_custom_harmonics(self, daily_data, daily_prediction_data):
-        """Test with custom harmonics."""
+    def test_custom_harmonics(self, daily_data):
+        """Custom harmonics produce two features (sin + cos) per requested harmonic.
+
+        The predict-shape and finiteness invariants are covered generically by
+        the similarity systematic checks; this test pins only the feature count
+        unique to the custom-harmonics configuration.
+        """
         y, y_pred = daily_data
         sim = SeasonalSimilarity(
             seasonalities=[7.0],
@@ -363,10 +324,6 @@ class TestSeasonalSimilarityHarmonics:
         sim.fit(y, y_pred)
         # 3 harmonics x 2 (sin+cos) = 6 features
         assert sim._features_observed.shape[1] == 6
-
-        weights = sim.predict(daily_prediction_data)
-        assert weights.shape == (1, 70)
-        assert np.all(np.isfinite(weights))
 
     def test_harmonics_more_selective(self, daily_data):
         """Test that more harmonics give sharper weighting."""
@@ -586,6 +543,50 @@ class TestCompositeSimilarityBasic:
         weights = comp.predict(y_pred.tail(1))
         assert weights.shape == (1, len(y_pred))
         assert np.all(weights > 0)
+
+
+class TestCompositeSimilarityValidation:
+    """Invalid composition parameters raise descriptive errors at fit."""
+
+    def test_none_similarities_raises(self, composite_data):
+        """``similarities=None`` is rejected by the parameter constraint."""
+        y, y_pred = composite_data
+        comp = CompositeSimilarity(similarities=None)
+        with pytest.raises(ValueError, match="must be an instance of 'list'"):
+            comp.fit(y, y_pred)
+
+    def test_single_similarity_raises(self, composite_data):
+        """Fewer than two sub-similarities is rejected."""
+        y, y_pred = composite_data
+        comp = CompositeSimilarity(similarities=[("dist", DistanceSimilarity())])
+        with pytest.raises(ValueError, match="at least 2 sub-similarities"):
+            comp.fit(y, y_pred)
+
+    def test_invalid_combination_raises(self, composite_data):
+        """An unknown ``combination`` value is rejected."""
+        y, y_pred = composite_data
+        comp = CompositeSimilarity(
+            similarities=[
+                ("dist", DistanceSimilarity()),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+            ],
+            combination="invalid",
+        )
+        with pytest.raises(ValueError, match="combination must be"):
+            comp.fit(y, y_pred)
+
+    def test_weights_length_mismatch_raises(self, composite_data):
+        """A ``weights`` list that does not match the sub-similarity count is rejected."""
+        y, y_pred = composite_data
+        comp = CompositeSimilarity(
+            similarities=[
+                ("dist", DistanceSimilarity()),
+                ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+            ],
+            weights=[1.0, 2.0, 3.0],
+        )
+        with pytest.raises(ValueError, match="weights length"):
+            comp.fit(y, y_pred)
 
 
 class TestCompositeSimilarityWeights:

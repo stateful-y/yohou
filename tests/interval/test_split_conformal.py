@@ -615,6 +615,49 @@ class TestSplitConformalObserveRewindSimilarity:
         assert len(sim_step._X_observed) == n_before
         assert len(scf.conformity_scores_) == n_scores_before
 
+    def test_panel_observe_rewind_with_similarity(self):
+        """Panel observe/rewind dispatches through the panel + similarity branch.
+
+        With ``groups_`` set and ``similarity`` configured, observe and rewind
+        route through ``BasePanelForecaster._observe_panel``/``_rewind_panel``;
+        the round-trip must complete and rewind must restore the pre-observe
+        intervals exactly. This panel + similarity path was previously
+        unexercised (the panel observe tests use ``similarity=None``).
+        """
+        n = 250
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        v1 = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        v2 = [20.0 + 3.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "g1__value": v1, "g2__value": v2})
+        y_train = y[:200]
+        y_test = y[200:]
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
+        assert scf.groups_ == ["g1", "g2"]
+
+        iv_before = scf.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+        for i in range(10):
+            scf.observe(y_test[i : i + 1])
+        scf.rewind(y_train[190:200])
+
+        iv_after = scf.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+        for group in ["g1", "g2"]:
+            lower = f"{group}__value_lower_0.9"
+            upper = f"{group}__value_upper_0.9"
+            assert lower in iv_after.columns
+            assert upper in iv_after.columns
+            assert bool((iv_after[upper] >= iv_after[lower]).all())
+        assert iv_before.equals(iv_after)
+
 
 class TestSplitConformalWithExogenousFeatures:
     """Tests for X-forwarding in fit, observe, and predict_interval."""

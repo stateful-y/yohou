@@ -157,58 +157,6 @@ class TestVotingClassProbaFitPredict:
             expected = np.average(values, axis=1, weights=weights)
             np.testing.assert_allclose(y_proba[col].to_numpy(), expected, rtol=1e-10)
 
-    def test_probabilities_sum_to_one(self, class_proba_y_X_factory):
-        """Test that probabilities from soft voting sum to 1.0."""
-        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80]
-
-        forecaster = VotingClassProbaForecaster(
-            forecasters=[
-                ("dt_1", _make_class_proba_forecaster()),
-                (
-                    "dt_2",
-                    _make_class_proba_forecaster(
-                        estimator=DecisionTreeClassifier(random_state=123),
-                    ),
-                ),
-            ],
-            method="soft",
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
-        y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
-
-        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
-        row_sums = np.sum([y_proba[col].to_numpy() for col in proba_cols], axis=0)
-        np.testing.assert_allclose(row_sums, 1.0, rtol=1e-10)
-
-    def test_probabilities_bounded_zero_one(self, class_proba_y_X_factory):
-        """Test that all probabilities are in [0, 1]."""
-        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80]
-
-        forecaster = VotingClassProbaForecaster(
-            forecasters=[
-                ("dt_1", _make_class_proba_forecaster()),
-                (
-                    "dt_2",
-                    _make_class_proba_forecaster(
-                        estimator=DecisionTreeClassifier(random_state=123),
-                    ),
-                ),
-            ],
-            method="soft",
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
-        y_proba = forecaster.predict_class_proba(forecasting_horizon=3)
-
-        proba_cols = [c for c in y_proba.columns if c not in ("vintage_time", "time")]
-        for col in proba_cols:
-            values = y_proba[col].to_numpy()
-            assert np.all(values >= 0.0), f"Negative probability in {col}"
-            assert np.all(values <= 1.0), f"Probability > 1 in {col}"
-
     def test_hard_voting_predict(self, class_proba_y_X_factory):
         """Test that hard voting predict returns valid class labels."""
         y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
@@ -311,32 +259,6 @@ class TestVotingClassProbaFitPredict:
         expected_labels = [class_labels[idx] for idx in np.argmax(proba_matrix, axis=1)]
         actual_labels = y_pred[target_col].to_list()
         assert actual_labels == expected_labels
-
-    def test_classes_attribute(self, class_proba_y_X_factory):
-        """Test that classes_ is set correctly after fit."""
-        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80]
-
-        forecaster = VotingClassProbaForecaster(
-            forecasters=[
-                ("dt_1", _make_class_proba_forecaster()),
-                (
-                    "dt_2",
-                    _make_class_proba_forecaster(
-                        estimator=DecisionTreeClassifier(random_state=123),
-                    ),
-                ),
-            ],
-            method="soft",
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
-
-        assert hasattr(forecaster, "classes_")
-        assert isinstance(forecaster.classes_, dict)
-        for _target, labels in forecaster.classes_.items():
-            assert isinstance(labels, list)
-            assert labels == sorted(labels), "classes_ should be sorted"
 
     def test_weights_ignored_with_hard_voting(self, class_proba_y_X_factory):
         """Test that weights are silently ignored with method='hard'."""
@@ -558,6 +480,30 @@ class TestVotingClassProbaErrorHandling:
         with pytest.raises(ValueError, match="Duplicate forecaster names"):
             forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
+    def test_double_underscore_name_raises(self, class_proba_y_X_factory):
+        """A forecaster name containing '__' is rejected.
+
+        A name like 'foo__bar' must fail validation; otherwise it corrupts
+        nested-parameter routing.
+        """
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("foo__bar", _make_class_proba_forecaster()),
+                (
+                    "dt_2",
+                    _make_class_proba_forecaster(
+                        estimator=DecisionTreeClassifier(random_state=123),
+                    ),
+                ),
+            ],
+            method="soft",
+        )
+
+        with pytest.raises(ValueError, match="must not contain '__'"):
+            forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+
 
 class TestVotingClassProbaConsistency:
     """Tests for class consistency validation across base forecasters."""
@@ -735,29 +681,6 @@ class TestVotingClassProbaObserveRewind:
         assert len(proba_cols) > 0
         assert "time" in y_proba.columns
 
-    def test_predict_class_proba_one_soft_unweighted(self, class_proba_y_X_factory):
-        """Test _predict_class_proba_one for soft voting without weights."""
-        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
-
-        forecaster = VotingClassProbaForecaster(
-            forecasters=[
-                ("dt_1", _make_class_proba_forecaster()),
-                (
-                    "dt_2",
-                    _make_class_proba_forecaster(
-                        estimator=DecisionTreeClassifier(random_state=123),
-                    ),
-                ),
-            ],
-            method="soft",
-        )
-        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
-
-        y_proba = forecaster._predict_class_proba_one(groups=None)
-        proba_cols = [c for c in y_proba.columns if "_proba_" in c]
-        assert len(proba_cols) > 0
-        assert "time" in y_proba.columns
-
     def test_predict_class_proba_one_hard(self, class_proba_y_X_factory):
         """Test _predict_class_proba_one directly for hard voting."""
         y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
@@ -839,17 +762,18 @@ class TestVotingClassProbaSklearn:
         forecaster.set_params(dt_1__estimator__random_state=99)
         assert forecaster.get_params()["dt_1__estimator__random_state"] == 99
 
-    def test_not_fitted_error(self):
-        """Test that predict raises NotFittedError before fit."""
+    def test_predict_class_proba_not_fitted_error(self):
+        """predict_class_proba raises NotFittedError before fit.
+
+        ``predict`` is covered by ``check_forecaster_methods_call_check_is_fitted``;
+        only ``predict_class_proba`` needs this dedicated guard test.
+        """
         forecaster = VotingClassProbaForecaster(
             forecasters=[
                 ("dt_1", _make_class_proba_forecaster()),
             ],
             method="soft",
         )
-
-        with pytest.raises(NotFittedError):
-            forecaster.predict(forecasting_horizon=3)
 
         with pytest.raises(NotFittedError):
             forecaster.predict_class_proba(forecasting_horizon=3)

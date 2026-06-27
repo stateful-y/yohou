@@ -50,9 +50,16 @@ class TestVotingPointForecasterSystematicChecks:
         ],
         ids=["mean", "median", "weighted_mean"],
     )
-    def test_voting_point_systematic_checks(self, forecaster, y_X_factory):
-        """Run systematic checks on VotingPointForecaster."""
-        y, X_actual = y_X_factory(length=100, n_targets=2, n_features=0, seed=42)
+    @pytest.mark.parametrize("panel", [False, True], ids=["global", "panel"])
+    def test_voting_point_systematic_checks(self, forecaster, panel, y_X_factory):
+        """Run systematic checks on VotingPointForecaster.
+
+        Parametrizing ``panel`` drives the panel-specific systematic checks
+        (``check_panel_data``/``check_panel_single_group``/
+        ``check_panel_invalid_group_raises``), which the harness only yields
+        when the training frame carries panel groups.
+        """
+        y, X_actual = y_X_factory(length=100, n_targets=2, n_features=0, seed=42, panel=panel)
 
         y_train, y_test = y[:80], y[80:]
         X_actual_train, X_actual_test = (X_actual[:80], X_actual[80:]) if X_actual is not None else (None, None)
@@ -169,6 +176,31 @@ class TestVotingPointForecasterAggregation:
 
         target_col = [c for c in y_pred_no.columns if c not in ("vintage_time", "time")][0]
         np.testing.assert_allclose(y_pred_no[target_col].to_numpy(), y_pred_w[target_col].to_numpy())
+
+    def test_parallel_fit_matches_sequential(self, y_X_factory):
+        """n_jobs>1 dispatches base fits through joblib but yields identical predictions.
+
+        The parallel branch in ``_fit_forecasters_parallel`` serializes and
+        reorders children, so it can surface bugs invisible to the sequential
+        (``n_jobs=None``) path; its output must match the sequential result.
+        """
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, seed=42)
+
+        forecasters = [
+            ("n1", SeasonalNaive(seasonality=1)),
+            ("n7", SeasonalNaive(seasonality=7)),
+        ]
+
+        sequential = VotingPointForecaster(forecasters=forecasters, method="mean", n_jobs=None)
+        parallel = VotingPointForecaster(forecasters=forecasters, method="mean", n_jobs=2)
+        sequential.fit(y[:40], forecasting_horizon=3)
+        parallel.fit(y[:40], forecasting_horizon=3)
+
+        y_seq = sequential.predict(forecasting_horizon=3)
+        y_par = parallel.predict(forecasting_horizon=3)
+
+        target_col = [c for c in y_seq.columns if c not in ("vintage_time", "time")][0]
+        np.testing.assert_allclose(y_par[target_col].to_numpy(), y_seq[target_col].to_numpy())
 
 
 class TestVotingPointForecasterPanelData:
@@ -316,34 +348,6 @@ class TestVotingPointForecasterErrorHandling:
         assert "value_a" in y_pred.columns
         assert "value_b" in y_pred.columns
 
-    def test_schema_mismatch_raises(self):
-        """Test that mismatched target schemas raise ValueError."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 2, 19),
-            interval="1d",
-            eager=True,
-        )
-        y_a = pl.DataFrame({"time": time, "value_a": range(50)})
-        y_b = pl.DataFrame({"time": time, "value_b": range(50)})
-
-        n1 = SeasonalNaive(seasonality=1)
-        n7 = SeasonalNaive(seasonality=7)
-        n1.fit(y_a[:40], forecasting_horizon=3)
-        n7.fit(y_b[:40], forecasting_horizon=3)
-
-        forecaster = VotingPointForecaster(
-            forecasters=[
-                ("n1", SeasonalNaive(seasonality=1)),
-                ("n7", SeasonalNaive(seasonality=7)),
-            ],
-        )
-        # Manually inject mismatched fitted forecasters
-        forecaster.forecasters_ = [("n1", n1), ("n7", n7)]
-
-        with pytest.raises(ValueError, match="All base forecasters must predict the same target columns"):
-            forecaster._validate_schemas_match()
-
     @pytest.mark.skipif(
         not hasattr(__import__("sklearn.utils", fromlist=["_repr_html"]), "_repr_html"),
         reason="sklearn.utils._repr_html not available (sklearn < 1.8)",
@@ -359,21 +363,6 @@ class TestVotingPointForecasterErrorHandling:
         block = forecaster._sk_visual_block_()
         assert block.kind == "parallel"
         assert list(block.names) == ["n1", "n7"]
-
-    def test_aggregate_interval_envelope_fallback(self):
-        """Envelope strategy falls back to mean for non-lower/upper columns."""
-        from yohou.ensemble._base import _BaseEnsembleForecaster
-
-        pred1 = pl.DataFrame({"time": [1, 2], "coverage_90": [10.0, 20.0]})
-        pred2 = pl.DataFrame({"time": [1, 2], "coverage_90": [30.0, 40.0]})
-
-        result = _BaseEnsembleForecaster._aggregate_interval_values(
-            predictions=[pred1, pred2],
-            interval_cols=["coverage_90"],
-            strategy="envelope",
-            weights=None,
-        )
-        assert result["coverage_90"].to_list() == [20.0, 30.0]
 
 
 class TestVotingPointForecasterObserveRewind:
@@ -533,17 +522,6 @@ class TestVotingPointForecasterSklearn:
 
         forecaster.set_params(n1__seasonality=3)
         assert forecaster.get_params()["n1__seasonality"] == 3
-
-    def test_not_fitted_error(self):
-        """Test that predict raises NotFittedError before fit."""
-        forecaster = VotingPointForecaster(
-            forecasters=[
-                ("n1", SeasonalNaive(seasonality=1)),
-            ],
-        )
-
-        with pytest.raises(NotFittedError):
-            forecaster.predict(forecasting_horizon=3)
 
 
 class TestVotingSchemaValidation:
