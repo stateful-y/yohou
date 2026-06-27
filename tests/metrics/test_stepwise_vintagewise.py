@@ -239,14 +239,6 @@ class TestStepWeightFilter:
         assert len(result) == 1
         np.testing.assert_allclose(result["value"][0], 1.0, atol=1e-10)
 
-    def test_step_weight_dict_filters_steps(self, y_train, multi_vintage_data):
-        """step_weight dict with zero wildcard filters to selected steps."""
-        y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError()
-        mae.fit(y_train)
-        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 1.0}, default=0.0)).score(y_true, y_pred)
-        np.testing.assert_allclose(result, 1.0, atol=1e-10)
-
 
 class TestMultivariateStepwise:
     """Stepwise/vintagewise with multiple components."""

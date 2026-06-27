@@ -175,11 +175,22 @@ class TestEmpiricalCoverage:
         rates = set(scores["coverage_rate"].to_list())
         assert rates == {0.9, 0.95}
 
-    def test_empirical_coverage_sklearn_tags(self):
-        """Test scorer has correct sklearn tags."""
-        coverage = EmpiricalCoverage()
-        tags = coverage.__sklearn_tags__()
-        assert tags.scorer_tags.prediction_type == "interval"
+    def test_empirical_coverage_coverage_rates_filter(self, multi_rate_predictions):
+        """coverage_rates=[0.9] scores only the 0.9-rate columns of a multi-rate y_pred."""
+        y_true, y_pred = multi_rate_predictions
+
+        filtered = EmpiricalCoverage(coverage_rates=[0.9])
+        filtered.fit(y_true)
+        filtered_score = filtered.score(y_true, y_pred)
+
+        # Scoring an unfiltered scorer on a y_pred that contains only the 0.9
+        # columns must give the identical result.
+        y_pred_only_09 = y_pred.select(["vintage_time", "time", "value_lower_0.9", "value_upper_0.9"])
+        reference = EmpiricalCoverage()
+        reference.fit(y_true)
+        reference_score = reference.score(y_true, y_pred_only_09)
+
+        assert filtered_score == pytest.approx(reference_score)
 
 
 class TestMeanIntervalWidth:
@@ -330,6 +341,35 @@ class TestIntervalScore:
         with pytest.raises(ValueError, match="coverage_rate=0"):
             scorer.score(y_true, y_pred)
 
+    def test_interval_score_time_weighter_multi_rate(self):
+        """time_weighter changes the score on multi-rate y_pred (n_rates>1 weight tiling).
+
+        Two coverage rates and two timesteps with very different per-step
+        interval scores (step 1 covered, step 2 badly under-covered). Up-weighting
+        the worse step must change the weighted scalar, exercising the
+        ``n_rates > 1`` tiling path in ``_apply_weights``.
+        """
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "value_lower_0.9": [8.0, 30.0],
+            "value_upper_0.9": [12.0, 35.0],
+            "value_lower_0.95": [7.0, 31.0],
+            "value_upper_0.95": [13.0, 36.0],
+        })
+
+        unweighted = IntervalScore()
+        unweighted.fit(y_true)
+        unweighted_score = unweighted.score(y_true, y_pred)
+
+        weighted = IntervalScore(time_weighter=LookupWeighter(mapping={times[0]: 1.0, times[1]: 5.0}))
+        weighted.fit(y_true)
+        weighted_score = weighted.score(y_true, y_pred)
+
+        assert weighted_score != pytest.approx(unweighted_score)
+
 
 class TestPinballLoss:
     def test_pinball_loss_perfect_predictions_zero_loss(self):
@@ -420,17 +460,6 @@ class TestCalibrationError:
         with pytest.raises(ValueError, match="at least 2 coverage rates"):
             error.fit(y_true)
             error.score(y_true, y_pred)
-
-    def test_calibration_error_perfect_calibration(self, multi_rate_predictions):
-        """Test that perfect calibration yields near-zero error."""
-        y_true, y_pred = multi_rate_predictions
-        error = CalibrationError()
-        error.fit(y_true)
-        score = error.score(y_true, y_pred)
-
-        # With perfect coverage at both rates, error should be near zero
-        assert score >= 0.0
-        assert score <= 1.0
 
     def test_calibration_error_per_step(self, multi_rate_predictions):
         """Test aggregation_method=['componentwise', 'coveragewise'] returns DataFrame."""

@@ -48,30 +48,16 @@ class TestClassProbaNanValidation:
     """Probability columns must be finite and in [0, 1]."""
 
     @pytest.mark.parametrize("ScorerClass", [LogLoss, BrierScore, Accuracy])
-    def test_nan_in_probabilities_raises(self, ScorerClass, class_proba_train):
+    @pytest.mark.parametrize("bad_val", [float("nan"), float("inf")])
+    def test_non_finite_in_probabilities_raises(self, ScorerClass, bad_val, class_proba_train):
+        """NaN and inf both fail the finiteness guard with the same message."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
             "target": ["a", "b"],
         })
         y_pred = pl.DataFrame({
             "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
-            "target_proba_a": [0.8, float("nan")],
-            "target_proba_b": [0.2, 0.7],
-        })
-        scorer = ScorerClass()
-        scorer.fit(class_proba_train)
-        with pytest.raises(ValueError, match="NaN or infinite"):
-            scorer.score(y_true, y_pred)
-
-    @pytest.mark.parametrize("ScorerClass", [LogLoss, BrierScore, Accuracy])
-    def test_inf_in_probabilities_raises(self, ScorerClass, class_proba_train):
-        y_true = pl.DataFrame({
-            "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
-            "target": ["a", "b"],
-        })
-        y_pred = pl.DataFrame({
-            "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
-            "target_proba_a": [float("inf"), 0.3],
+            "target_proba_a": [0.8, bad_val],
             "target_proba_b": [0.2, 0.7],
         })
         scorer = ScorerClass()
@@ -109,7 +95,24 @@ class TestClassProbaNanValidation:
 class TestTimeWeightMisalignment:
     """Time weight errors show which times are missing."""
 
-    def test_misaligned_time_weight_shows_missing_times(self, y_train):
+    @pytest.mark.parametrize(
+        "tw",
+        [
+            # Fully absent: time_weight covers wrong dates entirely.
+            pl.DataFrame({
+                "time": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
+                "weight": [1.0, 2.0],
+            }),
+            # Partial: only one of the two scored dates is covered.
+            pl.DataFrame({
+                "time": [datetime(2024, 1, 11)],
+                "weight": [1.0],
+            }),
+        ],
+        ids=["fully-absent", "one-missing"],
+    )
+    def test_misaligned_time_weight_shows_missing_times(self, tw, y_train):
+        """Times with no matching weight (all or some) report which are missing."""
         y_true = pl.DataFrame({
             "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
             "value": [10.0, 20.0],
@@ -117,30 +120,6 @@ class TestTimeWeightMisalignment:
         y_pred = pl.DataFrame({
             "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
             "value": [12.0, 18.0],
-        })
-        # time_weight covers wrong dates
-        tw = pl.DataFrame({
-            "time": [datetime(2024, 1, 1), datetime(2024, 1, 2)],
-            "weight": [1.0, 2.0],
-        })
-        mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
-        mae.fit(y_train)
-        with pytest.raises(ValueError, match="no values for times"):
-            mae.score(y_true, y_pred)
-
-    def test_partial_misalignment_shows_missing(self, y_train):
-        y_true = pl.DataFrame({
-            "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
-            "value": [10.0, 20.0],
-        })
-        y_pred = pl.DataFrame({
-            "time": [datetime(2024, 1, 11), datetime(2024, 1, 12)],
-            "value": [12.0, 18.0],
-        })
-        # Only covers one of the two dates
-        tw = pl.DataFrame({
-            "time": [datetime(2024, 1, 11)],
-            "weight": [1.0],
         })
         mae = MeanAbsoluteError(time_weighter=TableWeighter(frame=tw, on="time"))
         mae.fit(y_train)

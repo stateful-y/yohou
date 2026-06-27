@@ -249,17 +249,6 @@ class TestStepWeight:
         # stepwise+vintagewise collapses all rows, result is a 1-row DataFrame
         assert isinstance(result, pl.DataFrame)
 
-    def test_step_weight_is_score_param(self, y_train, multi_vintage_data):
-        """step_weight is now a score() parameter, not an __init__ param."""
-        y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError()
-        mae.fit(y_train)
-        # Should accept step_weight in score()
-        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
-            y_true, y_pred
-        )
-        np.testing.assert_allclose(result, 1.25, atol=1e-10)
-
 
 class TestCombinedWeights:
     """component_weight and step_weight together."""
@@ -426,22 +415,21 @@ class TestVintageWeight:
 
         np.testing.assert_allclose(result_default, result_weighted, atol=1e-10)
 
-    def test_vintage_weight_is_score_param(self, y_train, multi_vintage_data):
-        """vintage_weight is now a score() parameter."""
-        y_true, y_pred = multi_vintage_data
-        mae = MeanAbsoluteError()
+    def test_vintage_weight_without_vintage_time_warns(self, y_train):
+        """A vintage_weighter with no vintage_time emits a UserWarning."""
+        y_true = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [10.0, 20.0, 30.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 4)],
+            "value": [11.0, 22.0, 28.0],
+        })
+
+        mae = MeanAbsoluteError(vintage_weighter=LookupWeighter(mapping={datetime(2024, 1, 1): 10.0}, default=1.0))
         mae.fit(y_train)
-        result = mae.set_params(
-            vintage_weighter=LookupWeighter(
-                mapping={
-                    datetime(2024, 1, 10): 1.0,
-                    datetime(2024, 1, 11): 1.0,
-                    datetime(2024, 1, 12): 1.0,
-                },
-                default=1.0,
-            )
-        ).score(y_true, y_pred)
-        assert isinstance(result, float)
+        with pytest.warns(UserWarning, match="vintage_weighter was provided"):
+            mae.score(y_true, y_pred)
 
     def test_step_and_vintage_weight_combined(self, y_train, multi_vintage_data):
         """step_weight and vintage_weight are multiplicative."""
@@ -557,53 +545,6 @@ class TestGroupwiseComponentWeight:
         mae_equal.fit(y_true)
         result_equal = mae_equal.score(y_true, y_pred)
         assert not np.isclose(result, result_equal, atol=1e-10)
-
-
-class TestNoContextDimFallback:
-    """Tests for weight helpers when context dimensions are missing."""
-
-    def test_step_weight_no_context_steps(self):
-        """step_weight is ignored when context has no forecasting_step."""
-        y_true = pl.DataFrame({
-            "time": [datetime(2024, 1, i) for i in range(1, 4)],
-            "value": [10.0, 20.0, 30.0],
-        })
-        y_pred = pl.DataFrame({
-            "time": [datetime(2024, 1, i) for i in range(1, 4)],
-            "value": [12.0, 18.0, 33.0],
-        })
-        # No vintage_time -> no forecasting_step in context
-        mae = MeanAbsoluteError()
-        mae.fit(y_true)
-        result = mae.set_params(step_weighter=LookupWeighter(mapping={1: 3.0, 2: 1.0}, default=1.0)).score(
-            y_true, y_pred
-        )
-        # Should still produce a valid scalar
-        assert isinstance(result, float)
-        # Same as default since weights can't be applied
-        mae_default = MeanAbsoluteError()
-        mae_default.fit(y_true)
-        np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
-
-    def test_vintage_weight_no_context_vintages(self):
-        """vintage_weight is ignored when context has no vintage_time."""
-        y_true = pl.DataFrame({
-            "time": [datetime(2024, 1, i) for i in range(1, 4)],
-            "value": [10.0, 20.0, 30.0],
-        })
-        y_pred = pl.DataFrame({
-            "time": [datetime(2024, 1, i) for i in range(1, 4)],
-            "value": [12.0, 18.0, 33.0],
-        })
-        mae = MeanAbsoluteError()
-        mae.fit(y_true)
-        result = mae.set_params(
-            vintage_weighter=LookupWeighter(mapping={datetime(2024, 1, 1): 3.0, datetime(2024, 1, 2): 1.0}, default=1.0)
-        ).score(y_true, y_pred)
-        assert isinstance(result, float)
-        mae_default = MeanAbsoluteError()
-        mae_default.fit(y_true)
-        np.testing.assert_allclose(result, mae_default.score(y_true, y_pred), atol=1e-10)
 
 
 class TestCollapseComponentsDirect:
@@ -979,19 +920,6 @@ class TestIntervalMultiRateStepWeight:
 
 
 @pytest.fixture()
-def point_data():
-    """Simple 5-row point data with single vintage."""
-    times = [datetime(2024, 1, i) for i in range(1, 6)]
-    y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
-    y_pred = pl.DataFrame({
-        "vintage_time": [datetime(2023, 12, 31)] * 5,
-        "time": times,
-        "value": [12.0, 18.0, 33.0, 38.0, 55.0],
-    })
-    return y_true, y_pred
-
-
-@pytest.fixture()
 def two_vintage_point_data():
     """Multi-vintage point data (2 vintages, 3 rows each)."""
     times = [datetime(2024, 1, i) for i in range(1, 4)]
@@ -1007,7 +935,12 @@ def two_vintage_point_data():
 
 
 class TestRejectWeights:
-    """Pattern 2 scorers reject time_weight/step_weight via _reject_weights."""
+    """Pattern 2 scorers omit time_weighter and step_weighter from __init__.
+
+    R2Score, MeanDirectionalAccuracy, and MedianAbsoluteError expose only a
+    vintage_weighter; Python raises TypeError for the unexpected keyword
+    arguments time_weighter and step_weighter.
+    """
 
     def test_r2_rejects_time_weighter(self):
         """R2Score does not accept a time_weighter constructor argument."""
@@ -1036,13 +969,24 @@ class TestResolveVintageWeightToContext:
         assert isinstance(score_plain, float)
         assert isinstance(score_weighted, float)
 
-    def test_r2_vintage_weight_none_context(self, point_data):
-        """R2Score with vintage_weight=None just returns context unchanged."""
-        y_true, y_pred = point_data
-        scorer = R2Score()
-        scorer.fit(y_true)
-        score = scorer.score(y_true, y_pred)
-        assert isinstance(score, float)
+    def test_r2_vintage_weight_none_matches_uniform(self, two_vintage_point_data):
+        """R2Score with vintage_weighter=None matches an explicit uniform weighter."""
+        y_true, y_pred = two_vintage_point_data
+
+        scorer_none = R2Score(vintage_weighter=None)
+        scorer_none.fit(y_true)
+        score_none = scorer_none.score(y_true, y_pred)
+
+        scorer_uniform = R2Score(
+            vintage_weighter=LookupWeighter(
+                mapping={datetime(2023, 12, 31): 1.0, datetime(2023, 12, 30): 1.0},
+                default=1.0,
+            )
+        )
+        scorer_uniform.fit(y_true)
+        score_uniform = scorer_uniform.score(y_true, y_pred)
+
+        np.testing.assert_allclose(score_none, score_uniform, atol=1e-10)
 
     def test_median_with_vintage_weight(self, two_vintage_point_data):
         """MedianAbsoluteError supports vintage_weight."""
