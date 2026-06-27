@@ -16,6 +16,7 @@ from yohou.point import BasePointForecaster
 from yohou.utils._compat import StrOptions
 from yohou.utils.panel import get_group_df
 from yohou.utils.tags import Tags
+from yohou.utils.validation import interval_to_timedelta
 
 
 class _BaseTrendForecaster(BasePointForecaster):
@@ -203,10 +204,10 @@ class _BaseTrendForecaster(BasePointForecaster):
     def _get_time_indices(
         self, forecasting_horizon: int | None = None, panel_group_name: str | None = None
     ) -> pl.Series:
-        """Generate indices for future predictions.
+        """Generate monotonically increasing integer time-step indices.
 
-        Continues from current position (_y_observed length) and wraps around
-        seasonal cycle.
+        Indices are measured relative to ``_first_observed_time`` and continue
+        from the current position (the number of steps observed so far).
 
         Parameters
         ----------
@@ -218,7 +219,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         Returns
         -------
         pl.Series
-            Phase indices for next forecasting_horizon steps.
+            Time step indices for the next forecasting_horizon steps.
 
         """
         if panel_group_name is not None:
@@ -233,12 +234,21 @@ class _BaseTrendForecaster(BasePointForecaster):
             observed_time = self.observed_time_
             first_observed_time = self._first_observed_time
 
-        current_time_index = pl.datetime_range(
-            start=first_observed_time,
-            end=observed_time,
-            interval=self.interval_,
-            eager=True,
-        ).len()
+        # Number of steps from first_observed_time to observed_time, inclusive
+        # of both endpoints (matching datetime_range(...).len()). For fixed
+        # intervals this is computed arithmetically to avoid materialising a
+        # Series proportional to the observation history.
+        step = interval_to_timedelta(self.interval_)
+        if step is not None and step.total_seconds() > 0:
+            elapsed = (observed_time - first_observed_time).total_seconds()
+            current_time_index = int(elapsed // step.total_seconds()) + 1
+        else:
+            current_time_index = pl.datetime_range(
+                start=first_observed_time,
+                end=observed_time,
+                interval=self.interval_,
+                eager=True,
+            ).len()
 
         if forecasting_horizon is not None:
             indices = pl.arange(

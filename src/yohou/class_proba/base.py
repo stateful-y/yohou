@@ -370,6 +370,62 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         return result
 
+    def _apply_label_encoding(
+        self,
+        y: pl.DataFrame,
+        *,
+        skip_cols: tuple[str, ...] = ("time",),
+        skip_numeric: bool = False,
+        require_mapping: bool = True,
+        cast_string: bool = True,
+    ) -> pl.DataFrame:
+        """Replace categorical label columns with their float codes.
+
+        Shared core for ``_encode_observation``, ``_encode_y_input``, and
+        ``ClassProbaReductionForecaster._encode_target``. Base (unprefixed)
+        target names are extracted from panel columns like
+        ``"group_0__weather"`` before looking up ``label_to_code_``.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target/observation data with label columns.
+        skip_cols : tuple of str, default=("time",)
+            Column names that are passed through unchanged.
+        skip_numeric : bool, default=False
+            If ``True``, already-numeric columns are passed through unchanged.
+        require_mapping : bool, default=True
+            If ``True``, every non-skipped column must have a mapping in
+            ``label_to_code_`` (raises ``KeyError`` otherwise). If ``False``,
+            columns whose base name is absent are passed through unchanged.
+        cast_string : bool, default=True
+            If ``True``, cast each column to ``pl.String`` before replacing,
+            handling Categorical/Enum/String uniformly.
+
+        Returns
+        -------
+        pl.DataFrame
+            Data with categorical columns replaced by float codes.
+
+        """
+        check_is_fitted(self, ["label_to_code_"])
+
+        exprs = []
+        for col in y.columns:
+            if col in skip_cols:
+                continue
+            if skip_numeric and y[col].dtype.is_numeric():
+                continue
+            base_col = col.split("__", 1)[1] if "__" in col else col
+            if not require_mapping and base_col not in self.label_to_code_:
+                continue
+            mapping = self.label_to_code_[base_col]
+            expr = pl.col(col)
+            if cast_string:
+                expr = expr.cast(pl.String)
+            exprs.append(expr.replace_strict(mapping, return_dtype=pl.Float64).alias(col))
+        return y.with_columns(exprs) if exprs else y
+
     def _encode_observation(self, y_obs: pl.DataFrame) -> pl.DataFrame:
         """Encode argmax string labels back to float codes for observation.
 
@@ -387,18 +443,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Observation with float-coded class labels matching the fit schema.
 
         """
-        check_is_fitted(self, ["label_to_code_"])
-
-        exprs = []
-        for col in y_obs.columns:
-            if col in ("vintage_time", "time"):
-                continue
-            # For panel columns like "group_0__weather", extract "weather":
-            # label_to_code_ is keyed by base (unprefixed) target names.
-            base_col = col.split("__", 1)[1] if "__" in col else col
-            mapping = self.label_to_code_[base_col]
-            exprs.append(pl.col(col).cast(pl.String).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
-        return y_obs.with_columns(exprs)
+        return self._apply_label_encoding(y_obs, skip_cols=("vintage_time", "time"))
 
     def _encode_y_input(self, y: pl.DataFrame) -> pl.DataFrame:
         """Encode user-facing categorical y to float codes for internal use.
@@ -417,23 +462,12 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Target data with float-coded columns matching ``local_y_schema_``.
 
         """
-        check_is_fitted(self, ["label_to_code_"])
-
-        exprs = []
-        for col in y.columns:
-            if col == "time":
-                continue
-            # Skip columns that are already numeric (already encoded)
-            if y[col].dtype.is_numeric():
-                continue
-            # For panel columns like "group_0__weather", extract "weather"
-            base_col = col.split("__", 1)[1] if "__" in col else col
-            if base_col in self.label_to_code_:
-                mapping = self.label_to_code_[base_col]
-                exprs.append(pl.col(col).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
-        if exprs:
-            return y.with_columns(exprs)
-        return y
+        return self._apply_label_encoding(
+            y,
+            skip_numeric=True,
+            require_mapping=False,
+            cast_string=False,
+        )
 
     def observe(
         self,

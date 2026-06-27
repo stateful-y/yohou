@@ -6,7 +6,7 @@ forecasting with yohou.
 """
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import ClassVar, Literal
 
 __all__ = [
     "CLASS_PROBA",
@@ -152,7 +152,7 @@ class ForecasterTags:
     requires_exogenous: bool = True
     tracks_observations: bool = True
 
-    _VALID_FORECASTER_TYPE_ELEMENTS: frozenset[str] = frozenset({"point", "interval", "class_proba"})
+    _VALID_FORECASTER_TYPE_ELEMENTS: ClassVar[frozenset[str]] = frozenset({"point", "interval", "class_proba"})
 
     def __post_init__(self) -> None:
         """Validate forecaster_type contains only valid elements."""

@@ -112,13 +112,15 @@ def validate_plotting_data(
 
     check_sufficient_rows(df, min_rows=min_rows, context="for plotting")
 
-    # Non-datetime time columns (e.g. integer indices) only need existence check
-    if "time" in df.columns and not isinstance(df["time"].dtype, pl.Datetime | pl.Date):
-        pass  # integer time is acceptable for plotting
-    elif "vintage_time" in df.columns:
-        _check_multi_vintage_time(df)
-    else:
-        check_time_column(df)
+    # Non-datetime time columns (e.g. integer indices) only need an existence
+    # check, which check_sufficient_rows already implies; skip the datetime
+    # validation for them and validate only genuine datetime/date time axes.
+    is_integer_time = "time" in df.columns and not isinstance(df["time"].dtype, pl.Datetime | pl.Date)
+    if not is_integer_time:
+        if "vintage_time" in df.columns:
+            _check_multi_vintage_time(df)
+        else:
+            check_time_column(df)
 
     # Panel column resolution
     if groups is not None:
@@ -268,51 +270,55 @@ def _compute_forecasting_step(
         step_durations = time - vintage_time
         return (step_durations / td).round(0).cast(pl.Int64)
 
-    # Variable-length interval: calendar-unit arithmetic
+    # Variable-length interval: calendar-unit arithmetic on the Series directly.
     multiplier, unit = parse_interval(interval)
-
-    time_expr = time.to_frame("t")
-    obs_expr = vintage_time.to_frame("o")
-    combined = pl.concat([time_expr, obs_expr], how="horizontal")
 
     if unit in ("mo", "q"):
         months_per_unit = multiplier if unit == "mo" else multiplier * 3
-        month_diff = (combined["t"].dt.year() - combined["o"].dt.year()) * 12 + (
-            combined["t"].dt.month() - combined["o"].dt.month()
-        )
+        month_diff = (time.dt.year() - vintage_time.dt.year()) * 12 + (time.dt.month() - vintage_time.dt.month())
         return (month_diff // months_per_unit).cast(pl.Int64)
 
     if unit == "y":
-        year_diff = combined["t"].dt.year() - combined["o"].dt.year()
+        year_diff = time.dt.year() - vintage_time.dt.year()
         return (year_diff // multiplier).cast(pl.Int64)
 
     msg = f"Unsupported variable-length interval unit: {unit!r}"
     raise ValueError(msg)
 
 
-def _check_multi_vintage_time(y_pred: pl.DataFrame) -> None:
-    """Validate time column for multi-vintage predictions.
+def _check_multi_vintage_time(df: pl.DataFrame) -> None:
+    """Validate the time axis of a DataFrame with multiple vintages.
 
-    Multi-vintage predictions have an ``vintage_time`` column that groups
-    rows by forecast origin.  The global ``time`` column is not
-    monotonically sorted, but time *within each vintage* must be.
+    The structural requirement, not the caller, defines this check: ``df`` must
+    carry both a ``"time"`` and a ``"vintage_time"`` column. The ``vintage_time``
+    column groups rows by forecast origin, so the global ``time`` column is not
+    monotonically sorted, but ``time`` *within each vintage* must be. Both time
+    columns must have a datetime/date dtype and contain no nulls.
 
     """
-    if "time" not in y_pred.columns:
-        raise ValueError("y_pred must contain a 'time' column.")
+    if "time" not in df.columns:
+        raise ValueError("df must contain a 'time' column.")
 
-    time_col = y_pred["time"]
+    time_col = df["time"]
     if not isinstance(time_col.dtype, pl.Datetime | pl.Date):
-        raise ValueError(f"'time' column in y_pred must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}")
+        raise ValueError(f"'time' column must have dtype pl.Datetime or pl.Date, but got {time_col.dtype}")
     if time_col.null_count() > 0:
         raise ValueError(
-            f"'time' column in y_pred contains {time_col.null_count()} null values. "
-            "'time' column must not have missing values."
+            f"'time' column contains {time_col.null_count()} null values. 'time' column must not have missing values."
+        )
+
+    vintage_col = df["vintage_time"]
+    if not isinstance(vintage_col.dtype, pl.Datetime | pl.Date):
+        raise ValueError(f"'vintage_time' column must have dtype pl.Datetime or pl.Date, but got {vintage_col.dtype}")
+    if vintage_col.null_count() > 0:
+        raise ValueError(
+            f"'vintage_time' column contains {vintage_col.null_count()} null values. "
+            "'vintage_time' column must not have missing values."
         )
 
     # Check sorting within each vintage with a single windowed scan: within a
     # vintage, consecutive time diffs must never be negative.
-    unsorted = y_pred.with_columns(pl.col("time").diff().over("vintage_time").alias("_delta")).filter(
+    unsorted = df.with_columns(pl.col("time").diff().over("vintage_time").alias("_delta")).filter(
         pl.col("_delta") < pl.duration(seconds=0)
     )
     if unsorted.height > 0:
@@ -333,7 +339,12 @@ def _truncate_partial_vintage(
 
     Requires at least 3 unique ``vintage_time`` values to infer the
     regular stride; otherwise returns data unchanged.
+
+    ``y_true`` is row-aligned with ``y_pred`` by construction but carries no
+    ``vintage_time`` column of its own; this function attaches ``y_pred``'s
+    ``vintage_time`` to filter both frames on the same named column.
     """
+    y_true_had_vintage = y_true.columns
     unique_times = y_pred["vintage_time"].unique().sort()
     if len(unique_times) < 3:
         return y_true, y_pred
@@ -344,9 +355,15 @@ def _truncate_partial_vintage(
 
     if last_diff < regular_diff:
         partial_time = unique_times[-1]
-        mask = y_pred["vintage_time"] != partial_time
-        y_pred = y_pred.filter(mask)
-        y_true = y_true.filter(mask)
+        # y_true is row-aligned with y_pred by construction (it is built from
+        # y_pred["time"] left-joined to the truth) but carries no vintage_time
+        # column of its own. Attach y_pred's vintage_time so both frames are
+        # filtered on the same named column rather than by positional masking.
+        vintage = y_pred["vintage_time"]
+        y_pred = y_pred.filter(vintage != partial_time)
+        y_true = y_true.with_columns(vintage.alias("vintage_time")).filter(pl.col("vintage_time") != partial_time)
+        if "vintage_time" not in y_true_had_vintage:
+            y_true = y_true.drop("vintage_time")
 
     return y_true, y_pred
 
@@ -523,8 +540,10 @@ def validate_scorer_data(
     if y_true is None:
         raise ValueError("`y_true` cannot be None for scorer.")
 
-    if y_pred is None:
-        raise ValueError("`y_pred` cannot be None for scorer.")
+    # y_pred being None in the normal-score path is already rejected at the top
+    # of this function (the `not inverse and not reset and y_pred is None`
+    # guard); this assert only narrows the type for the checker.
+    assert y_pred is not None
 
     # Validate time columns
     check_time_column(y_true)

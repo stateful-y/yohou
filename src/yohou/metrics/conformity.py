@@ -123,7 +123,7 @@ class Residual(BaseConformityScorer):
         )
 
         # Compute intervals
-        lower_quantile, upper_quantile = self._compute_assymetric_quantiles(conformity_scores, coverage_rate)
+        lower_quantile, upper_quantile = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
         lower_bound, upper_bound = y_pred + lower_quantile, y_pred + upper_quantile
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
@@ -240,7 +240,7 @@ class AbsoluteResidual(Residual):
         )
 
         # Compute symmetric intervals
-        quantile = self._compute_symetric_quantiles(conformity_scores, coverage_rate)
+        quantile = self._compute_symmetric_quantiles(conformity_scores, coverage_rate)
         lower_bound, upper_bound = y_pred - quantile, y_pred + quantile
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
@@ -273,7 +273,7 @@ class GammaResidual(BaseConformityScorer):
     See Also
     --------
     - [`AbsoluteGammaResidual`][yohou.metrics.conformity.AbsoluteGammaResidual] : Symmetric variant using absolute relative errors.
-    - [`Residual`][yohou.metrics.conformity.Residual] : Scale-independent signed residual scorer.
+    - [`Residual`][yohou.metrics.conformity.Residual] : Scale-dependent signed residual scorer.
 
     Examples
     --------
@@ -378,7 +378,7 @@ class GammaResidual(BaseConformityScorer):
         )
 
         # Compute quantiles
-        lower_q, upper_q = self._compute_assymetric_quantiles(conformity_scores, coverage_rate)
+        lower_q, upper_q = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
 
         # Determine explicit float types for Polars
         lower_q, upper_q = float(lower_q), float(upper_q)
@@ -451,7 +451,7 @@ class AbsoluteGammaResidual(GammaResidual):
         Returns
         -------
         pl.DataFrame
-            Absolute relative conformity scores with \"time\" column preserved.
+            Absolute relative conformity scores with "time" column preserved.
 
         """
         check_is_fitted(self, ["_is_fitted"])

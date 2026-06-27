@@ -127,7 +127,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
     _parameter_constraints: dict = {
         **BaseReductionForecaster._parameter_constraints,
-        **BaseClassProbaForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict", "predict_proba"])],
         "reduction_strategy": [StrOptions({"direct", "multi-output"})],
     }
@@ -154,6 +153,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            target_transformer=target_transformer,
+            feature_transformer=feature_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
@@ -161,14 +162,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             time_weighter=time_weighter,
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
-        )
-
-        BaseClassProbaForecaster.__init__(
-            self,
-            target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
-            target_as_feature=target_as_feature,
-            panel_strategy=panel_strategy,
         )
 
     @_fit_context(prefer_skip_nested_validation=True)
@@ -269,16 +262,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             Target data with categorical columns replaced by integer codes.
 
         """
-        exprs = []
-        for col in y.columns:
-            if col == "time":
-                continue
-            base_col = col.split("__", 1)[1] if "__" in col else col
-            mapping = self.label_to_code_[base_col]
-            # Cast to String first to handle Categorical/Enum/String uniformly,
-            # then replace labels with integer codes.
-            exprs.append(pl.col(col).cast(pl.String).replace_strict(mapping, return_dtype=pl.Float64).alias(col))
-        return y.with_columns(exprs)
+        return self._apply_label_encoding(y)
 
     def _predict_class_proba_one(
         self,
@@ -329,9 +313,15 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         """
         if self.reduction_strategy == "direct":
-            assert isinstance(estimator, list)
+            if not isinstance(estimator, list):
+                raise TypeError(
+                    f"Expected a list of estimators for the 'direct' strategy, got {type(estimator).__name__}."
+                )
             return self._estimator_predict_proba_direct(cast(list[BaseEstimator], estimator), groups)
-        assert isinstance(estimator, BaseEstimator)
+        if not isinstance(estimator, BaseEstimator):
+            raise TypeError(
+                f"Expected a single estimator for the 'multi-output' strategy, got {type(estimator).__name__}."
+            )
         return self._estimator_predict_proba_multi_output(estimator, groups)
 
     def _estimator_predict_proba_multi_output(

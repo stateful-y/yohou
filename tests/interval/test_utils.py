@@ -6,6 +6,14 @@ import pytest
 from yohou.interval.utils import weighted_quantile
 
 
+def test_weighted_quantile_reexported_from_package():
+    """weighted_quantile is reachable via the public yohou.interval namespace."""
+    import yohou.interval as interval_pkg
+
+    assert "weighted_quantile" in interval_pkg.__all__
+    assert interval_pkg.weighted_quantile is weighted_quantile
+
+
 class TestWeightedQuantile:
     """Tests for weighted_quantile function."""
 

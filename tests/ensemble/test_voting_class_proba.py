@@ -428,10 +428,9 @@ class TestVotingClassProbaRouting:
     def test_predict_rejects_unrouted_metadata(self, class_proba_y_X_factory, method):
         """predict/predict_class_proba reject metadata no child requested.
 
-        Regression for the 2026-06-15 QA finding: these methods accepted
-        ``**params`` labelled as routing metadata but never called
-        ``_raise_for_params``/``process_routing``, so a stray param was passed
-        through to children unchecked instead of being validated.
+        These methods must call ``_raise_for_params``/``process_routing`` so that
+        ``**params`` labelled as routing metadata is validated; a stray param must
+        be rejected rather than passed through to children unchecked.
         """
         y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
         forecaster = VotingClassProbaForecaster(

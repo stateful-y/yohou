@@ -19,6 +19,21 @@ __all__ = ["all_displays", "all_estimators", "all_functions"]
 _MODULE_TO_IGNORE = {"tests"}
 
 
+def _ignore_third_party_future_warnings() -> None:
+    """Suppress FutureWarnings from third-party modules during package walking.
+
+    Walking and importing every yohou module triggers FutureWarnings from
+    upstream dependencies (e.g. sklearn). Those are pure import noise here, so
+    they are silenced. The suppression is restricted to non-yohou modules via a
+    negative-lookahead ``module`` regex so that yohou's own warnings stay
+    visible to callers and the test suite.
+
+    This must be called inside a ``warnings.catch_warnings()`` block so the
+    filter is scoped to the surrounding ``with`` statement.
+    """
+    warnings.filterwarnings("ignore", category=FutureWarning, module=r"(?!yohou(\.|$)).*")
+
+
 def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str, type]]:
     """Get a list of all estimators from `yohou`.
 
@@ -76,10 +91,8 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
 
     all_classes = []
     root = str(Path(__file__).parent.parent)  # yohou package
-    # Ignore deprecation warnings triggered at import time and from walking
-    # packages
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=FutureWarning)
+        _ignore_third_party_future_warnings()
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
@@ -102,8 +115,11 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     estimators = [c for c in all_classes_set if (issubclass(c[1], BaseEstimator) and c[0] != "BaseEstimator")]
     # get rid of abstract base classes
     estimators = [c for c in estimators if not is_abstract(c[1])]
-    # Exclude internal base classes that are not meant to be instantiated directly
-    _BASE_CLASSES = {"BaseForecaster", "BaseReductionForecaster", "BaseIntervalForecaster"}
+    # BaseForecaster and BaseReductionForecaster are already removed by the
+    # is_abstract filter above (both leave "fit" abstract). BaseIntervalForecaster
+    # implements every abstract method yet is still an internal base class that
+    # must not be instantiated directly, so it has to be excluded explicitly.
+    _BASE_CLASSES = {"BaseIntervalForecaster"}
     estimators = [c for c in estimators if c[0] not in _BASE_CLASSES]
 
     if type_filter is not None:
@@ -213,10 +229,8 @@ def all_displays() -> list[tuple[str, type]]:
     """
     all_classes = []
     root = str(Path(__file__).parent.parent)  # yohou package
-    # Ignore deprecation warnings triggered at import time and from walking
-    # packages
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=FutureWarning)
+        _ignore_third_party_future_warnings()
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
@@ -267,12 +281,10 @@ def all_functions() -> list[tuple[str, object]]:
     - [`all_estimators`][yohou.utils.discovery.all_estimators] : Get all estimator classes from yohou.
     - [`all_displays`][yohou.utils.discovery.all_displays] : Get all display classes from yohou.
     """
-    all_functions = []
+    all_functions_list = []
     root = str(Path(__file__).parent.parent)  # yohou package
-    # Ignore deprecation warnings triggered at import time and from walking
-    # packages
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=FutureWarning)
+        _ignore_third_party_future_warnings()
         for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
             module_parts = module_name.split(".")
             if any(part in _MODULE_TO_IGNORE for part in module_parts):
@@ -284,9 +296,9 @@ def all_functions() -> list[tuple[str, object]]:
                 continue
             functions = inspect.getmembers(module, _is_checked_function)
             functions = [(func.__name__, func) for _, func in functions]
-            all_functions.extend(functions)
+            all_functions_list.extend(functions)
 
     # drop duplicates, sort for reproducibility
     # itemgetter is used to ensure the sort does not extend to the 2nd item of
     # the tuple
-    return sorted(set(all_functions), key=itemgetter(0))
+    return sorted(set(all_functions_list), key=itemgetter(0))

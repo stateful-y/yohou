@@ -21,6 +21,7 @@ from yohou.plotting import (
     plot_seasonality,
     plot_subseasonality,
 )
+from yohou.plotting.diagnostics import _compute_ccf
 
 from .conftest import assert_figure_valid, assert_layout
 
@@ -1723,3 +1724,22 @@ class TestSeasonalHeatmapReverseY:
         """Panel data with reverse_y=True."""
         fig = plot_seasonal_heatmap(panel_hourly_df, reverse_y=True)
         assert_figure_valid(fig)
+
+
+class TestCcfNormalization:
+    """CCF values stay within [-1, 1]."""
+
+    def test_ccf_within_unit_interval(self):
+        rng = np.random.default_rng(0)
+        x = rng.normal(size=80)
+        y = np.roll(x, 5) + 0.05 * rng.normal(size=80)
+        ccf = _compute_ccf(x, y, 30)
+        assert len(ccf) == 61
+        assert all(-1.0 - 1e-9 <= v <= 1.0 + 1e-9 for v in ccf)
+
+    def test_ccf_zero_lag_is_normalized_correlation(self):
+        rng = np.random.default_rng(1)
+        x = rng.normal(size=100)
+        y = 2.0 * x + 1.0  # perfectly correlated
+        ccf = _compute_ccf(x, y, 10)
+        assert ccf[10] == pytest.approx(1.0, abs=1e-6)

@@ -273,9 +273,19 @@ class LocalPanelForecaster(BaseForecaster):
         groups_: list[str] = sorted(y_panel_groups.keys())
         self.groups_ = groups_  # ty: ignore[invalid-assignment]
 
-        # Derive local schemas (unprefixed column names + dtypes)
+        # Derive local schemas (unprefixed column names + dtypes) from the first
+        # group, then verify every other group matches so a heterogeneous panel
+        # surfaces an error instead of silently adopting the first group's schema.
         first_group = groups_[0]
         self.local_y_schema_ = {col.split("__", 1)[1]: y[col].dtype for col in y_panel_groups[first_group]}
+        for group in groups_[1:]:
+            group_schema = {col.split("__", 1)[1]: y[col].dtype for col in y_panel_groups[group]}
+            if group_schema != self.local_y_schema_:
+                raise ValueError(
+                    f"LocalPanelForecaster requires all panel groups to share the same local "
+                    f"target schema. Group '{group}' has {group_schema}, but group "
+                    f"'{first_group}' has {self.local_y_schema_}."
+                )
 
         # Handle X_actual panel structure
         if X_actual is not None:
@@ -816,6 +826,8 @@ class LocalPanelForecaster(BaseForecaster):
 
         """
         result: pl.DataFrame | None = None
+        first_group_name: str | None = None
+        expected_height = 0
 
         for group_name, df in group_predictions.items():
             time_cols = [c for c in ["time", "vintage_time"] if c in df.columns]
@@ -824,19 +836,21 @@ class LocalPanelForecaster(BaseForecaster):
 
             if result is None:
                 result = prefixed
+                first_group_name = group_name
+                expected_height = prefixed.height
             elif time_cols:
-                if result.height != prefixed.height:
+                if prefixed.height != expected_height:
                     raise ValueError(
                         f"Group '{group_name}' produced {prefixed.height} predictions, "
-                        f"but a previous group produced {result.height}. "
+                        f"but the first group '{first_group_name}' produced {expected_height}. "
                         "Per-group prediction time grids must align to form a panel."
                     )
                 result = result.join(prefixed, on=time_cols, how="full", coalesce=True)
-                if result.height != prefixed.height:
+                if result.height != expected_height:
                     raise ValueError(
                         f"Group '{group_name}' has a time grid that does not align with "
-                        "the other groups. Per-group prediction time grids must match "
-                        "to form a panel."
+                        f"the first group '{first_group_name}'. Per-group prediction time grids "
+                        "must match to form a panel."
                     )
             else:
                 result = pl.concat([result, prefixed], how="horizontal")

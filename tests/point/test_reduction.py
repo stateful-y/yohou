@@ -1430,7 +1430,8 @@ class TestPipelineSampleWeightRouting:
         ])
         f = PointReductionForecaster(estimator=pipe)
         f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
-        f.fit(simple_series, forecasting_horizon=3)
+        with pytest.warns(UserWarning, match="Could not disable sample_weight routing"):
+            f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
         assert len(y_pred) == 3
         assert "time" in y_pred.columns

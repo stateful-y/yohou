@@ -163,6 +163,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            target_transformer=target_transformer,
+            feature_transformer=feature_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
@@ -170,14 +172,6 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             time_weighter=time_weighter,
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
-        )
-
-        BasePointForecaster.__init__(
-            self,
-            target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
-            target_as_feature=target_as_feature,
-            panel_strategy=panel_strategy,
         )
 
     @_fit_context(prefer_skip_nested_validation=True)

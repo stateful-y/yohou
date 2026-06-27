@@ -1356,3 +1356,47 @@ class TestCheckMultiVintageTime:
             "value": [1.0, 2.0, 3.0],
         })
         _check_multi_vintage_time(y_pred)
+
+    def test_null_vintage_time_raises(self):
+        """Null values in vintage_time are rejected instead of silently grouped."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1), None, datetime(2020, 1, 1)],
+            "time": [datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)],
+            "value": [1.0, 2.0, 3.0],
+        })
+        with pytest.raises(ValueError, match="'vintage_time' column contains"):
+            _check_multi_vintage_time(y_pred)
+
+    def test_missing_time_column_raises(self):
+        """A frame without a 'time' column is rejected up front."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        y_pred = pl.DataFrame({"vintage_time": [datetime(2020, 1, 1)], "value": [1.0]})
+        with pytest.raises(ValueError, match="must contain a 'time' column"):
+            _check_multi_vintage_time(y_pred)
+
+    def test_non_datetime_time_raises(self):
+        """A 'time' column with a non-datetime dtype is rejected."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1)] * 3,
+            "time": [1, 2, 3],
+            "value": [1.0, 2.0, 3.0],
+        })
+        with pytest.raises(ValueError, match="must have dtype pl.Datetime or pl.Date"):
+            _check_multi_vintage_time(y_pred)
+
+    def test_non_datetime_vintage_time_raises(self):
+        """Non-datetime vintage_time dtype is rejected."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        y_pred = pl.DataFrame({
+            "vintage_time": [1, 1, 1],
+            "time": [datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)],
+            "value": [1.0, 2.0, 3.0],
+        })
+        with pytest.raises(ValueError, match="'vintage_time' column must have dtype"):
+            _check_multi_vintage_time(y_pred)

@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import polars as pl
 
 from yohou.weighting import BaseWeighter
 
 from .base import BaseClassProbaScorer
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = [
     "BrierScore",
@@ -112,24 +107,19 @@ class LogLoss(BaseClassProbaScorer):
     def _compute_raw_errors(self, y_truth, y_pred):
         """Compute per-row log loss values."""
         target_cols = self._extract_target_columns(y_truth)
-        scores_dict: dict[str, list[float]] = {}
+        scores_dict: dict[str, np.ndarray] = {}
 
         for target_col in target_cols:
             proba_cols, class_labels = self._extract_class_proba_columns(y_pred, target_col)
-            true_labels = y_truth[target_col].cast(pl.String)
+            true_arr = y_truth[target_col].cast(pl.String).to_numpy().astype(str)
+            labels_arr = np.array(class_labels)
+            proba_arr = y_pred.select(proba_cols).to_numpy()  # (n, K)
 
-            per_row_scores = []
-            for row_idx in range(len(y_truth)):
-                true_label = true_labels[row_idx]
-                label_idx = class_labels.index(true_label) if true_label in class_labels else None
-                if label_idx is not None:
-                    prob = float(y_pred[proba_cols[label_idx]][row_idx])
-                    prob = np.clip(prob, 1e-15, 1 - 1e-15)
-                    per_row_scores.append(-np.log(prob))
-                else:
-                    per_row_scores.append(-np.log(1e-15))
-
-            scores_dict[target_col] = per_row_scores
+            # One-hot selector for the true class; unknown labels select nothing.
+            one_hot = true_arr[:, None] == labels_arr[None, :]  # (n, K)
+            true_prob = (proba_arr * one_hot).sum(axis=1)  # 0.0 when label unknown
+            true_prob = np.clip(true_prob, 1e-15, 1 - 1e-15)
+            scores_dict[target_col] = -np.log(true_prob)
 
         return pl.DataFrame(scores_dict)
 
@@ -224,23 +214,16 @@ class BrierScore(BaseClassProbaScorer):
     def _compute_raw_errors(self, y_truth, y_pred):
         """Compute per-row Brier score values."""
         target_cols = self._extract_target_columns(y_truth)
-        scores_dict: dict[str, list[float]] = {}
+        scores_dict: dict[str, np.ndarray] = {}
 
         for target_col in target_cols:
             proba_cols, class_labels = self._extract_class_proba_columns(y_pred, target_col)
-            true_labels = y_truth[target_col].cast(pl.String)
+            true_arr = y_truth[target_col].cast(pl.String).to_numpy().astype(str)
+            labels_arr = np.array(class_labels)
+            proba_arr = y_pred.select(proba_cols).to_numpy()  # (n, K)
 
-            per_row_scores = []
-            for row_idx in range(len(y_truth)):
-                true_label = true_labels[row_idx]
-                row_score = 0.0
-                for k, label in enumerate(class_labels):
-                    prob = float(y_pred[proba_cols[k]][row_idx])
-                    indicator = 1.0 if label == true_label else 0.0
-                    row_score += (prob - indicator) ** 2
-                per_row_scores.append(row_score)
-
-            scores_dict[target_col] = per_row_scores
+            one_hot = (true_arr[:, None] == labels_arr[None, :]).astype(np.float64)  # (n, K)
+            scores_dict[target_col] = np.sum((proba_arr - one_hot) ** 2, axis=1)
 
         return pl.DataFrame(scores_dict)
 
@@ -359,6 +342,12 @@ class RankedProbabilityScore(BaseClassProbaScorer):
                 order = self.class_order
                 # Reorder proba_cols to match class_order
                 label_to_col = dict(zip(class_labels, proba_cols, strict=True))
+                unknown = [label for label in order if label not in label_to_col]
+                if unknown:
+                    raise ValueError(
+                        f"class_order contains labels not found in y_pred for target "
+                        f"'{target_col}': {unknown}. Available class labels: {class_labels}."
+                    )
                 ordered_cols = [label_to_col[label] for label in order]
                 ordered_labels = order
             else:

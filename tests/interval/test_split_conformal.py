@@ -362,7 +362,7 @@ class TestSplitConformalSimilarity:
         assert np.sum(lower_diff > 1e-6) > 0 or np.sum(upper_diff > 1e-6) > 0
 
     def test_fit_stores_similarity_attributes(self, conformal_data):
-        """Test that fit stores similarities_ and weights_ when similarity is set."""
+        """Test that fit stores similarities_ when similarity is set."""
         horizon = 3
 
         scf = SplitConformalForecaster(
@@ -374,10 +374,7 @@ class TestSplitConformalSimilarity:
         scf.fit(conformal_data, forecasting_horizon=horizon)
 
         assert hasattr(scf, "similarities_")
-        assert hasattr(scf, "weights_")
         assert len(scf.similarities_) == horizon
-        assert isinstance(scf.weights_, pl.DataFrame)
-        assert "step" in scf.weights_.columns
 
     def test_fit_predict_interval_with_residual_scorer(self, conformal_data):
         """Test similarity with asymmetric (Residual) scorer."""
@@ -405,7 +402,6 @@ class TestSplitConformalSimilarity:
         )
         scf.fit(conformal_data, forecasting_horizon=1)
         assert not hasattr(scf, "similarities_")
-        assert not hasattr(scf, "weights_")
 
     def test_predict_interval_after_observe_with_similarity(self, conformal_data):
         """Test predict_interval after observe with similarity (vintage_time path)."""

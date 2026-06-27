@@ -33,21 +33,25 @@ def tabularize(df_time_series: pl.DataFrame, lags: Sequence[int]) -> pl.DataFram
     Examples
     --------
     >>> import polars as pl
-    >>> # Original time series
-    >>> df = pl.DataFrame({"time": [1, 2, 3, 4, 5], "value": [10, 20, 30, 40, 50]})
+    >>> from datetime import datetime
+    >>> # Original time series with a contract-compliant datetime "time" column
+    >>> df = pl.DataFrame({
+    ...     "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True),
+    ...     "value": [10, 20, 30, 40, 50],
+    ... })
     >>> # Create lag features for lags 1, 2
     >>> df_tabular = tabularize(df, lags=[1, 2])
     >>> df_tabular
-    shape: (3, 5)
-    ┌──────┬────────────┬────────────┬─────────────┬─────────────┐
-    │ time ┆ time_lag_1 ┆ time_lag_2 ┆ value_lag_1 ┆ value_lag_2 │
-    │ ---  ┆ ---        ┆ ---        ┆ ---         ┆ ---         │
-    │ i64  ┆ i64        ┆ i64        ┆ i64         ┆ i64         │
-    ╞══════╪════════════╪════════════╪═════════════╪═════════════╡
-    │ 3    ┆ 2          ┆ 1          ┆ 20          ┆ 10          │
-    │ 4    ┆ 3          ┆ 2          ┆ 30          ┆ 20          │
-    │ 5    ┆ 4          ┆ 3          ┆ 40          ┆ 30          │
-    └──────┴────────────┴────────────┴─────────────┴─────────────┘
+    shape: (3, 3)
+    ┌─────────────────────┬─────────────┬─────────────┐
+    │ time                ┆ value_lag_1 ┆ value_lag_2 │
+    │ ---                 ┆ ---         ┆ ---         │
+    │ datetime[μs]        ┆ i64         ┆ i64         │
+    ╞═════════════════════╪═════════════╪═════════════╡
+    │ 2020-01-03 00:00:00 ┆ 20          ┆ 10          │
+    │ 2020-01-04 00:00:00 ┆ 30          ┆ 20          │
+    │ 2020-01-05 00:00:00 ┆ 40          ┆ 30          │
+    └─────────────────────┴─────────────┴─────────────┘
 
     See Also
     --------

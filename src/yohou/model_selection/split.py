@@ -531,15 +531,17 @@ class SlidingWindowSplitter(BaseSplitter):
             Test set indices for this split.
 
         """
-        n_samples = len(y)
-        train_size = self._resolve_train_size(n_samples)
+        train_size = self.train_size_
         test_size = self.test_size
         stride = self.stride if self.stride is not None else test_size
 
+        # Defensive guard: normally unreachable because split() validates via
+        # _resolve_train_size first, but retained (and covered by a test) so the
+        # method is safe if called directly or with a patched train size.
+        n_samples = len(y)
         if train_size + test_size > n_samples:
             raise ValueError(
-                f"train_size ({train_size}) + test_size ({test_size}) = "
-                f"{train_size + test_size} is greater than n_samples ({n_samples})."
+                f"train_size + test_size = {train_size + test_size} is greater than n_samples ({n_samples})."
             )
 
         if test_size % stride != 0:
@@ -555,8 +557,6 @@ class SlidingWindowSplitter(BaseSplitter):
         # Fixed iteration: produce exactly n_splits test windows
         test_start = train_size
         for _ in range(self.n_splits):
-            if test_start + test_size > n_samples:
-                break
             yield np.arange(test_start, test_start + test_size, dtype=np.intp)
             test_start += stride
 

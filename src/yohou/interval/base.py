@@ -501,7 +501,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
                 all_bound_cols = lower_cols + upper_cols
 
-                if strategy == "point" and col in y_pred_step_inv.columns:
+                if strategy == "point":
+                    if col not in y_pred_step_inv.columns:
+                        raise ValueError(
+                            f"strategy='point' requires a bare point column '{col}' in the "
+                            f"interval predictions, but {type(forecaster).__name__} did not "
+                            f"emit one. Use strategy='mean' or strategy='median' instead."
+                        )
                     y_data[col] = y_pred_step_inv[col]
                 elif strategy == "median":
                     y_data[col] = y_pred_step_inv.select(

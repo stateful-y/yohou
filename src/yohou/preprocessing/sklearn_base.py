@@ -347,7 +347,7 @@ class SklearnScaler(SklearnTransformer):
         "scaler": [HasMethods(["fit", "transform"]), None],
     }
 
-    _tags = {"stateful": False, "invertible": True}
+    _tags = {"stateful": False}
 
     def __init__(self, scaler=None, **params):
         if scaler is not None:

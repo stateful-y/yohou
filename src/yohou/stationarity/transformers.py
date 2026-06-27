@@ -2,7 +2,6 @@
 
 import numbers
 
-import numpy as np
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
@@ -176,7 +175,8 @@ class BoxCoxTransformer(BaseTransformer):
 
         """
         tags = super().__sklearn_tags__()
-        assert tags.input_tags is not None
+        if tags.input_tags is None:  # pragma: no cover - defensive: sklearn always sets input_tags
+            raise RuntimeError("Expected input_tags to be set by __sklearn_tags__; got None")
         # Box-Cox requires strictly positive ``x + offset``, so the smallest
         # admissible input is the exclusive lower bound ``-offset`` (which is
         # ``0.0`` when ``offset == 0.0``). The bound is exclusive: feeding
@@ -527,7 +527,13 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
         return self.seasonality
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Fit the internal model."""
+        """Fit the internal model.
+
+        ``log_transform_`` and ``seasonal_diff_transform_`` are kept solely as
+        vehicles for ``_inverse_transform``; the forward ``_transform`` applies
+        the log and seasonal-difference steps inline rather than delegating to
+        them.
+        """
         self.log_transform_ = LogTransformer(offset=self.offset).fit(X=X, y=y)
         self.seasonal_diff_transform_ = SeasonalDifferencing(seasonality=self.seasonality).fit(X=X, y=y)
 
@@ -743,7 +749,7 @@ class SeasonalReturn(BaseTransformer):
         return feature_names
 
 
-class AbsoluteSeasonalReturn(BaseTransformer):
+class AbsoluteSeasonalReturn(SeasonalDifferencing):
     r"""Absolute seasonal return (difference) time series transformer.
 
     Computes the absolute difference relative to the value from ``seasonality``
@@ -811,34 +817,6 @@ class AbsoluteSeasonalReturn(BaseTransformer):
         self.seasonality = seasonality
         self.offset = offset
 
-    @property
-    def observation_horizon(self) -> int:  # noqa: D102
-        """Return the number of past observations needed."""
-        return self.seasonality
-
-    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
-        """Transform the input time series."""
-        time = X.select(cs.by_name("time"))[self.seasonality :]
-
-        # Compute absolute difference: X_t - X_{t-seasonality}
-        # Note: offset cancels out in addition/subtraction
-        X_t = X.select(~cs.by_name("time")).select(pl.all().diff(self.seasonality))[self.seasonality :]
-
-        feature_names = self.get_feature_names_out()
-        X_t = X_t.rename(dict(zip(X_t.columns, feature_names, strict=False)))
-        X_t = pl.concat([time, X_t], how="horizontal")
-
-        return X_t
-
-    def _inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
-        """Inverse-transform the time series.
-
-        The reconstruction is the seasonal cumulative sum, identical to
-        :class:`SeasonalDifferencing`, so it reuses the shared
-        :func:`_inverse_seasonal_diff` helper.
-        """
-        return _inverse_seasonal_diff(self, X_t, X_p, self.seasonality)
-
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.
 
@@ -855,9 +833,7 @@ class AbsoluteSeasonalReturn(BaseTransformer):
 
         """
         input_features = _check_feature_names_in(self, input_features)
-        feature_names = [
-            panel_aware_prefix(col, f"abs_return_s_{self.seasonality}_off_{self.offset}") for col in input_features
-        ]
+        feature_names = [panel_aware_prefix(col, f"abs_return_s_{self.seasonality}") for col in input_features]
 
         return feature_names
 
@@ -983,17 +959,11 @@ class ASinhTransformer(BaseTransformer):
         time = X_t.select(cs.by_name("time"))
         X_t_numeric = X_t.select(~cs.by_name("time"))
 
-        # Apply inverse: sinh(X_t) * MAD + median for each column
-        inverse_cols = []
-        for i, col in enumerate(X_t_numeric.columns):
-            # Get original column name from feature_names_in_
-            orig_col = self.feature_names_in_[i]
-            col_data = X_t_numeric.get_column(col).to_numpy()
-            sinh_val = np.sinh(col_data)
-            inverse_val = sinh_val * self.mad_[orig_col] + self.median_[orig_col]
-            inverse_cols.append(pl.Series(orig_col, inverse_val))
-
-        X = pl.DataFrame(inverse_cols)
+        # Apply inverse: sinh(X_t) * MAD + median for each column.
+        X = X_t_numeric.select(
+            (pl.col(col).sinh() * self.mad_[orig_col] + self.median_[orig_col]).alias(orig_col)
+            for col, orig_col in zip(X_t_numeric.columns, self.feature_names_in_, strict=False)
+        )
         X = pl.concat([time, X], how="horizontal")
 
         return X

@@ -17,7 +17,7 @@ from yohou.metrics import (
     get_scorer,
     make_scorer,
 )
-from yohou.metrics.interval import _trapezoidal_weights
+from yohou.metrics.interval import _pinball_loss, _trapezoidal_weights
 from yohou.testing import _yield_yohou_scorer_checks
 from yohou.weighting import LookupWeighter
 
@@ -896,3 +896,15 @@ class TestIntervalMultiVintageCoverage:
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
         assert isinstance(result, pl.DataFrame)
+
+
+class TestPinballLossScalar:
+    """_pinball_loss returns a float for scalar inputs (both sides of the quantile)."""
+
+    def test_scalar_above_quantile(self):
+        """When y >= q the loss is ``tau * (y - q)``."""
+        assert _pinball_loss(0.5, 3.0, 2.0) == pytest.approx(0.5 * (3.0 - 2.0))
+
+    def test_scalar_below_quantile(self):
+        """When y < q the loss is ``(1 - tau) * (q - y)``."""
+        assert _pinball_loss(0.5, 1.0, 2.0) == pytest.approx(0.5 * (2.0 - 1.0))

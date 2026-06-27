@@ -60,6 +60,23 @@ class TestOutlierThresholdHandler:
         assert "time" in X_transformed.columns
         assert len(X_transformed) == len(X)
 
+    def test_inverted_thresholds_leave_unfitted(self, time_series_with_outliers_factory):
+        """A failed fit (low > high) must not assign threshold attributes."""
+        import pytest
+
+        X = time_series_with_outliers_factory(length=50, n_components=2)
+        handler = OutlierThresholdHandler(low=5.0, high=-5.0, strategy="clip")
+
+        with pytest.raises(ValueError, match="must be <= high"):
+            handler.fit(X)
+
+        # The ordering is validated before any fitted threshold attribute is
+        # assigned, so transform cannot silently apply inverted thresholds.
+        assert not hasattr(handler, "low_")
+        assert not hasattr(handler, "high_")
+        with pytest.raises(AttributeError):
+            handler.transform(X)
+
 
 class TestOutlierPercentileHandler:
     """Test OutlierPercentileHandler functionality."""

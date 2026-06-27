@@ -8,6 +8,14 @@ import pytest
 from yohou.utils.pivot import window_forecasts
 
 
+def test_window_forecasts_exported_from_utils():
+    """window_forecasts is re-exported from the yohou.utils package surface."""
+    from yohou import utils
+
+    assert "window_forecasts" in utils.__all__
+    assert utils.window_forecasts is window_forecasts
+
+
 class TestWindowForecasts:
     """Tests for the window_forecasts utility function."""
 

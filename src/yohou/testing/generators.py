@@ -4,6 +4,7 @@ This module provides _yield_* generator functions that dynamically generate
 applicable check functions based on estimator tags.
 """
 
+import numbers
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -167,7 +168,7 @@ def _interval_lower_bound(constraint_list: list) -> int | None:
     """
     for constraint in constraint_list:
         left = getattr(constraint, "left", None)
-        if left is not None:
+        if left is not None and isinstance(left, numbers.Integral):
             return int(left)
     return None
 
@@ -515,7 +516,7 @@ def _yield_yohou_forecaster_checks(
     yield (
         "check_forecaster_tags_accessible_before_fit",
         check_forecaster_tags_accessible_before_fit,
-        {"y": y_train, "X_actual": X_actual_train},
+        {},
     )
     yield (
         "check_forecaster_tags_static_after_fit",
@@ -531,7 +532,7 @@ def _yield_yohou_forecaster_checks(
     yield (
         "check_forecaster_tags_match_capabilities",
         check_forecaster_tags_match_capabilities,
-        {"y": y_train, "X_actual": X_actual_train},
+        {},
     )
 
     # Update/reset checks (if enough data and forecaster tracks observations)
@@ -723,8 +724,8 @@ def _yield_yohou_forecaster_checks(
                     "X_actual_train": X_actual_train,
                     "y_test": y_test,
                     "X_actual_test": X_actual_test,
-                    "X_future": X_future_train,
-                    "X_forecast": X_forecast_train,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
                     "forecasting_horizon": 3,
                 },
             )
@@ -812,7 +813,8 @@ def _yield_yohou_splitter_checks(
         check_splitter_tags_static_after_fit,
         {"splitter": splitter, "y": y, "X_actual": X_actual},
     )
-    expected_tags = {k: v for k, v in tags.items() if k != "stateful"}  # stateful not usually tested
+    # stateful is a lifecycle flag, not a capability; excluded from capability-match checks
+    expected_tags = {k: v for k, v in tags.items() if k != "stateful"}
     yield (
         "check_splitter_tags_match_capabilities",
         check_splitter_tags_match_capabilities,
@@ -861,9 +863,13 @@ def _yield_yohou_splitter_checks(
             invalid_n_splits = [lower - offset for offset in (1, 2, 3)] if lower is not None else [1, 0, -1]
             param_test_cases.append(("n_splits", invalid_n_splits))
         if "test_size" in constraints:
-            param_test_cases.append(("test_size", [0, -1]))  # Must be >= 1
+            lower = _interval_lower_bound(constraints["test_size"])
+            invalid_test_size = [lower - offset for offset in (1, 2, 3)] if lower is not None else [0, -1]
+            param_test_cases.append(("test_size", invalid_test_size))
         if "train_size" in constraints:
-            param_test_cases.append(("train_size", [0, -1]))  # Must be >= 1
+            lower = _interval_lower_bound(constraints["train_size"])
+            invalid_train_size = [lower - offset for offset in (1, 2, 3)] if lower is not None else [0, -1]
+            param_test_cases.append(("train_size", invalid_train_size))
         if "gap" in constraints:
             param_test_cases.append(("gap", [-1]))  # Must be >= 0
 
@@ -931,7 +937,7 @@ def _yield_yohou_scorer_checks(
     yield (
         "check_scorer_tags_static_after_fit",
         check_scorer_tags_static_after_fit,
-        {"scorer": scorer, "y_truth": y_truth, "y_pred": y_pred},
+        {"scorer": scorer, "y_truth": y_truth},
     )
     expected_tags = {k: v for k, v in tags.items() if v is not None}
     yield (
@@ -963,7 +969,7 @@ def _yield_yohou_scorer_checks(
 
     # Coverage rate subselection (interval scorers only)
     if tags.get("prediction_type") == "interval" and "coverage_rate" in y_pred.columns:
-        coverage_rates = y_pred["coverage_rate"].unique().to_list()
+        coverage_rates = y_pred["coverage_rate"].unique(maintain_order=True).to_list()
         yield (
             "check_scorer_coverage_rate_subselection",
             check_scorer_coverage_rate_subselection,
@@ -1126,7 +1132,6 @@ def _yield_yohou_search_checks(
             "check_search_predict_delegates",
             check_search_predict_delegates,
             {
-                "y_train": y_train,
                 "y_test": y_test,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
@@ -1141,9 +1146,7 @@ def _yield_yohou_search_checks(
                 "check_search_observe_delegates",
                 check_search_observe_delegates,
                 {
-                    "y_train": y_train,
                     "y_update": y_update,
-                    "X_actual_train": X_actual_train,
                     "X_actual_update": X_actual_update,
                     "X_future": X_future_test,
                     "X_forecast": X_forecast_test,
@@ -1162,9 +1165,7 @@ def _yield_yohou_search_checks(
                     "check_search_rewind_delegates",
                     check_search_rewind_delegates,
                     {
-                        "y_train": y_train,
                         "y_reset": y_reset,
-                        "X_actual_train": X_actual_train,
                         "X_actual_reset": X_actual_reset,
                         "X_future": X_future_test,
                         "X_forecast": X_forecast_test,
@@ -1217,8 +1218,6 @@ def _yield_yohou_search_checks(
             "check_search_interval_predict_delegates",
             check_search_interval_predict_delegates,
             {
-                "y_train": y_train,
-                "y_test": y_test,
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
             },
@@ -1306,7 +1305,6 @@ def _yield_yohou_search_checks(
                 "check_search_panel_data",
                 check_search_panel_data,
                 {
-                    "y_train": y_train,
                     "y_test": y_test,
                     "groups": groups,
                     "X_future": X_future_test,

@@ -106,6 +106,17 @@ def check_panel_single_group(forecaster, y_panel: pl.DataFrame) -> None:
                 f"should be in predictions. Got: {y_pred.columns}"
             )
 
+        # Columns from any other group must be absent: filtering to one group
+        # means predictions are generated only for that group.
+        for other_group, other_cols in y_panel_groups.items():
+            if other_group == first_group:
+                continue
+            for col in other_cols:
+                assert not _column_present(col, y_pred.columns), (
+                    f"Column '{col}' (or interval bounds) from group '{other_group}' "
+                    f"should NOT be in predictions filtered to group '{first_group}'. Got: {y_pred.columns}"
+                )
+
 
 def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame) -> None:
     """Check that an invalid group name raises ValueError.
@@ -134,7 +145,5 @@ def check_panel_invalid_group_raises(forecaster, y_panel: pl.DataFrame) -> None:
             _call_predict(forecaster, forecasting_horizon=3, groups=["invalid_group"])
             raise AssertionError("predict() should raise ValueError for an invalid group name, but didn't")
         except ValueError as e:
-            # Expected - check error message mentions the invalid group
-            assert "invalid_group" in str(e) or "not found" in str(e).lower(), (
-                f"ValueError message should mention invalid group, got: {e}"
-            )
+            # Expected - the message must name the offending group so callers can act on it.
+            assert "invalid_group" in str(e), f"ValueError should name the invalid group in the message, got: {e}"

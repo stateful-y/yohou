@@ -88,6 +88,28 @@ class TestPatternSeasonalityForecaster:
 
         assert pred_values == expected_values, "Naive seasonality should repeat last cycle exactly"
 
+    def test_naive_seasonal_pattern_has_no_time_column(self):
+        """seasonal_pattern_ must hold value-only columns for all methods, including naive."""
+        from datetime import timedelta
+
+        pattern = [10, 20, 15, 25, 30, 5]
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=17),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "value": pattern * 3})
+
+        naive = PatternSeasonalityForecaster(seasonality=6, method="naive")
+        naive.fit(y, forecasting_horizon=1)
+        average = PatternSeasonalityForecaster(seasonality=6, method="average")
+        average.fit(y, forecasting_horizon=1)
+
+        # Naive must match the average/median branches, which drop "time".
+        assert "time" not in naive.seasonal_pattern_.columns
+        assert naive.seasonal_pattern_.columns == average.seasonal_pattern_.columns
+
     def test_seasonality_average_aggregates_cycles(self):
         """Test average method aggregates across cycles."""
         # Create pattern with variation across cycles
@@ -613,3 +635,21 @@ class TestFourierSeasonalityForecaster:
         assert "panel__series_0" in y_pred.columns
         assert "panel__series_1" in y_pred.columns
         assert "panel__series_2" in y_pred.columns
+
+
+class TestMonthlyInterval:
+    """Non-fixed intervals (e.g. monthly) take the datetime_range time-index path."""
+
+    def test_monthly_interval_predicts(self):
+        """A monthly ("1mo") interval cannot be reduced to a fixed timedelta, so the
+        time index is materialized via datetime_range rather than computed arithmetically.
+        """
+        time = pl.date_range(pl.date(2018, 1, 1), pl.date(2021, 12, 1), interval="1mo", eager=True).cast(pl.Datetime)
+        y = pl.DataFrame({"time": time, "value": [float(i % 12) for i in range(len(time))]})
+
+        forecaster = PatternSeasonalityForecaster(seasonality=12, method="average")
+        forecaster.fit(y[:36], forecasting_horizon=3)
+        y_pred = forecaster.predict(forecasting_horizon=3)
+
+        assert len(y_pred) == 3
+        assert "value" in y_pred.columns

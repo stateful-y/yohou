@@ -55,6 +55,7 @@ Time series transformers for feature engineering, scaling, imputation, outlier h
 | --- | --- |
 | [`SklearnTransformer`](generated/yohou.preprocessing.sklearn_base.SklearnTransformer.md) | Wrapper to integrate sklearn transformers into the Yohou pipeline. |
 | [`LagTransformer`](generated/yohou.preprocessing.window.LagTransformer.md) | Create lagged features from time series data. |
+| [`MeanLagTransformer`](generated/yohou.preprocessing.window.MeanLagTransformer.md) | Create mean-lagged features by averaging across lag multiples. |
 | [`ExponentialMovingAverage`](generated/yohou.preprocessing.window.ExponentialMovingAverage.md) | Exponentially Weighted Moving Average (EWMA) transformer. |
 | [`PolynomialFeatures`](generated/yohou.preprocessing.sklearn_wrappers.PolynomialFeatures.md) | Generate polynomial and interaction features. |
 | [`PowerTransformer`](generated/yohou.preprocessing.sklearn_wrappers.PowerTransformer.md) | Apply a power transform featurewise to make data more Gaussian-like. |

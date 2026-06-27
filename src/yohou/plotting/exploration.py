@@ -514,7 +514,7 @@ def plot_rolling_statistics(
                     mode="lines",
                     name=base,
                     line={"color": col_color, "width": line_width},
-                    opacity=0.3,
+                    opacity=line_opacity,
                     hovertemplate=f"<b>{base}</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                     connectgaps=connect_gaps,
                 ),
@@ -653,6 +653,13 @@ def plot_boxplot(
     if groups is None and columns is None and _auto_detect_panel(df):
         groups = []
 
+    if show_points == "all":
+        boxpoints: str | bool = "all"
+    elif show_points == "outliers":
+        boxpoints = "outliers"
+    else:
+        boxpoints = False
+
     if groups is not None:
         _color_mgr = PanelColorManager(color_palette)
         _legend_tracker = LegendTracker(show_legend=show_legend)
@@ -661,24 +668,20 @@ def plot_boxplot(
             """Render period-grouped box plots for a single column."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _c = _color_mgr.get_color(ctx.display_name)
-            _ba = bar_opacity
-            _sp = show_points
-            _ps = marker_size
             df_g = ctx.sub_df.with_columns(pl.col("time").dt.truncate(period).alias("period"))
             periods_list = df_g.select("period").unique().sort("period")["period"].to_list()
             _show = _legend_tracker.should_show(ctx.display_name)
             for p_idx, pv in enumerate(periods_list):
                 pd_data = df_g.filter(pl.col("period") == pv)[base]
-                bp = "all" if _sp == "all" else ("outliers" if _sp == "outliers" else False)
                 ctx.fig.add_trace(
                     go.Box(
                         y=pd_data,
                         x=[str(pv)] * len(pd_data),
                         name=ctx.display_name,
                         marker={"color": _c},
-                        opacity=_ba,
-                        boxpoints=bp,
-                        marker_size=_ps if bp else None,
+                        opacity=bar_opacity,
+                        boxpoints=boxpoints,
+                        marker_size=marker_size if boxpoints else None,
                         legendgroup=ctx.display_name,
                         showlegend=_show and p_idx == 0,
                     ),
@@ -708,13 +711,6 @@ def plot_boxplot(
     plot_columns = validate_plotting_data(df, columns=columns, exclude=["time"])
     _colors = resolve_color_palette(color_palette, len(plot_columns))
     _col_colors = dict(zip(plot_columns, _colors, strict=False))
-
-    if show_points == "all":
-        boxpoints: str | bool = "all"
-    elif show_points == "outliers":
-        boxpoints = "outliers"
-    else:
-        boxpoints = False
 
     df_grouped = df.with_columns([pl.col("time").dt.truncate(period).alias("period")])
     periods = df_grouped.select("period").unique().sort("period")["period"].to_list()
@@ -759,10 +755,34 @@ def plot_boxplot(
     return fig
 
 
+def _missing_z_data(
+    df: pl.DataFrame,
+    cols: list[str],
+    time_aggregation: str | None,
+) -> tuple[list[list[int]], list]:
+    """Build a binary missing-data matrix (1=missing) and its x-axis values.
+
+    When *time_aggregation* is given, each cell marks whether any row in the
+    aggregation period is missing; otherwise each cell is one timestamp.
+    """
+    if time_aggregation:
+        df_agg = df.with_columns(pl.col("time").dt.truncate(time_aggregation).alias("period"))
+        agg = (
+            df_agg
+            .group_by("period")
+            .agg([pl.col(c).is_null().any().cast(pl.Int8).alias(c) for c in cols])
+            .sort("period")
+        )
+        z_data = [agg[c].to_list() for c in cols]
+        x_vals = [str(p) for p in agg["period"].to_list()]
+        return z_data, x_vals
+    z_data = [df[c].is_null().cast(pl.Int8).to_list() for c in cols]
+    return z_data, df["time"].to_list()
+
+
 def _panel_heatmap_missing(
     df: pl.DataFrame,
     *,
-    kind: Literal["heatmap", "matrix"],
     groups: list[str],
     columns: str | list[str] | None,
     facet_by: Literal["group", "member"],
@@ -812,7 +832,7 @@ def _panel_heatmap_missing(
 
         overlay_keys = overlay_keys_per_facet[facet_key]
         y_labels: list[str] = []
-        z_data: list[list[int]] = []
+        facet_cols: list[str] = []
 
         for overlay_key in overlay_keys:
             if facet_by == "member":
@@ -836,24 +856,9 @@ def _panel_heatmap_missing(
                 continue
 
             y_labels.append(y_label_entry)
+            facet_cols.append(col_name)
 
-            if time_aggregation:
-                df_agg = df.with_columns(
-                    pl.col("time").dt.truncate(time_aggregation).alias("period"),
-                )
-                periods = df_agg.select("period").unique().sort("period")["period"].to_list()
-                col_data = []
-                for period in periods:
-                    period_df = df_agg.filter(pl.col("period") == period)
-                    has_missing = period_df[col_name].null_count() > 0
-                    col_data.append(1 if has_missing else 0)
-                z_data.append(col_data)
-                x_vals = [str(p) for p in periods]
-            else:
-                col_data = df[col_name].is_null().cast(pl.Int8).to_list()
-                z_data.append(col_data)
-                x_vals = df["time"].to_list()
-
+        z_data, x_vals = _missing_z_data(df, facet_cols, time_aggregation)
         text_data = [["Missing" if v == 1 else "Present" for v in row] for row in z_data]
 
         fig.add_trace(
@@ -1004,7 +1009,7 @@ def plot_missing_data(
             "time": pl.datetime_range(
                 df["time"].min(),
                 df["time"].max(),
-                interval=sampling_interval,
+                interval=td,
                 eager=True,
             ),  # ty: ignore[no-matching-overload]
         })
@@ -1064,7 +1069,6 @@ def plot_missing_data(
             raise ValueError(msg)
         return _panel_heatmap_missing(
             df,
-            kind=kind,
             groups=groups,
             columns=columns,
             facet_by=effective_facet_by,
@@ -1124,63 +1128,17 @@ def plot_missing_data(
         fig.update_layout(showlegend=show_legend)
         return fig
 
-    elif kind == "heatmap":
-        # Heatmap of missing values over time (binary: 1=missing, 0=present)
-        if time_aggregation:
-            df_agg = df.with_columns([pl.col("time").dt.truncate(time_aggregation).alias("period")])
-            # Group by period and check for missing
-            periods = df_agg.select("period").unique().sort("period")["period"].to_list()
-            z_data = []
-            for col in plot_columns:
-                col_data = []
-                for period in periods:
-                    period_df = df_agg.filter(pl.col("period") == period)
-                    has_missing = period_df[col].null_count() > 0
-                    col_data.append(1 if has_missing else 0)
-                z_data.append(col_data)
+    elif kind in ("heatmap", "matrix"):
+        # Binary missing-data matrix over time (1=missing, 0=present),
+        # optionally aggregated into time_aggregation periods.
+        z_data, x_vals = _missing_z_data(df, plot_columns, time_aggregation)
 
-            x_vals = [str(p) for p in periods]
-        else:
-            # Use individual time points
-            z_data = []
-            for col in plot_columns:
-                col_data = df[col].is_null().cast(pl.Int8).to_list()
-                z_data.append(col_data)
-            x_vals = df["time"].to_list()
-
-        fig = go.Figure()
-        # Build custom text matrix for hover readability
         text_data = [["Missing" if v == 1 else "Present" for v in row] for row in z_data]
+        fig = go.Figure()
         fig.add_trace(
             go.Heatmap(
                 z=z_data,
                 x=x_vals,
-                y=plot_columns,
-                colorscale=[[0, color_present], [1, color_missing]],
-                showscale=False,
-                customdata=text_data,
-                hovertemplate="<b>%{y}</b><br>%{x}<br>%{customdata}<extra></extra>",
-            )
-        )
-
-        if x_label is None:
-            x_label = "Time"
-        if y_label is None:
-            y_label = "Column"
-
-    elif kind == "matrix":
-        # Binary matrix with time on x-axis
-        z_data = []
-        for col in plot_columns:
-            col_data = df[col].is_null().cast(pl.Int8).to_list()
-            z_data.append(col_data)
-
-        text_data = [["Missing" if v == 1 else "Present" for v in row] for row in z_data]
-        fig = go.Figure()
-        fig.add_trace(
-            go.Heatmap(
-                z=z_data,
-                x=df["time"].to_list(),
                 y=plot_columns,
                 colorscale=[[0, color_present], [1, color_missing]],
                 showscale=False,
@@ -1648,7 +1606,7 @@ def plot_outliers(
                         x=df_out["time"],
                         y=df_out[base],
                         mode="markers",
-                        marker={"color": _c, "size": outlier_size, "symbol": outlier_symbol},
+                        marker={"color": outlier_color, "size": outlier_size, "symbol": outlier_symbol},
                         hovertemplate=(f"<b>{base} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>"),
                         **_lg_sec,
                     ),
@@ -1724,7 +1682,7 @@ def plot_outliers(
                     y=df_outliers[base],
                     mode="markers",
                     showlegend=False,
-                    marker={"color": col_color, "size": outlier_size, "symbol": outlier_symbol},
+                    marker={"color": outlier_color, "size": outlier_size, "symbol": outlier_symbol},
                     hovertemplate=f"<b>{base} OUTLIER</b><br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
                 ),
                 row=ctx.row,
@@ -1896,11 +1854,16 @@ def plot_resampling_comparison(
         groups = []
 
     if groups is not None:
+        effective_facet_by = facet_by or "member"
+        _panel_cols = resolve_panel_columns(df_resampled, groups, columns)
+        _group_map, _members = _group_panel_columns(_panel_cols)
+        _n_overlays = len(_group_map) if effective_facet_by == "member" else len(_members)
+        _panel_colors = resolve_color_palette(color_palette, _n_overlays)
 
         def _render_resampling(ctx: RenderContext) -> None:
             """Render original and resampled traces for a single panel."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
-            _colors = resolve_color_palette(color_palette, 1)
+            _color = _panel_colors[ctx.entity_idx]
             # Original (from df_original, matching the same full column name)
             full_col = [c for c in df_original.columns if c.endswith(f"__{base}") or c == base]
             if full_col:
@@ -1910,7 +1873,7 @@ def plot_resampling_comparison(
                         x=df_original["time"],
                         y=df_original[orig_col],
                         mode="lines",
-                        line={"color": _colors[0], "width": original_line_width, "dash": original_line_dash},
+                        line={"color": _color, "width": original_line_width, "dash": original_line_dash},
                         opacity=original_line_opacity,
                         name=original_label,
                         showlegend=False,
@@ -1924,7 +1887,7 @@ def plot_resampling_comparison(
                     x=ctx.sub_df["time"],
                     y=ctx.sub_df[base],
                     mode="lines+markers",
-                    line={"color": _colors[0], "width": resampled_line_width, "dash": resampled_line_dash},
+                    line={"color": _color, "width": resampled_line_width, "dash": resampled_line_dash},
                     opacity=resampled_line_opacity,
                     name=resampled_label,
                     showlegend=False,
@@ -1933,7 +1896,6 @@ def plot_resampling_comparison(
                 col=ctx.col,
             )
 
-        effective_facet_by = facet_by or "member"
         fig = facet_figure(
             df_resampled,
             _render_resampling,

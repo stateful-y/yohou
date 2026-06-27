@@ -48,16 +48,21 @@ def _add_segment(
     grouped traces still toggle together.
     """
     add_kwargs = {} if row is None else {"row": row, "col": col}
+    t_start = times[int(idx[0])]
+    t_end = times[int(idx[-1])]
     fig.add_trace(
         go.Scatter(
-            x=[times[int(idx[0])], times[int(idx[-1])]],
+            x=[t_start, t_end],
             y=[row_label, row_label],
             mode="lines",
             line={"color": color, "width": line_width},
             name=name if show_legend else None,
             showlegend=show_legend,
             legendgroup=legendgroup,
-            hovertemplate=f"{name}<br>Start: %{{x}}<br>Fold: {row_label}<extra></extra>",
+            customdata=[[t_start, t_end], [t_start, t_end]],
+            hovertemplate=(
+                f"{name}<br>Start: %{{customdata[0]}}<br>End: %{{customdata[1]}}<br>Fold: {row_label}<extra></extra>"
+            ),
         ),
         **add_kwargs,
     )
@@ -229,6 +234,11 @@ def plot_splits(
     # Get splits
     splits = list(splitter.split(y, X_actual))
     n_splits = len(splits)
+    if n_splits == 0:
+        msg = (
+            "Splitter produced no splits. Check that 'y' has enough rows for the configured 'n_splits' and 'test_size'."
+        )
+        raise ValueError(msg)
 
     # Create figure
     fig = _create_figure(resampler)
@@ -719,7 +729,13 @@ def plot_cv_results_scatter(
     if scorer_name is None:
         # Look for mean_test_* keys
         mean_test_keys = [k for k in cv_results if k.startswith("mean_test_")]
-        scorer_name = mean_test_keys[0].replace("mean_test_", "") if mean_test_keys else "score"
+        if not mean_test_keys:
+            msg = (
+                "No 'mean_test_*' keys found in cv_results. Available keys: "
+                f"{list(cv_results.keys())}. Pass scorer_name= explicitly."
+            )
+            raise ValueError(msg)
+        scorer_name = mean_test_keys[0].replace("mean_test_", "")
 
     mean_key = f"mean_test_{scorer_name}"
     std_key = f"std_test_{scorer_name}"

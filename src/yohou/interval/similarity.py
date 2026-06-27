@@ -10,7 +10,7 @@ from scipy.spatial.distance import cdist
 from sklearn.base import clone
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils._compat import _BaseComposition
+from yohou.utils._compat import _BaseComposition, _fit_context
 
 from .base import BaseSimilarity
 
@@ -168,10 +168,11 @@ class DistanceSimilarity(BaseSimilarity):
             bad_cols = [col for col in value_cols if bad_mask[col][0]]
             if bad_cols:
                 raise ValueError(
-                    f"Column '{bad_cols[0]}' contains null or NaN values. DistanceSimilarity requires complete data."
+                    f"Columns {bad_cols} contain null or NaN values. DistanceSimilarity requires complete data."
                 )
         return result
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
@@ -330,7 +331,10 @@ class SeasonalSimilarity(BaseSimilarity):
         Reference timestamp from the first calibration prediction.
     interval_td_ : timedelta
         Time interval between consecutive timestamps, auto-detected
-        from calibration data.
+        from calibration data. When ``fit`` receives a single timestamp the
+        interval cannot be inferred and is set to ``timedelta(0)``; in that
+        case ``_extract_features`` leaves the time axis in raw seconds, so
+        ``seasonalities`` must be expressed in seconds to remain meaningful.
 
     Notes
     -----
@@ -445,6 +449,7 @@ class SeasonalSimilarity(BaseSimilarity):
 
         return np.column_stack(features)
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
@@ -483,7 +488,6 @@ class SeasonalSimilarity(BaseSimilarity):
             self.interval_td_ = timedelta(0)
 
         self._features_observed = self._extract_features(times)
-        self._n_features = self._features_observed.shape[1]
 
         return self
 
@@ -719,6 +723,7 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
             return self.weights
         return [1.0] * len(self.similarities)  # ty: ignore[invalid-argument-type]
 
+    @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
         y: pl.DataFrame,
@@ -797,6 +802,7 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
         self
 
         """
+        check_is_fitted(self, "similarities_")
         for _name, sim in self.similarities_:
             sim.rewind(y=y, y_pred=y_pred, X_actual=X_actual)
         return self

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -135,9 +136,15 @@ class _BaseEnsembleForecaster:
                 raise ValueError(
                     f"Forecaster '{name}' must be a BaseForecaster instance, got {type(forecaster).__name__}"
                 )
+            if "__" in name:
+                raise ValueError(
+                    f"Forecaster name '{name}' must not contain '__': the double underscore is "
+                    f"reserved for nested-parameter routing (e.g. set_params('{name}__param'))."
+                )
             names.append(name)
 
-        duplicates = [n for n in set(names) if names.count(n) > 1]
+        counts = Counter(names)
+        duplicates = [n for n, c in counts.items() if c > 1]
         if duplicates:
             raise ValueError(f"Duplicate forecaster names: {duplicates}")
 
@@ -285,6 +292,38 @@ class _BaseEnsembleForecaster:
                     f"Forecaster '{name}' predicts column dtypes that differ from "
                     f"'{reference_name}': {mismatched} (column: (this, reference)). "
                     f"All base forecasters must predict the same target dtypes."
+                )
+
+    def _validate_transformed_schemas_match(self) -> None:
+        """Verify children agree on the transformed-space target schema.
+
+        Only relevant for ``predict_transformed=True``: the children's
+        transformed-space predictions are combined directly, so they must
+        share ``local_y_t_schema_``. Children that legitimately differ here
+        (e.g. different target transformers) are fine for the default
+        inverse-transformed path, so this is checked lazily rather than at fit.
+
+        Raises
+        ------
+        ValueError
+            If any surviving forecaster's ``local_y_t_schema_`` differs.
+
+        """
+        t_schemas = {}
+        for name, forecaster in self.forecasters_:
+            t_schema = getattr(forecaster, "local_y_t_schema_", None)
+            if t_schema is not None:
+                t_schemas[name] = dict(t_schema)
+        if not t_schemas:
+            return
+        ref_name, ref_schema = next(iter(t_schemas.items()))
+        for name, t_schema in t_schemas.items():
+            if t_schema != ref_schema:
+                raise ValueError(
+                    f"predict_transformed=True requires all base forecasters to share the "
+                    f"transformed-space target schema, but '{name}' has {t_schema} while "
+                    f"'{ref_name}' has {ref_schema}. Use predict_transformed=False, or give the "
+                    f"forecasters matching target transformers."
                 )
 
     def _derive_fitted_attributes(
@@ -438,10 +477,13 @@ class _BaseEnsembleForecaster:
                     aggregated = np.mean(values, axis=1)
             elif strategy == "median":
                 aggregated = np.median(values, axis=1)
-            elif weights is not None:
-                aggregated = np.average(values, axis=1, weights=weights)
+            elif strategy == "mean":
+                if weights is not None:
+                    aggregated = np.average(values, axis=1, weights=weights)
+                else:
+                    aggregated = np.mean(values, axis=1)
             else:
-                aggregated = np.mean(values, axis=1)
+                raise ValueError(f"Unknown interval aggregation strategy {strategy!r}")
 
             agg_exprs.append(pl.Series(name=col, values=aggregated))
 

@@ -209,10 +209,11 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         n_cycles = len(y_t) // self.seasonality
 
         if self.method == "naive":
-            # Return last complete cycle
+            # Return last complete cycle. Drop "time" so all three methods
+            # return value-only columns consistently.
             start_idx = (n_cycles - 1) * self.seasonality
             end_idx = n_cycles * self.seasonality
-            pattern = y_t[start_idx:end_idx]
+            pattern = y_t[start_idx:end_idx].select(cs.all().exclude("time"))
 
         else:
             # Reshape into cycles and aggregate
@@ -329,9 +330,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
     Attributes
     ----------
-    estimator_ : Pipeline or dict[str, Pipeline]
-        Fitted sklearn Pipeline with a fourier feature transformer and the provided
-        a clone of the `estimator` model.
+    estimator_ : Pipeline
+        Fitted sklearn Pipeline with a fourier feature transformer and a clone
+        of the provided `estimator` model.
     harmonics_ : list of int
         Effective list of harmonics used for Fourier features.
 
@@ -463,7 +464,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         self._validate_sufficient_data(y_t)
 
         estimator = Pipeline([
-            ("poly_features", FunctionTransformer(func=self._build_fourier_features)),
+            ("fourier_features", FunctionTransformer(func=self._build_fourier_features)),
             ("regressor", clone(self.estimator)),
         ])
 

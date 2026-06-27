@@ -1444,24 +1444,21 @@ class TestMedianAEComponentwise:
 
 
 class TestScoreOverrideStubs:
-    def test_r2_compute_raw_errors_callable(self):
-        """R2Score._compute_raw_errors returns squared differences."""
+    def test_r2_compute_raw_errors_not_implemented(self):
+        """R2Score fully overrides score(); _compute_raw_errors is unreachable."""
         y_true = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
         y_pred = pl.DataFrame({"value": [12.0, 19.0, 28.0]})
         r2 = R2Score()
-        result = r2._compute_raw_errors(y_true, y_pred)
-        assert isinstance(result, pl.DataFrame)
-        # (10-12)^2=4, (20-19)^2=1, (30-28)^2=4
-        assert result["value"].to_list() == [4.0, 1.0, 4.0]
+        with pytest.raises(NotImplementedError):
+            r2._compute_raw_errors(y_true, y_pred)
 
-    def test_mda_compute_raw_errors_callable(self):
-        """MDA._compute_raw_errors returns absolute differences."""
+    def test_mda_compute_raw_errors_not_implemented(self):
+        """MDA fully overrides score(); _compute_raw_errors is unreachable."""
         y_true = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
         y_pred = pl.DataFrame({"value": [12.0, 19.0, 28.0]})
         mda = MeanDirectionalAccuracy()
-        result = mda._compute_raw_errors(y_true, y_pred)
-        assert isinstance(result, pl.DataFrame)
-        assert result["value"].to_list() == [2.0, 1.0, 2.0]
+        with pytest.raises(NotImplementedError):
+            mda._compute_raw_errors(y_true, y_pred)
 
 
 class TestMapPerVintageEdgeCases:
@@ -1514,4 +1511,73 @@ class TestMapPerVintageEdgeCases:
         scorer = MeanDirectionalAccuracy()
         scorer.fit(y_true)
         with pytest.raises(ValueError, match="All vintage groups were skipped"):
+            scorer.score(y_true, y_pred)
+
+
+class TestScaledMetricColumnMismatch:
+    """Regression tests for clear errors when score-time columns are not fitted."""
+
+    def test_rmsse_unfitted_column_raises_value_error(self):
+        """RMSSE raises a descriptive ValueError for columns not seen during fit()."""
+        y_train = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        scorer = RootMeanSquaredScaledError(seasonality=1)
+        scorer.fit(y_train)
+
+        y_true = pl.DataFrame({"time": [datetime(2020, 1, 6)], "other": [6.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 5)],
+            "time": [datetime(2020, 1, 6)],
+            "other": [5.5],
+        })
+        with pytest.raises(ValueError, match="not seen during fit"):
+            scorer.score(y_true, y_pred)
+
+    def test_mase_unfitted_column_raises_value_error(self):
+        """MASE raises a descriptive ValueError for columns not seen during fit()."""
+        y_train = pl.DataFrame({
+            "time": [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)],
+            "value": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        scorer = MeanAbsoluteScaledError(seasonality=1)
+        scorer.fit(y_train)
+
+        y_true = pl.DataFrame({"time": [datetime(2020, 1, 6)], "other": [6.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 5)],
+            "time": [datetime(2020, 1, 6)],
+            "other": [5.5],
+        })
+        with pytest.raises(ValueError, match="not seen during fit"):
+            scorer.score(y_true, y_pred)
+
+
+class TestMDAShortInputAggregation:
+    """Regression tests for MDA short-input handling across aggregation methods."""
+
+    def test_mda_short_input_scalar_aggregation_returns_zero(self):
+        """Fully collapsed aggregation returns 0.0 for too-short input."""
+        y_true = pl.DataFrame({"time": [datetime(2020, 1, 1)], "value": [10.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [12.0],
+        })
+        scorer = MeanDirectionalAccuracy(aggregation_method="all")
+        scorer.fit(y_true)
+        assert scorer.score(y_true, y_pred) == 0.0
+
+    def test_mda_short_input_dataframe_aggregation_raises(self):
+        """DataFrame-shaped aggregation raises instead of returning a bare scalar."""
+        y_true = pl.DataFrame({"time": [datetime(2020, 1, 1)], "value": [10.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "value": [12.0],
+        })
+        scorer = MeanDirectionalAccuracy(aggregation_method="componentwise")
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="at least 2 rows"):
             scorer.score(y_true, y_pred)

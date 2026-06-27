@@ -58,6 +58,19 @@ def test_linear_decay_max_steps_zeros_older() -> None:
     assert weights[-1] == 1.0
 
 
+def test_linear_decay_max_steps_exceeds_length() -> None:
+    """max_steps > len(key) computes without an OverflowError.
+
+    Ranks are cast to a signed type so that ``ranks - cutoff`` stays correct
+    (rather than underflowing) when max_steps exceeds the series length.
+    """
+    t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
+    weights = LinearDecayWeighter(max_steps=10).compute_weights(t).to_numpy()
+    assert len(weights) == 3
+    assert weights[-1] == 1.0
+    assert all(w >= 0.0 for w in weights)
+
+
 def test_seasonal_emphasis_matches_legacy_values() -> None:
     """SeasonalEmphasisWeighter emphasizes in-phase positions."""
     t = pl.Series(

@@ -46,9 +46,9 @@ class TestFeatureUnionFitTransform:
     def test_weighted_observe_rewind_preserve_time_dtype(self, time_series_factory):
         """Weighted observe/rewind keep the datetime "time" column.
 
-        Regression for the 2026-06-15 QA finding: the weighting path returned
-        ``X_transformed * weight``, which multiplied the whole DataFrame and
-        silently cast the datetime "time" column to f64.
+        The weighting path must scale only the feature columns, not the whole
+        DataFrame; multiplying the datetime "time" column by a weight would
+        silently cast it to f64.
         """
         X = time_series_factory(length=50)
         union = FeatureUnion(
@@ -277,6 +277,17 @@ class TestFeatureUnionAccessors:
         ])
         with pytest.raises(ValueError, match="step"):
             union[::2]
+
+    def test_slice_with_explicit_step_one_is_allowed(self):
+        """An explicit step of 1 is the documented supported case and must work."""
+        union = FeatureUnion([
+            ("a", SimpleTransformer(observation_horizon=0)),
+            ("b", SimpleTransformer(observation_horizon=0)),
+            ("c", SimpleTransformer(observation_horizon=0)),
+        ])
+        sub = union[0:2:1]
+        assert isinstance(sub, FeatureUnion)
+        assert len(sub.transformer_list) == 2
 
 
 class TestFeatureUnionValidation:

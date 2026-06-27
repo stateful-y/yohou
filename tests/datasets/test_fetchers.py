@@ -292,6 +292,54 @@ class TestRestructureKddCup:
         assert result.columns == ["time", "T1__value", "T2__value"]
 
 
+class TestFetchClassificationWasm:
+    """Tests for the CDN-backed _fetch_classification_wasm loader."""
+
+    def test_empty_target_frame_raises(self, monkeypatch):
+        """A y frame with no non-time column raises a descriptive ValueError."""
+        import io
+
+        from yohou.datasets import _fetchers
+
+        empty_y = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)]})
+        valid_x = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "feat": [1.0, 2.0],
+        })
+
+        def _fake_urlopen(url):
+            payload = empty_y if url.endswith("_y.bin") else valid_x
+            return io.BytesIO(payload.serialize(format="binary"))
+
+        monkeypatch.setattr(_fetchers, "urlopen", _fake_urlopen)
+
+        with pytest.raises(ValueError, match="no target column"):
+            _fetchers._fetch_classification_wasm("dummy")
+
+
+class TestFetchAirQualityClassificationGuards:
+    """Validation-guard tests for fetch_air_quality_classification."""
+
+    def test_missing_feature_columns_raises(self, monkeypatch):
+        """A frame missing feature measurements raises a naming ValueError."""
+        from yohou.datasets import _fetchers
+
+        # pm2.5 present (so the target guard passes) but feature columns absent.
+        frame = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+            "beijing_aq__pm2.5": [10.0, 20.0],
+        })
+
+        def _fake_fetch_kdd_cup(**_kwargs):
+            return Bunch(frame=frame)
+
+        monkeypatch.setattr(_fetchers, "_is_wasm", lambda: False)
+        monkeypatch.setattr(_fetchers, "fetch_kdd_cup", _fake_fetch_kdd_cup)
+
+        with pytest.raises(ValueError, match="feature columns"):
+            _fetchers.fetch_air_quality_classification()
+
+
 @pytest.fixture(scope="module")
 def air_quality_data():
     """Fetch the air quality classification dataset once per module."""

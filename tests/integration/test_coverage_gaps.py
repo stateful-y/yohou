@@ -342,8 +342,8 @@ class TestSlidingWindowSplitterOverflow:
             "value": list(range(10)),
         })
         # The guard in _iter_test_indices is normally unreachable because
-        # _resolve_train_size validates first.  Bypass that to cover the
-        # defensive check at line 530.
-        cv._resolve_train_size = lambda n: 8  # skip upstream validation
+        # split() resolves and validates train_size_ first.  Set the fitted
+        # train_size_ directly to bypass that and cover the defensive check.
+        cv.train_size_ = 8  # skip upstream validation
         with pytest.raises(ValueError, match="greater than n_samples"):
             list(cv._iter_test_indices(y))

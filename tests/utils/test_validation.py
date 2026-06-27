@@ -17,7 +17,6 @@ from yohou.utils.validation import (
     check_continuity,
     check_forecasting_horizon_positive,
     check_groups,
-    check_groups_exist,
     check_inputs,
     check_interval_consistency,
     check_schema,
@@ -364,6 +363,18 @@ class TestAddInterval:
         start = datetime(1998, 6, 30)
         result = add_interval(start, "5y", 1)
         assert result == datetime(2003, 6, 30)
+
+    def test_yearly_leap_day_to_non_leap_year(self):
+        """Feb 29 maps to Feb 28 when the target year is not a leap year."""
+        start = datetime(2020, 2, 29)
+        result = add_interval(start, "1y", 1)
+        assert result == datetime(2021, 2, 28)
+
+    def test_yearly_leap_day_to_leap_year(self):
+        """Feb 29 is preserved when the target year is also a leap year."""
+        start = datetime(2020, 2, 29)
+        result = add_interval(start, "1y", 4)
+        assert result == datetime(2024, 2, 29)
 
 
 class TestCheckTimeColumn:
@@ -1222,6 +1233,52 @@ class TestCheckScorerColumnSelection:
         assert set(y_true_out.columns) == {"time", "sales"}
         assert set(y_pred_out.columns) == {"time", "sales"}
 
+    def test_check_scorer_column_selection_missing_pred_col_global_raises(self):
+        """Selected target column absent from y_pred raises a naming ValueError."""
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
+        # y_pred is missing the "revenue" column.
+        y_pred = pl.DataFrame({"time": times, "sales": range(100, 105)})
+
+        scorer = MeanAbsoluteError(components=["revenue"])
+
+        with pytest.raises(ValueError, match="revenue"):
+            check_scorer_column_selection(
+                scorer=scorer,
+                y_true=y_true,
+                y_pred=y_pred,
+                pred_type="point",
+                coverage_rates=None,
+                interval_pattern=None,
+            )
+
+    def test_check_scorer_column_selection_missing_pred_col_panel_raises(self):
+        """Missing y_pred panel target column raises a naming ValueError."""
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y_true = pl.DataFrame({
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+        })
+        # y_pred is missing sales__store_2.
+        y_pred = pl.DataFrame({"time": times, "sales__store_1": range(100, 105)})
+
+        scorer = MeanAbsoluteError(groups=["sales"])
+
+        with pytest.raises(ValueError, match="sales__store_2"):
+            check_scorer_column_selection(
+                scorer=scorer,
+                y_true=y_true,
+                y_pred=y_pred,
+                pred_type="point",
+                coverage_rates=None,
+                interval_pattern=None,
+            )
+
     def test_check_scorer_column_selection_interval_with_coverage_rates(self):
         """Test interval forecast filtering by coverage rates."""
         import re
@@ -1477,27 +1534,6 @@ class TestCheckTimeColumnEdgeCases:
             check_time_column(df)
 
 
-class TestCheckPanelGroupNamesExistEdgeCases:
-    """Additional tests for check_groups_exist."""
-
-    def test_none_returns_early(self):
-        """Passing None for requested_panel_groups returns without error."""
-        check_groups_exist(
-            fitted_panel_groups=["a", "b"],
-            requested_panel_groups=None,
-            context="predict",
-        )
-
-    def test_missing_groups_raises(self):
-        """Requesting non-existent groups raises ValueError."""
-        with pytest.raises(ValueError, match="not found in fitted"):
-            check_groups_exist(
-                fitted_panel_groups=["a", "b"],
-                requested_panel_groups=["c"],
-                context="predict",
-            )
-
-
 class TestCheckIntervalSubDay:
     """Tests for check_interval_consistency with sub-day data."""
 
@@ -1587,19 +1623,6 @@ class TestCheckXActualRequired:
         """X_actual provided with positive horizon passes without error."""
         X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         check_X_actual_required(X, observation_horizon=5, context="predict")
-
-
-class TestCheckPanelGroupNamesExist:
-    """Tests for check_groups_exist."""
-
-    def test_missing_group_raises(self):
-        """Requesting a non-existent panel group raises ValueError."""
-        with pytest.raises(ValueError, match="not found"):
-            check_groups_exist(["g1"], ["g2", "g3"], "predict")
-
-    def test_valid_groups_pass(self):
-        """Requesting existing groups passes without error."""
-        check_groups_exist(["g1", "g2", "g3"], ["g1", "g2"], "predict")
 
 
 class TestValidateColumnNames:

@@ -21,6 +21,7 @@ from yohou.plotting._utils import (
     _create_subplots,
     _fill_trace_kwargs,
     _group_panel_columns,
+    _hex_to_rgba,
     _make_hovertemplate,
     _member_name,
     _subplot_spacing,
@@ -32,7 +33,7 @@ from yohou.plotting._utils import (
     resolve_color_palette,
     resolve_panel_columns,
 )
-from yohou.plotting.evaluation import _discover_proba_targets, _hex_to_rgba
+from yohou.plotting.evaluation import _discover_proba_targets
 from yohou.utils import inspect_panel, validate_plotting_data, validate_plotting_params
 
 # The full palette list is used as the default effective palette in every
@@ -338,7 +339,11 @@ def plot_forecast(
     # Non-panel, single-model case
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
     pred_value_cols = [c for c in y_pred.columns if c not in ("time", "vintage_time") and not interval_pattern.match(c)]
-    test_value_cols = [c for c in y_test.columns if c != "time"] if y_test is not None else list(pred_value_cols)
+    test_value_cols = (
+        [c for c in y_test.columns if c not in ("time", "vintage_time")]
+        if y_test is not None
+        else list(pred_value_cols)
+    )
 
     # Apply columns filter
     if columns is not None:
@@ -354,9 +359,7 @@ def plot_forecast(
         # Training data
         if y_train is not None and col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
-            _hex = actual_color.lstrip("#")
-            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-            _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            _train_color = _hex_to_rgba(actual_color, 0.4)
             ctx.fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
@@ -561,22 +564,14 @@ def _render_class_proba_traces(
         )
 
     if target in y_test.columns:
-        common_times = set(y_test["time"].to_list()) & set(pred_df["time"].to_list())
-        if common_times:
-            truth_f = y_test.filter(pl.col("time").is_in(list(common_times))).sort("time")
-            pred_f = pred_df.filter(pl.col("time").is_in(list(common_times))).sort("time")
+        truth_f = y_test.filter(pl.col("time").is_in(pred_df["time"].implode())).sort("time")
+        if truth_f.height > 0:
+            pred_f = pred_df.filter(pl.col("time").is_in(truth_f["time"].implode())).sort("time")
             label_to_idx = {lb: idx for idx, lb in enumerate(class_labels)}
-            marker_y: list[float] = []
-            m_colors: list[str] = []
-            for r_idx in range(len(truth_f)):
-                tl = str(truth_f[target][r_idx])
-                if tl in label_to_idx:
-                    cn = target_proba_cols[label_to_idx[tl]]
-                    marker_y.append(float(pred_f[cn][r_idx]))
-                    m_colors.append(colors[label_to_idx[tl]])
-                else:
-                    marker_y.append(0.0)
-                    m_colors.append(colors[0])
+            true_idx = [label_to_idx.get(str(lb), -1) for lb in truth_f[target].to_list()]
+            proba_mat = pred_f.select(target_proba_cols).to_numpy()
+            marker_y = [float(proba_mat[r_idx, ti]) if ti >= 0 else 0.0 for r_idx, ti in enumerate(true_idx)]
+            m_colors = [colors[ti] if ti >= 0 else colors[0] for ti in true_idx]
 
             _show_truth = show_legend if seen_legend is None else ("True class" not in seen_legend and show_legend)
             if seen_legend is not None:
@@ -661,9 +656,7 @@ def _render_categorical_traces(
         if y_train is not None and cat_col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
             y_vals = [cat_to_int.get(str(v), -1) for v in train_df[cat_col].to_list()]
-            _hex = actual_color.lstrip("#")
-            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-            _train_c = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            _train_c = _hex_to_rgba(actual_color, 0.4)
             train_label = f"{cat_col} (Train)"
             _show = show_legend if seen_legend is None else (train_label not in seen_legend and show_legend)
             if seen_legend is not None:
@@ -1089,7 +1082,7 @@ def _plot_forecast_multi_model(
     interval_pattern = re.compile(r"^.+_(lower|upper)_[\d.]+$")
 
     if y_test is not None:
-        test_value_cols = [c for c in y_test.columns if c != "time"]
+        test_value_cols = [c for c in y_test.columns if c not in ("time", "vintage_time")]
     else:
         _any_pred = next(iter(y_preds.values()))
         test_value_cols = [
@@ -1111,9 +1104,7 @@ def _plot_forecast_multi_model(
         # Training data
         if y_train is not None and col in y_train.columns:
             train_df = y_train.tail(n_history) if n_history is not None else y_train
-            _hex = actual_color.lstrip("#")
-            _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-            _train_color = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+            _train_color = _hex_to_rgba(actual_color, 0.4)
             ctx.fig.add_trace(
                 go.Scatter(
                     x=train_df["time"],
@@ -1143,7 +1134,6 @@ def _plot_forecast_multi_model(
                 lower_col = f"{interval_base}_lower_{rate}"
                 upper_col = f"{interval_base}_upper_{rate}"
                 if lower_col in y_pred.columns and upper_col in y_pred.columns:
-                    rgb = tuple(int(model_color[i : i + 2], 16) for i in (1, 3, 5))
                     t = y_pred["time"].to_list()
                     y_upper = y_pred[upper_col].to_list()
                     y_lower = y_pred[lower_col].to_list()
@@ -1163,7 +1153,7 @@ def _plot_forecast_multi_model(
                             col=ctx.col,
                         )
                     else:
-                        rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                        rgba = _hex_to_rgba(model_color, band_opacity)
                         x_band = t + t[::-1]
                         y_band = y_upper + y_lower[::-1]
                         ctx.fig.add_trace(
@@ -1263,7 +1253,6 @@ def _render_interval_bands(
     multi_member,
     is_multi_model,
     base_color,
-    member,
     band_opacity,
     line_width,
     legend_tracker,
@@ -1282,8 +1271,6 @@ def _render_interval_bands(
         if not coverage_rates:
             continue
         band_c = base_color if (multi_member and not is_multi_model) else m_color
-        _hex_b = band_c.lstrip("#")
-        rgb = tuple(int(_hex_b[i : i + 2], 16) for i in (0, 2, 4))
         for sort_idx, rate in enumerate(sorted(coverage_rates)):
             lower_c = f"{interval_base}_lower_{rate}"
             upper_c = f"{interval_base}_upper_{rate}"
@@ -1324,7 +1311,7 @@ def _render_interval_bands(
                         col=col_grid,
                     )
                 else:
-                    rgba = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {band_opacity})"
+                    rgba = _hex_to_rgba(band_c, band_opacity)
                     x_band = t + t[::-1]
                     y_band = y_upper + y_lower[::-1]
                     fig.add_trace(
@@ -1355,7 +1342,6 @@ def _render_forecast_trace(
     multi_member,
     is_multi_model,
     base_color,
-    member,
     line_width,
     connect_gaps,
     show_transition,
@@ -1541,30 +1527,23 @@ def _plot_forecast_panel_typed(
     sorted_cats: list[str] = []
     cat_to_int: dict[str, int] = {}
     if prediction_mode == "categorical":
-        all_cats: set[str] = set()
-        for suffix in suffixes_list:
-            test_m = _extract_member_df(y_test, suffix)
-            train_m = _extract_member_df(y_train, suffix) if y_train is not None else None
-            for pred_df in model_preds.values():
-                pred_m = _extract_member_df(pred_df, suffix)
-                for cc in pred_m.columns:
-                    if cc in ("time", "vintage_time"):
-                        continue
-                    if pred_m[cc].dtype in (pl.String, pl.Categorical):
-                        all_cats.update(pred_m[cc].cast(pl.String).unique().to_list())
-            for cc in test_m.columns:
+        cat_series: list[pl.Series] = []
+
+        def _collect_member_cats(member_df: pl.DataFrame) -> None:
+            """Append the member frame's categorical value columns to ``cat_series``."""
+            for cc in member_df.columns:
                 if cc in ("time", "vintage_time"):
                     continue
-                if test_m[cc].dtype in (pl.String, pl.Categorical):
-                    all_cats.update(test_m[cc].cast(pl.String).unique().to_list())
-            if train_m is not None:
-                for cc in train_m.columns:
-                    if cc in ("time", "vintage_time"):
-                        continue
-                    if train_m[cc].dtype in (pl.String, pl.Categorical):
-                        all_cats.update(train_m[cc].cast(pl.String).unique().to_list())
-        sorted_cats = sorted(all_cats)
-        cat_to_int = {cat: i for i, cat in enumerate(sorted_cats)}
+                if member_df[cc].dtype in (pl.String, pl.Categorical):
+                    cat_series.append(member_df[cc].cast(pl.String))
+
+        for suffix in suffixes_list:
+            _collect_member_cats(_extract_member_df(y_test, suffix))
+            for pred_df in model_preds.values():
+                _collect_member_cats(_extract_member_df(pred_df, suffix))
+            if y_train is not None:
+                _collect_member_cats(_extract_member_df(y_train, suffix))
+        sorted_cats, cat_to_int = build_category_map(*cat_series)
 
     for suffix_idx, suffix in enumerate(suffixes_list):
         row = suffix_idx // facet_n_cols + 1
@@ -1697,7 +1676,7 @@ def _plot_forecast_panel(
 
     Parameters
     ----------
-    y_test : pl.DataFrame
+    y_test : pl.DataFrame or None
         Actual test values with panel columns.
     y_pred : pl.DataFrame | dict[str, pl.DataFrame]
         Forecast values with panel columns, or dict mapping model names to
@@ -1847,7 +1826,6 @@ def _plot_forecast_panel(
     # Normalise y_pred into a model-name -> DataFrame mapping
     is_multi_model = isinstance(y_pred, dict)
     if is_multi_model:
-        assert isinstance(y_pred, dict)
         model_preds: dict[str, pl.DataFrame] = y_pred  # ty: ignore[invalid-assignment]
         model_names = list(model_preds.keys())
         model_colors = resolve_color_palette(_model_pal, len(model_names))
@@ -1884,15 +1862,11 @@ def _plot_forecast_panel(
 
             # Resolve per-trace colours and labels
             if multi_sub and facet_by is not None:
-                _hex = base_color.lstrip("#")
-                _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-                train_c: str = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+                train_c: str = _hex_to_rgba(base_color, 0.4)
                 actual_c = base_color
                 group_title: str | None = sub_name
             elif multi_sub:
-                _hex = base_color.lstrip("#")
-                _rgb = tuple(int(_hex[i : i + 2], 16) for i in (0, 2, 4))
-                train_c = f"rgba({_rgb[0]}, {_rgb[1]}, {_rgb[2]}, 0.4)"
+                train_c = _hex_to_rgba(base_color, 0.4)
                 actual_c = base_color
                 group_title = None
             else:
@@ -1939,7 +1913,6 @@ def _plot_forecast_panel(
                 multi_member=multi_sub,
                 is_multi_model=is_multi_model,
                 base_color=base_color if multi_sub else None,
-                member=sub_name,
                 band_opacity=band_opacity,
                 line_width=line_width,
                 legend_tracker=legend_tracker,
@@ -1984,7 +1957,6 @@ def _plot_forecast_panel(
                 multi_member=multi_sub,
                 is_multi_model=is_multi_model,
                 base_color=base_color if multi_sub else None,
-                member=sub_name,
                 line_width=line_width,
                 connect_gaps=connect_gaps,
                 show_transition=show_transition,
@@ -2222,8 +2194,7 @@ def plot_time_weight(
                 seen_subs.add(sub_name)
 
                 # Convert hex to rgba for fill
-                rgb = tuple(int(color[i : i + 2], 16) for i in (1, 3, 5))
-                rgba_fill = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {fill_opacity})"
+                rgba_fill = _hex_to_rgba(color, fill_opacity)
 
                 fig.add_trace(
                     go.Scatter(
@@ -2272,8 +2243,7 @@ def plot_time_weight(
     color = color_palette[0]
 
     # Convert hex to rgba for fill
-    rgb = tuple(int(color[i : i + 2], 16) for i in (1, 3, 5))
-    rgba_fill = f"rgba({rgb[0]}, {rgb[1]}, {rgb[2]}, {fill_opacity})"
+    rgba_fill = _hex_to_rgba(color, fill_opacity)
 
     # Create figure
     fig = _create_figure(resampler)
@@ -2723,13 +2693,41 @@ def _compute_classical(
 
     clean_np = _clean_series(series)
 
-    # Auto-offset for multiplicative model with non-positive values
-    _offset = 0.0
-    if model == "multiplicative":
-        min_val = clean_np.min()
-        if min_val <= 0:
-            _offset = abs(min_val) + 1e-8
-            clean_np = clean_np + _offset
+    # Multiplicative decomposition requires strictly positive values. When the
+    # series has non-positive values, decompose in log space (log -> additive
+    # -> exp), mirroring `_compute_stl`, so the components stay consistent with
+    # the original `observed` series.
+    if model == "multiplicative" and clean_np.min() <= 0:
+        import warnings  # noqa: PLC0415
+
+        warnings.warn(
+            "Multiplicative classical decomposition of a non-positive series "
+            "uses a log-transform approximation (log -> additive -> exp). "
+            "Results may differ from a true multiplicative decomposition.",
+            UserWarning,
+            stacklevel=2,
+        )
+        offset = abs(float(clean_np.min())) + 1e-8
+        log_np = np.log(clean_np + offset)
+        result = seasonal_decompose(
+            log_np,
+            model="additive",
+            period=period,
+            two_sided=two_sided,
+            extrapolate_trend=extrapolate_trend,
+        )
+        observed = clean_np
+        trend = np.exp(result.trend)
+        seasonal = np.exp(result.seasonal)
+        residual = np.exp(result.resid)
+        seasonal_adjusted = observed / seasonal
+        return {
+            "observed": np.asarray(observed).tolist(),
+            "trend": np.asarray(trend).tolist(),
+            "seasonal": np.asarray(seasonal).tolist(),
+            "residual": np.asarray(residual).tolist(),
+            "seasonal_adjusted": np.asarray(seasonal_adjusted).tolist(),
+        }
 
     result = seasonal_decompose(
         clean_np,
@@ -2739,7 +2737,7 @@ def _compute_classical(
         extrapolate_trend=extrapolate_trend,
     )
 
-    observed = clean_np - _offset
+    observed = clean_np
     trend = result.trend
     seasonal = result.seasonal
     residual = result.resid
