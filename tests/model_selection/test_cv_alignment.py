@@ -49,7 +49,8 @@ class TestCheckCvAlignment:
         cv = ExpandingWindowSplitter(n_splits=3, test_size=5)
         info = check_cv_alignment(cv, forecasting_horizon=5)
         assert info["is_balanced"] is True
-        assert info["n_vintages"] >= 2
+        # test_size=stride=5 => ceil(5/5)=1 observe step => initial + 1 = 2 vintages.
+        assert info["n_vintages"] == 2
 
     def test_expanding_default_test_size(self):
         """ExpandingWindowSplitter with test_size=None uses fh."""
@@ -71,10 +72,16 @@ class TestCheckCvAlignment:
         assert info["is_balanced"] is False
 
     def test_step_counts_structure(self):
-        """step_counts maps each step to number of vintages."""
+        """step_counts maps each step to number of vintages and balances per step."""
         cv = SlidingWindowSplitter(n_splits=3, test_size=9, stride=3)
         info = check_cv_alignment(cv, forecasting_horizon=3)
+        # test_size=9, stride=3 => ceil(9/3)=3 observe steps => initial + 3 = 4 vintages.
+        assert info["n_vintages"] == 4
         assert set(info["step_counts"].keys()) == {1, 2, 3}
+        # Every step is forecast by every vintage when aligned.
+        assert all(count == info["n_vintages"] for count in info["step_counts"].values())
+        # Each vintage forecasts exactly forecasting_horizon steps.
+        assert info["steps_per_vintage"] == [3] * info["n_vintages"]
 
     def test_unknown_splitter_returns_none(self):
         """Unknown splitter type returns None for all fields."""
