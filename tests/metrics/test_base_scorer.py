@@ -943,8 +943,8 @@ class TestPreFilterZeroWeights:
         times = y_true["time"].to_list()
         tw_df = pl.DataFrame({
             "time": times,
-            "A_weight": [2.0, 2.0, 2.0, 2.0, 2.0],
-            "B_weight": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "A__weight": [2.0, 2.0, 2.0, 2.0, 2.0],
+            "B__weight": [1.0, 1.0, 1.0, 1.0, 1.0],
         })
         scorer = MeanAbsoluteError()
         scorer.fit(y_true)
