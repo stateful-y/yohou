@@ -40,17 +40,15 @@ def _transformer_has_inverse(self) -> bool:
         True if the wrapped transformer has inverse_transform method.
 
     """
-    # Check if fitted (instance_ exists)
-    if not hasattr(self, "instance_"):
-        # Before fit, check the default class
-        default_class = getattr(self, "_estimator_default_class", None)
-        if default_class is not None:
-            return hasattr(default_class, "inverse_transform")
-        # Fall back to checking if transformer param was provided
-        transformer = getattr(self, "transformer", None)
-        if transformer is not None:
-            return hasattr(transformer, "inverse_transform")
-        return False
+    # Consult the resolved estimator class, which BaseClassWrapper sets in
+    # __init__ regardless of whether the estimator was passed via the
+    # `transformer`/`scaler` param or defaulted from _estimator_default_class.
+    # Using it both before and after fit keeps the `invertible` tag static
+    # across fit (check_tags_static_after_fit), where checking `instance_`
+    # alone would flip the tag once fitting created it.
+    estimator_class = getattr(self, "estimator_class", None)
+    if estimator_class is not None:
+        return hasattr(estimator_class, "inverse_transform")
     return hasattr(self.instance_, "inverse_transform")
 
 

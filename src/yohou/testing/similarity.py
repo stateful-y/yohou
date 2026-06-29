@@ -114,7 +114,7 @@ def check_similarity_metric_params_verbatim(similarity) -> None:
 
 
 def check_similarity_methods_call_check_is_fitted(similarity, y_pred_calib: pl.DataFrame) -> None:
-    """Check ``predict`` and ``observe`` raise ``NotFittedError`` before ``fit``.
+    """Check ``predict``, ``observe``, and ``rewind`` raise ``NotFittedError`` before ``fit``.
 
     Parameters
     ----------
@@ -126,7 +126,8 @@ def check_similarity_methods_call_check_is_fitted(similarity, y_pred_calib: pl.D
     Raises
     ------
     AssertionError
-        If ``predict`` or ``observe`` does not raise ``NotFittedError`` when unfitted.
+        If ``predict``, ``observe``, or ``rewind`` does not raise
+        ``NotFittedError`` when unfitted.
 
     """
     name = type(similarity).__name__
@@ -145,5 +146,14 @@ def check_similarity_methods_call_check_is_fitted(similarity, y_pred_calib: pl.D
         # convenience; only the unfitted-error path is being exercised.
         unfitted2.observe(query, query)
         raise AssertionError(f"{name}.observe() must raise NotFittedError when unfitted")
+    except NotFittedError:
+        pass
+
+    unfitted3 = clone(similarity)
+    try:
+        # rewind(y, y_pred, X_actual=None): both slots receive query here as a
+        # convenience; only the unfitted-error path is being exercised.
+        unfitted3.rewind(query, query)
+        raise AssertionError(f"{name}.rewind() must raise NotFittedError when unfitted")
     except NotFittedError:
         pass

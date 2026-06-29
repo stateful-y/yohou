@@ -568,6 +568,23 @@ class TestInverseTransformAvailability:
                 f"{transformer.__class__.__name__} should have inverse_transform"
             )
 
+    def test_invertible_tag_static_across_fit_with_explicit_scaler(self, time_series_factory):
+        """Test the invertible tag is stable before and after fit for SklearnScaler.
+
+        Tags must not change across fit (check_tags_static_after_fit). A
+        ``SklearnScaler`` wrapping an invertible scaler must report
+        ``invertible=True`` both before and after fit, never flipping.
+        """
+        X = time_series_factory(length=20, n_components=2)
+        scaler = SklearnScaler(scaler=SklearnStandardScaler)
+
+        before = scaler.__sklearn_tags__().transformer_tags.invertible
+        scaler.fit(X)
+        after = scaler.__sklearn_tags__().transformer_tags.invertible
+
+        assert before is True, "invertible tag should be True before fit for an invertible scaler"
+        assert before == after, f"invertible tag flipped across fit: {before} -> {after}"
+
 
 class TestNormalizer:
     """Normalizer specific tests."""

@@ -265,6 +265,7 @@ class DistanceSimilarity(BaseSimilarity):
         self
 
         """
+        check_is_fitted(self, "_X_observed")
         n_rewind = len(y)
         self._X_observed = self._X_observed[: len(self._X_observed) - n_rewind]
         return self
@@ -561,6 +562,7 @@ class SeasonalSimilarity(BaseSimilarity):
         self
 
         """
+        check_is_fitted(self, "first_time_")
         n_rewind = len(y)
         self._features_observed = self._features_observed[: len(self._features_observed) - n_rewind]
         return self

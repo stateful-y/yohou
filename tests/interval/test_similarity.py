@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.exceptions import NotFittedError
 
 from yohou.interval.similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
 
@@ -107,6 +108,13 @@ class TestDistanceSimilarityObserve:
         # Weights shape should change (more training points)
         weights_after = sim.predict(prediction_data)
         assert weights_after.shape[1] == weights_before.shape[1] + 2
+
+    def test_rewind_before_fit_raises_not_fitted(self, train_data):
+        """Test that rewind before fit raises NotFittedError (not AttributeError)."""
+        y, y_pred = train_data
+        sim = DistanceSimilarity()
+        with pytest.raises(NotFittedError):
+            sim.rewind(y[:2], y_pred[:2])
 
 
 class TestDistanceSimilarityWithExogenous:
@@ -374,6 +382,13 @@ class TestSeasonalSimilarityObserve:
 
         weights_after = sim.predict(daily_prediction_data)
         assert weights_after.shape[1] == n_before + 5
+
+    def test_rewind_before_fit_raises_not_fitted(self, daily_data):
+        """Test that rewind before fit raises NotFittedError (not AttributeError)."""
+        y, y_pred = daily_data
+        sim = SeasonalSimilarity(seasonalities=[7.0])
+        with pytest.raises(NotFittedError):
+            sim.rewind(y[:2], y_pred[:2])
 
 
 class TestSeasonalSimilarityProperties:
