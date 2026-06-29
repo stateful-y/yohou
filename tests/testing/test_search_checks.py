@@ -258,6 +258,28 @@ class TestSearchCheckFunctionsIntervalDelegation:
         """check_search_interval_predict_delegates exercises predict_interval delegation."""
         check_search_interval_predict_delegates(fitted_interval_search)
 
+    def test_interval_predict_delegates_requires_vintage_time(self):
+        """check_search_interval_predict_delegates rejects predictions lacking vintage_time."""
+        from sklearn.base import BaseEstimator
+
+        class _StubSearchNoVintage(BaseEstimator):
+            """Fitted-looking stub whose predict_interval omits vintage_time."""
+
+            def fit(self, *args, **kwargs):
+                # Set a trailing-underscore attr so check_is_fitted() passes.
+                self.best_forecaster_ = object()
+                return self
+
+            def predict_interval(self, coverage_rates=None, X_future=None, X_forecast=None):
+                return pl.DataFrame({
+                    "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+                    "val_lower_0.9": [0.0, 1.0],
+                    "val_upper_0.9": [2.0, 3.0],
+                })
+
+        with pytest.raises(AssertionError, match="vintage_time"):
+            check_search_interval_predict_delegates(_StubSearchNoVintage().fit())
+
 
 class TestSearchCheckFunctionsPanel:
     """Tests for the panel-data subselection check (conditionally yielded)."""

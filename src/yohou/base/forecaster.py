@@ -21,6 +21,7 @@ from yohou.base.utils import _derive_step_columns
 from yohou.utils import (
     Tags,
     cast,
+    check_panel_groups_match,
     get_group_df,
     inspect_panel,
     validate_forecaster_data,
@@ -305,8 +306,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         if X_actual is not None:
             _, X_panel_groups = inspect_panel(X_actual)
 
-            if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X_actual` and `y` do not have the same local group names.")
+            # Use the canonical mismatch check so the error message lists both
+            # group sets and matches the shape produced elsewhere (e.g.
+            # validate_forecaster_data). Global-only X_actual is accepted.
+            check_panel_groups_match(y, X_actual)
 
         # Validate that X_actual is provided when target_as_feature=None
         # and a feature transformer is configured.  Failing early here avoids

@@ -260,8 +260,25 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_actual_test: 
     assert "vintage_time" in y_pred.columns, "Predictions must have 'vintage_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
 
-    # Validate shapes
-    assert len(y_pred) == forecasting_horizon, f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
+    # Validate shapes. Panel forecasters may stack predictions per group, so the
+    # total row count is a multiple of the horizon rather than the horizon
+    # itself. Only assert the strict single-group row count for non-panel
+    # forecasters (groups_ is None); for panel forecasters, require the per-group
+    # row count (rows // n_groups) to equal the horizon.
+    groups = getattr(forecaster, "groups_", None)
+    if groups is None:
+        assert len(y_pred) == forecasting_horizon, (
+            f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
+        )
+    else:
+        n_groups = len(groups)
+        assert len(y_pred) % forecasting_horizon == 0, (
+            f"Panel predictions should have a multiple of {forecasting_horizon} rows, got {len(y_pred)}"
+        )
+        assert len(y_pred) in (forecasting_horizon, n_groups * forecasting_horizon), (
+            f"Panel predictions should have {forecasting_horizon} (wide) or "
+            f"{n_groups * forecasting_horizon} (stacked) rows, got {len(y_pred)}"
+        )
 
     # Validate time column types
     assert isinstance(y_pred["vintage_time"].dtype, pl.Datetime | pl.Date), (

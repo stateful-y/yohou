@@ -1108,8 +1108,12 @@ class TestPanelGroupMismatchErrors:
         )
 
         forecaster = PointReductionForecaster()
-        with pytest.raises(ValueError, match="do not have the same local group names"):
+        # The canonical mismatch message lists both group sets.
+        with pytest.raises(ValueError, match="Panel groups mismatch") as exc_info:
             forecaster.fit(y, X_actual=X_actual, forecasting_horizon=3)
+        message = str(exc_info.value)
+        assert "group_a" in message and "group_b" in message
+        assert "group_c" in message and "group_d" in message
 
 
 class TestEmptyTrainingData:

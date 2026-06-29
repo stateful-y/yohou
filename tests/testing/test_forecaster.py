@@ -34,6 +34,16 @@ from yohou.testing.forecaster import (
 )
 
 
+def test_interval_step_column_check_reexported_from_public_api():
+    """check_observe_predict_interval_with_step_columns is reachable from yohou.testing."""
+    import yohou.testing as testing_pkg
+
+    assert hasattr(testing_pkg, "check_observe_predict_interval_with_step_columns"), (
+        "check_observe_predict_interval_with_step_columns must be re-exported from yohou.testing"
+    )
+    assert "check_observe_predict_interval_with_step_columns" in testing_pkg.__all__
+
+
 class TestForecasterFitChecks:
     """Tests for forecaster fit-related check functions."""
 
@@ -191,6 +201,40 @@ class TestForecasterPanelObserveRewind:
             "g1__val": [float(i % 7) + 1 for i in range(n)],
         })
         return y
+
+    def test_predict_time_columns_panel_stacked(self, panel_data):
+        """check_predict_time_columns tolerates stacked panel predictions.
+
+        A panel forecaster that stacks predictions per group emits
+        ``G * forecasting_horizon`` rows, so the check must not assert a strict
+        single-group row count equal to the horizon when ``groups_`` is set.
+        """
+        y = panel_data
+        n_groups = 2
+        forecasting_horizon = 3
+
+        class _StackedPanelForecaster:
+            """Wraps a fitted panel forecaster but emits stacked per-group rows."""
+
+            groups_ = ["g0", "g1"]
+
+            def __init__(self, inner):
+                self._inner = inner
+
+            def predict(self, forecasting_horizon):
+                wide = self._inner.predict(forecasting_horizon=forecasting_horizon)
+                # Stack: one block of `horizon` rows per group (G * H rows total).
+                return pl.concat([wide.select("vintage_time", "time") for _ in self.groups_])
+
+        inner = SeasonalNaive(seasonality=7)
+        inner.fit(y.head(40), forecasting_horizon=forecasting_horizon)
+        stacked = _StackedPanelForecaster(inner)
+
+        produced = stacked.predict(forecasting_horizon=forecasting_horizon)
+        assert len(produced) == n_groups * forecasting_horizon  # sanity: more than horizon
+
+        # Must not raise even though row count != forecasting_horizon.
+        check_predict_time_columns(stacked, y.head(40))
 
     def test_observe_extends_panel_observations(self, panel_data):
         """check_observe_extends_observations passes for panel forecaster."""

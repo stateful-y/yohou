@@ -43,6 +43,7 @@ from .forecaster import (
     check_forecasting_horizon_validation,
     check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_interval_with_step_columns,
     check_observe_predict_with_step_columns,
     check_predict_time_columns,
     check_predict_X_forecast_override,
@@ -724,6 +725,21 @@ def _yield_yohou_forecaster_checks(
                 },
             )
 
+            if forecaster_type is not None and "interval" in forecaster_type:
+                yield (
+                    "check_observe_predict_interval_with_step_columns",
+                    check_observe_predict_interval_with_step_columns,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "y_test": y_test,
+                        "X_actual_test": X_actual_test,
+                        "X_future": X_future_test,
+                        "X_forecast": X_forecast_test,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
     if _has_step_data and not _requires_exogenous:
         yield (
             "check_requires_exogenous_warns_on_X_future_X_forecast",
@@ -970,8 +986,11 @@ def _yield_yohou_scorer_checks(
     if hasattr(scorer, "aggregation_method"):
         validation_test_cases.append(("aggregation_method", ["invalid_method"], "aggregation_method"))
 
-    # Add coverage validation for interval scorers
-    if tags.get("prediction_type") == "interval":
+    # Add coverage validation for interval scorers that accept a coverage_rates
+    # constructor param. Interval-typed conformity scorers (e.g. QuantileResidual)
+    # do not expose coverage_rates, so constructing scorer_class(coverage_rates=...)
+    # would raise a spurious TypeError; skip the coverage cases for those.
+    if tags.get("prediction_type") == "interval" and "coverage_rates" in scorer.get_params():
         validation_test_cases.extend([
             ("coverage_rates", [1.5], "coverage"),  # Out of range
             ("coverage_rates", [-0.5], "coverage"),  # Negative

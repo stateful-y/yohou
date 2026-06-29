@@ -445,10 +445,10 @@ def _similarity_instances() -> dict[str, object]:
 
     return {
         "DistanceSimilarity": DistanceSimilarity(),
-        "SeasonalSimilarity": SeasonalSimilarity(seasonalities=[7.0]),
+        "SeasonalSimilarity": SeasonalSimilarity(seasonality=[7.0]),
         "CompositeSimilarity": CompositeSimilarity([
             ("dist", DistanceSimilarity()),
-            ("seas", SeasonalSimilarity(seasonalities=[7.0])),
+            ("seas", SeasonalSimilarity(seasonality=[7.0])),
         ]),
     }
 
@@ -495,7 +495,7 @@ def _composition_descriptors() -> dict[str, dict]:
         },
         "CompositeSimilarity": {
             "attr": "similarities",
-            "components": [("dist", DistanceSimilarity()), ("seas", SeasonalSimilarity(seasonalities=[7.0]))],
+            "components": [("dist", DistanceSimilarity()), ("seas", SeasonalSimilarity(seasonality=[7.0]))],
         },
         "FeatureUnion": {
             "attr": "transformer_list",

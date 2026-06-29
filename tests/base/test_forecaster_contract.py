@@ -166,6 +166,28 @@ class TestBaseForecasterPreFitValidation:
         with pytest.raises(ValueError, match="target_as_feature=None requires X"):
             f.fit(y, forecasting_horizon=1)
 
+    def test_panel_group_mismatch_message_lists_both_group_sets(self, y_X_factory):
+        """Mismatched panel groups raise the canonical message listing both group sets.
+
+        The message must match the shape produced by ``check_panel_groups_match``
+        (the word "mismatch" plus both the y and X_actual group lists), not a
+        terse "do not have the same local group names" string.
+        """
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, panel=True, n_groups=2)
+        x_panel, _ = y_X_factory(length=50, n_targets=1, n_features=0, panel=True, n_groups=2)
+        # Rename X_actual's group prefixes so they no longer match y's groups.
+        x_panel = x_panel.rename({c: c.replace("group_", "store_") for c in x_panel.columns if c != "time"})
+
+        f = PointReductionForecaster()
+        with pytest.raises(ValueError, match="mismatch") as exc_info:
+            f.fit(y, x_panel, forecasting_horizon=1)
+
+        message = str(exc_info.value)
+        assert "group_0" in message and "group_1" in message, f"y group set must be listed in the error, got: {message}"
+        assert "store_0" in message and "store_1" in message, (
+            f"X_actual group set must be listed in the error, got: {message}"
+        )
+
 
 class TestBaseForecasterRewindObservationHorizonZero:
     """Tests for rewind with observation_horizon == 0."""

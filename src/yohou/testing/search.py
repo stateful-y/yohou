@@ -1085,6 +1085,7 @@ def check_search_interval_predict_delegates(
     y_pred = search_cv.predict_interval(coverage_rates=coverage_rates, X_future=X_future, X_forecast=X_forecast)
 
     assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
+    assert "vintage_time" in y_pred.columns, "Interval predictions should have 'vintage_time' column"
     assert "time" in y_pred.columns, "Interval predictions should have 'time' column"
 
     interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
