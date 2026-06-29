@@ -478,6 +478,40 @@ class TestPlotOutlierDetection:
         fig = plot_outliers(monthly_2col_df, columns="y", method="percentile", threshold=90.0)
         assert_figure_valid(fig)
 
+    def test_percentile_threshold_flags_symmetric_outer_tails(self):
+        """threshold=95 must flag the outer 5% total (2.5% each tail), not 10%.
+
+        The dashed bound lines should sit at the 2.5th and 97.5th percentiles
+        so that the central [2.5, 97.5] range (95% of mass) is *not* flagged.
+        Previously the bounds were placed at the 5th/95th percentiles, which
+        flags the outer 10% of the distribution, contradicting the docstring.
+        """
+        values = [float(v) for v in range(1, 101)]  # 1..100, easy quantiles
+        df = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 1) + pl.duration(hours=99),
+                "1h",
+                eager=True,
+            ),
+            "y": values,
+        })
+        fig = plot_outliers(df, columns="y", method="percentile", threshold=95.0, show_bounds=True)
+        series = df["y"]
+        expected_lower = series.quantile(0.025)
+        expected_upper = series.quantile(0.975)
+        bound_lines = [
+            t for t in fig.data if getattr(t, "mode", None) == "lines" and getattr(t.line, "dash", None) == "dash"
+        ]
+        bound_values = sorted({t.y[0] for t in bound_lines})
+        assert bound_values == pytest.approx([expected_lower, expected_upper])
+        # The flagged outlier markers must be the outer 5% only.
+        markers = [t for t in fig.data if getattr(t, "mode", None) == "markers"]
+        flagged = {y for t in markers for y in t.y}
+        for val in values:
+            outside_central = val < expected_lower or val > expected_upper
+            assert (val in flagged) == outside_central, val
+
     def test_multiple_columns(self, monthly_2col_df):
         """Test outlier detection on multiple columns."""
         fig = plot_outliers(monthly_2col_df, columns=["y", "y2"], method="zscore")
@@ -638,6 +672,38 @@ class TestPlotResamplingComparison:
         hourly, daily = hourly_and_daily
         fig = plot_resampling_comparison(hourly, daily, columns="temp", width=900, height=400)
         assert_layout(fig, width=900, height=400)
+
+    def test_panel_legend_shows_original_and_resampled_labels(self):
+        """Panel branch must surface original/resampled labels in the legend.
+
+        Previously both panel traces set showlegend=False unconditionally, so
+        neither label ever appeared regardless of show_legend.
+        """
+        hourly = pl.DataFrame({
+            "time": pl.datetime_range(
+                pl.datetime(2020, 1, 1),
+                pl.datetime(2020, 1, 7, 23),
+                "1h",
+                eager=True,
+            ),
+            "a__temp": [20.0 + i % 24 for i in range(7 * 24)],
+            "b__temp": [30.0 + i % 24 for i in range(7 * 24)],
+        })
+        daily = hourly.group_by_dynamic("time", every="1d").agg(
+            pl.col("a__temp").mean(),
+            pl.col("b__temp").mean(),
+        )
+        fig = plot_resampling_comparison(
+            hourly,
+            daily,
+            groups=["a", "b"],
+            original_label="Hourly",
+            resampled_label="Daily",
+            show_legend=True,
+        )
+        names = visible_legend_names(fig)
+        assert "Hourly" in names
+        assert "Daily" in names
 
 
 def _make_three_group_panel() -> pl.DataFrame:

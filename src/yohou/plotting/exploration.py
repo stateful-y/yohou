@@ -1573,8 +1573,12 @@ def plot_outliers(
             upper = q3 + threshold * iqr
             mask = (series < lower) | (series > upper)
         else:  # percentile
-            lower = series.quantile(1 - threshold / 100)
-            upper = series.quantile(threshold / 100)
+            # Flag the outer (100 - threshold)% total, split symmetrically
+            # across both tails, so threshold=95 flags the outer 5% (2.5%
+            # below the 2.5th percentile and 2.5% above the 97.5th).
+            tail = (1 - threshold / 100) / 2
+            lower = series.quantile(tail)
+            upper = series.quantile(1 - tail)
             if not isinstance(lower, (int, float)) or not isinstance(upper, (int, float)):
                 return pl.Series([False] * len(series)), None, None
             mask = (series < lower) | (series > upper)
@@ -1871,13 +1875,16 @@ def plot_resampling_comparison(
         _group_map, _members = _group_panel_columns(_panel_cols)
         _n_overlays = len(_group_map) if effective_facet_by == "member" else len(_members)
         _panel_colors = resolve_color_palette(color_palette, _n_overlays)
+        _legend_tracker = LegendTracker(show_legend=show_legend)
 
         def _render_resampling(ctx: RenderContext) -> None:
             """Render original and resampled traces for a single panel."""
             base = [c for c in ctx.sub_df.columns if c != "time"][0]
             _color = _panel_colors[ctx.entity_idx]
-            # Original (from df_original, matching the same full column name)
-            full_col = [c for c in df_original.columns if c.endswith(f"__{base}") or c == base]
+            # Original (from df_original, reconstructing the full panel column
+            # name from the facet context; sub_df aliases it to display_name).
+            full_name = f"{ctx.group_name}__{ctx.member_name}"
+            full_col = [c for c in df_original.columns if c in (full_name, ctx.member_name)]
             if full_col:
                 orig_col = full_col[0]
                 ctx.fig.add_trace(
@@ -1888,7 +1895,8 @@ def plot_resampling_comparison(
                         line={"color": _color, "width": original_line_width, "dash": original_line_dash},
                         opacity=original_line_opacity,
                         name=original_label,
-                        showlegend=False,
+                        legendgroup=original_label,
+                        showlegend=_legend_tracker.should_show(original_label),
                     ),
                     row=ctx.row,
                     col=ctx.col,
@@ -1902,7 +1910,8 @@ def plot_resampling_comparison(
                     line={"color": _color, "width": resampled_line_width, "dash": resampled_line_dash},
                     opacity=resampled_line_opacity,
                     name=resampled_label,
-                    showlegend=False,
+                    legendgroup=resampled_label,
+                    showlegend=_legend_tracker.should_show(resampled_label),
                 ),
                 row=ctx.row,
                 col=ctx.col,
