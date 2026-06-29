@@ -297,7 +297,7 @@ def _check_multi_vintage_time(df: pl.DataFrame) -> None:
 
     """
     if "time" not in df.columns:
-        raise ValueError("df must contain a 'time' column.")
+        raise ValueError(f"df must contain a 'time' column. Found columns: {list(df.columns)}")
 
     time_col = df["time"]
     if not isinstance(time_col.dtype, pl.Datetime | pl.Date):
@@ -568,7 +568,9 @@ def validate_scorer_data(
     _, X_groups = inspect_panel(y_pred)
     if set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
-            f"Panel groups mismatch. `y_true` has {sorted(y_groups.keys())}. `y_pred` has {sorted(X_groups.keys())}."
+            f"Panel groups mismatch between `y_true` and `y_pred`. "
+            f"`y_true` groups: {sorted(y_groups.keys())}, "
+            f"`y_pred` groups: {sorted(X_groups.keys())}."
         )
 
     # Validate column presence and types

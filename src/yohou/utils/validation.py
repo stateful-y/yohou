@@ -125,6 +125,15 @@ def check_scorer_column_selection(
     if not (has_panel_specs or has_component_specs or coverage_rates is not None):
         return y_true, y_pred
 
+    # Leading time columns that must survive every y_pred subselection. The
+    # "time" column is always present; "vintage_time" is present for
+    # multi-vintage predictions (from observe_predict with a stride) and must
+    # be preserved so downstream scoring can still group rows by forecast
+    # origin. Dropping it here would silently collapse multi-vintage scoring.
+    y_pred_lead_cols = ["time"]
+    if "vintage_time" in y_pred.columns:
+        y_pred_lead_cols.append("vintage_time")
+
     # Validate coverage_rates if present (interval scorers)
     if coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
         available_rates = set()
@@ -187,7 +196,7 @@ def check_scorer_column_selection(
             # Check for interval columns in y_pred if prediction_type is interval
             if pred_type == "interval":
                 # For interval, y_pred has _lower_ and _upper_ columns corresponding to y_true columns
-                y_pred_selected_cols = ["time"]
+                y_pred_selected_cols = list(y_pred_lead_cols)
 
                 for col in selected_cols:
                     if col == "time":
@@ -212,7 +221,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(y_pred_selected_cols)
             elif pred_type == "class_proba":
                 # Class proba: y_pred has {target}_proba_{class} columns
-                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                y_pred_selected_cols = [c for c in y_pred_lead_cols if c in y_pred.columns]
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -222,7 +231,7 @@ def check_scorer_column_selection(
             else:
                 # Point forecast: columns should match directly
                 y_pred_cols = set(y_pred.columns)
-                valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+                valid_y_pred_cols = y_pred_lead_cols + [c for c in selected_cols if c != "time" and c in y_pred_cols]
 
                 missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
                 if missing_pred_cols:
@@ -254,7 +263,7 @@ def check_scorer_column_selection(
 
             # For global data, logic is simpler
             if pred_type == "interval":
-                y_pred_selected_cols = ["time"]
+                y_pred_selected_cols = list(y_pred_lead_cols)
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -275,7 +284,7 @@ def check_scorer_column_selection(
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
             elif pred_type == "class_proba":
-                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                y_pred_selected_cols = [c for c in y_pred_lead_cols if c in y_pred.columns]
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -284,7 +293,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(y_pred_selected_cols)
             else:
                 y_pred_cols = set(y_pred.columns)
-                valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+                valid_y_pred_cols = y_pred_lead_cols + [c for c in selected_cols if c != "time" and c in y_pred_cols]
 
                 missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
                 if missing_pred_cols:
@@ -297,7 +306,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(valid_y_pred_cols)
     elif coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
         # No component filter, but coverage rate filter
-        y_pred_selected_cols = ["time"]
+        y_pred_selected_cols = list(y_pred_lead_cols)
 
         # Filter y_pred columns to only those matching requested rates
         for col in y_pred.columns:

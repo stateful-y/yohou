@@ -830,6 +830,32 @@ class TestValidateScorerDataPanelEdgeCases:
         with pytest.raises(ValueError):
             validate_scorer_data(scorer, y_true=y_true, y_pred=y_pred)
 
+    def test_panel_group_mismatch_message_matches_canonical_shape(self):
+        """The scorer panel-mismatch error uses the canonical check_panel_groups_match shape."""
+        from yohou.utils.validate_data import validate_scorer_data
+
+        times = [datetime(2024, 1, i) for i in range(1, 4)]
+        scorer = MeanAbsoluteError()
+        y_true = pl.DataFrame({
+            "time": times,
+            "g1__val": [1.0, 2.0, 3.0],
+            "g2__val": [4.0, 5.0, 6.0],
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "g1__val": [1.1, 2.1, 3.1],
+            "g3__val": [4.1, 5.1, 6.1],
+        })
+        scorer.fit(y_true)
+        with pytest.raises(ValueError) as excinfo:
+            validate_scorer_data(scorer, y_true=y_true, y_pred=y_pred)
+        message = str(excinfo.value)
+        # Canonical shape from check_panel_groups_match:
+        # "Panel groups mismatch between `<a>` and `<b>`. `<a>` groups: ..., `<b>` groups: ..."
+        assert "Panel groups mismatch between `y_true` and `y_pred`." in message
+        assert "`y_true` groups:" in message
+        assert "`y_pred` groups:" in message
+
     def test_interval_missing_lower_upper_raises(self):
         """Interval scorer missing lower/upper columns raises ValueError."""
         from yohou.metrics import EmpiricalCoverage
@@ -1435,6 +1461,18 @@ class TestCheckMultiVintageTime:
         y_pred = pl.DataFrame({"vintage_time": [datetime(2020, 1, 1)], "value": [1.0]})
         with pytest.raises(ValueError, match="must contain a 'time' column"):
             _check_multi_vintage_time(y_pred)
+
+    def test_missing_time_column_lists_found_columns(self):
+        """The missing-time error lists the columns found, matching check_time_column."""
+        from yohou.utils.validate_data import _check_multi_vintage_time
+
+        y_pred = pl.DataFrame({"vintage_time": [datetime(2020, 1, 1)], "value": [1.0]})
+        with pytest.raises(ValueError) as excinfo:
+            _check_multi_vintage_time(y_pred)
+        message = str(excinfo.value)
+        assert "Found columns:" in message
+        assert "vintage_time" in message
+        assert "value" in message
 
     def test_non_datetime_time_raises(self):
         """A 'time' column with a non-datetime dtype is rejected."""

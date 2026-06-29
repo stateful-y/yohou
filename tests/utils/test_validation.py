@@ -1533,6 +1533,117 @@ class TestCheckScorerColumnSelection:
         assert all("weather_proba_" in c for c in y_pred_out.columns if c != "time")
         assert not any("mood" in c for c in y_pred_out.columns)
 
+    def test_check_scorer_column_selection_preserves_vintage_time_global(self):
+        """vintage_time must survive global component column selection.
+
+        Multi-vintage predictions carry a ``vintage_time`` column that groups
+        rows by forecast origin. Dropping it during column selection breaks
+        multi-vintage scoring, so it must be preserved whenever a filter is
+        active (regression for vintage-time-dropped-by-column-selection).
+        """
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        # Two vintages: the first covers two timestamps, the second three.
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "sales": range(100, 105),
+            "revenue": range(105, 110),
+        })
+
+        scorer = MeanAbsoluteError(components=["sales"])
+
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+        assert set(y_true_out.columns) == {"time", "sales"}
+
+    def test_check_scorer_column_selection_preserves_vintage_time_panel(self):
+        """vintage_time must survive panel group/component column selection."""
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+            "revenue__store_1": range(10, 15),
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "sales__store_1": range(100, 105),
+            "sales__store_2": range(105, 110),
+            "revenue__store_1": range(110, 115),
+        })
+
+        scorer = MeanAbsoluteError(groups=["sales"])
+
+        _, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+
+    def test_check_scorer_column_selection_preserves_vintage_time_interval(self):
+        """vintage_time must survive interval coverage-rate column selection."""
+        import re
+
+        from yohou.metrics import IntervalScore
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({"time": times, "value": range(5)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "value_lower_0.9": [0.0] * 5,
+            "value_upper_0.9": [10.0] * 5,
+            "value_lower_0.95": [0.0] * 5,
+            "value_upper_0.95": [10.0] * 5,
+        })
+        scorer = IntervalScore(coverage_rates=[0.95])
+        interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+
+        _, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="interval",
+            coverage_rates=[0.95],
+            interval_pattern=interval_pattern,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+
 
 class TestCheckTimeColumnEdgeCases:
     """Additional edge case tests for check_time_column."""
