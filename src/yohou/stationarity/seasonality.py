@@ -327,8 +327,10 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         Must be non-empty if provided; all entries must be positive integers
         not exceeding ``seasonality / 2`` (Nyquist limit). Raises ``ValueError``
         at fit time otherwise.
-    estimator : RegressorMixin, default=ElasticNet()
-        Regression model used to fit Fourier coefficients.
+    estimator : RegressorMixin or None, default=None
+        Regression model used to fit Fourier coefficients. When ``None``, a
+        fresh ``ElasticNet()`` is constructed inside ``__init__`` (so that
+        separate instances never share one estimator object).
     target_transformer : BaseTransformer, optional
         Transformer for target variable.
     panel_strategy : {"global", "multivariate"}, default="global"
@@ -392,7 +394,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         self,
         seasonality: float,
         harmonics: list[int] | None = None,
-        estimator: RegressorMixin = ElasticNet(),
+        estimator: RegressorMixin | None = None,
         target_transformer=None,
         panel_strategy="global",
     ):
@@ -403,7 +405,10 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         )
 
         self.harmonics = harmonics
-        self.estimator = estimator
+        # Build the default estimator inside __init__ rather than as a mutable
+        # default argument so two default-constructed instances never share the
+        # same ElasticNet object.
+        self.estimator = ElasticNet() if estimator is None else estimator
 
     def _build_fourier_features(self, X_time_indices: np.ndarray) -> np.ndarray:
         """Construct Fourier feature matrix.

@@ -6,10 +6,10 @@ import numbers
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
-from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
+from yohou.utils._compat import Interval
 from yohou.utils.validation import interval_to_timedelta
 
 

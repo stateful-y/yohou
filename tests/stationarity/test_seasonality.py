@@ -390,6 +390,21 @@ class TestFourierSeasonalityForecaster:
             expected_failures=set(expected_failures),
         )
 
+    def test_default_estimator_not_shared_across_instances(self):
+        """Two default-constructed forecasters must not share one estimator object.
+
+        Using a mutable ``ElasticNet()`` as the default argument value would make
+        every default-constructed instance reference the same object, so mutating
+        one instance's estimator (or relying on identity) leaks across instances.
+        The sklearn convention is ``estimator=None`` with the concrete default
+        built inside ``__init__``.
+        """
+        a = FourierSeasonalityForecaster(seasonality=12)
+        b = FourierSeasonalityForecaster(seasonality=12)
+
+        assert a.estimator is not b.estimator, "default-constructed instances share the same estimator object"
+        assert isinstance(a.estimator, ElasticNet)
+
     def test_fourier_seasonality_sine_wave_recovery(self):
         """Test Fourier forecaster recovers pure sine wave with 1 harmonic."""
         # Create perfect sine wave with period 12

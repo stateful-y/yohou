@@ -603,3 +603,32 @@ class TestTimeIndexTransformerEdgeCases:
         transformer = TimeIndexTransformer()
         with pytest.raises(ValueError, match="conflict"):
             transformer.fit(X)
+
+
+class TestCompatLayerImports:
+    """Private sklearn APIs must be routed through the yohou compat shim."""
+
+    def test_interval_imported_via_compat_shim(self):
+        """``Interval`` must come from ``yohou.utils._compat``, not sklearn private API.
+
+        Importing ``Interval`` directly from ``sklearn.utils._param_validation``
+        bypasses the single-file compat layer that isolates version-specific
+        breakage of private sklearn APIs. The module should depend on the shim
+        so that any future sklearn rename is fixed in exactly one place.
+        """
+        import inspect
+
+        from yohou.preprocessing import time_features
+        from yohou.utils._compat import Interval as CompatInterval
+
+        # The symbol the module actually uses must be the shim's object.
+        assert time_features.Interval is CompatInterval
+
+        # The import statement itself must target the compat shim, not the
+        # private sklearn module (identity alone would pass even with a direct
+        # private import since both resolve to the same class).
+        source = inspect.getsource(time_features)
+        assert "from sklearn.utils._param_validation import" not in source, (
+            "time_features.py imports a private sklearn API directly; route it through yohou.utils._compat"
+        )
+        assert "from yohou.utils._compat import" in source

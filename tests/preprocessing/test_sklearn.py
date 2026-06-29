@@ -585,6 +585,30 @@ class TestInverseTransformAvailability:
         assert before is True, "invertible tag should be True before fit for an invertible scaler"
         assert before == after, f"invertible tag flipped across fit: {before} -> {after}"
 
+    def test_inverse_transform_preserves_input_dtypes(self):
+        """inverse_transform should restore the original input column dtypes.
+
+        sklearn computes in float64 and returns a numpy array, so a Float32
+        input silently upcasts to Float64 through transform. inverse_transform
+        is the round-trip back to the original space and must reconstruct the
+        DataFrame using the fitted input schema rather than the bare column
+        names, otherwise downstream code sees a dtype that does not match the
+        data it originally provided.
+        """
+        X = pl.DataFrame({
+            "time": [datetime(2024, 1, i) for i in range(1, 6)],
+            "value": pl.Series([10.0, 20.0, 30.0, 40.0, 50.0], dtype=pl.Float32),
+        })
+        scaler = StandardScaler()
+        scaler.fit(X)
+
+        X_t = scaler.transform(X)
+        X_inv = scaler.inverse_transform(X_t)
+
+        assert X_inv.schema["value"] == pl.Float32, (
+            f"inverse_transform dropped the original Float32 dtype, got {X_inv.schema['value']}"
+        )
+
 
 class TestNormalizer:
     """Normalizer specific tests."""

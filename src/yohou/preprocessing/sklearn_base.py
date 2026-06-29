@@ -270,8 +270,12 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         # sklearn inverse_transform returns a numpy array; reconstruct polars DataFrame below
         X_unscaled_array = self.instance_.inverse_transform(X_no_time)
 
-        # Convert back to DataFrame with original column names
-        X_unscaled_no_time = pl.DataFrame(X_unscaled_array, schema=X_no_time.columns, orient="row")
+        # Convert back to DataFrame using the fitted input schema so the original
+        # column dtypes are restored. Passing a list of names only would let
+        # polars infer dtypes from the float64 numpy array, silently upcasting
+        # (e.g. Float32 -> Float64) and losing the dtypes the caller fitted on.
+        inverse_schema = {col: self.X_schema_[col] for col in X_no_time.columns}
+        X_unscaled_no_time = pl.DataFrame(X_unscaled_array, schema=inverse_schema, orient="row")
 
         # Reattach time column to the unscaled features
         return pl.concat([time, X_unscaled_no_time], how="horizontal")
