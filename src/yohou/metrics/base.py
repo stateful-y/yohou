@@ -725,28 +725,6 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             vintage_weight=per_vintage["_vw"].to_numpy(),
         )
 
-    def _resolve_vintage_weight_to_context(
-        self,
-        context: ScoringContext,
-        vintage_weighter: BaseWeighter | None,
-    ) -> ScoringContext:
-        """Resolve a vintage weighter into context.vintage_weight.
-
-        Lightweight alternative to ``_pre_filter_zero_weights`` for scorers
-        that only need vintage weighting (no time/step weights).
-        """
-        if vintage_weighter is None:
-            return context
-        if context.vintage_time is None:
-            return context
-        vw_resolved = _resolve_weighter_to_array(
-            vintage_weighter,
-            context.vintage_time,
-            None,
-            "vintage weight",
-        )
-        return self._set_vintage_weight_on_context(context, vw_resolved)
-
     def _apply_weights(
         self,
         scores: pl.DataFrame,

@@ -1366,6 +1366,57 @@ class TestMDA:
         assert result.shape == (1, 1)
 
 
+class TestPointScorerWeighterSignatureConsistency:
+    """MedianAE, R2, and MDA must expose the same weighter params as their siblings.
+
+    Every other ``BasePointScorer`` (MAE, MSE, RMSE, ...) accepts
+    ``time_weighter`` and ``step_weighter`` in addition to ``vintage_weighter``.
+    These three previously omitted the time/step weighters from their
+    constructors, breaking the cross-family signature contract.
+    """
+
+    @pytest.mark.parametrize("scorer_cls", [MedianAbsoluteError, R2Score, MeanDirectionalAccuracy])
+    def test_accepts_and_stores_time_and_step_weighters(self, scorer_cls):
+        """Constructor accepts time_weighter/step_weighter and stores them as-is."""
+        tw = LookupWeighter(mapping={}, default=1.0)
+        sw = LookupWeighter(mapping={}, default=1.0)
+        scorer = scorer_cls(time_weighter=tw, step_weighter=sw)
+        assert scorer.time_weighter is tw
+        assert scorer.step_weighter is sw
+
+    @pytest.mark.parametrize("scorer_cls", [MedianAbsoluteError, R2Score, MeanDirectionalAccuracy])
+    def test_weighter_params_in_get_params(self, scorer_cls):
+        """time_weighter and step_weighter appear in get_params (sklearn introspection)."""
+        params = scorer_cls().get_params()
+        assert "time_weighter" in params
+        assert "step_weighter" in params
+        assert "vintage_weighter" in params
+
+
+class TestPointScorerLowerIsBetterProperty:
+    """R2 and MDA must report lower_is_better via the base property, not a shadow attr.
+
+    ``BaseScorer.lower_is_better`` is a read-only ``@property`` backed by the
+    ``_lower_is_better`` class attribute. Declaring a plain ``lower_is_better``
+    class attribute on a subclass shadows that property inconsistently.
+    """
+
+    @pytest.mark.parametrize("scorer_cls", [R2Score, MeanDirectionalAccuracy])
+    def test_lower_is_better_is_property(self, scorer_cls):
+        """lower_is_better is the inherited property, not a shadowing class attribute."""
+        # The plain bool class attribute, if present, shadows the property.
+        assert isinstance(type(scorer_cls()).lower_is_better, property)
+        assert "lower_is_better" not in vars(scorer_cls)
+
+    @pytest.mark.parametrize("scorer_cls", [R2Score, MeanDirectionalAccuracy])
+    def test_lower_is_better_property_and_tag_agree(self, scorer_cls):
+        """The property and the scorer tag both report False (higher is better)."""
+        scorer = scorer_cls()
+        assert scorer.lower_is_better is False
+        tags = scorer.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is False
+
+
 class TestMaxAEPartialCollapse:
     def test_max_ae_stepwise_only(self):
         """MaxAbsoluteError with stepwise only exercises partial collapse."""

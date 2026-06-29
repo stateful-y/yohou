@@ -937,3 +937,85 @@ class TestPinballLossScalar:
     def test_scalar_below_quantile(self):
         """When y < q the loss is ``(1 - tau) * (q - y)``."""
         assert _pinball_loss(0.5, 1.0, 2.0) == pytest.approx(0.5 * (2.0 - 1.0))
+
+
+class TestIntervalScorerWeighterSignatureConsistency:
+    """CalibrationError and CRPS must expose the same weighter params as siblings.
+
+    Every other ``BaseIntervalScorer`` (EmpiricalCoverage, IntervalScore, ...)
+    accepts ``time_weighter``, ``step_weighter``, and ``vintage_weighter``.
+    These two previously omitted all three from their constructors, breaking
+    the cross-family signature contract.
+    """
+
+    @pytest.mark.parametrize("scorer_cls", [CalibrationError, ContinuousRankedProbabilityScore])
+    def test_accepts_and_stores_weighters(self, scorer_cls):
+        """Constructor accepts and stores time/step/vintage weighters as-is."""
+        tw = LookupWeighter(mapping={}, default=1.0)
+        sw = LookupWeighter(mapping={}, default=1.0)
+        vw = LookupWeighter(mapping={}, default=1.0)
+        scorer = scorer_cls(time_weighter=tw, step_weighter=sw, vintage_weighter=vw)
+        assert scorer.time_weighter is tw
+        assert scorer.step_weighter is sw
+        assert scorer.vintage_weighter is vw
+
+    @pytest.mark.parametrize("scorer_cls", [CalibrationError, ContinuousRankedProbabilityScore])
+    def test_weighter_params_in_get_params(self, scorer_cls):
+        """time/step/vintage weighters appear in get_params (sklearn introspection)."""
+        params = scorer_cls().get_params()
+        assert "time_weighter" in params
+        assert "step_weighter" in params
+        assert "vintage_weighter" in params
+
+    def test_crps_time_weighter_changes_score(self):
+        """A time_weighter that up-weights the worse timestep changes the CRPS scalar."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0]})
+        # Step 1 well-centred, step 2 badly off so the two steps differ strongly.
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 2,
+            "time": times,
+            "value_lower_0.5": [9.0, 30.0],
+            "value_upper_0.5": [11.0, 35.0],
+            "value_lower_0.9": [8.0, 31.0],
+            "value_upper_0.9": [12.0, 36.0],
+        })
+
+        unweighted = ContinuousRankedProbabilityScore()
+        unweighted.fit(y_true)
+        unweighted_score = unweighted.score(y_true, y_pred)
+
+        weighted = ContinuousRankedProbabilityScore(
+            time_weighter=LookupWeighter(mapping={times[0]: 1.0, times[1]: 5.0})
+        )
+        weighted.fit(y_true)
+        weighted_score = weighted.score(y_true, y_pred)
+
+        assert weighted_score != pytest.approx(unweighted_score)
+
+    def test_calibration_error_vintage_weighter_changes_score(self):
+        """A vintage_weighter that reweights vintages changes the calibration error."""
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+        vt1 = datetime(2019, 12, 31)
+        vt2 = datetime(2019, 12, 30)
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0]})
+        # Vintage vt1 covers both rates; vintage vt2 misses, so per-vintage
+        # calibration error differs and vintage weighting matters.
+        y_pred = pl.DataFrame({
+            "vintage_time": [vt1] * 2 + [vt2] * 2,
+            "time": times * 2,
+            "value_lower_0.9": [8.0, 18.0, 30.0, 40.0],
+            "value_upper_0.9": [12.0, 22.0, 35.0, 45.0],
+            "value_lower_0.95": [7.0, 17.0, 31.0, 41.0],
+            "value_upper_0.95": [13.0, 23.0, 36.0, 46.0],
+        })
+
+        unweighted = CalibrationError()
+        unweighted.fit(y_true)
+        unweighted_score = unweighted.score(y_true, y_pred)
+
+        weighted = CalibrationError(vintage_weighter=LookupWeighter(mapping={vt1: 5.0, vt2: 1.0}))
+        weighted.fit(y_true)
+        weighted_score = weighted.score(y_true, y_pred)
+
+        assert weighted_score != pytest.approx(unweighted_score)

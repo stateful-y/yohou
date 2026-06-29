@@ -663,6 +663,9 @@ class CalibrationError(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -673,6 +676,9 @@ class CalibrationError(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -864,6 +870,9 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
         coverage_rates: list[float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         self.integration = integration
 
@@ -876,6 +885,9 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):

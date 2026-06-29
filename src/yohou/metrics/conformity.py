@@ -562,6 +562,7 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
         tags = super().__sklearn_tags__()
         assert tags.scorer_tags is not None
         tags.scorer_tags.prediction_type = "interval"
+        tags.scorer_tags.symmetric = True
         return tags
 
     @abc.abstractmethod

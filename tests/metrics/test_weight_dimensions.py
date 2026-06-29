@@ -935,29 +935,32 @@ def two_vintage_point_data():
 
 
 class TestRejectWeights:
-    """Pattern 2 scorers omit time_weighter and step_weighter from __init__.
+    """R2, MDA, and MedianAE accept the full sibling weighter signature.
 
-    R2Score, MeanDirectionalAccuracy, and MedianAbsoluteError expose only a
-    vintage_weighter; Python raises TypeError for the unexpected keyword
-    arguments time_weighter and step_weighter.
+    These scorers expose ``time_weighter``, ``step_weighter``, and
+    ``vintage_weighter`` like every other ``BasePointScorer``. Because they are
+    non-linear, the time/step weighters only drop zero-weight rows rather than
+    reweighting the aggregate, but the constructor arguments must still exist.
     """
 
-    def test_r2_rejects_time_weighter(self):
-        """R2Score does not accept a time_weighter constructor argument."""
-        with pytest.raises(TypeError):
-            R2Score(time_weighter=LookupWeighter(mapping={}, default=1.0))
+    def test_r2_accepts_time_weighter(self):
+        """R2Score accepts and stores a time_weighter constructor argument."""
+        tw = LookupWeighter(mapping={}, default=1.0)
+        scorer = R2Score(time_weighter=tw)
+        assert scorer.time_weighter is tw
 
-    def test_mda_rejects_step_weighter(self):
-        """MeanDirectionalAccuracy does not accept a step_weighter constructor argument."""
-        with pytest.raises(TypeError):
-            MeanDirectionalAccuracy(step_weighter=LookupWeighter(mapping={}, default=1.0))
+    def test_mda_accepts_step_weighter(self):
+        """MeanDirectionalAccuracy accepts and stores a step_weighter constructor argument."""
+        sw = LookupWeighter(mapping={}, default=1.0)
+        scorer = MeanDirectionalAccuracy(step_weighter=sw)
+        assert scorer.step_weighter is sw
 
 
 class TestResolveVintageWeightToContext:
-    """Cover _resolve_vintage_weight_to_context for Pattern 2 scorers."""
+    """Cover vintage weighting for the non-linear (whole-column) point scorers."""
 
     def test_r2_with_vintage_weight_callable(self, two_vintage_point_data):
-        """R2Score supports vintage_weight via _resolve_vintage_weight_to_context."""
+        """R2Score supports vintage_weight through its score() weight pipeline."""
         y_true, y_pred = two_vintage_point_data
         scorer = R2Score()
         scorer.fit(y_true)

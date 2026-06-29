@@ -255,3 +255,31 @@ class TestConformityScorerTags:
         assert tags.scorer_tags is not None
         assert tags.scorer_tags.symmetric is True
         assert tags.scorer_tags.multiplicative is True
+
+    def test_quantile_residual_tags(self):
+        """QuantileResidual is asymmetric (signed variant)."""
+
+        class _ConcreteQuantileResidual(QuantileResidual):
+            def score(self, y_truth, y_pred, /, **score_params):
+                return y_truth
+
+            def inverse_score(self, y_pred, conformity_scores, coverage_rate):
+                return y_pred
+
+        tags = _ConcreteQuantileResidual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is False
+
+    def test_absolute_quantile_residual_tags(self):
+        """AbsoluteQuantileResidual is symmetric, matching the 'absolute' convention."""
+
+        class _ConcreteAbsoluteQuantileResidual(AbsoluteQuantileResidual):
+            def score(self, y_truth, y_pred, /, **score_params):
+                return y_truth
+
+            def inverse_score(self, y_pred, conformity_scores, coverage_rate):
+                return y_pred
+
+        tags = _ConcreteAbsoluteQuantileResidual().__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        assert tags.scorer_tags.symmetric is True
