@@ -768,6 +768,57 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         return result
 
+    def observe(self, X: pl.DataFrame) -> "FeatureUnion":
+        """Observe new data, fanning out to each child transformer.
+
+        FeatureUnion holds no buffer of its own; the union's stateful memory is
+        the union of its children's buffers. This override fans ``observe`` out
+        to each child so their memory advances. The inherited
+        ``BaseTransformer.observe`` cannot be used because it guards on
+        ``X_schema_``, which FeatureUnion never sets.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            New data with a mandatory ``"time"`` column to observe.
+
+        Returns
+        -------
+        self : FeatureUnion
+            The union with each child transformer's memory advanced.
+
+        """
+        check_is_fitted(self)
+        for _, transformer, _ in self._iter():
+            if hasattr(transformer, "observe"):
+                transformer.observe(X)
+        return self
+
+    def rewind(self, X: pl.DataFrame) -> "FeatureUnion":
+        """Rewind internal memory, fanning out to each child transformer.
+
+        Mirrors :meth:`observe` by delegating to each child's ``rewind`` so the
+        union's per-child buffers are rolled back to the provided window. The
+        inherited ``BaseTransformer.rewind`` cannot be used because it guards on
+        ``X_schema_``, which FeatureUnion never sets.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Data with a mandatory ``"time"`` column to rewind state to.
+
+        Returns
+        -------
+        self : FeatureUnion
+            The union with each child transformer's memory rewound.
+
+        """
+        check_is_fitted(self)
+        for _, transformer, _ in self._iter():
+            if hasattr(transformer, "rewind"):
+                transformer.rewind(X)
+        return self
+
     def get_metadata_routing(self) -> MetadataRouter:
         """Get metadata routing of this object.
 

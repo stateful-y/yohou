@@ -303,11 +303,10 @@ def _rewind_transformers_one(
                 X_feat_extra = X_feat_extra.tail(deficit)
                 X_feat_in = pl.concat([X_feat_extra, X_feat_in], how="vertical")
 
-        # Use rewind_transform (combined operation) instead of separate
-        # rewind() + observe_transform().  Composite transformers such as
-        # FeatureUnion only implement the combined method; calling rewind()
-        # directly on them raises NotFittedError because their fit() does
-        # not set the base-class fitted attributes.
+        # Use rewind_transform (combined operation): this path needs the
+        # transformed output X_t_all, so the combined rewind-and-transform is
+        # the right call rather than a state-only rewind() followed by a
+        # separate transform.
         X_t_all = feature_transformer.rewind_transform(X_feat_in)
         # Keep the row aligned to the most-recent observation timestamp rather
         # than blindly taking the last row: when the feature transformer drops

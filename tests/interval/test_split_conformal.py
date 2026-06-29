@@ -315,6 +315,28 @@ class TestSplitConformalObserveRewind:
         for group_time in scf.observed_time_.values():
             assert group_time == expected_time
 
+    def test_observe_updates_conformity_panel(self, y_X_factory):
+        """observe on panel data must run the conformity/similarity update.
+
+        Regression test: the panel branch dispatched through
+        ``BasePanelForecaster._observe_panel`` previously skipped the
+        conformity/similarity score update that the standard branch runs, so
+        ``conformity_scores_`` stayed frozen at its fit-time size and prediction
+        intervals went silently stale after the first panel ``observe``.
+        """
+        y, _ = y_X_factory(length=250, n_targets=1, n_features=0, seed=42, panel=True, n_groups=2)
+
+        scf = SplitConformalForecaster(calibration_size=50, similarity=DistanceSimilarity())
+        scf.fit(y[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        n_before = scf.conformity_scores_.height
+        scf.observe(y[200:210])
+        n_after_observe = scf.conformity_scores_.height
+        assert n_after_observe > n_before, "panel observe did not append new conformity scores"
+
+        scf.rewind(y[200:210])
+        assert scf.conformity_scores_.height == n_before, "panel rewind did not roll back conformity scores"
+
     def test_observe_not_fitted(self):
         """Test observe raises error when not fitted."""
         scf = SplitConformalForecaster()
