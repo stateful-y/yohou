@@ -403,7 +403,9 @@ def demand_data(monkeypatch):
     """Demand classification data served from a stubbed WASM path.
 
     Mirrors the real dataset's schema (string ``demand_level`` target with three
-    categories, four numeric panel feature columns) without network access.
+    categories, four numeric feature columns) without network access. As in the
+    native path, the per-state prefix is stripped so X_actual feature columns
+    carry no ``__`` panel separator.
     """
     time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1d", eager=True)
     y = pl.DataFrame(
@@ -412,10 +414,10 @@ def demand_data(monkeypatch):
     )
     X_actual = pl.DataFrame({
         "time": time,
-        "nsw__demand": [100.0, 200.0, 300.0, 250.0],
-        "vic__demand": [110.0, 210.0, 310.0, 260.0],
-        "qld__demand": [120.0, 220.0, 320.0, 270.0],
-        "sa__demand": [130.0, 230.0, 330.0, 280.0],
+        "nsw": [100.0, 200.0, 300.0, 250.0],
+        "qun": [110.0, 210.0, 310.0, 260.0],
+        "sa": [120.0, 220.0, 320.0, 270.0],
+        "tas": [130.0, 230.0, 330.0, 280.0],
     })
     _serve_classification_wasm(monkeypatch, y, X_actual)
     return fetch_demand_classification()
@@ -531,10 +533,10 @@ class TestFetchDemandClassification:
         expected = [c for c in demand_data.X_actual.columns if c != "time"]
         assert demand_data.feature_names == expected
 
-    def test_feature_columns_are_panel(self, demand_data):
-        """Feature columns use __ separator convention."""
+    def test_feature_columns_have_no_panel_separator(self, demand_data):
+        """Feature columns drop the ``__`` separator (not panel groups)."""
         for col in demand_data.feature_names:
-            assert "__" in col
+            assert "__" not in col
 
     def test_no_nulls_in_y(self, demand_data):
         """y has no null values."""
@@ -574,3 +576,43 @@ class TestClassificationMissingColumns:
 
         with pytest.raises(ValueError, match="electricity demand"):
             fetch_demand_classification()
+
+
+class TestFetchDemandClassificationRealPath:
+    """fetch_demand_classification strips the panel separator from X_actual.
+
+    These tests exercise the native (non-WASM) path by stubbing
+    ``fetch_electricity_demand`` directly, so the in-process rename logic is
+    covered (the WASM-served ``demand_data`` fixture bypasses it).
+    """
+
+    def _stub_frame(self, monkeypatch):
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1h", eager=True)
+        n = len(time)
+        frame = pl.DataFrame({
+            "time": time,
+            "vic__demand": [float(i) for i in range(n)],
+            "nsw__demand": [1.0] * n,
+            "qun__demand": [2.0] * n,
+            "sa__demand": [3.0] * n,
+            "tas__demand": [4.0] * n,
+        })
+        monkeypatch.setattr(
+            "yohou.datasets._fetchers.fetch_electricity_demand",
+            lambda **kwargs: Bunch(frame=frame),
+        )
+
+    def test_x_actual_columns_have_no_panel_separator(self, monkeypatch):
+        """X_actual feature columns drop the ``__`` separator (regression).
+
+        The state abbreviation is the panel group prefix in the source
+        frame; carried into X_actual it would be misread as panel
+        membership by base-class dispatch. The corrected fetcher renames
+        ``nsw__demand`` -> ``nsw`` (and so on for qun, sa, tas).
+        """
+        self._stub_frame(monkeypatch)
+        bunch = fetch_demand_classification()
+        feature_cols = [c for c in bunch.X_actual.columns if c != "time"]
+        assert feature_cols == ["nsw", "qun", "sa", "tas"]
+        assert all("__" not in c for c in feature_cols)
+        assert bunch.feature_names == ["nsw", "qun", "sa", "tas"]

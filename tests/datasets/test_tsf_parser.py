@@ -131,6 +131,48 @@ class TestParseTsf:
         assert df.shape == (3, 3)
         assert df["S2__val"].to_list()[2] is None
 
+    def test_n_series_1_truncation_keeps_panel_naming(self):
+        """Truncating a multi-series file to n_series=1 keeps group__column naming.
+
+        Regression for the 2026-06-21 QA finding: ``n_series=1`` took a
+        single-series fast-path that named the column bare (``sales``)
+        rather than the panel form (``S1__sales``), silently diverging
+        from the ``n_series>=2`` output schema and breaking the panel
+        data contract.
+        """
+        tsf = self._make_tsf(
+            "@attribute series_name string\n"
+            "@attribute start_timestamp date\n"
+            "@frequency monthly\n"
+            "@missing false\n"
+            "@data\n"
+            "S1:2000-01-01 00-00-00:1.0,2.0,3.0\n"
+            "S2:2000-01-01 00-00-00:4.0,5.0,6.0\n"
+        )
+        df, meta = _parse_tsf(tsf, value_column_name="sales", n_series=1)
+
+        assert meta["n_series"] == 1
+        assert df.columns == ["time", "S1__sales"]
+
+    def test_genuinely_univariate_file_keeps_bare_name(self):
+        """A file declaring a single series keeps the bare value column name.
+
+        The bare-name path remains correct for genuinely univariate
+        datasets (e.g. sunspot), where no panel structure exists.
+        """
+        tsf = self._make_tsf(
+            "@attribute series_name string\n"
+            "@attribute start_timestamp date\n"
+            "@frequency monthly\n"
+            "@missing false\n"
+            "@data\n"
+            "T1:2000-01-01 00-00-00:10.0,20.0,30.0\n"
+        )
+        df, meta = _parse_tsf(tsf, value_column_name="val")
+
+        assert meta["n_series"] == 1
+        assert df.columns == ["time", "val"]
+
     def test_no_timestamp(self):
         """Parse dataset without start_timestamp attribute."""
         tsf = self._make_tsf(

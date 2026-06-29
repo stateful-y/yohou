@@ -536,7 +536,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                     if filtered:
                         names = filtered
             if self.verbose_feature_names_out:
-                names = [f"{name}_{f}" for f in names]
+                names = [panel_aware_prefix(f, name) for f in names]
             feature_names_out.extend(names)
         return feature_names_out
 

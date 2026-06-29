@@ -1147,12 +1147,11 @@ def fetch_demand_classification(
             of ``"low"``, ``"medium"``, or ``"high"``.
         X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 4 state demand columns
-            (``"nsw__demand"``, ``"qun__demand"``, ``"sa__demand"``,
-            ``"tas__demand"``). These columns keep the ``__`` panel-naming
-            convention because the state abbreviations are meaningful column
-            names. (By contrast,
-            [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification]
-            strips the station prefix from its ``X_actual`` columns.)
+            (``"nsw"``, ``"qun"``, ``"sa"``, ``"tas"``). The state prefix is
+            stripped from the source ``"{state}__demand"`` columns so the
+            ``__`` separator (which signals panel group membership) is not
+            carried into exogenous features, mirroring
+            [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification].
         feature_names : list of str
             Feature column names (excludes ``"time"``).
         target_names : list of str
@@ -1216,7 +1215,7 @@ def fetch_demand_classification(
     )
 
     y = frame.select("time", demand_level.alias("demand_level"))
-    X_actual = frame.select("time", *feature_cols)
+    X_actual = frame.select("time", *feature_cols).rename({c: c.split("__")[0] for c in feature_cols})
 
     classes = sorted(y["demand_level"].unique().to_list())
 

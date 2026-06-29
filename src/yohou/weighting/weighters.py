@@ -439,17 +439,16 @@ class TableWeighter(BaseWeighter):
 
     Replaces the former ``pl.DataFrame`` weight input. Weights are looked up by
     left-joining the key series to ``frame`` on column ``on``. For panel data, a
-    ``{group_name}_weight`` column is used when present, otherwise ``weight``.
+    ``{group_name}__weight`` column is used when present, otherwise ``weight``.
     A key with no match raises ``ValueError``.
 
     Parameters
     ----------
     frame : pl.DataFrame
         Weight table with the join column ``on`` and a ``"weight"`` column
-        (and/or ``"{group}_weight"`` columns for panel data). Note that
-        per-group weight columns use a single underscore (``{group_name}_weight``),
-        which intentionally departs from the library-wide ``group__column``
-        double-underscore panel convention.
+        (and/or ``"{group}__weight"`` columns for panel data). Per-group weight
+        columns use the library-wide ``group__column`` double-underscore panel
+        convention (e.g. ``"store_1__weight"``).
     on : str, default="time"
         Join column name (``"time"``, ``"vintage_time"``, or
         ``"forecasting_step"``).
@@ -480,7 +479,7 @@ class TableWeighter(BaseWeighter):
 
         weight_col = None
         if group_name is not None:
-            group_col = f"{group_name}_weight"
+            group_col = f"{group_name}__weight"
             if group_col in joined.columns:
                 weight_col = group_col
         if weight_col is None and "weight" in joined.columns:
@@ -488,7 +487,7 @@ class TableWeighter(BaseWeighter):
         if weight_col is None:
             if group_name is not None:
                 raise ValueError(
-                    f"Weight DataFrame missing both '{group_name}_weight' and "
+                    f"Weight DataFrame missing both '{group_name}__weight' and "
                     f"'weight' columns for panel group '{group_name}'"
                 )
             raise ValueError("Weight DataFrame must have 'weight' column")

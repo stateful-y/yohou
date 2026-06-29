@@ -97,6 +97,7 @@ def _parse_tsf(
         polars_freq=polars_freq,
         has_timestamp=has_timestamp,
         value_column_name=value_column_name,
+        n_series=n_series,
     )
 
     metadata = {
@@ -231,14 +232,20 @@ def _build_dataframe(
     polars_freq: str,
     has_timestamp: bool,
     value_column_name: str,
+    n_series: int | None = None,
 ) -> pl.DataFrame:
-    """Convert parsed series into a wide polars DataFrame with a time column."""
+    """Convert parsed series into a wide polars DataFrame with a time column.
+
+    The bare value-column name (no ``__`` separator) is used only for a
+    genuinely univariate file, i.e. when ``n_series`` was not requested and
+    the file itself declares a single series. When ``n_series`` truncation
+    leaves a single series, panel naming (``{group}__{value_column_name}``)
+    is preserved so the output schema matches the ``n_series >= 2`` case.
+    """
     if not series_list:
         return pl.DataFrame({"time": pl.Series([], dtype=pl.Datetime)})
 
-    n_series = len(series_list)
-
-    if n_series == 1:
+    if len(series_list) == 1 and n_series is None:
         return _build_single_series(
             series_list[0],
             polars_freq=polars_freq,

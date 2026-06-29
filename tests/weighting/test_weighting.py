@@ -189,10 +189,19 @@ def test_table_weighter_explicit_null_weight_raises(times: pl.Series) -> None:
 
 
 def test_table_weighter_panel_group_column(times: pl.Series) -> None:
-    """Group-specific weight columns are used for panel data."""
-    frame = pl.DataFrame({"time": times, "A_weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
+    """Group-specific weight columns are used for panel data.
+
+    The per-group column uses the library-wide ``group__column`` double
+    underscore separator (regression for the 2026-06-21 QA finding, which
+    used a single underscore ``{group}_weight``).
+    """
+    frame = pl.DataFrame({"time": times, "A__weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
     weights = TableWeighter(frame=frame, on="time").compute_weights(times, group_name="A").to_list()
     assert weights == pytest.approx([1.0, 2.0, 3.0])
+
+    single_underscore = pl.DataFrame({"time": times, "A_weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
+    fallback = TableWeighter(frame=single_underscore, on="time").compute_weights(times, group_name="A").to_list()
+    assert fallback == pytest.approx([9.0, 9.0, 9.0])
 
 
 def test_composite_multiplies_components(times: pl.Series) -> None:
@@ -279,9 +288,9 @@ def test_table_weighter_missing_weight_column_raises(times: pl.Series) -> None:
 
 
 def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
-    """A frame missing both '{group}_weight' and 'weight' raises for panel data."""
+    """A frame missing both '{group}__weight' and 'weight' raises for panel data."""
     frame = pl.DataFrame({"time": times, "other": [1.0, 2.0, 3.0]})
-    with pytest.raises(ValueError, match="missing both 'C_weight' and 'weight'"):
+    with pytest.raises(ValueError, match="missing both 'C__weight' and 'weight'"):
         TableWeighter(frame=frame, on="time").compute_weights(times, group_name="C")
 
 

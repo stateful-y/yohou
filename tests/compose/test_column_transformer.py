@@ -214,6 +214,41 @@ class TestColumnTransformerFeatureNames:
         # With verbose, names should be prefixed with transformer name using _
         assert any("t1_" in str(n) for n in feature_names)
 
+    def test_feature_names_out_panel_matches_transformed_columns(self):
+        """get_feature_names_out uses group__column naming matching the output.
+
+        Regression for the 2026-06-21 QA finding: panel feature names were
+        built with a naive ``{name}_{col}`` join, producing
+        ``t1_store_1__sales`` instead of the panel-aware
+        ``store_1__t1_sales`` that the transformed DataFrame actually emits.
+        """
+        from datetime import datetime
+
+        time = pl.datetime_range(
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 5),
+            interval="1d",
+            eager=True,
+        )
+        panel = pl.DataFrame({
+            "time": time,
+            "store_1__sales": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "store_2__sales": [6.0, 7.0, 8.0, 9.0, 10.0],
+        })
+        ct = ColumnTransformer(
+            transformers=[
+                ("t1", SimpleTransformer(observation_horizon=0), ["store_1__sales", "store_2__sales"]),
+            ],
+            remainder="drop",
+            verbose_feature_names_out=True,
+        )
+        ct.fit(panel)
+        transformed = ct.transform(panel)
+        emitted_cols = [c for c in transformed.columns if c != "time"]
+        feature_names = ct.get_feature_names_out()
+        assert feature_names == emitted_cols
+        assert feature_names == ["store_1__t1_sales", "store_2__t1_sales"]
+
 
 class TestColumnTransformerPassthrough:
     """Test passthrough and drop special cases."""
