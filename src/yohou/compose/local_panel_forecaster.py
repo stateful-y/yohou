@@ -206,12 +206,15 @@ class LocalPanelForecaster(BaseForecaster):
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
 
-        # Inherit forecaster_type from wrapped forecaster
+        # Inherit forecaster_type and capability tags from the wrapped forecaster
         child_tags = self.forecaster.__sklearn_tags__()
         if child_tags.forecaster_tags:
             tags.forecaster_tags.forecaster_type = child_tags.forecaster_tags.forecaster_type
             tags.forecaster_tags.stateful = child_tags.forecaster_tags.stateful
             tags.forecaster_tags.uses_reduction = child_tags.forecaster_tags.uses_reduction
+            tags.forecaster_tags.requires_exogenous = child_tags.forecaster_tags.requires_exogenous
+            tags.forecaster_tags.uses_target_transformer = child_tags.forecaster_tags.uses_target_transformer
+            tags.forecaster_tags.uses_feature_transformer = child_tags.forecaster_tags.uses_feature_transformer
 
         tags.forecaster_tags.supports_panel_data = True
         tags.forecaster_tags.tracks_observations = False
@@ -477,6 +480,59 @@ class LocalPanelForecaster(BaseForecaster):
             X_forecast=X_forecast,
         )
 
+    @available_if(_forecaster_has("predict_class_proba"))
+    def predict_class_proba(
+        self,
+        forecasting_horizon: StrictInt | None = None,
+        groups: list[str] | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Predict class probabilities per group and reassemble.
+
+        Only available when the wrapped forecaster supports
+        class-probability prediction.
+
+        Parameters
+        ----------
+        forecasting_horizon : int or None, default=None
+            Number of steps ahead.  If ``None``, uses the value from ``fit``.
+        groups : list of str or None, default=None
+            Subset of groups to predict.  ``None`` predicts all groups.
+        X_future : pl.DataFrame or None, default=None
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecast override with ``"vintage_time"`` and
+            ``"time"`` columns. Re-derives step columns without mutating
+            forecaster state.
+        **params : dict
+            Metadata routing parameters.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions with ``"vintage_time"`` (when
+            present), ``"time"``, and prefixed panel columns.
+
+        """
+        check_is_fitted(self, ["forecasters_"])
+        _raise_for_params(params, self, "predict_class_proba")
+        routed_params = process_routing(self, "predict_class_proba", **params)
+
+        groups: list[str] = groups if groups is not None else (self.groups_ or [])
+        horizon = forecasting_horizon if forecasting_horizon is not None else self.fit_forecasting_horizon_
+
+        return self._predict_groups(
+            groups,
+            horizon,
+            routed_params,
+            method="predict_class_proba",
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+
     def observe(
         self,
         y: pl.DataFrame,
@@ -735,6 +791,81 @@ class LocalPanelForecaster(BaseForecaster):
 
         return self._reassemble_panel_predictions(group_predictions)
 
+    @available_if(_forecaster_has("predict_class_proba"))
+    def observe_predict_class_proba(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None = None,
+        forecasting_horizon: StrictInt | None = None,
+        groups: list[str] | None = None,
+        stride: StrictInt | None = None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        **params,
+    ) -> pl.DataFrame:
+        """Observe new data then predict class probabilities for each group.
+
+        Delegates to each clone's ``observe_predict_class_proba`` so the
+        rolling loop with ``stride`` is preserved per group. Only available
+        when the wrapped forecaster supports class-probability prediction.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New panel target observations.
+        X_actual : pl.DataFrame or None, default=None
+            Actual feature observations with a ``"time"`` column aligned
+            with ``y``. Sliced and observed incrementally at each step
+            of the rolling loop.
+        forecasting_horizon : int or None, default=None
+            Number of steps ahead. If ``None``, uses the value from
+            ``fit``.
+        groups : list of str or None, default=None
+            Subset of groups.  ``None`` means all groups.
+        stride : int or None, default=None
+            Step size for rolling update and predict. If ``None``,
+            defaults to ``fit_forecasting_horizon_``.
+        X_future : pl.DataFrame or None, default=None
+            Known future features with a ``"time"`` column.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts with ``"vintage_time"`` and ``"time"``
+            columns.
+        **params : dict
+            Metadata routing parameters.
+
+        Returns
+        -------
+        pl.DataFrame
+            Class-probability predictions with prefixed panel columns.
+
+        """
+        check_is_fitted(self, ["forecasters_"])
+        _raise_for_params(params, self, "observe_predict_class_proba")
+        routed_params = process_routing(self, "observe_predict_class_proba", **params)
+
+        groups_: list[str] = groups if groups is not None else (self.groups_ or [])
+
+        group_predictions: dict[str, pl.DataFrame] = {}
+        for group_name in groups_:
+            y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
+            X_group = (
+                get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
+                if X_actual is not None and self.local_X_actual_schema_ is not None
+                else None
+            )
+            X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
+            group_predictions[group_name] = self.forecasters_[group_name].observe_predict_class_proba(
+                y=y_group,
+                X_actual=X_group,
+                forecasting_horizon=forecasting_horizon,
+                stride=stride,
+                X_future=X_future_group,
+                X_forecast=X_forecast_group,
+                **routed_params.forecaster.observe_predict_class_proba,
+            )
+
+        return self._reassemble_panel_predictions(group_predictions)
+
     def _split_exogenous_for_group(
         self,
         group_name: str,
@@ -885,8 +1016,10 @@ class LocalPanelForecaster(BaseForecaster):
             .add(callee="fit", caller="fit")
             .add(callee="predict", caller="predict")
             .add(callee="predict_interval", caller="predict_interval")
+            .add(callee="predict_class_proba", caller="predict_class_proba")
             .add(callee="observe_predict", caller="observe_predict")
-            .add(callee="observe_predict_interval", caller="observe_predict_interval"),
+            .add(callee="observe_predict_interval", caller="observe_predict_interval")
+            .add(callee="observe_predict_class_proba", caller="observe_predict_class_proba"),
         )
         return router
 

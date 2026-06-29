@@ -15,6 +15,7 @@ from sklearn.linear_model import Ridge
 from yohou.compose import LocalPanelForecaster
 from yohou.interval import SplitConformalForecaster
 from yohou.point import PointReductionForecaster, SeasonalNaive
+from yohou.preprocessing import LagTransformer
 from yohou.stationarity import PolynomialTrendForecaster
 from yohou.utils.panel import inspect_panel
 
@@ -273,6 +274,25 @@ class TestTags:
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
         tags = f.__sklearn_tags__()
         assert tags.forecaster_tags.tracks_observations is False
+
+    def test_propagates_requires_exogenous_from_child(self):
+        """requires_exogenous reflects the wrapped forecaster, not the default True."""
+        # SeasonalNaive does not require exogenous features.
+        f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=7))
+        tags = f.__sklearn_tags__()
+        assert tags.forecaster_tags.requires_exogenous is False
+
+    def test_propagates_transformer_usage_from_child(self):
+        """uses_*_transformer flags reflect the wrapped forecaster."""
+        child = PointReductionForecaster(
+            estimator=Ridge(),
+            feature_transformer=LagTransformer(lag=1),
+        )
+        f = LocalPanelForecaster(forecaster=child)
+        tags = f.__sklearn_tags__()
+        child_tags = child.__sklearn_tags__().forecaster_tags
+        assert tags.forecaster_tags.uses_feature_transformer == child_tags.uses_feature_transformer
+        assert tags.forecaster_tags.uses_target_transformer == child_tags.uses_target_transformer
 
 
 class TestCloneParams:
@@ -632,3 +652,61 @@ class TestHeterogeneousPanelSchema:
         f = LocalPanelForecaster(forecaster=SeasonalNaive(seasonality=1))
         with pytest.raises(ValueError, match="same local"):
             f.fit(y, forecasting_horizon=3)
+
+
+class TestClassProbaLocalPanel:
+    """LocalPanelForecaster must proxy the class-probability predict family."""
+
+    @pytest.fixture
+    def class_proba_panel_setup(self):
+        """Fitted LocalPanelForecaster wrapping a class-probability child."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes = ["cat", "dog", "bird"]
+        y = pl.DataFrame({
+            "time": time,
+            "store_a__animal": [classes[i % 3] for i in range(80)],
+            "store_b__animal": [classes[(i + 1) % 3] for i in range(80)],
+        })
+        forecaster = LocalPanelForecaster(
+            forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+        )
+        forecaster.fit(y[:60], forecasting_horizon=3)
+        return forecaster, y[60:]
+
+    def test_predict_class_proba_available_and_dispatches(self, class_proba_panel_setup):
+        """predict_class_proba is exposed and returns prefixed per-group probabilities."""
+        forecaster, _ = class_proba_panel_setup
+        assert hasattr(forecaster, "predict_class_proba")
+
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+        assert "time" in y_pred.columns
+        assert any(c.startswith("store_a__") for c in y_pred.columns)
+        assert any(c.startswith("store_b__") for c in y_pred.columns)
+        assert len(y_pred) == 3
+
+    def test_observe_predict_class_proba_available_and_dispatches(self, class_proba_panel_setup):
+        """observe_predict_class_proba is exposed and dispatches per group."""
+        forecaster, y_test = class_proba_panel_setup
+        assert hasattr(forecaster, "observe_predict_class_proba")
+
+        y_pred = forecaster.observe_predict_class_proba(y=y_test[:3], forecasting_horizon=3)
+        assert "time" in y_pred.columns
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) > 0
+
+    def test_advertises_class_proba_type(self, class_proba_panel_setup):
+        """The wrapper advertises the class-proba family it now proxies."""
+        forecaster, _ = class_proba_panel_setup
+        tags = forecaster.__sklearn_tags__()
+        assert "class_proba" in tags.forecaster_tags.forecaster_type

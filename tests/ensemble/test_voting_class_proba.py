@@ -777,3 +777,36 @@ class TestVotingClassProbaSklearn:
 
         with pytest.raises(NotFittedError):
             forecaster.predict_class_proba(forecasting_horizon=3)
+
+
+class TestVotingClassProbaTags:
+    """Tag propagation from child forecasters, matching sibling voters."""
+
+    def test_stateful_propagates_from_children(self):
+        """stateful is True when any child is stateful, like the point/interval voters."""
+        from yohou.preprocessing import LagTransformer
+
+        stateful_child = _make_class_proba_forecaster(feature_transformer=LagTransformer(lag=1))
+        assert stateful_child.__sklearn_tags__().forecaster_tags.stateful is True
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("stateful", stateful_child),
+                ("plain", _make_class_proba_forecaster()),
+            ],
+            method="soft",
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.stateful is True
+
+    def test_stateful_false_when_no_child_stateful(self):
+        """stateful is False when no child is stateful."""
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("dt_1", _make_class_proba_forecaster()),
+                ("dt_2", _make_class_proba_forecaster()),
+            ],
+            method="soft",
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.stateful is False

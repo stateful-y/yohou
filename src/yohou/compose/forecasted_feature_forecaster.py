@@ -237,6 +237,19 @@ class ForecastedFeatureForecaster(BaseForecaster):
         feature_stateful = feature_tags.forecaster_tags.stateful if feature_tags.forecaster_tags else False
         tags.forecaster_tags.stateful = target_stateful or feature_stateful
 
+        # Propagate transformer-usage capability tags from both children so the
+        # composed estimator advertises its true machinery (rather than the
+        # ForecasterTags defaults). requires_exogenous stays True because this
+        # meta-forecaster unconditionally needs X_actual (the feature
+        # forecaster's training target), independent of the children's tags.
+        tags.forecaster_tags.requires_exogenous = True
+        tags.forecaster_tags.uses_target_transformer = getattr(
+            target_tags.forecaster_tags, "uses_target_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_target_transformer", False)
+        tags.forecaster_tags.uses_feature_transformer = getattr(
+            target_tags.forecaster_tags, "uses_feature_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_feature_transformer", False)
+
         # Aggregate other tags
         # Note: uses_reduction is False since this meta-forecaster doesn't have an `estimator`
         # attribute directly - child forecasters may use reduction, but that's their internal detail

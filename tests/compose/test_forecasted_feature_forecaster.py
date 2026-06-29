@@ -550,6 +550,37 @@ class TestTags:
         # SeasonalNaive is a point forecaster
         assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
+    def test_requires_exogenous_always_true(self):
+        """requires_exogenous is always True: X_actual is the feature target.
+
+        Even when both children report requires_exogenous=False, the
+        meta-forecaster structurally needs X_actual (it is the feature
+        forecaster's training target), so it must advertise True.
+        """
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.requires_exogenous is True
+
+    def test_propagates_transformer_usage_from_children(self):
+        """uses_*_transformer flags reflect the children."""
+        from yohou.preprocessing import LagTransformer
+
+        target = PointReductionForecaster(
+            estimator=Ridge(),
+            feature_transformer=LagTransformer(lag=1),
+        )
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=target,
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        tags = forecaster.__sklearn_tags__()
+        target_tags = target.__sklearn_tags__().forecaster_tags
+        assert tags.forecaster_tags.uses_feature_transformer == target_tags.uses_feature_transformer
+        assert tags.forecaster_tags.uses_target_transformer == target_tags.uses_target_transformer
+
 
 class TestClassProbaForecastedFeature:
     """Tests for class-probability methods on ForecastedFeatureForecaster."""

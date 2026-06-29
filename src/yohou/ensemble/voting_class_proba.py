@@ -208,6 +208,15 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         tags.forecaster_tags.tracks_observations = False
         tags.forecaster_tags.supports_panel_data = True
 
+        forecasters_to_check = (
+            [f for _, f in self.forecasters_] if hasattr(self, "forecasters_") else [f for _, f in self.forecasters]
+        )
+
+        if forecasters_to_check:
+            tags.forecaster_tags.stateful = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "stateful", False) for f in forecasters_to_check
+            )
+
         return tags
 
     def _validate_classes_consistent(self) -> None:
