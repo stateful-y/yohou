@@ -315,7 +315,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
     _parameter_constraints: dict = {
         "forecaster": [HasMethods(["fit", "predict"])],
-        "scoring": [callable, dict],
+        "scoring": [callable, dict, None],
         "n_jobs": [numbers.Integral, None],
         "refit": ["boolean", str, callable],
         "cv": [numbers.Integral, HasMethods(["split", "get_n_splits"]), None],
@@ -1195,6 +1195,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         forecasting_horizon: int | None = None,
         coverage_rates: list[float] | None = None,
         groups: list[str] | None = None,
+        stride: int | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -1223,6 +1224,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
+        stride : int or None, default=None
+            Step size for rolling update-predict.  If ``None``, defaults to
+            ``forecasting_horizon``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
@@ -1246,6 +1250,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
             groups=groups,
+            stride=stride,
             X_future=X_future,
             X_forecast=X_forecast,
             **params,

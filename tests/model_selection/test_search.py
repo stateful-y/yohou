@@ -532,6 +532,56 @@ class TestIntervalSearch:
         interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
         assert len(interval_cols) > 0, "Should have interval prediction columns"
 
+    def test_observe_predict_interval_forwards_stride(self, y_X_factory):
+        """observe_predict_interval must expose stride and forward it.
+
+        ``stride`` must be an explicit keyword of the wrapper (mirroring
+        ``observe_predict``), not merely accepted via ``**params``. A custom
+        stride must reach the underlying forecaster so that the wrapper output
+        matches a direct call on an identically fitted forecaster and differs
+        from the default-stride output.
+        """
+        import inspect
+
+        # Wave A promotion: stride must be part of the documented signature,
+        # not silently swallowed by **params.
+        sig = inspect.signature(GridSearchCV.observe_predict_interval)
+        assert "stride" in sig.parameters
+        assert (
+            sig.parameters["stride"].kind is inspect.Parameter.KEYWORD_ONLY
+            or sig.parameters["stride"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        )
+
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train, y_test = y[:180], y[180:]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+            refit=True,
+        )
+        search.fit(y_train, forecasting_horizon=2)
+
+        forwarded = search.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9], stride=1)
+
+        reference = clone(search.forecaster)
+        reference.set_params(**search.best_params_)
+        reference.fit(y_train, forecasting_horizon=2)
+        direct = reference.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9], stride=1)
+        default_stride = reference.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9])
+
+        assert forwarded.shape == direct.shape
+        assert forwarded["vintage_time"].n_unique() == direct["vintage_time"].n_unique()
+        # A non-default stride yields a different number of vintages than the
+        # default stride; if the wrapper dropped stride, forwarded would match
+        # default_stride instead.
+        assert forwarded["vintage_time"].n_unique() != default_stride["vintage_time"].n_unique()
+
     @pytest.mark.slow
     def test_grid_search_empirical_coverage_scorer(self, y_X_factory):
         """GridSearchCV with EmpiricalCoverage (higher_is_better) selects correctly."""
@@ -816,6 +866,21 @@ class TestSearchGetScorersValidation:
         )
         with pytest.raises(ValueError, match="scoring parameter cannot be None"):
             search._get_scorers()
+
+    def test_scoring_none_passes_validate_params(self):
+        """scoring=None is the documented default and must satisfy _validate_params.
+
+        The constraint must accept None so that constructing/validating a
+        search with the default scoring does not raise. (None is resolved to
+        the forecaster default at fit time, where a clearer error is raised.)
+        """
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1]},
+            scoring=None,
+            cv=2,
+        )
+        search._validate_params()
 
     def test_scoring_invalid_type_raises(self):
         """Scoring with invalid type raises ValueError."""
