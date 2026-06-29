@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import SimpleTransformer
 from yohou.point import PointReductionForecaster
+from yohou.stationarity.transformers import SeasonalDifferencing
 
 
 class TestBaseForecasterFit:
@@ -94,6 +95,55 @@ class TestBaseForecasterWithExogenous:
         assert result is f
         # Non-panel buffer update: observed_time_ advances to the last new row.
         assert f.observed_time_ == y["time"][-1]
+
+
+class TestBaseForecasterEmptyObserve:
+    """Tests that observe() rejects an empty observation batch.
+
+    An empty ``y`` updates the transformers' observation state with zero rows,
+    leaving ``_X_t_observed`` at 0 rows while ``_y_observed`` keeps its
+    prepended history. observe() then returns silently and the corruption only
+    surfaces deep in the regressor at the next predict() ("Found array with 0
+    sample(s)"). observe() must instead fail fast with a clear ValueError.
+    """
+
+    def test_empty_observe_raises_no_buffer(self, y_X_factory):
+        """observe(empty y) raises ValueError with observation_horizon == 0."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster()
+        f.fit(y[:40], forecasting_horizon=3)
+        assert f.observation_horizon == 0
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
+
+    def test_empty_observe_raises_with_buffer(self, y_X_factory):
+        """observe(empty y) raises instead of silently corrupting predict().
+
+        With a stateful target transformer, ``observation_horizon > 0`` so the
+        prepended ``_y_observed`` history previously let observe() pass while
+        leaving ``_X_t_observed`` empty; predict() then crashed in the
+        regressor. The guard must reject the empty batch up front, and predict()
+        must keep working afterwards.
+        """
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster(target_transformer=SeasonalDifferencing(seasonality=3))
+        f.fit(y[:40], forecasting_horizon=3)
+        assert f.observation_horizon >= 3
+
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
+
+        # State must be untouched: predict still works after the rejected observe.
+        result = f.predict(forecasting_horizon=3)
+        assert len(result) == 3
+
+    def test_empty_observe_raises_panel(self, y_X_factory):
+        """observe(empty y) raises for panel data too."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+        f = PointReductionForecaster()
+        f.fit(y[:50], forecasting_horizon=1)
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
 
 
 class TestBaseForecasterPreFitValidation:

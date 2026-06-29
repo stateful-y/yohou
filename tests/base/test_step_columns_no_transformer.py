@@ -126,21 +126,37 @@ class TestPanelStepColumnsNoTransformer:
         assert "grp_a__value" in y_pred.columns
         assert len(y_pred) == 3
 
-    def test_panel_observe_with_step_columns_no_X_t(self):
+    def test_panel_observe_re_derives_step_columns(self):
         """Panel observe re-derives step columns when _X_t_observed[group] was None.
 
-        NOTE: this currently only smoke-tests that predict() still works.
-        _inject_step_columns_after_update_panel lacks the ``elif X_step is not
-        None`` branch that standard.py has, so step columns are silently lost
-        when ``_X_t_observed`` is None after observe (Wave C: panel.py parity
-        gap). Strengthen this to assert ``_X_t_observed`` is rebuilt from step
-        columns once that branch is added.
+        Parity with the standard mode: when a group's transformer produces no
+        feature output, ``_observe_transformers_one`` returns ``None`` and the
+        buffer update leaves ``_X_t_observed`` as ``None``. The standard path's
+        ``_inject_step_columns_after_update`` has an ``elif X_step is not None``
+        branch that rebuilds ``_X_t_observed`` from the re-derived step columns;
+        the panel path (``_inject_step_columns_after_update_panel``) must do the
+        same per group, otherwise the step columns are silently lost.
         """
         y, X_future = _make_panel_data(length=50, forecasting_horizon=3)
         f = SeasonalNaive(seasonality=3)
         f.fit(y[:40], forecasting_horizon=3, X_future=X_future)
 
+        # After fit, every group's _X_t_observed carries the step columns.
+        assert f._X_t_observed is not None
+        for group in ("grp_a", "grp_b"):
+            assert "temp_step_1" in f._X_t_observed[group].columns
+
         f.observe(y[40:42], X_future=X_future)
+
+        # After observe, the step columns must still be present per group
+        # (rebuilt by the elif branch), matching the standard-mode behavior.
+        assert f._X_t_observed is not None, "panel observe dropped step columns (_X_t_observed is None)"
+        for group in ("grp_a", "grp_b"):
+            cols = f._X_t_observed[group].columns
+            assert "temp_step_1" in cols, f"group {group!r} lost step columns after observe: {cols}"
+            assert "temp_step_2" in cols
+            assert "temp_step_3" in cols
+
         y_pred = f.predict(forecasting_horizon=3)
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3

@@ -601,16 +601,6 @@ class TestFourComponentDecomposition:
 class TestComponentSpecificTransformers:
     """Verify decomposition with component-specific target_transformers."""
 
-    @pytest.mark.xfail(
-        reason=(
-            "Bug (Wave C): DecompositionPipeline.predict() sums component "
-            "predictions with predict_transformed=True but never inverts "
-            "component-level target_transformers, while fit() computes residuals "
-            "in original scale. A component-level StandardScaler therefore yields "
-            "predictions in scaled space (off by orders of magnitude)."
-        ),
-        strict=True,
-    )
     def test_component_specific_transformers_mixed(self):
         """A component-level target_transformer must not corrupt the scale.
 
@@ -658,14 +648,6 @@ class TestComponentSpecificTransformers:
             err_msg="Component StandardScaler must not change the prediction scale",
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "Bug (Wave C): see test_component_specific_transformers_mixed. "
-            "predict() does not invert component-level target_transformers, so "
-            "all-scaled components produce predictions in scaled space."
-        ),
-        strict=True,
-    )
     def test_component_specific_transformers_all_scaled(self):
         """All components scaled: recomposition must stay in original scale."""
         n = 100

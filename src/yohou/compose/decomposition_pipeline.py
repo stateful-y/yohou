@@ -539,9 +539,17 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         first_name, first_forecaster = self.forecasters_[0]
         first_params = routed_params[first_name]
 
+        # Each component predicts in its own original (post-inverse) scale, i.e.
+        # the residual-stream scale it was fitted on. fit() computes residuals
+        # from component observe_predict() output with predict_transformed=False
+        # (the default), so component-level target_transformers are inverted
+        # there; predict() must invert them too (predict_transformed=False),
+        # otherwise a component target_transformer leaves its forecast in scaled
+        # space and the recomposed sum is off by orders of magnitude. The
+        # pipeline-level target_transformer is inverted once below, after summing.
         y_pred_first = first_forecaster.predict(
             forecasting_horizon=forecasting_horizon,
-            predict_transformed=True,
+            predict_transformed=False,
             X_future=X_future,
             X_forecast=X_forecast,
             **first_params.predict,
@@ -558,7 +566,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
             y_pred = forecaster.predict(
                 forecasting_horizon=forecasting_horizon,
-                predict_transformed=True,
+                predict_transformed=False,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **step_params.predict,

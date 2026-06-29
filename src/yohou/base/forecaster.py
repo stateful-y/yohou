@@ -684,6 +684,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             X_forecast=X_forecast,
         )
 
+        # Reject an empty observation batch up front. An empty ``y`` would
+        # otherwise update the transformers' observation state with zero rows,
+        # leaving ``_X_t_observed`` empty (0 rows) while ``_y_observed`` keeps
+        # its prepended history. The corruption is silent here but surfaces deep
+        # in the regressor at the next ``predict`` ("Found array with 0
+        # sample(s)"), so fail fast with a clear message instead.
+        if len(y) == 0:
+            raise ValueError(
+                "observe() received an empty `y` (0 rows). There is nothing to "
+                "observe; pass at least one new observation row."
+            )
+
         # Dispatch to mixin methods
         if self.groups_ is None:
             BaseStandardForecaster._observe_standard(self, y, X_actual, X_future=X_future, X_forecast=X_forecast)
