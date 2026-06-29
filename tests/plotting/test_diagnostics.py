@@ -254,6 +254,29 @@ class TestPlotLagScatter:
         for fig in result.values():
             assert len(fig.data) > 0
 
+    def test_panel_regression_applied(self, short_df):
+        """Panel path with show_regression=True must add solid regression line(s).
+
+        The regression line is a solid-line ``go.Scatter`` (the diagonal uses a
+        dashed line). Previously the panel branch silently dropped
+        ``show_regression``, producing no regression trace.
+        """
+        df = pl.DataFrame({
+            "time": short_df["time"],
+            "y__a": short_df["y"],
+            "y__b": short_df["x"],
+        })
+        result = plot_lag_scatter(df, lags=[1], groups=["y"], show_regression=True, show_diagonal=False)
+        assert isinstance(result, dict)
+        assert len(result) == 2
+        for fig in result.values():
+            solid_lines = [
+                t
+                for t in fig.data
+                if isinstance(t, go.Scatter) and t.mode == "lines" and (t.line is None or t.line.dash is None)
+            ]
+            assert len(solid_lines) >= 1
+
     def test_multi_lag_grid(self, yearly_2col_df):
         """Test that multiple lags produce a subplot grid."""
         fig = plot_lag_scatter(yearly_2col_df, columns="y", lags=[1, 4, 8])
@@ -1146,64 +1169,72 @@ class TestPlotSeasonalHeatmap:
 
     def test_hour_by_month(self, hourly_df):
         """Basic hour × month heatmap."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="hour", y_period="month")
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", x_period="hour", y_period="month")
         assert_figure_valid(fig)
         assert isinstance(fig.data[0], go.Heatmap)
 
+    def test_columns_keyword_only(self, hourly_df):
+        """``columns`` is keyword-only: passing it positionally raises TypeError."""
+        with pytest.raises(TypeError):
+            plot_seasonal_heatmap(hourly_df, "temp")
+        # Keyword form works.
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp")
+        assert_figure_valid(fig)
+
     def test_day_of_week_by_hour(self, hourly_df):
         """Day-of-week × hour heatmap."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="hour", y_period="day_of_week")
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", x_period="hour", y_period="day_of_week")
         assert_figure_valid(fig)
 
     def test_month_by_year(self, hourly_df):
         """Month × year heatmap."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", x_period="month", y_period="year")
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", x_period="month", y_period="year")
         assert_figure_valid(fig)
 
     def test_aggregation_methods(self, hourly_df):
         """All aggregation methods produce valid figures."""
         for agg in ["mean", "median", "sum", "count", "std", "min", "max"]:
-            fig = plot_seasonal_heatmap(hourly_df, "temp", agg=agg)
+            fig = plot_seasonal_heatmap(hourly_df, columns="temp", agg=agg)
             assert len(fig.data) > 0
 
     def test_custom_colorscale(self, hourly_df):
         """Custom colorscale is accepted."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", colorscale="RdBu_r")
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", colorscale="RdBu_r")
         assert_figure_valid(fig)
 
     def test_no_values(self, hourly_df):
         """show_values=False suppresses annotations."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", show_values=False)
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", show_values=False)
         assert_figure_valid(fig)
 
     def test_reverse_y(self, hourly_df):
         """reverse_y=True flips y-axis."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", reverse_y=True)
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", reverse_y=True)
         assert_figure_valid(fig)
 
     def test_invalid_period(self, hourly_df):
         """Invalid period raises ValueError."""
         with pytest.raises(ValueError, match="Unknown period"):
-            plot_seasonal_heatmap(hourly_df, "temp", x_period="invalid")
+            plot_seasonal_heatmap(hourly_df, columns="temp", x_period="invalid")
 
     def test_invalid_agg(self, hourly_df):
         """Invalid agg raises ValueError."""
         with pytest.raises(ValueError, match="Unknown agg"):
-            plot_seasonal_heatmap(hourly_df, "temp", agg="invalid")
+            plot_seasonal_heatmap(hourly_df, columns="temp", agg="invalid")
 
     def test_columns_not_found(self, hourly_df):
         """Non-existent column raises ValueError."""
         with pytest.raises(ValueError, match="not found"):
-            plot_seasonal_heatmap(hourly_df, "nonexistent")
+            plot_seasonal_heatmap(hourly_df, columns="nonexistent")
 
     def test_custom_title(self, hourly_df):
         """Custom title is applied."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", title="Heatmap Test")
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", title="Heatmap Test")
         assert_layout(fig, title="Heatmap Test")
 
     def test_custom_dimensions(self, hourly_df):
         """Custom dimensions are respected."""
-        fig = plot_seasonal_heatmap(hourly_df, "temp", width=800, height=500)
+        fig = plot_seasonal_heatmap(hourly_df, columns="temp", width=800, height=500)
         assert_layout(fig, width=800, height=500)
 
     def test_panel_explicit(self):
@@ -1220,7 +1251,7 @@ class TestPlotSeasonalHeatmap:
             "weather__temp": [20.0 + i % 24 for i in range(n)],
             "weather__wind": [5.0 + i % 12 for i in range(n)],
         })
-        fig = plot_seasonal_heatmap(df, "temp", groups=["weather"])
+        fig = plot_seasonal_heatmap(df, columns="temp", groups=["weather"])
         assert_figure_valid(fig)
 
     def test_auto_column_single(self, hourly_df):

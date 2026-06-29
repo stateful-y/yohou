@@ -1699,9 +1699,10 @@ def plot_lag_scatter(
     show_diagonal : bool, default=True
         Show a diagonal reference line (y = x).
     show_regression : bool, default=False
-        Show a linear regression line fitted to the data.  Only applied when
-        a single lag is requested and data is non-panel; silently ignored for
-        multi-lag subplot layouts and panel data.
+        Show a linear regression line fitted to the data.  In the non-panel
+        path it is applied only when a single lag is requested (silently
+        ignored for multi-lag subplot layouts).  In the panel path one
+        regression line is fitted per group within each lag subplot.
     groups : list[str] | None, default=None
         Panel group prefixes to plot.
     facet_n_cols : int, default=3
@@ -1834,6 +1835,35 @@ def plot_lag_scatter(
 
                     all_vals.extend(dl[col_name].to_list())
                     all_vals.extend(dl["lagged"].to_list())
+
+                    if show_regression:
+                        x_series = dl["lagged"]
+                        y_series = dl[col_name]
+                        x_mean = x_series.mean()
+                        y_mean = y_series.mean()
+                        numerator = float(((x_series - x_mean) * (y_series - y_mean)).sum())
+                        denominator = float(((x_series - x_mean) ** 2).sum())
+                        if denominator != 0 and x_mean is not None and y_mean is not None:
+                            slope = numerator / denominator
+                            intercept = cast(float, y_mean) - slope * cast(float, x_mean)
+                            x_min = x_series.min()
+                            x_max = x_series.max()
+                            if x_min is not None and x_max is not None:
+                                x_line = [cast(float, x_min), cast(float, x_max)]
+                                y_line = [slope * x + intercept for x in x_line]
+                                fig.add_trace(
+                                    go.Scatter(
+                                        x=x_line,
+                                        y=y_line,
+                                        mode="lines",
+                                        line={"color": group_color, "width": 2},
+                                        legendgroup=gname,
+                                        showlegend=False,
+                                        hoverinfo="skip",
+                                    ),
+                                    row=r,
+                                    col=c,
+                                )
 
                 if show_diagonal and all_vals:
                     vmin = min(all_vals)
@@ -3246,8 +3276,8 @@ def _resolve_axis_labels(
 
 def plot_seasonal_heatmap(
     df: pl.DataFrame,
-    columns: str | list[str] | None = None,
     *,
+    columns: str | list[str] | None = None,
     x_period: str = "hour",
     y_period: str = "month",
     agg: str = "mean",
@@ -3346,7 +3376,7 @@ def plot_seasonal_heatmap(
     ...     ),
     ...     "temp": [20.0 + (i % 24) * 0.5 for i in range(8784)],
     ... })
-    >>> fig = plot_seasonal_heatmap(df, "temp", x_period="hour", y_period="month")
+    >>> fig = plot_seasonal_heatmap(df, columns="temp", x_period="hour", y_period="month")
     >>> len(fig.data) > 0
     True
 
