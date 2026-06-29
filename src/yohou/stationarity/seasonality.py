@@ -387,7 +387,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     _parameter_constraints: dict = {
         **_BaseSeasonalityForecaster._parameter_constraints,
         "harmonics": [list, None],
-        "estimator": [RegressorMixin],
+        "estimator": [RegressorMixin, None],
     }
 
     def __init__(
@@ -405,10 +405,10 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         )
 
         self.harmonics = harmonics
-        # Build the default estimator inside __init__ rather than as a mutable
-        # default argument so two default-constructed instances never share the
-        # same ElasticNet object.
-        self.estimator = ElasticNet() if estimator is None else estimator
+        # Store the param as-is (None default, not a mutable ElasticNet()) so
+        # instances never share one estimator object; the default is built at
+        # fit time. This keeps get_params/repr consistent with the signature.
+        self.estimator = estimator
 
     def _build_fourier_features(self, X_time_indices: np.ndarray) -> np.ndarray:
         """Construct Fourier feature matrix.
@@ -477,7 +477,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         estimator = Pipeline([
             ("fourier_features", FunctionTransformer(func=self._build_fourier_features)),
-            ("regressor", clone(self.estimator)),
+            ("regressor", clone(self.estimator if self.estimator is not None else ElasticNet())),
         ])
 
         self._fit_estimator(estimator, y_t)

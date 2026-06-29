@@ -86,7 +86,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     _parameter_constraints: dict = {
         "degree": [Interval(numbers.Integral, 0, None, closed="left")],
-        "estimator": [RegressorMixin],
+        "estimator": [RegressorMixin, None],
     }
 
     def __init__(
@@ -98,7 +98,10 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     ):
         super().__init__(target_transformer=target_transformer, panel_strategy=panel_strategy)
         self.degree = degree
-        self.estimator = ElasticNet() if estimator is None else estimator
+        # Store the param as-is (None default, not a mutable ElasticNet()) so
+        # instances never share one estimator object; the default is built at
+        # fit time. This keeps get_params/repr consistent with the signature.
+        self.estimator = estimator
 
     def _fit(
         self,
@@ -121,7 +124,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         """
         estimator = Pipeline([
             ("poly_features", PolynomialFeatures(degree=self.degree, include_bias=True)),
-            ("regressor", clone(self.estimator)),
+            ("regressor", clone(self.estimator if self.estimator is not None else ElasticNet())),
         ])
 
         self._fit_estimator(estimator, y_t)

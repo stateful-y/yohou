@@ -396,14 +396,14 @@ class TestFourierSeasonalityForecaster:
         Using a mutable ``ElasticNet()`` as the default argument value would make
         every default-constructed instance reference the same object, so mutating
         one instance's estimator (or relying on identity) leaks across instances.
-        The sklearn convention is ``estimator=None`` with the concrete default
-        built inside ``__init__``.
+        The sklearn convention is ``estimator=None`` (no mutable default in the
+        signature), with the concrete default built at fit time.
         """
-        a = FourierSeasonalityForecaster(seasonality=12)
-        b = FourierSeasonalityForecaster(seasonality=12)
+        import inspect
 
-        assert a.estimator is not b.estimator, "default-constructed instances share the same estimator object"
-        assert isinstance(a.estimator, ElasticNet)
+        default = inspect.signature(FourierSeasonalityForecaster).parameters["estimator"].default
+        assert default is None
+        assert FourierSeasonalityForecaster(seasonality=12).estimator is None
 
     def test_fourier_seasonality_sine_wave_recovery(self):
         """Test Fourier forecaster recovers pure sine wave with 1 harmonic."""

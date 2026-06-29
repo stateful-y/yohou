@@ -293,9 +293,10 @@ class TestPolynomialTrendWithoutExogenous:
 
 
 class TestPolynomialTrendDefaultEstimator:
-    def test_default_estimator_not_shared_across_instances(self):
-        """estimator=None builds a fresh ElasticNet per instance (no shared mutable default)."""
-        a = PolynomialTrendForecaster()
-        b = PolynomialTrendForecaster()
-        assert isinstance(a.estimator, ElasticNet)
-        assert a.estimator is not b.estimator
+    def test_default_estimator_is_none_no_shared_mutable(self):
+        """estimator defaults to None (not a shared mutable ElasticNet); built at fit."""
+        import inspect
+
+        default = inspect.signature(PolynomialTrendForecaster).parameters["estimator"].default
+        assert default is None
+        assert PolynomialTrendForecaster().estimator is None
