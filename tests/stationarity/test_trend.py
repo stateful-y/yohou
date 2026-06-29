@@ -290,3 +290,12 @@ class TestPolynomialTrendWithoutExogenous:
         # within the rewound slice that begins at index 30, i.e. time[32].
         expected = time[32]
         assert forecaster._first_observed_time == {"g0": expected, "g1": expected}
+
+
+class TestPolynomialTrendDefaultEstimator:
+    def test_default_estimator_not_shared_across_instances(self):
+        """estimator=None builds a fresh ElasticNet per instance (no shared mutable default)."""
+        a = PolynomialTrendForecaster()
+        b = PolynomialTrendForecaster()
+        assert isinstance(a.estimator, ElasticNet)
+        assert a.estimator is not b.estimator

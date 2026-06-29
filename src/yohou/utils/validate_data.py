@@ -230,9 +230,9 @@ def validate_plotting_params(
 
 if TYPE_CHECKING:
     from yohou.base import BaseForecaster, BaseTransformer
-    from yohou.metrics._context import ScoringContext
     from yohou.metrics.base import BaseScorer
     from yohou.model_selection import BaseSplitter
+    from yohou.utils._context import ScoringContext
 
 
 def _compute_forecasting_step(
@@ -504,7 +504,7 @@ def validate_scorer_data(
         y_pred = y_pred.drop("time")
         scores = scores.drop("time")
 
-        from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+        from yohou.utils._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
         return (
             y_pred,
@@ -676,7 +676,7 @@ def validate_scorer_data(
         if extra_cols:
             y_pred = y_pred.drop(extra_cols)
 
-    from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+    from yohou.utils._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
     context = _ScoringContext(
         time_values=time_values,  # type: ignore

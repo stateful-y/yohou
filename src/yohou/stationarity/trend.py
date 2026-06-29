@@ -28,7 +28,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     degree : int, default=1
         Polynomial degree. degree=1 gives linear trend, degree=2 quadratic, etc.
         Higher degrees can overfit - typically use degree <= 3.
-    estimator : RegressorMixin, default=ElasticNet()
+    estimator : RegressorMixin or None, default=None
         Regression model used to fit polynomial coefficients.
     target_transformer : BaseTransformer, optional
         Transformer for target variable (e.g., LogTransformer).
@@ -92,13 +92,13 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     def __init__(
         self,
         degree: StrictInt = 1,
-        estimator: RegressorMixin = ElasticNet(),
+        estimator: RegressorMixin | None = None,
         target_transformer=None,
         panel_strategy="global",
     ):
         super().__init__(target_transformer=target_transformer, panel_strategy=panel_strategy)
         self.degree = degree
-        self.estimator = estimator
+        self.estimator = ElasticNet() if estimator is None else estimator
 
     def _fit(
         self,
