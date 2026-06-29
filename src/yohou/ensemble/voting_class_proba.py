@@ -178,6 +178,8 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         "n_jobs": [Integral, None],
     }
 
+    _required_forecaster_type: type = BaseClassProbaForecaster
+
     def __init__(
         self,
         forecasters: list[tuple[str, BaseClassProbaForecaster]],

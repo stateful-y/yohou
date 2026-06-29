@@ -1245,3 +1245,107 @@ class TestNonExogenousFitSkipsRollingForecast:
         bare_pred = bare.predict(forecasting_horizon=5)
 
         assert meta_pred["sales"].to_list() == bare_pred["sales"].to_list()
+
+
+class TestObservePredictRoutingMethod:
+    """Each observe_predict variant must route under its own method name.
+
+    The shared dispatcher ``_run_observe_predict`` calls
+    ``process_routing(self, routing_method, ...)``. Passing a predict-family
+    name (e.g. ``"predict"``) instead of ``"observe_predict"`` means metadata
+    registered on the ``observe_predict`` caller is never consulted.
+    """
+
+    def _fitted_point(self):
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": list(range(100))})
+        X_actual = pl.DataFrame({"time": time, "price": [10 + i % 5 for i in range(100)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
+        return forecaster, y, X_actual
+
+    def _capture_routing_method(self, monkeypatch):
+        """Patch process_routing to record the routing_method it receives."""
+        import yohou.compose.forecasted_feature_forecaster as mod
+
+        captured = {}
+        original = mod.process_routing
+
+        def spy(obj, method, /, **kwargs):
+            captured.setdefault("methods", []).append(method)
+            return original(obj, method, **kwargs)
+
+        monkeypatch.setattr(mod, "process_routing", spy)
+        return captured
+
+    def test_observe_predict_uses_own_method_name(self, monkeypatch):
+        """observe_predict routes under 'observe_predict', not 'predict'."""
+        forecaster, y, X_actual = self._fitted_point()
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict(y[80:90], X_actual[80:90], stride=5)
+        # The dispatcher routes first under its own method name; subsequent
+        # 'predict' entries are the legitimate per-origin predict re-routing.
+        assert captured["methods"][0] == "observe_predict"
+
+    def test_observe_predict_interval_uses_own_method_name(self, monkeypatch):
+        """observe_predict_interval routes under 'observe_predict_interval'."""
+        from yohou.interval import SplitConformalForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": list(range(100))})
+        X_actual = pl.DataFrame({"time": time, "price": [10 + i % 5 for i in range(100)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=1), calibration_size=10
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
+
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict_interval(y[80:90], X_actual[80:90], stride=5)
+        # The dispatcher routes first under its own method name; later entries
+        # are the legitimate per-origin predict_interval re-routing.
+        assert captured["methods"][0] == "observe_predict_interval"
+
+    def test_observe_predict_class_proba_uses_own_method_name(self, monkeypatch):
+        """observe_predict_class_proba routes under 'observe_predict_class_proba'."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes = ["cat", "dog", "bird"]
+        y = pl.DataFrame({"time": time, "animal": [classes[i % 3] for i in range(80)]})
+        X_actual = pl.DataFrame({"time": time, "temp": [20.0 + (i % 10) for i in range(80)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=3)
+
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict_class_proba(y=y[60:66], X_actual=X_actual[60:66], stride=3)
+        # The dispatcher routes first under its own method name; later entries
+        # are the legitimate per-origin predict_class_proba re-routing.
+        assert captured["methods"][0] == "observe_predict_class_proba"

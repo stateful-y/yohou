@@ -138,6 +138,8 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         "n_jobs": [Integral, None],
     }
 
+    _required_forecaster_type: type = BaseIntervalForecaster
+
     def __init__(
         self,
         forecasters: list[tuple[str, BaseForecaster]],

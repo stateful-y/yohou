@@ -336,6 +336,42 @@ class TestColumnAssignmentValidation:
         with pytest.raises(ValueError, match="non-existent columns"):
             forecaster.fit(y[:30], forecasting_horizon=5)
 
+    def test_double_underscore_name_raises(self):
+        """A forecaster name containing '__' is rejected (corrupts routing)."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "a": range(50), "b": range(50)})
+
+        forecaster = ColumnForecaster([
+            ("foo__bar", SeasonalNaive(seasonality=1), "a"),
+            ("model_2", SeasonalNaive(seasonality=1), "b"),
+        ])
+
+        with pytest.raises(ValueError, match="must not contain __"):
+            forecaster.fit(y[:30], forecasting_horizon=5)
+
+    def test_name_conflicts_with_constructor_arg_raises(self):
+        """A forecaster name colliding with a constructor argument is rejected."""
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=49),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "a": range(50), "b": range(50)})
+
+        forecaster = ColumnForecaster([
+            ("n_jobs", SeasonalNaive(seasonality=1), "a"),
+            ("model_2", SeasonalNaive(seasonality=1), "b"),
+        ])
+
+        with pytest.raises(ValueError, match="conflict with constructor arguments"):
+            forecaster.fit(y[:30], forecasting_horizon=5)
+
 
 class TestNamedForecasters:
     """Tests for named_forecasters property."""
@@ -1379,6 +1415,35 @@ class TestClassProbaColumnForecaster:
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) > 0
+
+    def test_predict_class_proba_accepts_predict_transformed(self, class_proba_column_setup):
+        """predict_class_proba accepts predict_transformed, mirroring its siblings."""
+        import inspect
+
+        forecaster, _, _, _, _ = class_proba_column_setup
+        sig = inspect.signature(forecaster.predict_class_proba)
+        assert "predict_transformed" in sig.parameters
+
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3, predict_transformed=False)
+        assert "time" in y_pred.columns
+        assert len([c for c in y_pred.columns if "_proba_" in c]) > 0
+
+    def test_observe_predict_class_proba_accepts_predict_transformed(self, class_proba_column_setup):
+        """observe_predict_class_proba accepts predict_transformed, mirroring its siblings."""
+        import inspect
+
+        forecaster, _, y_test, _, X_actual_test = class_proba_column_setup
+        sig = inspect.signature(forecaster.observe_predict_class_proba)
+        assert "predict_transformed" in sig.parameters
+
+        y_pred = forecaster.observe_predict_class_proba(
+            y=y_test[:3],
+            X_actual=X_actual_test[:3],
+            forecasting_horizon=3,
+            predict_transformed=False,
+        )
+        assert "time" in y_pred.columns
+        assert len([c for c in y_pred.columns if "_proba_" in c]) > 0
 
     def test_predict_class_proba_with_remainder(self):
         """predict_class_proba includes remainder forecaster predictions."""

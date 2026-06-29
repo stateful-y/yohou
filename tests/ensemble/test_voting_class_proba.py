@@ -504,6 +504,24 @@ class TestVotingClassProbaErrorHandling:
         with pytest.raises(ValueError, match="must not contain '__'"):
             forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
 
+    def test_wrong_family_forecaster_raises(self, class_proba_y_X_factory):
+        """A non-class-probability forecaster is rejected at fit with a clear error."""
+        from yohou.point import SeasonalNaive
+
+        y, X_actual = class_proba_y_X_factory(length=100, n_targets=1, n_features=2, n_classes=3, seed=42)
+
+        forecaster = VotingClassProbaForecaster(
+            forecasters=[
+                ("cp", _make_class_proba_forecaster()),
+                # SeasonalNaive is a point forecaster, not a class-probability one.
+                ("point", SeasonalNaive(seasonality=1)),
+            ],
+            method="soft",
+        )
+
+        with pytest.raises(ValueError, match="BaseClassProbaForecaster"):
+            forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=3)
+
 
 class TestVotingClassProbaConsistency:
     """Tests for class consistency validation across base forecasters."""

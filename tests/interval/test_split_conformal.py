@@ -594,7 +594,7 @@ class TestSplitConformalObserveRewindSimilarity:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteResidual(),
-            similarity=SeasonalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonality=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 

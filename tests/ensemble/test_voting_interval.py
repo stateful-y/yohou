@@ -486,6 +486,40 @@ class TestVotingIntervalForecasterErrorHandling:
                 forecasting_horizon=3,
             )
 
+    def test_wrong_family_forecaster_raises(self):
+        """A point forecaster passed to the interval ensemble is rejected at fit.
+
+        Without a family check this would only surface later as an
+        AttributeError inside predict_interval, so the failure must be a clear
+        ValueError naming the required family.
+        """
+        forecaster = VotingIntervalForecaster(
+            forecasters=[
+                (
+                    "conf_1",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(seasonality=1),
+                        calibration_size=10,
+                    ),
+                ),
+                # SeasonalNaive is a point forecaster, not an interval forecaster.
+                ("point", SeasonalNaive(seasonality=7)),
+            ],
+        )
+        with pytest.raises(ValueError, match="BaseIntervalForecaster"):
+            forecaster.fit(
+                pl.DataFrame({
+                    "time": pl.datetime_range(
+                        start=datetime(2020, 1, 1),
+                        end=datetime(2020, 3, 20),
+                        interval="1d",
+                        eager=True,
+                    ),
+                    "value": range(80),
+                }),
+                forecasting_horizon=3,
+            )
+
     def test_aggregate_interval_envelope_fallback(self):
         """Envelope strategy falls back to mean for non-lower/upper columns.
 

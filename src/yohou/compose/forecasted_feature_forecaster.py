@@ -1095,7 +1095,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict,
-            routing_method="predict",
+            routing_method="observe_predict",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1154,7 +1154,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict_interval,
-            routing_method="predict_interval",
+            routing_method="observe_predict_interval",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1267,7 +1267,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict_class_proba,
-            routing_method="predict_class_proba",
+            routing_method="observe_predict_class_proba",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1308,9 +1308,13 @@ class ForecastedFeatureForecaster(BaseForecaster):
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict")
             .add(caller="predict_class_proba", callee="predict")
-            .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict")
-            .add(caller="observe_predict_class_proba", callee="observe_predict"),
+            # The feature forecast is always a plain ``predict`` (the rolling
+            # loop and the strided-buffer refresh both call
+            # ``feature_forecaster_.predict``), so every observe_predict variant
+            # routes the feature forecaster's params from its ``predict`` callee.
+            .add(caller="observe_predict", callee="predict")
+            .add(caller="observe_predict_interval", callee="predict")
+            .add(caller="observe_predict_class_proba", callee="predict"),
         )
 
         return router

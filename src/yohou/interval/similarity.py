@@ -315,16 +315,16 @@ class SeasonalSimilarity(BaseSimilarity):
 
     Parameters
     ----------
-    seasonalities : list of float or None, default=None
+    seasonality : list of float or None, default=None
         Seasonal periods in time steps (e.g. ``[7.0, 365.25]`` for
         weekly and yearly cycles on daily data). ``None`` is accepted at
         construction but invalid; passing ``None`` raises ``ValueError``
         at ``fit`` time, so a list must be provided before fitting.
     harmonics : dict mapping float to list of int, or None, default=None
         Harmonics to include per seasonality period. Keys must match
-        entries in ``seasonalities``. Each value is a list of positive
+        entries in ``seasonality``. Each value is a list of positive
         integers specifying which harmonics to use. Defaults to
-        ``{s: [1]}`` for each ``s`` in ``seasonalities``.
+        ``{s: [1]}`` for each ``s`` in ``seasonality``.
     metric : str, default="euclidean"
         Distance metric for ``scipy.spatial.distance.cdist``.
     metric_params : dict or None, default=None
@@ -339,7 +339,7 @@ class SeasonalSimilarity(BaseSimilarity):
         from calibration data. When ``fit`` receives a single timestamp the
         interval cannot be inferred and is set to ``timedelta(0)``; in that
         case ``_extract_features`` leaves the time axis in raw seconds, so
-        ``seasonalities`` must be expressed in seconds to remain meaningful.
+        ``seasonality`` must be expressed in seconds to remain meaningful.
 
     Notes
     -----
@@ -380,7 +380,7 @@ class SeasonalSimilarity(BaseSimilarity):
     >>> y_pred = pl.DataFrame({"time": dates, "value": np.random.randn(21)})
     >>>
     >>> # Fit with weekly seasonality
-    >>> sim = SeasonalSimilarity(seasonalities=[7.0])
+    >>> sim = SeasonalSimilarity(seasonality=[7.0])
     >>> _ = sim.fit(y, y_pred)
     >>>
     >>> # Predict weights for a new Monday
@@ -393,7 +393,7 @@ class SeasonalSimilarity(BaseSimilarity):
     """
 
     _parameter_constraints: dict = {
-        "seasonalities": [list],
+        "seasonality": [list],
         "harmonics": [dict, None],
         "metric": [str],
         "metric_params": [dict, None],
@@ -401,12 +401,12 @@ class SeasonalSimilarity(BaseSimilarity):
 
     def __init__(
         self,
-        seasonalities: list[float] | None = None,
+        seasonality: list[float] | None = None,
         harmonics: dict[float, list[int]] | None = None,
         metric: str = "euclidean",
         metric_params: dict[str, object] | None = None,
     ) -> None:
-        self.seasonalities = seasonalities
+        self.seasonality = seasonality
         self.harmonics = harmonics
         self.metric = metric
         self.metric_params = metric_params
@@ -422,7 +422,7 @@ class SeasonalSimilarity(BaseSimilarity):
         """
         if self.harmonics is not None:
             return self.harmonics
-        return {s: [1] for s in self.seasonalities}  # ty: ignore[not-iterable]
+        return {s: [1] for s in self.seasonality}  # ty: ignore[not-iterable]
 
     def _extract_features(self, times: pl.Series) -> np.ndarray:
         """Extract Fourier features from a datetime series.
@@ -446,7 +446,7 @@ class SeasonalSimilarity(BaseSimilarity):
 
         harmonics = self._resolve_harmonics()
         features = []
-        for s in self.seasonalities:  # ty: ignore[not-iterable]
+        for s in self.seasonality:  # ty: ignore[not-iterable]
             for k in harmonics.get(s, [1]):
                 angle = 2.0 * math.pi * k * t / s
                 features.append(np.sin(angle))
@@ -484,17 +484,17 @@ class SeasonalSimilarity(BaseSimilarity):
         -----
         When ``y_pred`` contains only a single timestamp, the time interval
         cannot be inferred and ``interval_td_`` is set to ``timedelta(0)``;
-        the feature extractor then works in raw seconds and ``seasonalities``
+        the feature extractor then works in raw seconds and ``seasonality``
         must also be expressed in seconds to remain meaningful.
 
         Raises
         ------
         ValueError
-            If ``seasonalities`` is ``None`` or empty.
+            If ``seasonality`` is ``None`` or empty.
 
         """
-        if self.seasonalities is None or len(self.seasonalities) == 0:
-            raise ValueError("seasonalities must be a non-empty list of floats")
+        if self.seasonality is None or len(self.seasonality) == 0:
+            raise ValueError("seasonality must be a non-empty list of floats")
 
         times = y_pred["time"]
         self.first_time_ = times[0]
@@ -661,7 +661,7 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
     >>> comp = CompositeSimilarity(
     ...     similarities=[
     ...         ("dist", DistanceSimilarity(metric="euclidean")),
-    ...         ("seasonal", SeasonalSimilarity(seasonalities=[7.0])),
+    ...         ("seasonal", SeasonalSimilarity(seasonality=[7.0])),
     ...     ],
     ...     combination="multiply",
     ... )

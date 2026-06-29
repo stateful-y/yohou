@@ -742,3 +742,41 @@ class TestMultiStepPanelInterval:
                 coverage_rates=coverage_rates,
                 strategy="point",
             )
+
+
+class TestIntervalReductionTargetTransformer:
+    """IntervalReductionForecaster exposes a target_transformer parameter."""
+
+    def test_target_transformer_in_params(self):
+        """target_transformer is a constructor parameter, like the other reduction families."""
+        forecaster = IntervalReductionForecaster()
+        assert "target_transformer" in forecaster.get_params()
+        assert forecaster.get_params()["target_transformer"] is None
+
+    def test_target_transformer_passes_through_to_reduction_machinery(self):
+        """A passed target_transformer is stored and threaded into the reduction pipeline."""
+        from sklearn.linear_model import QuantileRegressor
+        from sklearn.multioutput import MultiOutputRegressor
+
+        from yohou.stationarity import SeasonalDifferencing
+
+        transformer = SeasonalDifferencing(seasonality=7)
+        forecaster = IntervalReductionForecaster(
+            estimator=MultiOutputRegressor(QuantileRegressor(alpha=0.0)),
+            target_transformer=transformer,
+        )
+        # Stored on the instance and visible through get_params (and clone).
+        assert forecaster.target_transformer is transformer
+        assert forecaster.get_params()["target_transformer"] is transformer
+        from sklearn.base import clone
+
+        assert clone(forecaster).get_params()["target_transformer"] is not None
+
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 2, 10), interval="1d", eager=True)
+        y = pl.DataFrame({"time": time, "value": pl.Series(range(41), dtype=pl.Float64)})
+        forecaster.fit(y[:30], forecasting_horizon=3, coverage_rates=[0.5])
+
+        # The transformed-space schema reflects the seasonal differencing transform,
+        # proving the target_transformer flowed into the reduction pipeline at fit time.
+        assert forecaster.local_y_t_schema_ == {"diff_s_7_value": pl.Float64}
+        assert forecaster.target_transformer_ is not None
