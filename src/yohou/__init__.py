@@ -2,6 +2,7 @@
 
 import re
 from importlib.metadata import version
+from typing import Any
 
 from sklearn import set_config
 
@@ -37,7 +38,13 @@ try:
         cleaned = [_BACKTICK_NAME_RE.sub(r"\1", line) for line in cleaned]
         return _original_parse_see_also(self, cleaned)
 
-    NumpyDocString._parse_see_also = _parse_see_also_strip_backticks  # ty: ignore[invalid-assignment]
+    # Assign through an ``Any`` alias so the monkeypatch needs no type-checker
+    # suppression comment. A direct assignment is reported as invalid-assignment
+    # by some resolved ty versions but not others (it depends on the sklearn
+    # stubs), so any inline suppression would be unused under one of them and
+    # break CI either way.
+    _patched: Any = NumpyDocString
+    _patched._parse_see_also = _parse_see_also_strip_backticks
 except (ImportError, AttributeError):
     pass
 
