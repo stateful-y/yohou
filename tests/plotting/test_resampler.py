@@ -29,6 +29,7 @@ _DEFAULT_CONFIG = {
     "resampler_gap_handler": None,
     "resampler_trace_prefix_suffix": None,
     "resampler_show_mean_aggregation_size": None,
+    "line_shape": None,
 }
 
 

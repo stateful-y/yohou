@@ -1114,6 +1114,9 @@ def plot_calibration(
             y_label=y_label or "Empirical coverage",
             width=width,
             height=height or default_height,
+            # Reliability curves and the diagonal must stay linear; never step
+            # them via the global line_shape config.
+            apply_line_shape=False,
         )
         fig.update_layout(showlegend=show_legend)
         # Calibration axes are coverage probabilities: pin both to the full
@@ -1184,6 +1187,9 @@ def plot_calibration(
         y_label=y_label or "Empirical coverage",
         width=width,
         height=height,
+        # Reliability curves and the diagonal must stay linear; never step them
+        # via the global line_shape config.
+        apply_line_shape=False,
     )
     fig.update_layout(showlegend=show_legend)
     # Calibration axes are coverage probabilities: pin both to the full [0, 1]

@@ -70,6 +70,7 @@ Interactive time series visualization functions using Plotly. Exploration and di
 | [`resolve_color_palette`](generated/yohou.plotting._utils.resolve_color_palette.md) | Resolve a user-provided color palette or fall back to the default. |
 | [`resolve_panel_columns`](generated/yohou.plotting._utils.resolve_panel_columns.md) | Resolve which panel columns to plot. |
 | [`LINE_DASH_SEQUENCE`](generated/yohou.plotting._utils.LINE_DASH_SEQUENCE.md) | Default sequence of dash styles for distinguishing series. |
+| [`VALID_LINE_SHAPES`](generated/yohou.plotting._utils.VALID_LINE_SHAPES.md) | Line interpolation styles accepted by the `line_shape` config. |
 | [`LegendTracker`](generated/yohou.plotting._utils.LegendTracker.md) | Track legend entries to deduplicate them across traces. |
 | [`PanelColorManager`](generated/yohou.plotting._utils.PanelColorManager.md) | Assign consistent colors to series across panel facets. |
 | [`RenderContext`](generated/yohou.plotting._utils.RenderContext.md) | Hold shared rendering state passed through plotting helpers. |
