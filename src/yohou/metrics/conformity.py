@@ -34,10 +34,28 @@ class Residual(BaseConformityScorer):
     where the lower and upper bounds can differ in width from the
     point prediction.
 
+    Parameters
+    ----------
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
+
     See Also
     --------
     - [`AbsoluteResidual`][yohou.metrics.conformity.AbsoluteResidual] : Symmetric variant using absolute residuals.
-    - [`GammaResidual`][yohou.metrics.conformity.GammaResidual] : Scale-dependent variant using relative errors.
+    - [`GammaResidual`][yohou.metrics.conformity.GammaResidual] : Scale-independent variant using relative errors.
     - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] :
         Conformal prediction forecaster that uses conformity scorers.
 
@@ -146,10 +164,28 @@ class AbsoluteResidual(Residual):
     where the lower and upper bounds are equidistant from the point
     prediction.
 
+    Parameters
+    ----------
+    groups : list of str, dict of str to float, or None, default=None
+        Panel group filter (list) or filter with weights (dict). If None,
+        all panel groups are included with equal weight.
+    components : list of str, dict of str to float, or None, default=None
+        Component filter (list) or filter with weights (dict). If None,
+        all components are included with equal weight.
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
+
     See Also
     --------
     - [`Residual`][yohou.metrics.conformity.Residual] : Asymmetric variant using signed residuals.
-    - [`AbsoluteGammaResidual`][yohou.metrics.conformity.AbsoluteGammaResidual] : Scale-dependent symmetric variant.
+    - [`AbsoluteGammaResidual`][yohou.metrics.conformity.AbsoluteGammaResidual] : Scale-independent symmetric variant.
 
     Examples
     --------
@@ -359,16 +395,17 @@ class GammaResidual(BaseConformityScorer):
         Parameters
         ----------
         y_pred : pl.DataFrame
-             Point predictions.
+            Point predictions, optionally with "time" column.
         conformity_scores : pl.DataFrame
-             Conformity scores.
+            Computed conformity scores from calibration set, optionally with "time" column.
         coverage_rate : float
-             Coverage rate.
+            Desired coverage probability (e.g., 0.9 for 90% intervals).
 
         Returns
         -------
         pl.DataFrame
-             Prediction intervals.
+            Prediction intervals with lower and upper bounds, and time columns if input had them.
+
         """
         check_is_fitted(self, ["_is_fitted"])
 
@@ -525,6 +562,7 @@ class AbsoluteQuantileResidual(BaseConformityScorer):
         tags = super().__sklearn_tags__()
         assert tags.scorer_tags is not None
         tags.scorer_tags.prediction_type = "interval"
+        tags.scorer_tags.symmetric = True
         return tags
 
     @abc.abstractmethod

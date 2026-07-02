@@ -10,8 +10,9 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
+
+from yohou.preprocessing import LagTransformer
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import InvertibleTransformer, SimpleTransformer, StatelessTransformer
@@ -27,27 +28,17 @@ class TestBaseTransformerFit:
         result = t.fit(X)
         assert result is t
 
-    def test_fit_sets_feature_names(self, time_series_factory):
-        """Fit sets feature_names_in_ attribute."""
-        X = time_series_factory(length=50, n_components=3)
-        t = SimpleTransformer(observation_horizon=0)
-        t.fit(X)
-        assert hasattr(t, "feature_names_in_")
-        assert len(t.feature_names_in_) == 3
+    # feature_names_in_ and n_features_in_ presence and values are covered by
+    # check_fit_sets_attributes in the systematic suite (tests/test_common.py).
 
-    def test_fit_sets_n_features(self, time_series_factory):
-        """Fit sets n_features_in_ attribute."""
+    def test_fit_sets_schema(self, time_series_factory):
+        """Fit records the non-time input schema in X_schema_."""
         X = time_series_factory(length=50, n_components=2)
         t = SimpleTransformer(observation_horizon=0)
         t.fit(X)
-        assert t.n_features_in_ == 2
-
-    def test_fit_sets_schema(self, time_series_factory):
-        """Fit sets X_schema_ attribute."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=0)
-        t.fit(X)
-        assert hasattr(t, "X_schema_")
+        # X_schema_ (the time-excluded feature schema) is not covered by
+        # check_fit_sets_attributes.
+        assert t.X_schema_ == X.drop("time").schema
 
     def test_fit_sets_interval(self, time_series_factory):
         """Fit sets interval_ attribute from time series."""
@@ -90,20 +81,18 @@ class TestBaseTransformerObservationHorizon:
         t.fit(X)
         assert t.observation_horizon == 5
 
-    def test_stateful_stores_memory(self, time_series_factory):
-        """Stateful transformer stores observation window in _X_observed."""
+    @pytest.mark.parametrize("horizon", [0, 3, 7])
+    def test_fit_stores_horizon_rows_in_memory(self, time_series_factory, horizon):
+        """After fit, _X_observed holds exactly observation_horizon rows.
+
+        Covers the stateless (horizon == 0, empty frame) and stateful
+        (horizon > 0) cases for the post-fit memory buffer.
+        """
         X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=3)
+        t = SimpleTransformer(observation_horizon=horizon)
         t.fit(X)
         assert hasattr(t, "_X_observed")
-        assert len(t._X_observed) == 3
-
-    def test_stateless_stores_empty_memory(self, time_series_factory):
-        """Stateless transformer stores empty DataFrame in _X_observed."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=0)
-        t.fit(X)
-        assert len(t._X_observed) == 0
+        assert len(t._X_observed) == horizon
 
     def test_insufficient_data_error_names_values(self, time_series_factory):
         """The insufficient-memory error reports the horizon and row count.
@@ -154,12 +143,9 @@ class TestBaseTransformerObserve:
         t.observe(X_all[50:])
         assert t.observed_time_ == X_all["time"][-1]
 
-    def test_observe_not_fitted_raises(self, time_series_factory):
-        """Observe before fit raises NotFittedError."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=3)
-        with pytest.raises(NotFittedError):
-            t.observe(X)
+    # observe()/rewind()/transform()/observe_transform() raising NotFittedError
+    # when unfitted is covered by check_transformer_methods_call_check_is_fitted
+    # in the systematic suite (tests/test_common.py).
 
 
 class TestBaseTransformerRewind:
@@ -180,13 +166,6 @@ class TestBaseTransformerRewind:
         t.fit(X)
         t.rewind(X[:10])
         assert t._X_observed["time"][-1] == X["time"][9]
-
-    def test_rewind_not_fitted_raises(self, time_series_factory):
-        """Rewind before fit raises NotFittedError."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=3)
-        with pytest.raises(NotFittedError):
-            t.rewind(X)
 
 
 class TestBaseTransformerObserveTransform:
@@ -223,6 +202,28 @@ class TestBaseTransformerObserveTransform:
         t.fit(X_all[:50])
         result = t.observe_transform(X_all[50:])
         assert "time" in result.columns
+
+    def test_observe_transform_uses_pre_observation_memory(self, time_series_factory):
+        """observe_transform transforms from memory BEFORE the observation.
+
+        The documented contract is ``transform(concat(_X_observed, X))[-len(X):]``
+        so the first rows of ``X`` are computed against the prior memory rather
+        than against ``X`` alone. A stateful lag transformer makes this visible:
+        without the prior memory the leading lag rows would be dropped.
+        """
+        X_all = time_series_factory(length=60)
+        t = LagTransformer([1, 2])
+        t.fit(X_all[:50])
+
+        new_data = X_all[50:]
+        expected = t.transform(pl.concat([t._X_observed, new_data]))[-len(new_data) :]
+
+        result = t.observe_transform(new_data)
+
+        assert result.equals(expected)
+        # The first output row aligns with the first new row (no warmup drop),
+        # proving the prior memory was used rather than transform(new_data).
+        assert result["time"][0] == new_data["time"][0]
 
 
 class TestBaseTransformerRewindTransform:
@@ -303,28 +304,30 @@ class TestBaseTransformerTags:
         tags = t.__sklearn_tags__()
         assert tags.transformer_tags.invertible is False
 
+    def test_invertible_round_trip(self, time_series_factory):
+        """inverse_transform(X_p=...) reverses transform via the base-class signature."""
+        from polars.testing import assert_frame_equal
+
+        X = time_series_factory(length=50)
+        t = InvertibleTransformer(observation_horizon=0, offset=7.0)
+        t.fit(X)
+        X_t = t.transform(X)
+        X_back = t.inverse_transform(X_t, X_p=None)
+        assert_frame_equal(X_back, X)
+
 
 class TestBaseTransformerUpdateXObserved:
-    """Tests for _update_X_observed edge cases."""
+    """Tests for the internal _update_X_observed API."""
 
     def test_insufficient_data_raises(self, time_series_factory):
-        """_update_X_observed raises when data shorter than horizon."""
+        """A direct _update_X_observed call reports horizon and row count.
+
+        The post-fit memory length for both stateless and stateful horizons is
+        covered by test_fit_stores_horizon_rows_in_memory above; this test pins
+        the error path on the internal API directly.
+        """
         X = time_series_factory(length=50)
         t = SimpleTransformer(observation_horizon=10)
         t.fit(X)
-        with pytest.raises(ValueError, match="[Nn]ot enough"):
+        with pytest.raises(ValueError, match=r"observation_horizon=10 but X has 5 rows"):
             t._update_X_observed(X[:5])
-
-    def test_stateless_stores_empty_frame(self, time_series_factory):
-        """Stateless transformer stores empty frame regardless of input."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=0)
-        t.fit(X)
-        assert len(t._X_observed) == 0
-
-    def test_stateful_stores_exact_horizon(self, time_series_factory):
-        """Stateful transformer stores exactly observation_horizon rows."""
-        X = time_series_factory(length=50)
-        t = SimpleTransformer(observation_horizon=7)
-        t.fit(X)
-        assert len(t._X_observed) == 7

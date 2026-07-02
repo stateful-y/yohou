@@ -15,6 +15,10 @@ except ImportError as e:
 def check_point_prediction_structure(forecaster, y_test: pl.DataFrame) -> None:
     """Check point predictions have correct column structure.
 
+    Predictions must carry both ``vintage_time`` (when the forecast was made)
+    and ``time`` (the timestamp being forecast), no interval columns, and at
+    least one target column.
+
     Parameters
     ----------
     forecaster : BasePointForecaster

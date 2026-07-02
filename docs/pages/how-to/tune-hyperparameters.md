@@ -164,6 +164,7 @@ determines which parameters are selected as best.
 ## See Also
 
 - [Choose a Forecasting Method](choose-forecasting-method.md): select a forecaster before tuning
+- [About Model Selection](../explanation/model-selection.md): temporal cross-validation, splitter design, and search strategy trade-offs
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md): understand the metrics used for scoring
 - [Extensions](../reference/extensions.md): `yohou-optuna` provides `OptunaSearchCV` for Bayesian hyperparameter search
 - [`yohou.model_selection` API reference](/pages/api/model_selection/)

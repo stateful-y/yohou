@@ -6,10 +6,10 @@ import numbers
 import numpy as np
 import polars as pl
 from pydantic import StrictInt
-from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseTransformer
+from yohou.utils._compat import Interval
 from yohou.utils.validation import interval_to_timedelta
 
 
@@ -49,6 +49,13 @@ class FourierFeatureTransformer(BaseTransformer):
     first_time_ : datetime
         First observed timestamp, used as reference for index
         computation.
+
+    Raises
+    ------
+    ValueError
+        At fit time if the effective ``harmonics`` list is empty; if any
+        harmonic is less than 1; or if the maximum harmonic exceeds
+        ``seasonality / 2`` (the Nyquist limit).
 
     See Also
     --------

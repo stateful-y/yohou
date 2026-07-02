@@ -2,7 +2,7 @@
 
 Yohou includes a Plotly-based plotting module organized around the stages of a
 forecasting project. Rather than a bag of unrelated chart types, the functions
-map to what you are trying to understand at each phase: exploration, diagnostics,
+correspond to distinct analytical questions at each phase: exploration, diagnostics,
 forecasting, evaluation, and model selection. All functions accept polars
 DataFrames, return interactive `plotly.graph_objects.Figure` objects, and handle
 panel data automatically through faceted subplots.
@@ -13,7 +13,7 @@ A time series project moves through distinct analytical phases, and different
 visualizations serve each one. Exploring raw data asks "what patterns exist?",
 diagnostics ask "what structure drives them?", forecast plots ask "did the model
 capture them?", and evaluation asks "where does it fail?" Understanding this
-progression helps you pick the right plot at the right moment.
+progression makes the mapping between analytical question and chart type explicit.
 
 ### Exploring the Data
 
@@ -27,8 +27,9 @@ step lines with markers.
 a rising or falling rolling mean signals a trend that stationarity transforms
 should address, while a widening rolling standard deviation signals
 heteroscedasticity (variance that changes over time), which often calls for a
-log or Box-Cox transform before modeling. The `agg_method` parameter lets you
-switch between mean, median, and standard deviation.
+log or Box-Cox transform before modeling. The `statistics` parameter accepts a
+single statistic name or a list (e.g. `["mean", "std"]`) to overlay multiple
+rolling statistics at once.
 [`plot_boxplot`](/pages/api/generated/yohou.plotting.exploration.plot_boxplot/) grouped by period reveals whether seasonal variation is
 additive (constant box height across years) or multiplicative (box height grows
 with the level).
@@ -42,7 +43,7 @@ errors.
 [`plot_distribution`](/pages/api/generated/yohou.plotting.exploration.plot_distribution/) shows histograms with KDE overlays for examining
 value distributions, and
 [`plot_resampling_comparison`](/pages/api/generated/yohou.plotting.exploration.plot_resampling_comparison/) overlays the same series at different
-temporal granularities so you can assess information loss when changing frequency.
+temporal granularities, revealing the information loss when changing frequency.
 
 ### Understanding the Structure
 
@@ -66,8 +67,7 @@ Together, these reveal whether the seasonal pattern is stable across years
 (pointing to [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/))
 or evolving (pointing to Fourier features or adaptive approaches).
 
-[`plot_correlation_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_correlation_heatmap/) shows pairwise correlation across columns
-using Pearson, Spearman, or Kendall methods.
+[`plot_correlation_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_correlation_heatmap/) shows pairwise Pearson correlation across columns.
 [`plot_lag_scatter`](/pages/api/generated/yohou.plotting.diagnostics.plot_lag_scatter/) plots `y(t)` against `y(t-k)` to visually check lag
 relationships, while [`plot_scatter_matrix`](/pages/api/generated/yohou.plotting.diagnostics.plot_scatter_matrix/) shows all pairwise scatter
 plots in a grid.
@@ -91,7 +91,7 @@ internal structure a fitted decomposition assigned to trend, seasonality, and
 residual.
 
 [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) overlays predicted values against actuals with optional
-historical context controlled by `n_history`. When you pass predictions as a
+historical context controlled by `n_history`. When predictions are passed as a
 `dict[str, pl.DataFrame]`, multiple models appear side by side for visual
 comparison. Prediction intervals render automatically when the forecast includes
 interval columns, with band opacity controlled by `band_opacity` and supported
@@ -111,7 +111,8 @@ Residual diagnostics, calibration plots, and scoring visualizations reveal where
 and when the model struggles.
 
 [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/) renders a four-panel diagnostic layout when given a
-single column: residuals over time, histogram, ACF, and Q-Q plot. With multiple
+single column: residuals over time, residuals vs fitted values, histogram, and
+Q-Q plot. With multiple
 columns it produces faceted time-series residual subplots. A horizontal band
 above or below zero signals systematic bias; a fan-out pattern signals
 heteroscedasticity.
@@ -123,8 +124,8 @@ The score visualization functions operate on scorer output DataFrames and slice
 performance along different dimensions:
 [`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/) shows how a metric evolves over time,
 [`plot_score_distribution`](/pages/api/generated/yohou.plotting.evaluation.plot_score_distribution/) shows its histogram,
-[`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) renders box or violin plots by aggregation
-dimension,
+[`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) renders a grouped bar chart of aggregate scores
+for quick model comparison,
 [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/) reveals how accuracy degrades across the forecast
 horizon (important for choosing between multi-output, direct, and dir-rec
 reduction strategies),
@@ -139,7 +140,7 @@ vintages for hindsight analysis,
 [`BaseSplitter`](/pages/api/generated/yohou.model_selection.split.BaseSplitter/) as a
 timeline, confirming that temporal ordering is preserved across folds.
 [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/) connects hyperparameter values to
-cross-validation scores, helping you see whether the search explored good
+cross-validation scores, revealing whether the search explored good
 regions of the parameter space.
 
 ## Panel Data
@@ -186,7 +187,7 @@ defaults with custom hex codes.
 ### Parameter Conventions
 
 Functions share consistent parameter naming across modules, making the interface
-predictable as you move between phases:
+predictable when moving between phases:
 
 - Exploration and diagnostic functions use `df` as input, `columns` to select
   which value columns to plot, and `groups` for panel data.
@@ -243,4 +244,4 @@ workflow that produces the data these functions visualize. For full function
 signatures and parameter reference, see the
 [API Reference: yohou.plotting](/pages/api/plotting/).
 
-For practical recipes, see [How to Visualize Forecasts](../how-to/visualize-forecasts.md) and [How to Visualize Scores](../how-to/visualize-scores.md).
+For practical recipes, see [How to Visualize Forecasts](../how-to/visualize-forecasts.md) and [How to Visualize Scores](../how-to/visualize-scores.md). For hands-on walkthroughs, see the [Exploratory Visualization Tutorial](../tutorials/exploratory-visualization.md) and the [Forecast Visualization Tutorial](../tutorials/forecast-visualization.md).

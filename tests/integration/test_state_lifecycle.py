@@ -7,8 +7,9 @@ operations through deep composition hierarchies.
 All tests use analytical fixtures from conftest.py and must pass @pytest.mark.integration.
 """
 
+import contextlib
 import pickle
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -205,7 +206,13 @@ class TestStateMachineProtocol:
         assert "time" in result_observe_predict.columns
 
     def test_state_machine_observation_buffer_growth(self, ar1_series):
-        """Verify observation buffer grows correctly during observe sequence."""
+        """Verify the observation buffer stays bounded across repeated observes.
+
+        check_observe_extends_observations (systematic suite) covers a single
+        observe. This test extends that to the bounded-buffer invariant over a
+        sequence of observes: after each observe, ``len(_y_observed)`` must stay
+        pinned at ``observation_horizon`` rather than growing with history.
+        """
         y_train = ar1_series(length=20, phi=0.5, c=10.0, seed=100)
 
         forecaster = PointReductionForecaster(
@@ -238,7 +245,12 @@ class TestStateMachineProtocol:
         assert len(pred) == 1
 
     def test_state_machine_rewind_idempotency(self, ar1_series):
-        """Verify rewind() with same tail data produces identical state."""
+        """Verify two rewinds to the same tail produce bit-identical predictions.
+
+        check_rewind_replaces_observations (systematic suite) verifies the buffer
+        is replaced. This test adds the idempotency property: rewinding twice to
+        the same window leaves the forecaster in an identical predictive state.
+        """
         y_train = ar1_series(length=100, phi=0.5, c=10.0, seed=42)
 
         forecaster = PointReductionForecaster(
@@ -323,6 +335,59 @@ class TestStateMachineProtocol:
         # Predictions should vary (state is changing)
         assert len(set(predictions)) > 1
 
+    def test_state_machine_full_cycle_panel(self):
+        """Exercise the fit/observe/rewind lifecycle on panel-structured data.
+
+        The rest of this file uses single-series data, leaving the per-group
+        panel dispatch paths (_observe_panel/_rewind_panel and the per-group
+        observed_time_ dict) untested. This drives a panel forecaster through the
+        full cycle and asserts the panel-specific state contracts:
+        - observed_time_ is a per-group dict,
+        - the bounded per-group buffer stays pinned at observation_horizon,
+        - rewind resets the per-group observed_time_ to the reset window tail.
+        """
+        n = 60
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        y = pl.DataFrame({
+            "time": times,
+            "group_0__value": np.arange(n, dtype=float),
+            "group_1__value": np.arange(n, dtype=float) * 2.0 + 5.0,
+        }).with_columns(pl.col("time").cast(pl.Datetime("us")))
+
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            feature_transformer=LagTransformer(lag=2),
+        )
+        forecaster.fit(y[:50], forecasting_horizon=3)
+        assert forecaster.groups_ == ["group_0", "group_1"]
+        obs_horizon = forecaster.observation_horizon
+        assert obs_horizon == 2
+
+        # observe → predict: per-group observed_time_ advances to the new tail.
+        y_new = y[50:55]
+        forecaster.observe(y_new)
+        new_tail = y_new["time"][-1]
+        assert forecaster.observed_time_ == {"group_0": new_tail, "group_1": new_tail}
+
+        # Per-group observation buffers must stay bounded by observation_horizon.
+        assert isinstance(forecaster._y_observed, dict)
+        for group_buffer in forecaster._y_observed.values():
+            assert len(group_buffer) == obs_horizon
+
+        pred = forecaster.predict(forecasting_horizon=3)
+        assert {c for c in pred.columns if c not in {"time", "vintage_time"}} == {
+            "group_0__value",
+            "group_1__value",
+        }
+
+        # rewind → per-group observed_time_ resets to the reset window tail.
+        y_reset = y[:50].tail(10)
+        forecaster.rewind(y_reset)
+        reset_tail = y_reset["time"][-1]
+        assert forecaster.observed_time_ == {"group_0": reset_tail, "group_1": reset_tail}
+        pred_after = forecaster.predict(forecasting_horizon=3)
+        assert len(pred_after) == 3
+
 
 @pytest.mark.integration
 class TestIdempotency:
@@ -339,11 +404,13 @@ class TestIdempotency:
         forecaster.fit(y_train, forecasting_horizon=5)
 
         pred_1 = forecaster.predict(forecasting_horizon=5)
+        # Capture buffer identity BEFORE the second predict to detect side effects.
+        buffer_id_before = id(forecaster._y_observed)
         pred_2 = forecaster.predict(forecasting_horizon=5)
 
         assert pred_1.equals(pred_2)
-        # Verify object identity hasn't changed (no side effects)
-        assert id(forecaster._y_observed) == id(forecaster._y_observed)
+        # predict() must not replace the observation buffer object (no side effects).
+        assert id(forecaster._y_observed) == buffer_id_before
 
     def test_predict_interval_idempotency(self, ar1_series):
         """Verify predict_interval() called twice returns identical results."""
@@ -405,8 +472,7 @@ class TestMemoryBounds:
         forecaster.fit(y_train, forecasting_horizon=1)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=FeaturePipeline(lag3+lag2+scaler)
-        # observation_horizon = max(0, 0, 3+2+0) = 5
+        # FeaturePipeline horizon is the SUM of stage horizons: lag3(3) + lag2(2) + scaler(0) = 5.
         assert obs_horizon == 5
 
         # Perform 100 single-row observes with continuation data
@@ -438,8 +504,7 @@ class TestMemoryBounds:
         forecaster.fit(y_train, forecasting_horizon=1)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=FeatureUnion(lag1, lag2)
-        # observation_horizon = max(0, 0, max(1, 2)) = 2
+        # FeatureUnion horizon is the MAX of branch horizons: max(lag1=1, lag2=2) = 2.
         assert obs_horizon == 2
 
         # Perform 100 single-row observes with continuation data
@@ -472,8 +537,7 @@ class TestMemoryBounds:
         forecaster.fit(y_train, forecasting_horizon=1)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=ColumnTransformer(lag1, lag3)
-        # observation_horizon = max(0, 0, max(1, 3)) = 3
+        # ColumnTransformer horizon is the MAX of per-column horizons: max(lag1=1, lag3=3) = 3.
         assert obs_horizon == 3
 
         # Perform 100 single-row observes with continuation data
@@ -514,8 +578,8 @@ class TestMemoryBounds:
         forecaster.fit(y_train, forecasting_horizon=1)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=FeaturePipeline(lag1+lag2+scaler)
-        # observation_horizon = max(0, 0, 1+2+0) = 3
+        # Nested FeaturePipeline horizon SUMS across nesting:
+        # inner(lag1=1) + lag2(2) + scaler2(0) = 3.
         assert obs_horizon == 3
 
         # Run 50 observes with continuation data
@@ -566,37 +630,12 @@ class TestMemoryBounds:
 class TestCloneAndSerialization:
     """Tests for clone behavior and pickle round-trip preservation."""
 
-    def test_clone_is_unfitted(self, ar1_series):
-        """Verify clone() creates unfitted estimator."""
-        y_train = ar1_series(length=100, phi=0.5, c=10.0, seed=42)
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
-        )
-        forecaster.fit(y_train, forecasting_horizon=5)
-        check_is_fitted(forecaster)
-
-        cloned = clone(forecaster)
-
-        # Clone should not be fitted
-        with pytest.raises(NotFittedError, match="is not fitted"):
-            check_is_fitted(cloned)
-
-    def test_clone_predict_raises_error(self, ar1_series):
-        """Verify predict() on unfitted clone raises NotFittedError."""
-        y_train = ar1_series(length=100, phi=0.5, c=10.0, seed=42)
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
-        )
-        forecaster.fit(y_train, forecasting_horizon=5)
-
-        cloned = clone(forecaster)
-
-        with pytest.raises(NotFittedError, match="is not fitted"):
-            cloned.predict(forecasting_horizon=5)
+    # NOTE: clone-is-unfitted and clone-predict-raises-NotFittedError are covered
+    # systematically for every registered forecaster by
+    # check_forecaster_not_fitted_error and check_forecaster_methods_call_check_is_fitted
+    # (yielded by _yield_yohou_forecaster_checks; run for PointReductionForecaster in
+    # tests/point/test_reduction.py). Only the clone-fit-independence behavior, which
+    # the generic checks do not cover, is kept here.
 
     def test_clone_fit_independence(self, ar1_series):
         """Verify fitting clone on different data doesn't affect original."""
@@ -883,7 +922,19 @@ class TestStateRobustness:
     """Tests for state recovery after errors, edge cases, and varying parameters."""
 
     def test_observe_empty_dataframe(self, ar1_series):
-        """Verify observe() with empty DataFrame handles gracefully or errors."""
+        """Verify observe() with an empty DataFrame leaves the bounded buffer intact.
+
+        Empty observe may either no-op (succeed) or raise. Whichever happens, the
+        bounded observation buffer must keep exactly ``observation_horizon`` rows
+        and must not be replaced by an empty frame. This is a falsifiable invariant:
+        a regression that overwrites the buffer with the empty batch would be caught
+        here.
+
+        NOTE: this only checks the buffer invariant, not a post-observe predict.
+        On the current implementation an empty observe "succeeds" yet corrupts the
+        predict path (predict then raises ValueError); that behavior is recorded as
+        a separate issue rather than asserted here.
+        """
         y_train = ar1_series(length=100, phi=0.5, c=10.0, seed=42)
 
         forecaster = PointReductionForecaster(
@@ -892,20 +943,21 @@ class TestStateRobustness:
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
+        obs_horizon = forecaster.observation_horizon
+        buffer_len_before = len(forecaster._y_observed)
+        assert buffer_len_before == obs_horizon
+
         # Create empty DataFrame with same schema
         y_empty = y_train.head(0)
 
-        # This should either leave state unchanged or raise an error
-        pred_before = forecaster.predict(forecasting_horizon=5)
-
-        try:
+        # Rejecting an empty batch (raising) is acceptable; it must not corrupt the
+        # buffer. A no-op success is equally acceptable, also without corruption.
+        with contextlib.suppress(ValueError, IndexError, pl.exceptions.InvalidOperationError):
             forecaster.observe(y_empty)
-            pred_after = forecaster.predict(forecasting_horizon=5)
-            # If observe succeeds, state should be unchanged
-            assert pred_before.equals(pred_after)
-        except (ValueError, IndexError, pl.exceptions.InvalidOperationError):
-            # Empty observe is invalid - this is acceptable behavior
-            pass
+
+        # The bounded buffer must be unchanged in either branch (not emptied).
+        assert forecaster._y_observed is not None
+        assert len(forecaster._y_observed) == obs_horizon
 
     def test_state_after_failed_observe(self, ar1_series):
         """Verify state remains unchanged after failed observe attempt."""

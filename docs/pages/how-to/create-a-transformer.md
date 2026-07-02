@@ -129,7 +129,7 @@ class RollingMeanTransformer(BaseTransformer):
 
     @property
     def observation_horizon(self):
-        return self.window
+        return self.window - 1
 
     def _fit(self, X, y=None):
         self.columns_ = [c for c in X.columns if c != "time"]
@@ -137,15 +137,18 @@ class RollingMeanTransformer(BaseTransformer):
     def _transform(self, X):
         return X.with_columns(
             cs.numeric().rolling_mean(window_size=self.window)
-        ).tail(len(X) - self.window + 1)
+        ).tail(len(X) - (self.window - 1))
 
     def get_feature_names_out(self, input_features=None):
         return self.columns_ if input_features is None else input_features
 ```
 
 The `observation_horizon` value tells the framework how many warmup rows the
-transform needs. The first `observation_horizon` rows of `_transform()` output
-are consumed by the rolling window and dropped via `.tail()`.
+transform needs. A `rolling_mean(window_size=N)` produces `N - 1` leading
+nulls, so the convention (matching `RollingStatisticsTransformer`) is
+`observation_horizon = window - 1`. The first `observation_horizon` rows of
+`_transform()` output are consumed by the rolling window and dropped via
+`.tail()`.
 
 The base class uses `observation_horizon` to manage the internal memory buffer
 (`self._X_observed`). After fitting, `observe()` appends new data and trims the

@@ -4,7 +4,9 @@ template: api-submodule.html
 
 # yohou.interval
 
-Interval forecasters for generating prediction intervals with uncertainty quantification.
+Interval forecasters produce prediction intervals at specified coverage rates. `SplitConformalForecaster` uses conformal prediction: it computes a conformity score on a calibration set and optionally weights it by a similarity measure to the current prediction context.
+
+**User guide**: See [Interval Forecasting](../explanation/interval-forecasting.md) for design rationale and usage patterns.
 
 ### Interval Forecasters
 

@@ -83,7 +83,7 @@ Each region shows a clear annual seasonal pattern, but at different scales. T187
 
 ## Train/Test Split
 
-Split the data, keeping the last 12 months for testing:
+Split the data using [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/), keeping the last 12 months for testing:
 
 ```python
 from yohou.model_selection import train_test_split
@@ -141,7 +141,7 @@ The predictions preserve the `__` column convention, so all downstream tools (sc
 
 ## 3. Evaluate
 
-Panel scorers aggregate across all groups by default:
+Panel scorers such as [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanSquaredError`](/pages/api/generated/yohou.metrics.point.MeanSquaredError/) aggregate across all groups by default:
 
 ```python
 from yohou.metrics import MeanAbsoluteError, MeanSquaredError
@@ -206,7 +206,7 @@ The `n_history=36` parameter shows the last three years of training data for con
 
 ## 5. Try a Stronger Model
 
-The pipeline is model-agnostic. Replace SeasonalNaive with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) that uses lag features and a Ridge regressor:
+The pipeline is model-agnostic. Replace SeasonalNaive with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) that uses [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) features wrapped in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) and a Ridge regressor:
 
 ```python
 from sklearn.linear_model import Ridge

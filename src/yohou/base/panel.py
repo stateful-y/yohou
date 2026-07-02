@@ -561,6 +561,19 @@ class BasePanelForecaster:
                         ~cs.by_name("time")
                     )
                     self._X_t_observed[group_name] = pl.concat([df, step_group], how="horizontal")
+        elif X_step is not None:
+            # No transformer output: _X_t_observed is None, so rebuild it from
+            # the re-derived step columns alone (mirrors the standard-mode
+            # `elif X_step is not None` branch). Without this, observe/rewind on
+            # a forecaster whose only features are step columns would silently
+            # drop them, corrupting the predict path.
+            X_step_obs = X_step.filter(pl.col("time") == obs_time)
+            self._X_t_observed = {
+                group_name: get_group_df(X_step_obs, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
+                    ~cs.by_name("time")
+                )
+                for group_name in self.groups_
+            }
 
         # Update stored raws
         if X_future is not None:
@@ -678,9 +691,15 @@ class BasePanelForecaster:
         y : dict[str, pl.DataFrame]
             Target time series per group (already extracted).
         X_t : dict[str, pl.DataFrame] or None
-            Transformed features per group.
+            Transformed features per group. Only the most recent row of each
+            group's feature matrix is stored in ``_X_t_observed``.
         groups : list[str]
             Panel group names to update.
+
+        Raises
+        ------
+        ValueError
+            If ``observation_horizon`` exceeds the row count of any group.
 
         """
         self.observed_time_ = {}

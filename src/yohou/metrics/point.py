@@ -11,7 +11,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 if TYPE_CHECKING:
-    from yohou.metrics._context import ScoringContext
+    from yohou.utils._context import ScoringContext
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context
@@ -356,9 +356,10 @@ class RootMeanSquaredScaledError(BasePointScorer):
 
     The RootMeanSquaredScaledError is defined as:
 
-    $$\\text{RMSSE} = \\sqrt{\\frac{1}{h}\\sum_{t=1}^{h}\\left(\\frac{y_t - \\hat{y}_t}{\\text{scale}}\\right)^2}$$
+    $$\\text{RMSSE} = \\sqrt{\\frac{1}{h}\\sum_{t=1}^{h}\\frac{(y_t - \\hat{y}_t)^2}{\\text{scale}_j}}$$
 
-    where the scale is computed from training data as:
+    where the scale is the mean squared seasonal-naive error computed from
+    training data as:
 
     $$\\text{scale}_j = \\frac{1}{T-m}\\sum_{t=m+1}^{T}(y_{t,j} - y_{t-m,j})^2$$
 
@@ -504,6 +505,12 @@ class RootMeanSquaredScaledError(BasePointScorer):
         ValueError
             If y_train is None or seasonality > len(y_train) - 1.
 
+        Warns
+        -----
+        UserWarning
+            If any training column has zero variance for the given
+            seasonality; a scale floor of 1e-10 is used instead.
+
         """
         # Call parent fit() to validate parameters (aggregation_method, groups, etc.)
         super().fit(y_train, forecaster=forecaster, **params)
@@ -618,7 +625,7 @@ class MeanAbsolutePercentageError(BasePointScorer):
     - MAPE is scale-independent and useful for comparing forecasts across different series
     - Asymmetric: penalizes over-predictions more heavily than under-predictions
     - Undefined when actual values are zero; epsilon parameter prevents division by zero
-    - Values are expressed as percentages (0-100 scale)
+    - Values are expressed as percentages; they are unbounded above (unlike sMAPE which is bounded to 200)
     - May be sensitive to very small actual values even with epsilon protection
 
     See Also
@@ -934,6 +941,12 @@ class MeanAbsoluteScaledError(BasePointScorer):
         ValueError
             If y_train is None or seasonality > len(y_train) - 1.
 
+        Warns
+        -----
+        UserWarning
+            If any training column has zero variance for the given
+            seasonality; a scale floor of 1e-10 is used instead.
+
         """
         # Call parent fit() to validate parameters (aggregation_method, groups, etc.)
         super().fit(y_train, forecaster=forecaster, **params)
@@ -1010,6 +1023,18 @@ class MedianAbsoluteError(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). Because the
+        median is non-linear, only zero-weight timestamps are dropped; non-zero
+        weights do not otherwise reweight the median. If None, all timestamps
+        contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. Only zero-weight steps
+        are dropped (see ``time_weighter``). If None, all forecasting steps
+        contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1061,12 +1086,16 @@ class MedianAbsoluteError(BasePointScorer):
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
         vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
             vintage_weighter=vintage_weighter,
         )
 
@@ -1106,8 +1135,18 @@ class MedianAbsoluteError(BasePointScorer):
             y_pred,
         )
 
-        # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
+        # Resolve all weighters: drop zero-weight time/step rows and store
+        # vintage weights in context (mirrors the base point pipeline). Median
+        # is non-linear, so continuous time/step weights are not multiplied
+        # into the errors; only zero-weight rows are removed.
+        y_truth, y_pred, context, _, _, _ = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            self.time_weighter,
+            self.step_weighter,
+            self.vintage_weighter,
+        )
 
         dims = self._normalize_agg_methods(self.aggregation_method)
         collapse_steps = "stepwise" in dims
@@ -1171,6 +1210,15 @@ class MaxAbsoluteError(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). If None,
+        all timestamps contribute equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. If None, all
+        forecasting steps contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1274,6 +1322,18 @@ class R2Score(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). Because R²
+        is non-linear, only zero-weight timestamps are dropped; non-zero weights
+        do not otherwise reweight the score. If None, all timestamps contribute
+        equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. Only zero-weight steps
+        are dropped (see ``time_weighter``). If None, all forecasting steps
+        contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1317,19 +1377,23 @@ class R2Score(BasePointScorer):
 
     _metric_name = "r2"
 
-    lower_is_better = False
+    _lower_is_better = False
 
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
         vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
             vintage_weighter=vintage_weighter,
         )
 
@@ -1369,8 +1433,18 @@ class R2Score(BasePointScorer):
             y_pred,
         )
 
-        # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
+        # Resolve all weighters: drop zero-weight time/step rows and store
+        # vintage weights in context (mirrors the base point pipeline). R² is
+        # non-linear, so continuous time/step weights are not multiplied into
+        # the errors; only zero-weight rows are removed.
+        y_truth, y_pred, context, _, _, _ = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            self.time_weighter,
+            self.step_weighter,
+            self.vintage_weighter,
+        )
 
         def _compute_r2(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame:
             """Compute per-column R² score."""
@@ -1385,20 +1459,6 @@ class R2Score(BasePointScorer):
 
         result = self._map_per_vintage(y_truth, y_pred, context, _compute_r2)
         return self._aggregate_per_vintage_scores(result, context)
-
-    def __sklearn_tags__(self):
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with lower_is_better=False.
-
-        """
-        tags = super().__sklearn_tags__()
-        if tags.scorer_tags is not None:
-            tags.scorer_tags.lower_is_better = False
-        return tags
 
 
 class MeanDirectionalAccuracy(BasePointScorer):
@@ -1428,6 +1488,18 @@ class MeanDirectionalAccuracy(BasePointScorer):
         Panel group filter (list) or filter with weights (dict).
     components : list of str, dict of str to float, or None, default=None
         Component filter (list) or filter with weights (dict).
+    time_weighter : BaseWeighter or None, default=None
+        Weighter applied along the time axis (observed timestamps). Because MDA
+        is non-linear, only zero-weight timestamps are dropped; non-zero weights
+        do not otherwise reweight the score. If None, all timestamps contribute
+        equally.
+    step_weighter : BaseWeighter or None, default=None
+        Weighter applied along the forecasting-step axis. Only zero-weight steps
+        are dropped (see ``time_weighter``). If None, all forecasting steps
+        contribute equally.
+    vintage_weighter : BaseWeighter or None, default=None
+        Weighter applied along the vintage-time axis. If None, all vintages
+        contribute equally.
 
     Attributes
     ----------
@@ -1471,7 +1543,9 @@ class MeanDirectionalAccuracy(BasePointScorer):
     - MDA = 0.5 is equivalent to random guessing for direction
     - MDA = 0.0 means all directional predictions were wrong
     - Requires at least 2 time steps (N-1 comparisons from ``.diff()``)
-    - Returns 0.0 when fewer than 2 rows are available
+    - Returns 0.0 when fewer than 2 rows are available and
+      ``aggregation_method='all'``; raises ``ValueError`` for all other
+      aggregation settings
     - Overrides ``score()`` because computing direction requires ``.diff()``
       on the full columns, not per-row errors
 
@@ -1484,19 +1558,23 @@ class MeanDirectionalAccuracy(BasePointScorer):
 
     _metric_name = "mda"
 
-    lower_is_better = False
+    _lower_is_better = False
 
     def __init__(
         self,
         aggregation_method: list[str] | str = "all",
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
         vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         super().__init__(
             aggregation_method=aggregation_method,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
             vintage_weighter=vintage_weighter,
         )
 
@@ -1551,8 +1629,18 @@ class MeanDirectionalAccuracy(BasePointScorer):
                 "data or use aggregation_method='all'."
             )
 
-        # Resolve vintage_weight into context
-        context = self._resolve_vintage_weight_to_context(context, self.vintage_weighter)
+        # Resolve all weighters: drop zero-weight time/step rows and store
+        # vintage weights in context (mirrors the base point pipeline). MDA is
+        # non-linear, so continuous time/step weights are not multiplied into
+        # the errors; only zero-weight rows are removed.
+        y_truth, y_pred, context, _, _, _ = self._pre_filter_zero_weights(
+            y_truth,
+            y_pred,
+            context,
+            self.time_weighter,
+            self.step_weighter,
+            self.vintage_weighter,
+        )
 
         def _compute_mda(yt_slice: pl.DataFrame, yp_slice: pl.DataFrame) -> pl.DataFrame | None:
             """Compute per-column mean directional accuracy."""
@@ -1568,17 +1656,3 @@ class MeanDirectionalAccuracy(BasePointScorer):
 
         result = self._map_per_vintage(y_truth, y_pred, context, _compute_mda)
         return self._aggregate_per_vintage_scores(result, context)
-
-    def __sklearn_tags__(self):
-        """Get estimator tags.
-
-        Returns
-        -------
-        Tags
-            Estimator tags with lower_is_better=False.
-
-        """
-        tags = super().__sklearn_tags__()
-        if tags.scorer_tags is not None:
-            tags.scorer_tags.lower_is_better = False
-        return tags

@@ -9,7 +9,7 @@ In this tutorial, we will evaluate two forecasters using temporal cross-validati
 
 - Completed [Getting Started](getting-started.md)
 
-## Setup
+## 1. Setup
 
 We use the monthly tourism dataset: 187 months of visitor arrivals to a single Australian region (T1). First, load the data and define a 12-month forecasting horizon:
 
@@ -59,7 +59,7 @@ forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_ridge = forecaster.predict(forecasting_horizon=forecasting_horizon)
 ```
 
-## Score with Multiple Metrics
+## 2. Score with Multiple Metrics
 
 Now score both models on the single train/test split. Scorers in Yohou are stateful: call `fit(y_train)` first so that scale-dependent metrics like [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) can normalise correctly:
 
@@ -82,9 +82,9 @@ Ridge            MAE=214.35  MASE=1.17
 
 Notice that both MASE values are above 1.0, meaning neither model outperforms the seasonal naive baseline on this single holdout. Cross-validation across multiple folds will tell us whether this pattern holds.
 
-## Evaluate with Cross-Validation and Hyperparameter Search
+## 3. Evaluate with Cross-Validation and Hyperparameter Search
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates each parameter combination across all folds and selects the best:
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates each parameter combination across all folds and selects the best. We pass the full `y` so the cross-validation splitter can build multiple train/test folds from the complete history; passing only `y_train` would shrink each fold unnecessarily:
 
 ```python
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
@@ -108,11 +108,11 @@ Best params:  {'estimator__alpha': 0.1}
 CV MASE:      0.87
 ```
 
-Notice that `best_score_` is negative. Yohou follows scikit-learn's convention of negating scores so that higher is always better. Negate it to recover the actual MASE.
+Notice that `best_score_` is negative. Yohou follows scikit-learn's convention of negating scores so that higher is always better. The code above negates it inline; if you access `search.best_score_` directly elsewhere, remember to negate it to recover the actual MASE.
 
 The CV MASE of 0.87 is below 1.0, confirming that Ridge consistently outperforms the seasonal naive baseline across all three folds. The single holdout was harder than average.
 
-## Inspect Residuals
+## 4. Inspect Residuals
 
 Let's refit the best forecaster from the search on the training data and inspect what the model gets wrong with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/):
 
@@ -128,7 +128,7 @@ plot_residuals(y_pred_tuned, y_test, title="Residuals: Ridge (Tuned)")
 
 You should see a scatter of residuals over the test period. If the residuals cluster near zero with no obvious pattern, the model is capturing the main signal. Spikes at seasonal lags or a visible trend suggest missing structure. See [Residual Diagnostics](../explanation/residual-diagnostics.md) for a full interpretation guide.
 
-## Compare Models Visually
+## 5. Compare Models Visually
 
 Now plot both forecasts against the actual test values:
 
@@ -156,7 +156,7 @@ Notice how `plot_forecast` overlays predicted and actual values so you can spot 
 
 ## What You Built
 
-You have completed the full evaluation workflow:
+We completed the full evaluation workflow:
 
 - Scored models with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) on a single train/test split
 - Used [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) and [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) to evaluate across temporal folds and tune hyperparameters

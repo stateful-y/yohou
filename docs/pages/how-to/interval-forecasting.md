@@ -17,8 +17,9 @@ example to size safety stock or flag anomalous observations.
 ## 1. Wrap a Point Forecaster
 
 Pass any point forecaster to [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/).
-It holds out a calibration set from the training data and uses it to
-compute conformity scores that size the intervals:
+It applies conformal prediction: it holds out a calibration set from the
+training data and uses conformity scores measured on that set to size the
+intervals:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -84,8 +85,33 @@ nominal rate (e.g., ~0.90 for a 90% interval). `IntervalScore` rewards
 narrow intervals and penalizes observations that fall outside the bounds,
 so lower is better.
 
+## 4. Forecast Intervals Directly with Reduction
+
+When your estimator already produces quantiles or interval bounds (for
+example a quantile-capable sklearn regressor or a CatBoost MultiQuantile
+model), you can skip the conformal wrapper and use
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+to fit interval forecasts directly:
+
+```python
+from sklearn.linear_model import QuantileRegressor
+from yohou.interval import IntervalReductionForecaster
+
+interval_forecaster = IntervalReductionForecaster(
+    estimator=QuantileRegressor(solver="highs"),
+)
+interval_forecaster.fit(y_train, forecasting_horizon=24, coverage_rates=[0.90])
+y_pred = interval_forecaster.predict_interval()
+```
+
+The framework fits one quantile model per requested bound and assembles the
+interval columns using the same `{component}_lower_{rate}` /
+`{component}_upper_{rate}` naming as the conformal path. Use this route when
+the estimator's own quantile loss is preferable to post-hoc calibration.
+
 ## See Also
 
+- [About Interval Forecasting](../explanation/interval-forecasting.md): conformal theory, coverage guarantees, and when to prefer quantile regression over conformal wrapping
 - [Combine Forecasters with Ensembles](ensemble-forecasting.md): average or envelope bounds from multiple interval forecasters with [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/)
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md): point and interval metric overview
 - [Visualize and Compare Model Scores](visualize-scores.md): plot coverage and interval width over time

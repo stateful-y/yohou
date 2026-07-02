@@ -32,7 +32,7 @@ intercept).
 
 **3. Constant variance (homoscedasticity).** The spread of residuals should be roughly
 the same across all time periods. If residuals are small during calm periods and large
-during volatile ones, variance-stabilizing transforms can help:
+during volatile ones, variance-stabilizing transforms (variance stabilization) can help:
 [`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/)
 works well for power-law scaling but requires strictly positive data, while
 [`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/)
@@ -163,7 +163,9 @@ spread out. A model with small, stable residuals produces tight intervals becaus
 distribution is concentrated. This makes residual diagnostics a tool for interval
 quality, not just point forecast quality: if the residual ACF shows significant
 autocorrelation, the conformity scores on the calibration set may not be exchangeable,
-which can degrade coverage guarantees.
+which can degrade coverage guarantees. This exchangeability assumption is what
+walk-forward evaluation and rolling evaluation workflows rely on as new ground truth
+arrives and the calibration set is refreshed.
 
 The diagnostic plots guide the choice of conformity scorer directly. A flat
 residual-over-time plot with constant spread points to `AbsoluteResidual`. A fan-shaped

@@ -16,7 +16,6 @@ import polars.selectors as cs
 import pytest
 from sklearn.base import clone
 from sklearn.utils._param_validation import Interval
-from sklearn.utils.validation import check_is_fitted
 
 from conftest import run_checks
 from yohou.class_proba.base import BaseClassProbaForecaster
@@ -266,9 +265,6 @@ class _UniformClassProbaForecaster(BaseClassProbaForecaster):
         return self._add_time_columns(y_pred)
 
 
-# Fixtures
-
-
 @pytest.fixture
 def daily_series():
     rng = np.random.default_rng(42)
@@ -315,12 +311,6 @@ class TestLastValueForecaster:
             _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
         )
 
-    def test_fit_sets_attributes(self, daily_series):
-        f = _LastValueForecaster()
-        f.fit(daily_series[:80], forecasting_horizon=5)
-        assert f.fit_forecasting_horizon_ == 5
-        check_is_fitted(f)
-
     def test_predict_output_shape(self, daily_series):
         f = _LastValueForecaster()
         f.fit(daily_series[:80], forecasting_horizon=10)
@@ -348,12 +338,13 @@ class TestWindowMeanForecaster:
             _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
         )
 
-    def test_fit_sets_attributes(self, daily_series):
+    def test_fit_sets_mean_attribute(self, daily_series):
+        # fit_forecasting_horizon_ and check_is_fitted are covered by the
+        # systematic check suite (check_fit_sets_forecaster_attributes); only
+        # the forecaster-specific ``mean_`` attribute is asserted here.
         m = _WindowMeanForecaster(window=7)
         m.fit(daily_series[:80], forecasting_horizon=5)
         assert hasattr(m, "mean_")
-        assert hasattr(m, "fit_forecasting_horizon_")
-        assert m.fit_forecasting_horizon_ == 5
 
     def test_observation_horizon_from_property(self):
         m = _WindowMeanForecaster(window=10)
@@ -364,11 +355,6 @@ class TestWindowMeanForecaster:
         assert m.observation_horizon == 3
         m.set_params(window=20)
         assert m.observation_horizon == 20
-
-    def test_fit_and_check_is_fitted(self, daily_series):
-        m = _WindowMeanForecaster(window=5)
-        m.fit(daily_series[:80], forecasting_horizon=3)
-        check_is_fitted(m)
 
     def test_clone_preserves_params(self):
         m = _WindowMeanForecaster(window=12)

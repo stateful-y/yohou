@@ -1,4 +1,11 @@
-"""Scoring context for carrying metadata through the scorer pipeline."""
+"""Scoring context for carrying metadata through the scorer pipeline.
+
+Lives in ``utils`` (not ``metrics``) because the context is metadata extracted
+during data validation, which is a ``utils`` concern. Keeping it here lets
+``utils.validate_data`` construct it without importing up into ``metrics``,
+avoiding a ``utils -> metrics`` import cycle (``metrics`` imports it from here,
+the allowed direction).
+"""
 
 from __future__ import annotations
 
@@ -32,8 +39,11 @@ class ScoringContext:
         attribute.
     vintage_weight : np.ndarray or None
         Per-unique-vintage weights for cross-vintage aggregation.
-        Length matches the number of unique vintages. ``None`` when
-        no vintage_weight was provided by the caller.
+        Length matches the number of unique vintages. Unlike
+        ``vintage_time``, which has one entry per scored row,
+        ``vintage_weight`` has one entry per unique vintage value and is
+        indexed in the same order as ``vintage_time.unique(maintain_order=True)``.
+        ``None`` when no vintage_weight was provided by the caller.
 
     """
 

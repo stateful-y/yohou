@@ -72,6 +72,10 @@ class StandardScaler(SklearnScaler):
         If True, scale the data to unit variance (or equivalently, unit standard
         deviation).
 
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
+
     Attributes
     ----------
     instance_ : sklearn.preprocessing.StandardScaler
@@ -165,6 +169,10 @@ class MinMaxScaler(SklearnScaler):
     ----------
     feature_range : tuple (min, max), default=(0, 1)
         Desired range of transformed data.
+
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
 
     clip : bool, default=False
         Set to True to clip transformed values of held-out data to the provided
@@ -286,6 +294,10 @@ class RobustScaler(SklearnScaler):
         to the IQR, i.e., ``q_min`` is the first quantile and ``q_max`` is the
         third quantile.
 
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
+
     unit_variance : bool, default=False
         If True, scale data so that normally distributed features have a
         variance of 1.
@@ -372,6 +384,10 @@ class MaxAbsScaler(SklearnScaler):
 
     Parameters
     ----------
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
+
     clip : bool, default=False
         Set to True to clip transformed values of held-out data to [-1, 1].
 
@@ -452,6 +468,10 @@ class Normalizer(SklearnTransformer):
     norm : {'l1', 'l2', 'max'}, default='l2'
         The norm to use to normalize each non zero sample. If norm='max' is
         used, values will be rescaled by the maximum of the absolute values.
+
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
 
     Attributes
     ----------
@@ -608,6 +628,10 @@ class PowerTransformer(SklearnTransformer):
         Set to True to apply zero-mean, unit-variance normalization to the
         transformed output.
 
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
+
     Attributes
     ----------
     instance_ : sklearn.preprocessing.PowerTransformer
@@ -696,6 +720,10 @@ class QuantileTransformer(SklearnTransformer):
         Determines random number generation for subsampling and smoothing
         noise.
 
+    copy : bool, default=True
+        If True, a copy of the data is made before transforming. Pass False only
+        if in-place modification of the input is acceptable.
+
     Attributes
     ----------
     instance_ : sklearn.preprocessing.QuantileTransformer
@@ -780,7 +808,7 @@ class SplineTransformer(SklearnTransformer):
 
     Generate a new feature matrix consisting of ``n_splines=n_knots + degree - 1``
     spline basis functions (B-splines) of polynomial order ``degree`` for each
-    feature.
+    feature (``n_splines=n_knots - 1`` when ``extrapolation='periodic'``).
 
     This is a Yohou wrapper that preserves the polars DataFrame structure and
     "time" column.
@@ -796,8 +824,10 @@ class SplineTransformer(SklearnTransformer):
         integer.
 
     knots : {'uniform', 'quantile'} or array-like of shape (n_knots, n_features), default='uniform'
-        Set knot positions such that first and last knots are the 1st percentile
-        and 99th percentile of the data respectively.
+        Set knot positions. For 'uniform', knots are distributed uniformly from
+        the minimum to the maximum of the training features. For 'quantile', knots
+        are spaced along the quantiles of the features. An array-like sets the knot
+        positions explicitly.
 
     extrapolation : {'error', 'constant', 'linear', 'continue', 'periodic'}, default='constant'
         If 'error', values outside the min and max values of the training
@@ -815,10 +845,10 @@ class SplineTransformer(SklearnTransformer):
         If True, transform will return sparse CSC format. Otherwise,
         transform will return dense array.
 
-    handle_missing : {'error', 'missing-as-zero'}, default='error'
+    handle_missing : {'error', 'zeros'}, default='error'
         How to handle missing values during transform. If 'error', a ValueError
-        is raised if missing values are present. If 'missing-as-zero', missing
-        values are treated as zeros in the spline basis.
+        is raised if missing values are present. If 'zeros', missing values are
+        treated as zeros in the spline basis.
 
     Attributes
     ----------

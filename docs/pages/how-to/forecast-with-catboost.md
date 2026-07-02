@@ -50,24 +50,32 @@ If you want a single model that predicts all horizons at once, keep the default 
 
 ## Produce Interval Forecasts
 
-Pass a `CatBoostRegressor` to [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) and specify `coverage_rates` at fit time. The framework automatically configures CatBoost's `MultiQuantile` loss with the correct alpha values:
+Pass a `CatBoostRegressor` whose `loss_function` already starts with `MultiQuantile` to [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) and specify `coverage_rates` at fit time. The framework reads the `MultiQuantile` loss as a signal to fit a single model for all quantiles, overriding the placeholder alpha with the alpha values derived from `coverage_rates`. This path requires `forecasting_horizon=1`:
 
 ```python
 from yohou.interval import IntervalReductionForecaster
 
 forecaster = IntervalReductionForecaster(
-    estimator=CatBoostRegressor(iterations=500, verbose=0),
+    estimator=CatBoostRegressor(
+        iterations=500,
+        loss_function="MultiQuantile:alpha=0.5",
+        verbose=0,
+    ),
     feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
 )
-forecaster.fit(y, forecasting_horizon=12, coverage_rates=[0.90])
+forecaster.fit(y, forecasting_horizon=1, coverage_rates=[0.90])
 intervals = forecaster.predict_interval()
 ```
 
 To request multiple coverage rates at once, pass them as a list:
 
 ```python
-forecaster.fit(y, forecasting_horizon=12, coverage_rates=[0.80, 0.90, 0.95])
+forecaster.fit(y, forecasting_horizon=1, coverage_rates=[0.80, 0.90, 0.95])
 ```
+
+For multi-step horizons, use a single-quantile estimator (such as
+`QuantileRegressor`) so the forecaster fits one model per bound via the
+`direct` strategy.
 
 ## Forecast Categorical Data
 

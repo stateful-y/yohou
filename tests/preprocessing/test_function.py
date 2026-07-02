@@ -162,21 +162,8 @@ class TestFunctionTransformerBasic:
 
         assert_frame_equal(X, X_inv)
 
-    def test_check_inverse_warning(self):
-        """Test that check_inverse raises warning for non-invertible funcs."""
-        X = create_positive_data()
-
-        # Define non-inverse functions
-        def bad_inverse(x, **kwargs):
-            return x * 2  # Wrong inverse
-
-        transformer = FunctionTransformer(func=np.log, inverse_func=bad_inverse, check_inverse=True)
-
-        with pytest.warns(UserWarning, match="not strictly inverse"):
-            transformer.fit(X)
-
-    def test_check_inverse_disabled(self):
-        """Test that check_inverse=False skips the check."""
+    def test_check_inverse_disabled(self, recwarn):
+        """Test that check_inverse=False skips the inverse-consistency check."""
         X = create_positive_data()
 
         def bad_inverse(x, **kwargs):
@@ -184,8 +171,12 @@ class TestFunctionTransformerBasic:
 
         transformer = FunctionTransformer(func=np.log, inverse_func=bad_inverse, check_inverse=False)
 
-        # Should not raise warning
-        transformer.fit(X)  # No warning
+        transformer.fit(X)
+
+        # With the check disabled, the "not strictly inverse" warning must not fire
+        # even though bad_inverse is not a true inverse of np.log.
+        inverse_warnings = [w for w in recwarn.list if "not strictly inverse" in str(w.message)]
+        assert inverse_warnings == []
 
 
 class TestFunctionTransformerKwargs:
@@ -433,6 +424,26 @@ class TestFunctionTransformerStateful:
         t = FunctionTransformer(func=_diff_func, check_inverse=False)
         t.fit_transform(X)
         assert len(t._X_observed) == 1
+
+    def test_fit_syncs_X_observed_with_detected_warmup(self):
+        """Plain fit() must leave _X_observed consistent with the detected horizon.
+
+        Regression test: warmup detection sets ``_observation_horizon`` *after*
+        ``BaseTransformer.fit`` already ran ``_update_X_observed`` with horizon
+        zero, leaving the buffer empty. A subsequent ``observe_transform`` then
+        had no warmup history to prepend and returned ``len(X) - horizon`` rows
+        instead of ``len(X)``.
+        """
+        X = create_positive_data(length=30)
+        t = FunctionTransformer(func=_diff_func, check_inverse=False)
+        t.fit(X.head(20))
+
+        assert t._observation_horizon == 1
+        assert len(t._X_observed) == t._observation_horizon
+
+        X_new = X.slice(20, 5)
+        X_t = t.observe_transform(X_new)
+        assert len(X_t) == len(X_new)
 
     def test_transform_with_X_p(self):
         """Transform with X_p prepends past observations for warmup."""

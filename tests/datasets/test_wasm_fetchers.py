@@ -46,11 +46,24 @@ class TestFetchDatasetWasmRouting:
             _fetch_dataset(SUNSPOT, "sunspot", value_column_name="sunspot_number")
             mock_wasm.assert_called_once_with("sunspot", SUNSPOT, n_series=None)
 
-    def test_wasm_url_is_correct(self):
-        expected_url = f"{_CDN_BASE_URL}/sunspot.bin"
-        assert "cdn.jsdelivr.net" in expected_url
-        assert "stateful-y/yohou@datasets" in expected_url
-        assert expected_url.endswith("/sunspot.bin")
+    def test_wasm_url_forwarded_to_urlopen(self):
+        """_fetch_dataset_wasm passes the constructed CDN URL to urlopen."""
+        df = pl.DataFrame(
+            {"time": [datetime(2020, 1, 1)], "sunspot_number": [10.0]},
+            schema={"time": pl.Datetime, "sunspot_number": pl.Float64},
+        )
+        payload = df.serialize(format="binary")
+
+        def fake_urlopen(url):
+            assert url == f"{_CDN_BASE_URL}/sunspot.bin"
+            assert "cdn.jsdelivr.net" in url
+            assert "stateful-y/yohou@datasets" in url
+            return io.BytesIO(payload)
+
+        with patch("yohou.datasets._fetchers.urlopen", side_effect=fake_urlopen) as mock_urlopen:
+            _fetch_dataset_wasm("sunspot", SUNSPOT)
+
+        mock_urlopen.assert_called_once_with(f"{_CDN_BASE_URL}/sunspot.bin")
 
 
 class TestFetchDatasetWasmBunch:

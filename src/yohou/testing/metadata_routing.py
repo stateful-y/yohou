@@ -170,7 +170,7 @@ def assert_request_is_empty(metadata_request, exclude=None) -> None:
         return
 
     exclude = [] if exclude is None else exclude
-    # Yohou methods: fit, predict, observe, observe_predict, observe_transform, transform, score
+    # Yohou methods: fit, predict, observe, observe_predict, observe_transform, transform, inverse_transform, score
     yohou_methods = [
         "fit",
         "predict",

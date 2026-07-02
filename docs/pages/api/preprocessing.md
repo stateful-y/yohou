@@ -4,7 +4,7 @@ template: api-submodule.html
 
 # yohou.preprocessing
 
-Time series transformers for feature engineering, scaling, imputation, outlier handling, and resampling.
+Time series transformers for feature engineering, scaling, imputation, outlier handling, resampling, and signal processing.
 
 ### Data imputation
 

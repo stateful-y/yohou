@@ -329,6 +329,21 @@ class TestFeaturePipelineValidation:
         with pytest.raises(NotFittedError):
             pipe.observe(X)
 
+    def test_observe_with_temporal_gap_raises(self, time_series_factory):
+        """observe with a non-contiguous X raises a gap ValueError.
+
+        FeaturePipeline.observe validates temporal continuity against the last
+        observed timestamp; a batch that does not begin one interval after the
+        previously observed data must be rejected.
+        """
+        X_all = time_series_factory(length=60)
+        pipe = FeaturePipeline([("s1", SimpleTransformer(observation_horizon=0))])
+        pipe.fit(X_all[:50])
+        # Skip rows 50-51 so the next batch starts two intervals late.
+        X_gapped = X_all[52:]
+        with pytest.raises(ValueError, match="[Gg]ap"):
+            pipe.observe(X_gapped)
+
     def test_slice_with_step_raises(self):
         """Slicing with step != 1 raises ValueError."""
         pipe = FeaturePipeline([
@@ -353,10 +368,11 @@ class TestFeaturePipelineTags:
         assert tags.transformer_tags.stateful is False
 
     def test_passthrough_only_pipeline(self):
-        """Pipeline with only passthrough steps has no transformer tags set."""
+        """Pipeline with only passthrough steps is stateless and non-invertible."""
         pipe = FeaturePipeline([("p", "passthrough")])
         tags = pipe.__sklearn_tags__()
-        assert tags.transformer_tags is not None
+        assert tags.transformer_tags.stateful is False
+        assert tags.transformer_tags.invertible is False
 
     def test_stateful_step_produces_stateful_tag(self):
         """Pipeline with at least one stateful transformer has stateful=True."""

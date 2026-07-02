@@ -36,9 +36,11 @@ frequency (half the sampling rate). Use [`plot_spectrum`](/pages/api/generated/y
 
 Start with `design="butterworth"` and `order=4`. If the filtered signal still
 contains unwanted frequencies, increase the order for a sharper rolloff. If you
-need an even steeper cutoff, switch to `"chebyshev1"` or `"elliptic"` (these
-allow ripple in exchange for a sharper transition). Use `"bessel"` when
-preserving waveform shape matters more than a sharp cutoff.
+need an even steeper cutoff, switch to `"chebyshev1"` for passband ripple
+tolerance (sharper rolloff) or `"chebyshev2"` for stopband attenuation (cleaner
+rejection band). Use `"elliptic"` for the sharpest possible cutoff when both
+passband and stopband ripple are acceptable. Use `"bessel"` when preserving
+waveform shape matters more than a sharp cutoff.
 
 ## Remove Low-Frequency Drift
 

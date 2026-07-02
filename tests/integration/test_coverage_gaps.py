@@ -53,7 +53,7 @@ class _TagMergingForecaster(BasePointForecaster):
         cols = [c for c in self.local_y_schema_ if c != "time"]
         h = self.fit_forecasting_horizon_
         data = {c: [0.0] * h for c in cols}
-        return pl.DataFrame(data)
+        return self._add_time_columns(pl.DataFrame(data))
 
 
 class TestForecasterTagMerging:
@@ -64,6 +64,29 @@ class TestForecasterTagMerging:
         tags = f.__sklearn_tags__()
         assert tags.input_tags is not None
         assert tags.input_tags.allow_nan is True
+
+    def test_predict_emits_time_contract_columns(self):
+        """predict() on the helper carries the mandatory vintage_time/time columns.
+
+        Exercises the predict path end to end so the data contract
+        (predictions carry both ``vintage_time`` and ``time``) is verified
+        rather than only the tag-merging branches.
+        """
+        f = _TagMergingForecaster()
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2020, 1, 1),
+                end=datetime(2020, 1, 1) + timedelta(days=29),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.random.default_rng(42).standard_normal(30),
+        })
+        f.fit(y, forecasting_horizon=4)
+        y_pred = f.predict()
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
+        assert len(y_pred) == 4
 
     def test_tags_merged_into_top_level(self):
         f = _TagMergingForecaster()
@@ -341,9 +364,11 @@ class TestSlidingWindowSplitterOverflow:
             ),
             "value": list(range(10)),
         })
-        # The guard in _iter_test_indices is normally unreachable because
-        # split() resolves and validates train_size_ first.  Set the fitted
-        # train_size_ directly to bypass that and cover the defensive check.
+        # The guard in _iter_test_indices is a defensive check, intentionally
+        # unreachable through the public split() API (which resolves and
+        # validates train_size_ first). We set the fitted train_size_ directly
+        # to cover that guard and pin its error message; if the guard is ever
+        # promoted to public validation, this test should move to split().
         cv.train_size_ = 8  # skip upstream validation
         with pytest.raises(ValueError, match="greater than n_samples"):
             list(cv._iter_test_indices(y))

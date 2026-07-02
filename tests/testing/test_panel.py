@@ -23,15 +23,16 @@ class TestPanelChecks:
         check_panel_data(forecaster, y[:40])
 
     def test_check_panel_data_non_panel(self, y_X_factory):
-        """Test check handles non-panel data correctly."""
+        """Test check returns None (no-op) for non-panel data without raising."""
         # Create non-panel data (global only)
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42, panel=False)
 
         forecaster = SeasonalNaive(seasonality=12)
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
 
-        # Should not raise - check handles non-panel case
-        check_panel_data(forecaster, y[:40])
+        # Non-panel data has no group__column columns, so the check short-circuits
+        # to a no-op (returns None) rather than running panel-specific assertions.
+        assert check_panel_data(forecaster, y[:40]) is None
 
     def test_check_panel_single_group(self, y_X_factory):
         """Test check_panel_single_group passes for valid panel forecaster."""

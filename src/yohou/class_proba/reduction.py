@@ -32,6 +32,15 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ``fit``, ``predict``, and ``predict_proba``.
     reduction_strategy : {"direct", "multi-output"}, default="multi-output"
         Strategy for multi-step forecasting.
+
+        - ``"multi-output"``: a single classifier predicts all H horizon
+          steps simultaneously. Simple and fast.
+        - ``"direct"``: H independent classifiers, one per horizon step.
+          Each model specialises in its own step, avoiding error
+          accumulation but ignoring inter-step dependencies.
+
+        See [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for full per-option semantics.
     target_transformer : BaseTransformer or None, default=None
         Transformer for target preprocessing.
     feature_transformer : BaseTransformer or None, default=None
@@ -249,7 +258,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         return self
 
     def _encode_target(self, y: pl.DataFrame) -> pl.DataFrame:
-        """Encode categorical target columns to integer codes.
+        """Encode categorical target columns to float codes.
 
         Parameters
         ----------
@@ -259,7 +268,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         Returns
         -------
         pl.DataFrame
-            Target data with categorical columns replaced by integer codes.
+            Target data with categorical columns replaced by float codes.
 
         """
         return self._apply_label_encoding(y)
@@ -373,6 +382,16 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         pl.DataFrame
             Probability predictions.
 
+        Notes
+        -----
+        The output schema differs between panel and non-panel modes. In
+        non-panel mode the per-step single-row frames are stacked
+        vertically, yielding H rows (one per horizon step) of global
+        probability columns. In panel mode each group's H per-step rows are
+        first stacked vertically, then the per-group blocks are concatenated
+        horizontally, so every group's probability columns sit side by side
+        in the same H rows.
+
         """
         if self.groups_ is None:
             X_tab = self._get_predict_features()
@@ -431,6 +450,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         with ``0.0``: the class was unseen by this group, so it carries zero
         mass. This is expected reconciliation, not data loss, and keeps the
         per-group output aligned to the shared global class layout.
+
+        The non-list (single-output) branch only emits a row when
+        ``proba`` has shape ``(1, n_classes)``, i.e. ``fh=1`` with a
+        single-target estimator; ``fh>1`` multi-step stepping is handled by
+        the recursive loop in ``predict_class_proba`` (via a
+        ``MultiOutputClassifier``, which takes the list path). If neither
+        condition holds, this method returns an empty DataFrame.
 
         """
         assert self.local_y_t_schema_ is not None

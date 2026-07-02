@@ -7,7 +7,7 @@ observation point.
 
 ## Prerequisites
 
-- Yohou installed
+- Yohou installed ([Installation](installation.md))
 - Familiarity with `X_actual`, `X_future`, and `X_forecast` categories
   ([Use Exogenous Features](exogenous-features.md))
 - A fitted forecaster using exogenous features
@@ -115,7 +115,9 @@ pred = forecaster.predict(
 ## Run Walk-Forward Evaluation with Vintages
 
 The `observe_predict` loop accepts all three exogenous parameters. Pass
-`X_forecast` covering the test range with one vintage per observation point:
+`X_forecast` covering the test range with one vintage per observation point,
+then score the rolling predictions with
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
 
 ```python
 from copy import deepcopy

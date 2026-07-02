@@ -230,9 +230,9 @@ def validate_plotting_params(
 
 if TYPE_CHECKING:
     from yohou.base import BaseForecaster, BaseTransformer
-    from yohou.metrics._context import ScoringContext
     from yohou.metrics.base import BaseScorer
     from yohou.model_selection import BaseSplitter
+    from yohou.utils._context import ScoringContext
 
 
 def _compute_forecasting_step(
@@ -297,7 +297,7 @@ def _check_multi_vintage_time(df: pl.DataFrame) -> None:
 
     """
     if "time" not in df.columns:
-        raise ValueError("df must contain a 'time' column.")
+        raise ValueError(f"df must contain a 'time' column. Found columns: {list(df.columns)}")
 
     time_col = df["time"]
     if not isinstance(time_col.dtype, pl.Datetime | pl.Date):
@@ -422,7 +422,8 @@ def validate_scorer_data(
     y_true : pl.DataFrame, default=None
         True values with "time" column.
         - In fit context (reset=True): This is y_train. Always required.
-        - In inverse context: Can be None (use scores parameter instead).
+        - In inverse context: ignored entirely (pass None or omit; only y_pred
+          and scores are used).
         - In normal score context: Always required.
     y_pred : pl.DataFrame, default=None
         Predicted values with "time" column. Required in normal score context.
@@ -430,7 +431,6 @@ def validate_scorer_data(
         Conformity scores with "time" column. Required when inverse=True.
     reset : bool, default=False
         If True, validate in fit context (skips prediction structure checks).
-        Implies align_by_time=False and drop_time_columns=True.
     inverse : bool, default=False
         If True, validate in inverse_score context. Requires scores parameter.
 
@@ -444,7 +444,8 @@ def validate_scorer_data(
 
     Notes
     -----
-    - When drop_time_columns=False, time column is ALWAYS first in output
+    - Time columns are always dropped from both returned DataFrames; the time
+      values are preserved in the returned ``ScoringContext.time_values`` field
     - Performs basic validation: None checks, time column existence, panel consistency
     - Time alignment preserves common time points only (inner join)
     - Time values are extracted before validation for point/interval scorers
@@ -503,7 +504,7 @@ def validate_scorer_data(
         y_pred = y_pred.drop("time")
         scores = scores.drop("time")
 
-        from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+        from yohou.utils._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
         return (
             y_pred,
@@ -567,7 +568,9 @@ def validate_scorer_data(
     _, X_groups = inspect_panel(y_pred)
     if set(y_groups.keys()) != set(X_groups.keys()):
         raise ValueError(
-            f"Panel groups mismatch. `y_true` has {sorted(y_groups.keys())}. `y_pred` has {sorted(X_groups.keys())}."
+            f"Panel groups mismatch between `y_true` and `y_pred`. "
+            f"`y_true` groups: {sorted(y_groups.keys())}, "
+            f"`y_pred` groups: {sorted(X_groups.keys())}."
         )
 
     # Validate column presence and types
@@ -673,7 +676,7 @@ def validate_scorer_data(
         if extra_cols:
             y_pred = y_pred.drop(extra_cols)
 
-    from yohou.metrics._context import ScoringContext as _ScoringContext  # noqa: PLC0415
+    from yohou.utils._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 
     context = _ScoringContext(
         time_values=time_values,  # type: ignore
@@ -859,8 +862,10 @@ def validate_forecaster_data(
     Parameters
     ----------
     forecaster : BaseForecaster
-        The forecaster instance.  ``interval_`` and schema attributes are
-        set during fit context.
+        The forecaster instance.  ``interval_`` is set during fit context
+        (``reset=True``).  Schema attributes are validated (not set) during
+        predict/update context (``reset=False``); they are set elsewhere
+        (in ``BaseForecaster.fit``).
     y : pl.DataFrame or None
         Target time series with ``"time"`` column.
     X_actual : pl.DataFrame or None, default=None
@@ -1081,12 +1086,28 @@ def validate_transformer_data(
         If True (and inverse=True), X_p is required and guaranteed non-None in return.
         Use Literal[True] at call site for type narrowing.
     **check_params : dict
-        Additional validation parameters.
+        Additional validation parameters, consumed only in the transform
+        context (reset=False, inverse=False). Supported keys:
+
+        - ``check_intervals`` (bool, default True): run the interval-consistency
+          check on X when X has >= 2 rows.
+        - ``check_continuity`` (bool, default True): verify X is contiguous with
+          the transformer's observed buffer.
 
     Returns
     -------
     pl.DataFrame or tuple
-        Validated data.
+        Validated data. The shape depends on the context (see the overloads):
+
+        - ``pl.DataFrame``: fit context (reset=True) or forward-transform
+          context.
+        - ``tuple[pl.DataFrame, None]``: inverse non-stateful context
+          (reset=False, inverse=True, stateful=False).
+        - ``tuple[pl.DataFrame, pl.DataFrame]``: inverse stateful context
+          (reset=False, inverse=True, stateful=True).
+
+        The first element is always the (transformed) input X; the second
+        element, when present, is X_p.
 
     See Also
     --------

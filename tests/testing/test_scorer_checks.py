@@ -13,7 +13,7 @@ from yohou.testing.scorer import (
     check_scorer_aggregation_methods,
     check_scorer_component_subselection,
     check_scorer_coverage_rate_subselection,
-    check_scorer_lower_is_better,
+    check_scorer_multi_vintage,
     check_scorer_panel_subselection,
     check_scorer_prediction_type_compatibility,
 )
@@ -96,10 +96,25 @@ def fitted_point_forecaster():
 class TestScorerCheckFunctions:
     """Tests that directly call scorer check functions from testing.scorer."""
 
-    def test_check_lower_is_better(self):
-        """check_scorer_lower_is_better validates boolean tag."""
-        scorer = MeanAbsoluteError()
-        check_scorer_lower_is_better(scorer)
+    def test_check_multi_vintage_passes(self, scorer_panel_data):
+        """check_scorer_multi_vintage scores a built 2-vintage frame and returns finite output."""
+        scorer, y_truth, y_pred = scorer_panel_data
+        scorer_copy = MeanAbsoluteError()
+        check_scorer_multi_vintage(scorer_copy, y_truth, y_pred)
+
+    def test_check_multi_vintage_returns_when_no_vintage_time(self, scorer_panel_data):
+        """check_scorer_multi_vintage short-circuits when y_pred lacks vintage_time."""
+        scorer, y_truth, y_pred = scorer_panel_data
+        y_pred_no_vt = y_pred.drop("vintage_time")
+        # The function cannot build a second vintage; it must return without error.
+        assert check_scorer_multi_vintage(MeanAbsoluteError(), y_truth, y_pred_no_vt) is None
+
+    def test_check_multi_vintage_returns_when_vintage_time_not_datetime(self, scorer_panel_data):
+        """check_scorer_multi_vintage short-circuits for a non-datetime vintage_time."""
+        scorer, y_truth, y_pred = scorer_panel_data
+        y_pred_int_vt = y_pred.with_columns(pl.lit(0).alias("vintage_time"))
+        # A non-date vintage_time cannot be shifted, so the check returns early.
+        assert check_scorer_multi_vintage(MeanAbsoluteError(), y_truth, y_pred_int_vt) is None
 
     def test_check_aggregation_methods(self, scorer_panel_data):
         """check_scorer_aggregation_methods validates each method."""

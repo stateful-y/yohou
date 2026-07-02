@@ -88,8 +88,10 @@ from yohou.plotting import plot_score_time_series
 plot_score_time_series(scorer, y_test, y_pred)
 ```
 
-For panel data, set `facet_by="group"` to get one subplot per group. To apply
-time weights, pass a callable or DataFrame via `time_weight`.
+For panel data, set `facet_by="group"` to get one subplot per group. To
+emphasize recent errors, construct the scorer with an
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
+before passing it to this function. See [Time Weighting](time-weighting.md).
 
 ## 4. Score by Forecast Vintage
 

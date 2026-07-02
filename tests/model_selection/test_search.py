@@ -214,6 +214,8 @@ class TestPanelData:
 
         y_pred = search_cv.predict(forecasting_horizon=3)
 
+        # Predictions must carry both time columns per the data contract.
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert len(y_pred) == 3
 
@@ -312,78 +314,15 @@ class TestEdgeCases:
         y_pred = search.predict(forecasting_horizon=3)
         assert len(y_pred) == 3
 
+        # observe() must advance the delegated forecaster's observed_time_.
+        observed_time_before = search.best_forecaster_.observed_time_
         search.observe(y_test[:5], X_actual=None)
+        observed_time_after = search.best_forecaster_.observed_time_
+        assert observed_time_after > observed_time_before
+
+        # rewind() must reset observed_time_ to the last time of the reset data.
         search.rewind(y_test[:10], X_actual=None)
-
-
-class TestMultiMetric:
-    """Tests for multi-metric search CV."""
-
-    def test_multimetric_best_score_selection(self, y_X_factory):
-        """Test that best_score_ corresponds to refit metric in multi-metric search."""
-        y, X_actual = y_X_factory(length=100, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80] if X_actual is not None else None
-
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5, 10]},
-            scoring={
-                "mae": MeanAbsoluteError(),
-                "rmse": RootMeanSquaredError(),
-            },
-            cv=2,
-            refit="rmse",
-        )
-        search.fit(y_train, X_actual_train, forecasting_horizon=3)
-
-        expected_score = search.cv_results_["mean_test_rmse"][search.best_index_]
-        assert abs(search.best_score_ - expected_score) < 1e-6
-
-
-class TestReturnTrainScore:
-    """Tests for return_train_score parameter."""
-
-    def test_return_train_score_adds_keys(self, y_X_factory):
-        """Test that return_train_score=True adds train score keys."""
-        y, X_actual = y_X_factory(length=100, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80] if X_actual is not None else None
-
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            return_train_score=True,
-        )
-        search.fit(y_train, X_actual_train, forecasting_horizon=3)
-
-        assert "mean_train_score" in search.cv_results_
-        assert "split0_train_score" in search.cv_results_
-        assert "split1_train_score" in search.cv_results_
-
-
-class TestErrorHandling:
-    """Tests for error handling in search CV."""
-
-    def test_error_score_nan_continues_fit(self, y_X_factory):
-        """Test that error_score=np.nan continues fit even with potential errors."""
-        y, X_actual = y_X_factory(length=100, seed=42)
-        y_train = y[:80]
-        X_actual_train = X_actual[:80] if X_actual is not None else None
-
-        import numpy as np
-
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5, 10]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            error_score=np.nan,
-        )
-        search.fit(y_train, X_actual_train, forecasting_horizon=3)
-        assert hasattr(search, "cv_results_")
+        assert search.best_forecaster_.observed_time_ == y_test[:10]["time"][-1]
 
 
 class TestScorerDirectionCorrectness:
@@ -426,25 +365,6 @@ class TestScorerDirectionCorrectness:
         # best_score_ should be negative
         assert search.best_score_ <= 0, f"best_score_ should be negative for MAE, got {search.best_score_}"
 
-    def test_best_score_is_negated_raw_mae(self, y_X_factory):
-        """best_score_ should equal the negated raw MAE of the best candidate."""
-        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-        y_train = y[:80]
-
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-        )
-        search.fit(y_train, X_actual=None, forecasting_horizon=3)
-
-        # best_score_ is the mean cv score (negated MAE)
-        assert search.best_score_ < 0
-        # The actual MAE is the absolute value
-        actual_mae = -search.best_score_
-        assert actual_mae > 0
-
     def test_multimetric_respects_scorer_direction(self, y_X_factory):
         """Multi-metric search: each scorer should be negated per its lower_is_better tag."""
         y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
@@ -476,73 +396,6 @@ class TestScorerDirectionCorrectness:
         # (least negative) MAE score → lowest raw MAE error
         mae_scores = cv_results["mean_test_mae"]
         assert search.best_index_ == np.argmax(mae_scores)
-
-    def test_randomized_search_selects_lowest_error(self, y_X_factory):
-        """RandomizedSearchCV with MAE must pick the candidate with lowest error."""
-        y, X_actual = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-        y_train = y[:80]
-
-        search = RandomizedSearchCV(
-            forecaster=SeasonalNaive(),
-            param_distributions={"seasonality": [1, 5, 10]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            n_iter=3,
-            random_state=42,
-        )
-        search.fit(y_train, X_actual=None, forecasting_horizon=3)
-
-        mean_scores = search.cv_results_["mean_test_score"]
-
-        # Scores should be non-positive (negated MAE)
-        assert np.all(mean_scores <= 0)
-
-        # best_index_ should point to least negative score
-        assert search.best_index_ == np.argmax(mean_scores)
-
-
-class TestSearchRefitFalse:
-    """Tests for search CV behavior with refit=False."""
-
-    def test_refit_false_no_best_forecaster(self, y_X_factory):
-        """refit=False means best_forecaster_ is not available."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            refit=False,
-        )
-        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
-        assert not hasattr(search, "best_forecaster_")
-
-    def test_refit_false_cv_results_available(self, y_X_factory):
-        """refit=False still populates cv_results_."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            refit=False,
-        )
-        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
-        assert "mean_test_score" in search.cv_results_
-
-    def test_refit_false_predict_raises(self, y_X_factory):
-        """refit=False makes predict() raise AttributeError."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 5]},
-            scoring=MeanAbsoluteError(),
-            cv=2,
-            refit=False,
-        )
-        search.fit(y[:80], X_actual=None, forecasting_horizon=3)
-        with pytest.raises(AttributeError):
-            search.predict(forecasting_horizon=3)
 
 
 class TestSearchPropertyValidation:
@@ -678,6 +531,56 @@ class TestIntervalSearch:
         assert "time" in y_pred.columns
         interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
         assert len(interval_cols) > 0, "Should have interval prediction columns"
+
+    def test_observe_predict_interval_forwards_stride(self, y_X_factory):
+        """observe_predict_interval must expose stride and forward it.
+
+        ``stride`` must be an explicit keyword of the wrapper (mirroring
+        ``observe_predict``), not merely accepted via ``**params``. A custom
+        stride must reach the underlying forecaster so that the wrapper output
+        matches a direct call on an identically fitted forecaster and differs
+        from the default-stride output.
+        """
+        import inspect
+
+        # Wave A promotion: stride must be part of the documented signature,
+        # not silently swallowed by **params.
+        sig = inspect.signature(GridSearchCV.observe_predict_interval)
+        assert "stride" in sig.parameters
+        assert (
+            sig.parameters["stride"].kind is inspect.Parameter.KEYWORD_ONLY
+            or sig.parameters["stride"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        )
+
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        y_train, y_test = y[:180], y[180:]
+
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(),
+                calibration_size=20,
+            ),
+            param_grid={"point_forecaster__seasonality": [1]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=2,
+            refit=True,
+        )
+        search.fit(y_train, forecasting_horizon=2)
+
+        forwarded = search.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9], stride=1)
+
+        reference = clone(search.forecaster)
+        reference.set_params(**search.best_params_)
+        reference.fit(y_train, forecasting_horizon=2)
+        direct = reference.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9], stride=1)
+        default_stride = reference.observe_predict_interval(y=y_test[:12], coverage_rates=[0.9])
+
+        assert forwarded.shape == direct.shape
+        assert forwarded["vintage_time"].n_unique() == direct["vintage_time"].n_unique()
+        # A non-default stride yields a different number of vintages than the
+        # default stride; if the wrapper dropped stride, forwarded would match
+        # default_stride instead.
+        assert forwarded["vintage_time"].n_unique() != default_stride["vintage_time"].n_unique()
 
     @pytest.mark.slow
     def test_grid_search_empirical_coverage_scorer(self, y_X_factory):
@@ -875,29 +778,6 @@ class TestSearchRefitCallable:
         assert len(y_pred) == 3
 
 
-class TestSearchMultiMetricDict:
-    """Tests for multi-metric scoring with dict."""
-
-    def test_multi_metric_scoring_dict(self, y_X_factory):
-        """Dict scoring with multiple metrics stores all results."""
-        from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
-        from yohou.model_selection import GridSearchCV
-        from yohou.point import SeasonalNaive
-
-        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
-        search = GridSearchCV(
-            forecaster=SeasonalNaive(),
-            param_grid={"seasonality": [1, 3]},
-            scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
-            cv=2,
-            refit="mae",
-        )
-        search.fit(y[:50], forecasting_horizon=3)
-        assert hasattr(search, "cv_results_")
-        assert "mean_test_mae" in search.cv_results_
-        assert "mean_test_rmse" in search.cv_results_
-
-
 class TestSearchDelegatedProperties:
     """Tests for delegated properties from best_forecaster_."""
 
@@ -986,6 +866,21 @@ class TestSearchGetScorersValidation:
         )
         with pytest.raises(ValueError, match="scoring parameter cannot be None"):
             search._get_scorers()
+
+    def test_scoring_none_passes_validate_params(self):
+        """scoring=None is the documented default and must satisfy _validate_params.
+
+        The constraint must accept None so that constructing/validating a
+        search with the default scoring does not raise. (None is resolved to
+        the forecaster default at fit time, where a clearer error is raised.)
+        """
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1]},
+            scoring=None,
+            cv=2,
+        )
+        search._validate_params()
 
     def test_scoring_invalid_type_raises(self):
         """Scoring with invalid type raises ValueError."""

@@ -239,7 +239,7 @@ def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFr
 
 
 def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-    """Check rewind() updates _X_observed to last observation_horizon rows.
+    """Check rewind(X) sets _X_observed to X.tail(observation_horizon).
 
     The rewind() method should update the transformer's memory to contain
     only the last observation_horizon rows of the provided data.
@@ -249,7 +249,7 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
     transformer : BaseTransformer
         Unfitted transformer
     X : pl.DataFrame
-        Training data (must be longer than observation_horizon)
+        Training data (should have at least observation_horizon rows)
     y : pl.DataFrame, optional
         Target data
 
@@ -257,6 +257,12 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
     ------
     AssertionError
         If _X_observed is not properly updated
+
+    Notes
+    -----
+    For stateless transformers (observation_horizon == 0) the expected memory
+    is an empty frame, so the assertions hold trivially; no memory behavior is
+    exercised. The check is also a no-op when len(X) < observation_horizon.
 
     """
     transformer_clone = clone(transformer)
@@ -302,6 +308,12 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
     AssertionError
         If observe() doesn't properly maintain memory
 
+    Notes
+    -----
+    For stateless transformers (observation_horizon == 0) _X_observed is always
+    an empty frame, so both length assertions resolve to ``0 <= 0`` and
+    ``0 == 0``; no meaningful memory behavior is exercised for that class.
+
     """
     transformer_clone = clone(transformer)
 
@@ -331,9 +343,11 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
 def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
     """Check observe() does not change transform() output for a fitted transformer.
 
-    ``observe()`` updates the internal memory buffer but must not alter the
-    fitted parameters. Starting from the same fitted state, transforming after
-    an ``observe()`` call should match transforming without it.
+    ``transform()`` does not consult ``_X_observed``; it transforms the provided
+    DataFrame independently of internal memory. Calling ``observe()`` beforehand
+    updates the memory buffer (not the fitted parameters), so starting from the
+    same fitted state, transforming after an ``observe()`` call must match
+    transforming without it.
 
     Parameters
     ----------
@@ -451,9 +465,11 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
     """Check rewind_transform() behavior and contract.
 
     Verifies that rewind_transform():
-    1. Does not use pre-existing _X_observed from transformer's memory
+    1. Produces the same output as transform() on the same input from a freshly
+       fitted clone (i.e. the result depends only on the fitted parameters and
+       the provided input, matching transform())
     2. Calls transform() and discards the first observation_horizon values
-    3. Resets the internal state with the input data
+    3. Resets the internal state to the last observation_horizon input rows
 
     Parameters
     ----------
@@ -1165,6 +1181,12 @@ def check_memory_bounded(
     AssertionError
         If memory grows beyond expected bounds
 
+    Notes
+    -----
+    For stateless transformers (observation_horizon == 0) the expected bound is
+    ``int(0 * max_memory_factor) == 0`` and _X_observed is always empty, so the
+    assertion holds trivially; no memory-growth behavior is exercised.
+
     """
     transformer_clone = clone(transformer)
     transformer_clone.fit(X_train, y)
@@ -1286,7 +1308,8 @@ def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame 
     Parameters
     ----------
     transformer : BaseTransformer
-        Fitted transformer instance
+        Transformer instance (may be unfitted; tags must be accessible before
+        fit per sklearn convention). Used as-is without cloning or fitting.
     X : pl.DataFrame
         Training data (not used, for consistency)
     y : pl.DataFrame, optional

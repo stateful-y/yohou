@@ -2,7 +2,7 @@
 
 This file contains:
 1. Dummy transformer classes (SimpleTransformer, StatelessTransformer, etc.)
-2. Data generation fixtures (base_time_series, time_series_factory, panel_time_series_factory)
+2. Data generation fixtures (time_series_factory, panel_time_series_factory)
 3. Transformer registry fixture with metadata and expected failures
 4. Edge case dataset factories
 """
@@ -19,8 +19,6 @@ import pytest
 from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseTransformer
-from yohou.interval.base import BaseIntervalForecaster
-from yohou.point.base import BasePointForecaster
 
 
 def run_checks(
@@ -163,8 +161,8 @@ class InvertibleTransformer(BaseTransformer):
     def transform(self, X):
         return X.select([pl.col("time"), (cs.numeric() & ~cs.by_name("time")) + self.offset])
 
-    def inverse_transform(self, X):
-        return X.select([pl.col("time"), (cs.numeric() & ~cs.by_name("time")) - self.offset])
+    def inverse_transform(self, X_t, X_p=None):
+        return X_t.select([pl.col("time"), (cs.numeric() & ~cs.by_name("time")) - self.offset])
 
     def get_feature_names_out(self, input_features=None):
         return self.feature_names_in_
@@ -236,28 +234,6 @@ def X_factory(time_series_factory):
 
     """
     return time_series_factory
-
-
-@pytest.fixture(scope="session")
-def base_time_series():
-    """Session-scoped base time_series (immutable, reused for performance).
-
-    Creates a standard 100-row, 3-feature dataset that is cached for
-    the entire test session to improve performance. Tests should not
-    modify this fixture.
-    """
-    length = 100
-    n_features = 3
-
-    time = pl.datetime_range(
-        start=datetime(2021, 1, 1),
-        end=datetime(2021, 1, 1, 0, 0, length - 1),
-        interval="1s",
-        eager=True,
-    )
-    rng = pl.Series(range(length)).cast(pl.Float64)
-    features = {f"feature_{i}": rng + (i * 100) for i in range(n_features)}
-    return pl.DataFrame({"time": time, **features})
 
 
 @pytest.fixture
@@ -531,21 +507,6 @@ def time_series_with_outliers_factory():
         return pl.DataFrame({"time": time, **features})
 
     return _make
-
-
-@pytest.fixture
-def dummy_transformers():
-    """Minimal transformers for composition testing.
-
-    Returns a dictionary of dummy transformer instances that can be
-    used to test composition classes (FeaturePipeline, FeatureUnion, etc.)
-    """
-    return {
-        "simple": SimpleTransformer(observation_horizon=1),
-        "stateless": StatelessTransformer(),
-        "invertible": InvertibleTransformer(observation_horizon=2),
-        "panel_aware": PanelAwareTransformer(observation_horizon=1),
-    }
 
 
 @pytest.fixture
@@ -1021,32 +982,6 @@ def forecaster_registry():
 
 
 @pytest.fixture
-def panel_X_factory():
-    """Factory for panel data X_actual with panel columns."""
-
-    def _make(length=50, n_panels=2, n_features=2):
-        time = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
-            interval="1s",
-            eager=True,
-        )
-
-        # Create panel columns with __ separator
-        panel_data = {}
-        for i in range(n_panels):
-            for j in range(n_features):
-                panel_data[f"panel_{i}__feature_{j}"] = range(i * 100 + j * 10, length + (i * 100 + j * 10))
-
-        # Create DataFrame with panel columns
-        panel_df = pl.DataFrame(panel_data)
-
-        return pl.concat([pl.DataFrame({"time": time}), panel_df], how="horizontal")
-
-    return _make
-
-
-@pytest.fixture
 def pattern_factory():
     """Generate time series with specific patterns for testing.
 
@@ -1116,42 +1051,3 @@ def pattern_factory():
         return pl.DataFrame({"time": time, "target": values})
 
     return _factory
-
-
-class DummyPointForecaster(BasePointForecaster):
-    """Minimal point forecaster for composition testing."""
-
-    def __init__(self, constant=0.0):
-        super().__init__()
-        self.constant = constant
-
-    def fit(self, y, X_actual=None, forecasting_horizon=1):
-        super().fit(y, X_actual, forecasting_horizon)
-        return self
-
-    def _predict(self):
-        # Return constant prediction
-        return pl.DataFrame({
-            col: [self.constant] * self.fit_forecasting_horizon_ for col in list(self.local_y_schema_.keys())
-        })
-
-
-class DummyIntervalForecaster(BaseIntervalForecaster):
-    """Minimal interval forecaster for composition testing."""
-
-    def __init__(self, width=1.0):
-        super().__init__()
-        self.width = width
-
-    def fit(self, y, X_actual=None, forecasting_horizon=1):
-        super().fit(y, X_actual, forecasting_horizon)
-        return self
-
-    def _predict(self):
-        # Return constant interval
-        data = {}
-        for col in list(self.local_y_schema_.keys()):
-            data[f"{col}_lower"] = [-self.width] * self.fit_forecasting_horizon_
-            data[f"{col}_upper"] = [self.width] * self.fit_forecasting_horizon_
-
-        return pl.DataFrame(data)

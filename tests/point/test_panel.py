@@ -40,8 +40,8 @@ class TestPointReductionPanelChecks:
 
 class TestPointReductionPanelBehavior:
     def test_panel_predict_all_groups_default(self, panel_time_series_factory):
-        """Test that predict with panel_group=None predicts all groups."""
-        y = panel_time_series_factory(length=50, n_series=3)
+        """Test that predict with groups=None predicts every group."""
+        y = panel_time_series_factory(length=50, n_series=2, n_groups=3)
         y_train = y[:40]
 
         forecaster = PointReductionForecaster(
@@ -51,18 +51,17 @@ class TestPointReductionPanelBehavior:
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
-        # Predict with panel_group=None (default)
-        y_pred = forecaster.predict(forecasting_horizon=3, panel_group=None)
+        # Predict with groups=None (default) yields every group's series.
+        y_pred = forecaster.predict(forecasting_horizon=3, groups=None)
 
-        # Should have predictions for all 3 series (with __ separator)
-        assert "panel__series_0" in y_pred.columns
-        assert "panel__series_1" in y_pred.columns
-        assert "panel__series_2" in y_pred.columns
+        for group_idx in range(3):
+            for series_idx in range(2):
+                assert f"group{group_idx}__series_{series_idx}" in y_pred.columns
         assert len(y_pred) == 3  # 3 forecast steps
 
     def test_panel_predict_single_group(self, panel_time_series_factory):
-        """Test that predict with panel_group filters to a single group."""
-        y = panel_time_series_factory(length=50, n_series=3)
+        """Test that predict with groups filters to the requested group only."""
+        y = panel_time_series_factory(length=50, n_series=2, n_groups=3)
         y_train = y[:40]
 
         forecaster = PointReductionForecaster(
@@ -72,33 +71,20 @@ class TestPointReductionPanelBehavior:
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
-        # Predict only for panel group (all series within the group)
-        y_pred = forecaster.predict(forecasting_horizon=3, panel_group="panel")
+        # Predict only for group1: only group1's series may appear.
+        y_pred = forecaster.predict(forecasting_horizon=3, groups=["group1"])
 
-        # Should have all series columns with __ separator
-        assert "panel__series_0" in y_pred.columns
-        assert "panel__series_1" in y_pred.columns
-        assert "panel__series_2" in y_pred.columns
+        assert "group1__series_0" in y_pred.columns
+        assert "group1__series_1" in y_pred.columns
+        # Columns from the other groups must be absent.
+        for other in ("group0", "group2"):
+            assert not any(col.startswith(f"{other}__") for col in y_pred.columns), (
+                f"groups=['group1'] leaked columns from {other}: {y_pred.columns}"
+            )
         assert len(y_pred) == 3
 
-    def test_panel_invalid_group_raises_error(self, panel_time_series_factory):
-        """Test that invalid panel_group raises ValueError."""
-        y = panel_time_series_factory(length=50, n_series=3)
-        y_train = y[:40]
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
-        )
-
-        forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
-
-        # Try to predict with invalid group name
-        with pytest.raises(ValueError, match="not found in fitted forecaster"):
-            forecaster.predict(forecasting_horizon=3, groups=["invalid_group"])
-
-    def test_panel_global_data_no_groups(self, time_series_factory):
-        """Test that panel_group has no effect on global data."""
+    def test_panel_global_data_groups_no_effect(self, time_series_factory):
+        """On global (non-panel) data, groups=None and an absent groups arg agree."""
         y = time_series_factory(length=50, n_components=1)
         y_train = y[:40]
 
@@ -109,9 +95,9 @@ class TestPointReductionPanelBehavior:
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
 
-        # Should work the same with or without panel_group
-        y_pred_default = forecaster.predict(forecasting_horizon=3, panel_group=None)
-        y_pred_explicit = forecaster.predict(forecasting_horizon=3, panel_group=None)
+        # Passing groups=None must match omitting the parameter entirely.
+        y_pred_default = forecaster.predict(forecasting_horizon=3)
+        y_pred_explicit = forecaster.predict(forecasting_horizon=3, groups=None)
 
         assert y_pred_default.equals(y_pred_explicit)
         assert "feature_0" in y_pred_default.columns

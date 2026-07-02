@@ -278,9 +278,11 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Parameters
         ----------
         X_future : pl.DataFrame or None, default=None
-            Known future features override.
+            Known future features override. Re-derives step columns
+            without mutating forecaster state.
         X_forecast : pl.DataFrame or None, default=None
-            External forecast override.
+            External forecast override. Re-derives step columns without
+            mutating forecaster state.
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future. If ``None``,
             uses the horizon specified at fit time.
@@ -430,7 +432,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         """Encode argmax string labels back to float codes for observation.
 
         Used during recursive prediction to convert argmax class labels
-        back to the integer-coded format expected by ``observe()``.
+        back to the float-coded format expected by ``observe()``.
 
         Parameters
         ----------

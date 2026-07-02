@@ -3,6 +3,8 @@
 Tests OutlierThresholdHandler and OutlierPercentileHandler basic functionality.
 """
 
+import pytest
+
 from conftest import run_checks
 from yohou.preprocessing import (
     OutlierPercentileHandler,
@@ -42,28 +44,21 @@ class TestOutlierThresholdHandler:
                 assert X_clipped[col].max() <= 5.0
 
     def test_nan_strategy(self, time_series_with_outliers_factory):
-        """Test OutlierThresholdHandler nan strategy."""
+        """Test OutlierThresholdHandler nan strategy nulls out-of-bound values."""
         X = time_series_with_outliers_factory(length=50, n_components=2, outlier_magnitude=10.0)
         handler = OutlierThresholdHandler(low=-5.0, high=5.0, strategy="nan")
         handler.fit(X)
         X_nan = handler.transform(X)
 
         assert "time" in X_nan.columns
-
-    def test_preserves_time_column(self, time_series_with_outliers_factory):
-        """Test OutlierThresholdHandler preserves time column."""
-        X = time_series_with_outliers_factory(length=50, n_components=2)
-        handler = OutlierThresholdHandler(low=-5.0, high=5.0, strategy="clip")
-        handler.fit(X)
-        X_transformed = handler.transform(X)
-
-        assert "time" in X_transformed.columns
-        assert len(X_transformed) == len(X)
+        # Outliers (magnitude 10 > threshold 5) must be replaced by nulls, so the
+        # input (which had no nulls) gains at least one null after transform.
+        feature_cols = [c for c in X_nan.columns if c != "time"]
+        n_nulls = X_nan.select(feature_cols).null_count().sum_horizontal().sum()
+        assert n_nulls > 0, "nan strategy should null at least one out-of-bound value"
 
     def test_inverted_thresholds_leave_unfitted(self, time_series_with_outliers_factory):
         """A failed fit (low > high) must not assign threshold attributes."""
-        import pytest
-
         X = time_series_with_outliers_factory(length=50, n_components=2)
         handler = OutlierThresholdHandler(low=5.0, high=-5.0, strategy="clip")
 
@@ -104,20 +99,33 @@ class TestOutlierPercentileHandler:
         assert "time" in X_clipped.columns
 
     def test_nan_strategy(self, time_series_with_outliers_factory):
-        """Test OutlierPercentileHandler nan strategy."""
+        """Test OutlierPercentileHandler nan strategy nulls out-of-bound values."""
         X = time_series_with_outliers_factory(length=50, n_components=2, outlier_magnitude=10.0)
         handler = OutlierPercentileHandler(low=5.0, high=95.0, strategy="nan")
         handler.fit(X)
         X_nan = handler.transform(X)
 
         assert "time" in X_nan.columns
+        # Values beyond the 5th/95th percentile must be replaced by nulls, so the
+        # null-free input gains at least one null after transform.
+        feature_cols = [c for c in X_nan.columns if c != "time"]
+        n_nulls = X_nan.select(feature_cols).null_count().sum_horizontal().sum()
+        assert n_nulls > 0, "nan strategy should null at least one out-of-bound value"
 
-    def test_preserves_time_column(self, time_series_with_outliers_factory):
-        """Test OutlierPercentileHandler preserves time column."""
+    def test_inverted_percentiles_leave_unfitted(self, time_series_with_outliers_factory):
+        """A failed fit (low > high) must not assign threshold attributes.
+
+        Mirrors test_inverted_thresholds_leave_unfitted for the threshold variant:
+        the percentile ordering guard (outlier.py) raises before thresholds_ is set.
+        """
         X = time_series_with_outliers_factory(length=50, n_components=2)
-        handler = OutlierPercentileHandler(low=5.0, high=95.0, strategy="clip")
-        handler.fit(X)
-        X_transformed = handler.transform(X)
+        handler = OutlierPercentileHandler(low=95.0, high=5.0, strategy="clip")
 
-        assert "time" in X_transformed.columns
-        assert len(X_transformed) == len(X)
+        with pytest.raises(ValueError, match="must be <= high"):
+            handler.fit(X)
+
+        # Ordering is validated before thresholds_ is assigned, so transform
+        # cannot silently apply inverted percentile bounds.
+        assert not hasattr(handler, "thresholds_")
+        with pytest.raises(AttributeError):
+            handler.transform(X)

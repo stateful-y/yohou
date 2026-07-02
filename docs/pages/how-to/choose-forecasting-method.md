@@ -118,7 +118,7 @@ Use [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.Ran
 
 ## 6. Choose the Reduction Strategy
 
-The default `"multi-output"` strategy works well for short horizons. For longer horizons, switch to `"direct"` or `"dir-rec"`:
+The default multi-output reduction strategy works well for short forecasting horizons. For longer horizons, switch to `"direct"` or `"dir-rec"`:
 
 ```python
 # One model per horizon step (no error propagation)
@@ -158,7 +158,7 @@ forecaster = DecompositionPipeline(
 
 ## 8. Add Prediction Intervals
 
-Once you have a satisfactory point forecaster, wrap it with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to quantify uncertainty:
+Once you have a satisfactory point forecaster, wrap it with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to apply conformal prediction and quantify uncertainty:
 
 ```python
 from yohou.interval import SplitConformalForecaster

@@ -48,8 +48,8 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         reserves uniform mass for the (hypothetical) test point over the
         calibration axis:
 
-        $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}
-        {1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
+        $$w_{ji} = \frac{\exp(-(d_{ji} - \min_k d_{jk}))}
+        {1 + \sum_k \exp(-(d_{jk} - \min_k d_{jk}))}$$
 
         Each output row is non-negative and sums to a value strictly less
         than 1; the remainder ``1 / (1 + \sum_k raw)`` is the mass reserved
@@ -82,7 +82,9 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
         Returns ``raw / (\sum_k raw + 1)`` so each row is non-negative and
         sums to a value strictly less than 1; the remainder is reserved for
         the test point. Shared by the distance softmax (:meth:`_to_weights`)
-        and the ``CompositeSimilarity`` multiply combination.
+        and the
+        [`CompositeSimilarity`][yohou.interval.similarity.CompositeSimilarity]
+        ``"multiply"`` combination.
 
         Parameters
         ----------
@@ -246,6 +248,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     Interval forecasters produce prediction intervals at specified
     coverage rates.  The ``forecaster_type`` tag is ``INTERVAL``
     (or ``POINT_INTERVAL`` if point predictions are also available).
+
+    Unlike point forecasters, interval forecasters do not expose a
+    ``target_transformer`` parameter; ``__init__`` fixes it to ``None``.
+    Interval bounds must remain in the original target scale to stay
+    interpretable, so a target transformation is not applied.
 
     See Also
     --------
@@ -560,8 +567,10 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ) -> pl.DataFrame:
         """Alternate recursive predict_interval and observe.
 
-        Equivalent to calling ``observe(y, X_actual)`` then
-        ``predict_interval()``.  Returns interval predictions.
+        Runs a rolling observe-predict loop over ``y``, emitting an
+        initial prediction and then one interval prediction after each
+        ``stride``-row observation block. Returns the concatenated
+        predictions across all vintages.
 
         Parameters
         ----------
@@ -661,8 +670,9 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         groups : list of str
             Panel group names to predict for.
-        coverage_rates : list of float
-            Coverage rates for the prediction intervals.
+        coverage_rates : list of float or None, default=None
+            Coverage rates for the prediction intervals. If ``None``,
+            falls back to ``fit_coverage_rates_``.
 
         Returns
         -------

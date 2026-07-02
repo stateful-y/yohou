@@ -5,7 +5,6 @@ from datetime import datetime
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks as _run_checks_base
 from yohou.metrics import Accuracy, BrierScore, LogLoss, RankedProbabilityScore
@@ -124,34 +123,22 @@ class TestLogLoss:
         score = scorer.score(y_true, y_pred)
         assert np.isclose(score, np.log(3), rtol=1e-5)
 
-    def test_lower_is_better(self, class_proba_data, perfect_proba_data):
-        """Better predictions should have lower log loss."""
+    @pytest.mark.parametrize("scorer_cls", [LogLoss, BrierScore])
+    def test_lower_is_better(self, scorer_cls, class_proba_data, perfect_proba_data):
+        """Perfect predictions score lower (near zero) than imperfect ones."""
         y_true, y_pred = class_proba_data
         y_true_perf, y_pred_perf = perfect_proba_data
 
-        scorer = LogLoss()
+        scorer = scorer_cls()
         scorer.fit(y_true)
         score_imperfect = scorer.score(y_true, y_pred)
 
-        scorer_perf = LogLoss()
+        scorer_perf = scorer_cls()
         scorer_perf.fit(y_true_perf)
         score_perfect = scorer_perf.score(y_true_perf, y_pred_perf)
 
         assert score_perfect < score_imperfect
-
-    def test_not_fitted_raises(self, class_proba_data):
-        """Scoring before fit should raise NotFittedError."""
-        y_true, y_pred = class_proba_data
-        scorer = LogLoss()
-        with pytest.raises(NotFittedError):
-            scorer.score(y_true, y_pred)
-
-    def test_tags(self):
-        """Tags should report class_proba prediction type."""
-        scorer = LogLoss()
-        tags = scorer.__sklearn_tags__()
-        assert tags.scorer_tags.prediction_type == "class_proba"
-        assert tags.scorer_tags.lower_is_better is True
+        assert np.isclose(score_perfect, 0.0, atol=1e-9)
 
 
 class TestBrierScore:
@@ -172,35 +159,6 @@ class TestBrierScore:
         scorer.fit(y_true)
         score = scorer.score(y_true, y_pred)
         assert score > 0
-
-    def test_lower_is_better(self, class_proba_data, perfect_proba_data):
-        """Better predictions should have lower Brier score."""
-        y_true, y_pred = class_proba_data
-        y_true_perf, y_pred_perf = perfect_proba_data
-
-        scorer = BrierScore()
-        scorer.fit(y_true)
-        score_imperfect = scorer.score(y_true, y_pred)
-
-        scorer_perf = BrierScore()
-        scorer_perf.fit(y_true_perf)
-        score_perfect = scorer_perf.score(y_true_perf, y_pred_perf)
-
-        assert score_perfect < score_imperfect
-
-    def test_not_fitted_raises(self, class_proba_data):
-        """Scoring before fit should raise NotFittedError."""
-        y_true, y_pred = class_proba_data
-        scorer = BrierScore()
-        with pytest.raises(NotFittedError):
-            scorer.score(y_true, y_pred)
-
-    def test_tags(self):
-        """Tags should report class_proba prediction type."""
-        scorer = BrierScore()
-        tags = scorer.__sklearn_tags__()
-        assert tags.scorer_tags.prediction_type == "class_proba"
-        assert tags.scorer_tags.lower_is_better is True
 
 
 class TestAccuracy:
@@ -249,26 +207,6 @@ class TestAccuracy:
         score_bad = scorer_bad.score(y_true_bad, y_pred_bad)
 
         assert score_perfect > score_bad
-
-    def test_lower_is_better_false(self):
-        """Accuracy has lower_is_better=False (higher accuracy is better)."""
-        scorer = Accuracy()
-        tags = scorer.__sklearn_tags__()
-        assert tags.scorer_tags.lower_is_better is False
-
-    def test_not_fitted_raises(self, class_proba_data):
-        """Scoring before fit should raise NotFittedError."""
-        y_true, y_pred = class_proba_data
-        scorer = Accuracy()
-        with pytest.raises(NotFittedError):
-            scorer.score(y_true, y_pred)
-
-    def test_tags(self):
-        """Tags should report class_proba prediction type."""
-        scorer = Accuracy()
-        tags = scorer.__sklearn_tags__()
-        assert tags.scorer_tags.prediction_type == "class_proba"
-        assert tags.scorer_tags.lower_is_better is False
 
 
 class TestTimeWeight:
@@ -329,7 +267,13 @@ class TestTimeWeight:
 
     @pytest.fixture
     def panel_class_proba_data(self):
-        """Panel data for time_weight tests."""
+        """Panel data with some wrong predictions for time_weighter tests.
+
+        grpA: row 1 correct (sunny), row 2 wrong (argmax sunny != rainy),
+        row 3 correct (cloudy). grpB: row 1 correct (cloudy), row 2 correct
+        (sunny), row 3 wrong (argmax sunny != rainy). Having errors spread
+        across times means a non-uniform time weighting changes every score.
+        """
         dates = [datetime(2020, 1, i) for i in range(1, 4)]
         y_true = pl.DataFrame({
             "time": dates,
@@ -339,52 +283,58 @@ class TestTimeWeight:
         y_pred = pl.DataFrame({
             "vintage_time": [datetime(2019, 12, 31)] * 3,
             "time": dates,
-            "grpA__weather_proba_sunny": [0.7, 0.1, 0.2],
-            "grpA__weather_proba_rainy": [0.2, 0.8, 0.1],
+            "grpA__weather_proba_sunny": [0.7, 0.6, 0.2],
+            "grpA__weather_proba_rainy": [0.2, 0.3, 0.1],
             "grpA__weather_proba_cloudy": [0.1, 0.1, 0.7],
-            "grpB__weather_proba_sunny": [0.2, 0.7, 0.1],
-            "grpB__weather_proba_rainy": [0.1, 0.2, 0.8],
+            "grpB__weather_proba_sunny": [0.2, 0.7, 0.5],
+            "grpB__weather_proba_rainy": [0.1, 0.2, 0.4],
             "grpB__weather_proba_cloudy": [0.7, 0.1, 0.1],
         })
         return y_true, y_pred
 
-    def test_log_loss_panel_time_weight(self, panel_class_proba_data):
-        """LogLoss panel time_weight branch is exercised."""
+    def test_log_loss_panel_time_weighter(self, panel_class_proba_data):
+        """Constructor time_weighter changes the panel LogLoss score."""
         y_true, y_pred = panel_class_proba_data
         scorer = LogLoss()
         scorer.fit(y_true)
-        score = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
-        assert isinstance(score, float)
-        assert score > 0
+        score_unweighted = scorer.score(y_true, y_pred)
 
-    def test_brier_score_panel_time_weight(self, panel_class_proba_data):
-        """BrierScore panel time_weight branch is exercised."""
+        weighted_scorer = LogLoss(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
+
+        assert isinstance(score_weighted, float)
+        assert score_weighted > 0
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
+
+    def test_brier_score_panel_time_weighter(self, panel_class_proba_data):
+        """Constructor time_weighter changes the panel BrierScore score."""
         y_true, y_pred = panel_class_proba_data
         scorer = BrierScore()
         scorer.fit(y_true)
-        score = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
-        assert isinstance(score, float)
-        assert score > 0
+        score_unweighted = scorer.score(y_true, y_pred)
 
-    def test_accuracy_panel_time_weight(self, panel_class_proba_data):
-        """Accuracy panel time_weight branch is exercised."""
+        weighted_scorer = BrierScore(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
+
+        assert isinstance(score_weighted, float)
+        assert score_weighted > 0
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
+
+    def test_accuracy_panel_time_weighter(self, panel_class_proba_data):
+        """Constructor time_weighter changes the panel Accuracy score."""
         y_true, y_pred = panel_class_proba_data
         scorer = Accuracy()
         scorer.fit(y_true)
-        score = scorer.score(
-            y_true,
-            y_pred,
-            time_weight=lambda t: pl.Series(range(1, len(t) + 1), dtype=pl.Float64),
-        )
-        assert isinstance(score, float)
+        score_unweighted = scorer.score(y_true, y_pred)
+
+        weighted_scorer = Accuracy(time_weighter=LinearDecayWeighter())
+        weighted_scorer.fit(y_true)
+        score_weighted = weighted_scorer.score(y_true, y_pred)
+
+        assert isinstance(score_weighted, float)
+        assert not np.isclose(score_weighted, score_unweighted, rtol=1e-10)
 
 
 class TestComponentwiseRename:

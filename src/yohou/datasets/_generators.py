@@ -48,7 +48,7 @@ def make_exogenous_regression(
     Three exogenous feature types are produced:
 
     - **X_actual** (observation features): realized temperature readings
-      with a 24 hour sinusoidal cycle.
+      with a 24 hour sinusoidal cycle plus measurement noise (std=0.5).
     - **X_future** (known future): a deterministic ``is_holiday`` indicator
       (Sundays = 1.0) covering the full time range.
     - **X_forecast** (external forecasts): weather temperature forecasts
@@ -80,7 +80,8 @@ def make_exogenous_regression(
         y : pl.DataFrame
             Target with columns ``["time", "price"]``.
         X_actual : pl.DataFrame
-            Observation features with columns ``["time", "temperature"]``.
+            Observation features with columns ``["time", "temperature"]``
+            (24 hour sinusoidal cycle plus measurement noise, std=0.5).
         X_future : pl.DataFrame
             Known future features with columns ``["time", "is_holiday"]``.
         X_forecast : pl.DataFrame
@@ -193,11 +194,15 @@ def make_exogenous_classification(
       vintage because all of its forecast steps fall outside the sample
       range.
 
-    Classification thresholds on the continuous pollutant signal:
+    Classification thresholds are applied to the *effective* pollutant signal
+    (the stored ``X_actual`` ``pollutant`` minus a 5-unit weekend offset, plus
+    jitter), not to the raw ``X_actual["pollutant"]`` feature. As a result a
+    small fraction of rows near the 40/60 boundaries do not satisfy these
+    thresholds when read off the stored feature:
 
-    - ``"good"``: pollutant < 40
-    - ``"moderate"``: 40 <= pollutant < 60
-    - ``"poor"``: pollutant >= 60
+    - ``"good"``: effective pollutant < 40
+    - ``"moderate"``: 40 <= effective pollutant < 60
+    - ``"poor"``: effective pollutant >= 60
 
     Parameters
     ----------
@@ -255,7 +260,7 @@ def make_exogenous_classification(
     >>> data = make_exogenous_classification(n_samples=200)
     >>> data.y.columns
     ['time', 'air_quality']
-    >>> sorted(data.classes)
+    >>> data.classes
     ['good', 'moderate', 'poor']
 
     """

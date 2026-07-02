@@ -11,7 +11,7 @@ from yohou.base import BaseTransformer
 
 
 class TestHstack:
-    """Tests for _hstack horizontal stacking with observation horizon alignment."""
+    """Tests for _hstack horizontal stacking with time-intersection alignment."""
 
     @pytest.fixture()
     def time_df(self):
@@ -27,7 +27,7 @@ class TestHstack:
         })
 
     def test_single_df_no_trim(self, time_df):
-        """Single DataFrame with observation_horizon=1 should pass through."""
+        """A single DataFrame passes through unchanged."""
         from yohou.compose.utils import _hstack
 
         result = _hstack(
@@ -49,27 +49,28 @@ class TestHstack:
         assert result.columns == ["time", "a", "b"]
         assert result.shape[0] == 10
 
-    def test_different_horizons_trims_shorter(self, time_df):
-        """DataFrames from transformers with different horizons get aligned.
+    def test_different_lengths_align_to_time_intersection(self, time_df):
+        """DataFrames with different row counts align on their shared timestamps.
 
-        A transformer with observation_horizon=3 outputs N-2 rows (warmup),
-        while horizon=1 outputs all N rows. _hstack aligns by trimming the
-        lower-horizon outputs' leading rows.
+        ``_hstack`` keeps only the intersection of ``"time"`` values across all
+        inputs, so a DataFrame missing its leading rows (e.g. because a
+        transformer dropped warmup rows) trims the others down to the shared
+        range rather than producing nulls.
         """
         from yohou.compose.utils import _hstack
 
-        # Simulate: horizon=3 transformer already consumed 2 warmup rows → 8 rows
+        # df1 starts at row 2 (rows 0-1 absent); df2 has all 10 rows.
         df1 = time_df[2:]  # 8 rows, has "time" and "a"
-        # Simulate: horizon=1 transformer kept all rows → 10 rows
         df2 = time_df.rename({"a": "b"})  # 10 rows, has "time" and "b"
 
         result = _hstack(
             Xs=[df1, df2],
             column_names=[["a"], ["b"]],
         )
-        # Max horizon=3. df1 trimmed by 3-3=0 → 8 rows. df2 trimmed by 3-1=2 → 8 rows.
+        # Intersection of df1 (rows 2-9) and df2 (rows 0-9) is rows 2-9 → 8 rows.
         assert result.shape[0] == 8
         assert result.columns == ["time", "a", "b"]
+        assert result["time"][0] == datetime(2021, 1, 3)
 
     def test_renames_columns(self, time_df):
         """Columns are renamed according to column_names parameter."""
@@ -82,18 +83,17 @@ class TestHstack:
         assert "renamed_a" in result.columns
         assert "a" not in result.columns
 
-    def test_time_column_aligned_to_max_horizon(self, time_df):
-        """Time column from first DataFrame aligned to max horizon difference."""
+    def test_time_column_aligned_to_intersection_start(self, time_df):
+        """Time column starts at the first timestamp shared by all inputs."""
         from yohou.compose.utils import _hstack
 
-        # df1: horizon=1, all 10 rows
-        # df2: horizon=3, 8 rows (2 warmup consumed)
+        # df1 has all 10 rows; df2 is missing its first 2 rows.
         df2 = time_df[2:].rename({"a": "b"})
         result = _hstack(
             Xs=[time_df, df2],
             column_names=[["a"], ["b"]],
         )
-        # Max horizon=3. df1 trimmed by 3-1=2 → starts at row 2.
+        # Shared range starts where df2 starts (row 2 → 2021-01-03).
         expected_start = datetime(2021, 1, 3)
         assert result["time"][0] == expected_start
 
@@ -130,18 +130,21 @@ class TestObserveTransformOne:
         plt.assert_frame_equal(result, expected)
 
     def test_applies_weight(self):
-        """Weight multiplies the transformed output."""
+        """Weight scales feature columns but leaves the datetime time column intact."""
         from yohou.compose.utils import _observe_transform_one
 
-        transformed = pl.DataFrame({"a": [10.0, 20.0]})
+        times = [datetime(2021, 1, 1), datetime(2021, 1, 2)]
+        transformed = pl.DataFrame({"time": times, "a": [10.0, 20.0]})
         transformer = MagicMock()
         transformer.observe_transform.return_value = transformed
-        X = pl.DataFrame({"a": [5.0, 10.0]})
+        X = pl.DataFrame({"time": times, "a": [5.0, 10.0]})
 
         result = _observe_transform_one(transformer, X, y=None, weight=0.5, params={"observe_transform": {}})
 
-        expected = pl.DataFrame({"a": [5.0, 10.0]})
+        expected = pl.DataFrame({"time": times, "a": [5.0, 10.0]})
         plt.assert_frame_equal(result, expected)
+        # The time column keeps its datetime dtype; only "a" is scaled.
+        assert result.schema["time"] == pl.Datetime
 
     def test_no_weight_returns_unmodified(self):
         """None weight returns transformed output as-is."""
@@ -189,18 +192,21 @@ class TestRewindTransformOne:
         plt.assert_frame_equal(result, expected)
 
     def test_applies_weight(self):
-        """Weight multiplies the rewind-transformed output."""
+        """Weight scales feature columns but leaves the datetime time column intact."""
         from yohou.compose.utils import _rewind_transform_one
 
-        transformed = pl.DataFrame({"a": [10.0, 20.0]})
+        times = [datetime(2021, 1, 1), datetime(2021, 1, 2)]
+        transformed = pl.DataFrame({"time": times, "a": [10.0, 20.0]})
         transformer = MagicMock()
         transformer.rewind_transform.return_value = transformed
-        X = pl.DataFrame({"a": [5.0, 10.0]})
+        X = pl.DataFrame({"time": times, "a": [5.0, 10.0]})
 
         result = _rewind_transform_one(transformer, X, y=None, weight=0.5, params={"rewind_transform": {}})
 
-        expected = pl.DataFrame({"a": [5.0, 10.0]})
+        expected = pl.DataFrame({"time": times, "a": [5.0, 10.0]})
         plt.assert_frame_equal(result, expected)
+        # The time column keeps its datetime dtype; only "a" is scaled.
+        assert result.schema["time"] == pl.Datetime
 
 
 class _StatefulWithoutMethods(BaseTransformer):

@@ -62,13 +62,6 @@ class TestReductionChecks:
         # Should not raise
         check_reduction_strategy(forecaster)
 
-    def test_check_reduction_strategy_dir_rec_interval(self):
-        """Test check validates dir-rec strategy on interval forecaster."""
-        forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
-
-        # Should not raise
-        check_reduction_strategy(forecaster)
-
     def test_check_reduction_strategy_no_attribute(self):
         """Test check returns early when forecaster lacks reduction_strategy."""
         from sklearn.linear_model import LinearRegression

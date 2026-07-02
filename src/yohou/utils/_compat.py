@@ -53,8 +53,8 @@ def _message_with_time(source, message, time):
     message : str
         Short message.
 
-    time : int
-        Time in seconds.
+    time : float
+        Elapsed time in seconds.
     """
     start_message = f"[{source}] "
 

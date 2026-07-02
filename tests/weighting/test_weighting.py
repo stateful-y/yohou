@@ -58,6 +58,13 @@ def test_linear_decay_max_steps_zeros_older() -> None:
     assert weights[-1] == 1.0
 
 
+def test_linear_decay_max_steps_one_keeps_only_most_recent() -> None:
+    """max_steps=1 zeros every key except the most recent, which gets 1.0."""
+    t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
+    weights = LinearDecayWeighter(max_steps=1).compute_weights(t).to_list()
+    assert weights == pytest.approx([0.0, 0.0, 1.0])
+
+
 def test_linear_decay_max_steps_exceeds_length() -> None:
     """max_steps > len(key) computes without an OverflowError.
 
@@ -69,6 +76,20 @@ def test_linear_decay_max_steps_exceeds_length() -> None:
     assert len(weights) == 3
     assert weights[-1] == 1.0
     assert all(w >= 0.0 for w in weights)
+
+
+def test_seasonal_emphasis_list_emphasizes_union_of_periods() -> None:
+    """A list of seasonalities emphasizes keys in phase with ANY period."""
+    t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 8)])
+    w_list = SeasonalEmphasisWeighter(seasonality=[2, 3], emphasis=2.0).compute_weights(t).to_list()
+    w2 = SeasonalEmphasisWeighter(seasonality=2, emphasis=2.0).compute_weights(t).to_list()
+    w3 = SeasonalEmphasisWeighter(seasonality=3, emphasis=2.0).compute_weights(t).to_list()
+
+    expected_union = [2.0 if (a == 2.0 or b == 2.0) else 1.0 for a, b in zip(w2, w3, strict=True)]
+    assert w_list == pytest.approx(expected_union)
+    # The union strictly differs from either single period, exercising the loop.
+    assert w_list != w2
+    assert w_list != w3
 
 
 def test_seasonal_emphasis_matches_legacy_values() -> None:
@@ -168,10 +189,19 @@ def test_table_weighter_explicit_null_weight_raises(times: pl.Series) -> None:
 
 
 def test_table_weighter_panel_group_column(times: pl.Series) -> None:
-    """Group-specific weight columns are used for panel data."""
-    frame = pl.DataFrame({"time": times, "A_weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
+    """Group-specific weight columns are used for panel data.
+
+    The per-group column uses the library-wide ``group__column`` double
+    underscore separator (regression for the 2026-06-21 QA finding, which
+    used a single underscore ``{group}_weight``).
+    """
+    frame = pl.DataFrame({"time": times, "A__weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
     weights = TableWeighter(frame=frame, on="time").compute_weights(times, group_name="A").to_list()
     assert weights == pytest.approx([1.0, 2.0, 3.0])
+
+    single_underscore = pl.DataFrame({"time": times, "A_weight": [1.0, 2.0, 3.0], "weight": [9.0, 9.0, 9.0]})
+    fallback = TableWeighter(frame=single_underscore, on="time").compute_weights(times, group_name="A").to_list()
+    assert fallback == pytest.approx([9.0, 9.0, 9.0])
 
 
 def test_composite_multiplies_components(times: pl.Series) -> None:
@@ -181,6 +211,12 @@ def test_composite_multiplies_components(times: pl.Series) -> None:
     expected = (a.compute_weights(times) * b.compute_weights(times)).to_list()
     got = CompositeWeighter([("a", a), ("b", b)]).compute_weights(times).to_list()
     assert got == pytest.approx(expected)
+
+
+def test_composite_empty_weighters_raises(times: pl.Series) -> None:
+    """An empty (but correctly named-list) weighters argument is rejected."""
+    with pytest.raises(ValueError, match="at least one weighter"):
+        CompositeWeighter(weighters=[]).compute_weights(times)
 
 
 def test_base_weighter_is_abstract() -> None:
@@ -252,9 +288,9 @@ def test_table_weighter_missing_weight_column_raises(times: pl.Series) -> None:
 
 
 def test_table_weighter_missing_panel_columns_raises(times: pl.Series) -> None:
-    """A frame missing both '{group}_weight' and 'weight' raises for panel data."""
+    """A frame missing both '{group}__weight' and 'weight' raises for panel data."""
     frame = pl.DataFrame({"time": times, "other": [1.0, 2.0, 3.0]})
-    with pytest.raises(ValueError, match="missing both 'C_weight' and 'weight'"):
+    with pytest.raises(ValueError, match="missing both 'C__weight' and 'weight'"):
         TableWeighter(frame=frame, on="time").compute_weights(times, group_name="C")
 
 

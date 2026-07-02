@@ -77,9 +77,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         axis. Converted to sklearn ``sample_weight`` for training using
         ``sample_weight_alignment``.
     vintage_weighter : instance of `BaseWeighter` or None, default=None
-        Weighter producing per-vintage weights. Looked up directly per
-        training sample (no alignment) and combined multiplicatively with
-        the time weights.
+        Weighter keyed on the observation timestamp of each training sample
+        (the timestamp from which that forecast window was generated).
+        Combined multiplicatively with ``time_weighter``. No alignment
+        strategy is applied.
     sample_weight_alignment : {"first_step", "mean_step", \
 "weighted_mean_step", "max_weight_step", "min_weight_step"}, \
 default="first_step"
@@ -112,7 +113,10 @@ default="first_step"
 
     All strategies can be applied recursively for multi-step forecasting
     beyond the fit horizon by specifying a larger forecasting horizon
-    during prediction.
+    during prediction, unless ``X_forecast`` was provided at fit time, in
+    which case a ``ValueError`` is raised; use
+    [ForecastedFeatureForecaster][yohou.compose.ForecastedFeatureForecaster]
+    for that case.
 
     See Also
     --------
@@ -593,6 +597,12 @@ default="first_step"
         sample_weight : np.ndarray or None
             Filtered sample weights.
 
+        Raises
+        ------
+        ValueError
+            If ``nan_handling="drop"`` and all training instances contain
+            NaN, leaving 0 samples remaining.
+
         """
         if self.nan_handling == "pass":
             return X_tab, y_tab, sample_weight
@@ -876,9 +886,10 @@ default="first_step"
     ) -> list[BaseEstimator]:
         """Fit H independent estimators, one per horizon step.
 
-        Each model ``h`` is trained to predict step ``h`` only
-        (single-output regression). The feature matrix is the same for
-        all models; only the target column differs.
+        Each model ``h`` predicts step ``h`` only. With a single target
+        column this is single-output regression; with multiple target
+        columns it is multi-output regression per step. The feature matrix
+        is the same for all models; only the target column(s) differ.
 
         Parameters
         ----------
@@ -953,6 +964,10 @@ default="first_step"
         augmented with in-sample predictions from models
         ``1, 2, ..., h-1``. This combines the direct strategy's
         per-step specialization with recursive information flow.
+
+        NaN handling is applied once on the full tabularized dataset before
+        fitting begins (contrast with the ``"direct"`` strategy, which
+        applies it per step).
 
         Parameters
         ----------
@@ -1289,8 +1304,11 @@ default="first_step"
         """Get metadata routing including wrapped estimator.
 
         BaseReductionForecaster is a router because it wraps a sklearn estimator.
-        It needs to forward metadata (like time_weight) from the forecaster's
-        fit() method to the wrapped estimator's fit() method.
+        It routes fit-method metadata (e.g. custom fit params passed via
+        ``**params``) to the wrapped sklearn estimator and to inherited
+        transformers. Time and vintage weighting are resolved internally from
+        the ``time_weighter`` / ``vintage_weighter`` constructor parameters,
+        not via metadata routing.
 
         Returns
         -------

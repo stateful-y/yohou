@@ -170,8 +170,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
     - A caller-supplied ``X_forecast`` (external forecasts for other features) is
       merged with the meta's feature forecast on ``(vintage_time, time)``; a value
       column-name collision raises ``ValueError``. ``X_future`` is forwarded untouched.
-    - ``observe`` and ``rewind`` require ``X_actual`` (the feature forecaster needs new
-      feature observations to advance in step with the target); passing ``None`` raises.
+    - ``observe``, ``rewind``, and all ``observe_predict`` variants require ``X_actual``
+      (the feature forecaster needs new feature observations to advance in step with the
+      target); passing ``None`` raises ``ValueError``.
     - ``observe_predict`` (and its interval/class-proba variants) roll over the data one
       ``stride``-sized slice at a time, predicting at each origin, and regenerate the
       feature forecast every ``feature_stride`` steps. See the ``feature_stride`` parameter.
@@ -236,6 +237,19 @@ class ForecastedFeatureForecaster(BaseForecaster):
         feature_stateful = feature_tags.forecaster_tags.stateful if feature_tags.forecaster_tags else False
         tags.forecaster_tags.stateful = target_stateful or feature_stateful
 
+        # Propagate transformer-usage capability tags from both children so the
+        # composed estimator advertises its true machinery (rather than the
+        # ForecasterTags defaults). requires_exogenous stays True because this
+        # meta-forecaster unconditionally needs X_actual (the feature
+        # forecaster's training target), independent of the children's tags.
+        tags.forecaster_tags.requires_exogenous = True
+        tags.forecaster_tags.uses_target_transformer = getattr(
+            target_tags.forecaster_tags, "uses_target_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_target_transformer", False)
+        tags.forecaster_tags.uses_feature_transformer = getattr(
+            target_tags.forecaster_tags, "uses_feature_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_feature_transformer", False)
+
         # Aggregate other tags
         # Note: uses_reduction is False since this meta-forecaster doesn't have an `estimator`
         # attribute directly - child forecasters may use reduction, but that's their internal detail
@@ -265,10 +279,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ----------
         y : pl.DataFrame
             Target time series with "time" column.
-        X_actual : pl.DataFrame
+        X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Required. The feature forecaster uses these as
-            its target variable.
+            with ``y``. Required: passing ``None`` raises ``ValueError``. The
+            feature forecaster uses these as its target variable.
         forecasting_horizon : int, default=1
             Number of steps ahead to forecast.
         X_future : pl.DataFrame or None, default=None
@@ -290,7 +304,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         ------
         ValueError
             If ``X_actual`` is None (exogenous features are required); if
-            ``forecasting_horizon < 1``; if ``strategy="rewind"`` and
+            ``forecasting_horizon < 1``; if the required feature horizon
+            ``forecasting_horizon + feature_stride - 1 >= len(X_actual)``
+            (reduce ``feature_stride`` or provide more data); if
+            ``strategy="rewind"`` and
             ``len(X_actual) <= observation_horizon + 1``; or if
             ``strategy="predicted"`` and the split leaves fewer than 2 rows
             for either the feature-forecaster fit or the rolling forecast.
@@ -676,6 +693,12 @@ class ForecastedFeatureForecaster(BaseForecaster):
         pl.DataFrame
             Predictions with "vintage_time", "time", and target columns.
 
+        Notes
+        -----
+        The ``feature_stride`` cadence is not applied here; a fresh feature
+        forecast is always generated. For stride-aware rolling predictions use
+        ``observe_predict``.
+
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
 
@@ -739,7 +762,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with lower/upper bounds.
+            DataFrame with ``"vintage_time"``, ``"time"``, and interval columns
+            named ``<col>_lower_<rate>`` / ``<col>_upper_<rate>`` for each
+            requested coverage rate.
 
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
@@ -1070,7 +1095,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict,
-            routing_method="predict",
+            routing_method="observe_predict",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1129,7 +1154,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict_interval,
-            routing_method="predict_interval",
+            routing_method="observe_predict_interval",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1174,8 +1199,8 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Returns
         -------
         pl.DataFrame
-            Class-probability predictions with "vintage_time", "time", and
-            probability columns.
+            Class-probability predictions with "vintage_time", "time", and one
+            probability column per class named ``{target}_proba_{class_label}``.
 
         """
         check_is_fitted(self, ["target_forecaster_", "feature_forecaster_"])
@@ -1242,7 +1267,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
         """
         return self._run_observe_predict(
             predict_fn=self.predict_class_proba,
-            routing_method="predict_class_proba",
+            routing_method="observe_predict_class_proba",
             routing_params=params,
             y=y,
             X_actual=X_actual,
@@ -1283,9 +1308,13 @@ class ForecastedFeatureForecaster(BaseForecaster):
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict")
             .add(caller="predict_class_proba", callee="predict")
-            .add(caller="observe_predict", callee="observe_predict")
-            .add(caller="observe_predict_interval", callee="observe_predict")
-            .add(caller="observe_predict_class_proba", callee="observe_predict"),
+            # The feature forecast is always a plain ``predict`` (the rolling
+            # loop and the strided-buffer refresh both call
+            # ``feature_forecaster_.predict``), so every observe_predict variant
+            # routes the feature forecaster's params from its ``predict`` callee.
+            .add(caller="observe_predict", callee="predict")
+            .add(caller="observe_predict_interval", callee="predict")
+            .add(caller="observe_predict_class_proba", callee="predict"),
         )
 
         return router

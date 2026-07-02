@@ -371,7 +371,10 @@ class IntervalScore(BaseIntervalScorer):
     - Lower is better
     - Penalizes both wide intervals and poor coverage
     - Scale-dependent (same units as target)
-    - Also known as "Winkler score" in literature
+    - Related to the Winkler score; here ``α`` denotes the nominal coverage
+      rate, so the penalty denominator is the coverage rate rather than the
+      significance level ``1 - coverage_rate`` used in the classical
+      Winkler/interval-score formulation (Gneiting & Raftery 2007)
     - Widely used in forecasting competitions (M4, M5)
 
     See Also
@@ -638,7 +641,7 @@ class CalibrationError(BaseIntervalScorer):
     - Lower is better (0 = perfect calibration)
     - Aggregates coverage errors across all rates
     - Scale-independent (always between 0 and 1)
-    - Requires at least 2 coverage rates for meaningful metric
+    - Raises ValueError if fewer than 2 coverage rates are provided
     - Missing values are excluded from computation
 
     See Also
@@ -660,6 +663,9 @@ class CalibrationError(BaseIntervalScorer):
         coverage_rates: list[float] | dict[float, float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         agg_list = aggregation_method
         if aggregation_method == "all":
@@ -670,6 +676,9 @@ class CalibrationError(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):
@@ -861,6 +870,9 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
         coverage_rates: list[float] | None = None,
         groups: list[str] | dict[str, float] | None = None,
         components: list[str] | dict[str, float] | None = None,
+        time_weighter: BaseWeighter | None = None,
+        step_weighter: BaseWeighter | None = None,
+        vintage_weighter: BaseWeighter | None = None,
     ) -> None:
         self.integration = integration
 
@@ -873,6 +885,9 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
             coverage_rates=coverage_rates,
             groups=groups,
             components=components,
+            time_weighter=time_weighter,
+            step_weighter=step_weighter,
+            vintage_weighter=vintage_weighter,
         )
 
     def _compute_raw_scores(self, y_truth, y_pred, coverage_rates, target_columns):

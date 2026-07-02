@@ -31,8 +31,8 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
     Aggregates point predictions using mean or median from all base
     forecasters. All base forecasters must support ``predict()``.
 
-    If a base forecaster fails during ``fit``, it is silently skipped
-    with a warning. The ensemble raises only when all base forecasters
+    If a base forecaster fails during ``fit``, it is skipped with a
+    ``UserWarning``. The ensemble raises only when all base forecasters
     fail.
 
     Parameters
@@ -60,6 +60,11 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
     forecasters_ : list of (str, BaseForecaster)
         Successfully fitted base forecasters as ``(name, forecaster)``
         pairs. Forecasters that failed during ``fit`` are excluded.
+    named_forecasters_ : Bunch
+        Dictionary-like access to the fitted forecasters by name.
+    weights_ : list of float or None
+        Effective per-forecaster weights for the surviving forecasters,
+        or ``None`` when no weights were supplied.
 
     Examples
     --------
@@ -186,8 +191,12 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         Raises
         ------
         ValueError
-            If ``weights`` length does not match the number of forecasters,
-            or if fitted forecasters have mismatched target column schemas.
+            If ``forecasting_horizon < 1``; if the ``forecasters`` list is
+            malformed (non-tuple entries, non-string names, names
+            containing ``"__"``, duplicate names, or non-``BaseForecaster``
+            entries); if ``weights`` length does not match the number of
+            forecasters; or if fitted forecasters have mismatched target
+            column schemas.
         RuntimeError
             If all base forecasters fail during fitting.
 

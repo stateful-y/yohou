@@ -373,9 +373,6 @@ class TestPanelTimeWeight:
         assert len(fig.data) >= 2
 
 
-# Cross-module: invalid groups
-
-
 class TestPanelInvalidGroups:
     """Verify ValueError for non-existent groups."""
 
@@ -412,10 +409,10 @@ class TestPanelSubseasonality:
     """Panel tests for plot_subseasonality."""
 
     def test_two_groups(self, panel_daily_df):
-        """Two-member panel subseasonality returns dict of figures."""
+        """Two-member panel subseasonality returns a dict keyed by member name."""
         result = plot_subseasonality(panel_daily_df, seasonality="month")
         assert isinstance(result, dict)
-        assert len(result) == 2
+        assert set(result.keys()) == {"a", "b"}
         for fig in result.values():
             assert len(fig.data) > 0
 

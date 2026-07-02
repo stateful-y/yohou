@@ -21,6 +21,7 @@ from yohou.base.utils import _derive_step_columns
 from yohou.utils import (
     Tags,
     cast,
+    check_panel_groups_match,
     get_group_df,
     inspect_panel,
     validate_forecaster_data,
@@ -44,10 +45,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     Parameters
     ----------
-    target_transformer : instance of `BaseTransformer` or None, default=None
-        Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
+    target_transformer : instance of `BaseTransformer` or None, default=None
+        Transformer used to transform the target time series into the new target.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -305,8 +306,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         if X_actual is not None:
             _, X_panel_groups = inspect_panel(X_actual)
 
-            if len(X_panel_groups) and list(X_panel_groups.keys()) != list(y_panel_groups.keys()):
-                raise ValueError("`X_actual` and `y` do not have the same local group names.")
+            # Use the canonical mismatch check so the error message lists both
+            # group sets and matches the shape produced elsewhere (e.g.
+            # validate_forecaster_data). Global-only X_actual is accepted.
+            check_panel_groups_match(y, X_actual)
 
         # Validate that X_actual is provided when target_as_feature=None
         # and a feature transformer is configured.  Failing early here avoids
@@ -463,9 +466,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ------
         ValueError
             If ``y`` is missing the ``"time"`` column, if ``y`` and ``X_actual``
-            have mismatched panel group names, or if
+            have mismatched panel group names, if
             ``target_as_feature=None`` without exogenous features when the
-            forecaster requires them.
+            forecaster requires them, or if ``target_as_feature=None`` and a
+            ``feature_transformer`` is configured but ``X_actual`` is ``None``.
 
         """
 
@@ -536,7 +540,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         - ``shared_X_actual_schema_`` : dict or None
         - ``n_features_in_`` : int
         - ``feature_names_in_`` : list[str]
-        - ``observed_time_`` : dict or pl.Series (observation timestamps)
+        - ``observed_time_`` : datetime or dict[str, datetime] (scalar in
+          standard mode, per-group dict in panel mode)
         - ``target_transformer_`` : fitted transformer or None
         - ``feature_transformer_`` : fitted transformer or None
 
@@ -550,7 +555,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
     ) -> "BaseForecaster":
-        """Rewind observation buffers to the last ``observation_horizon`` rows.
+        """Rewind state to the end of the provided historical window.
+
+        Re-runs the transformers on the supplied window and retains the last
+        ``observation_horizon`` rows in the observation buffer; this is a
+        transformer rewind, not a pure buffer tail-slice.
 
         Parameters
         ----------
@@ -575,8 +584,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         Returns
         -------
         self
-            The forecaster with observation buffers rewound to the last
-            ``observation_horizon`` rows.
+            The forecaster with state rewound to the end of the provided
+            window: transformers re-run on that window and the last
+            ``observation_horizon`` rows retained in the observation buffer.
 
         Raises
         ------
@@ -620,6 +630,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_forecast: pl.DataFrame | None = None,
     ) -> "BaseForecaster":
         """Observe new data and update observation buffers without refitting.
+
+        Stateful transformers (``target_transformer_``, ``feature_transformer_``)
+        are updated via their ``observe()`` method; the model weights themselves
+        are not changed.
 
         Parameters
         ----------
@@ -672,6 +686,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        # Reject an empty observation batch up front. An empty ``y`` would
+        # otherwise update the transformers' observation state with zero rows,
+        # leaving ``_X_t_observed`` empty (0 rows) while ``_y_observed`` keeps
+        # its prepended history. The corruption is silent here but surfaces deep
+        # in the regressor at the next ``predict`` ("Found array with 0
+        # sample(s)"), so fail fast with a clear message instead.
+        if len(y) == 0:
+            raise ValueError(
+                "observe() received an empty `y` (0 rows). There is nothing to "
+                "observe; pass at least one new observation row."
+            )
 
         # Dispatch to mixin methods
         if self.groups_ is None:
@@ -852,6 +878,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ``observe()`` from ``_X_future_raw_`` (inherited via deepcopy from
         ``_predict_with_step_override``). Do NOT pass explicit X_future or
         X_forecast to ``observe()`` inside this loop.
+
+        This method operates on a deep copy of ``self``; the original
+        forecaster state is unchanged after the call.
 
         Parameters
         ----------
@@ -1081,10 +1110,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         Parameters
         ----------
-        groups : list of str or None, default=None
+        groups : list of str
             Group prefixes for panel data:
-            - If None: predict for all groups
-            - If list of str: predict only for the specified panel groups
+            - Pass an empty list to predict for non-panel (global) data.
+            - If a list of str: predict only for the specified panel groups.
             Parameter is ignored if the forecaster was not fitted on panel data.
         **predict_one_params : dict
             Params to the _predict_one method.

@@ -68,6 +68,9 @@ print(results)  # DataFrame with split, test_score, fit_time, score_time
 print(f"Mean MAE: {results['test_score'].mean():.2f}")
 ```
 
+To collect predictions per forecast origin rather than aggregate scores, see
+[Multi-vintage Scoring](multi-vintage-scoring.md).
+
 ## 3. Compare Against a Naive Baseline
 
 Evaluate a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)
@@ -139,7 +142,10 @@ interval_predictions = cross_val_predict(
 Pass a dictionary of scorers to evaluate on several metrics at once:
 
 ```python
+from sklearn.linear_model import Ridge
 from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError, MeanAbsoluteScaledError
+from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
+from yohou.point import PointReductionForecaster
 
 search = GridSearchCV(
     forecaster=PointReductionForecaster(estimator=Ridge()),
@@ -201,6 +207,7 @@ from yohou.metrics import MeanAbsoluteError
 from yohou.weighting import ExponentialDecayWeighter
 
 weighted_scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
+weighted_scorer.fit(y_train)
 weighted_mae = weighted_scorer.score(y_test, y_pred)
 ```
 
@@ -219,9 +226,9 @@ the full classification workflow and scoring examples.
 
 ## 9. Score Panel Forecasts
 
-Scorers handle panel data automatically. Use
-`aggregation_method="groupwise"` to get one score per group so you can
-spot underperforming entities:
+Scorers handle panel data automatically. Use the aggregation method
+`groupwise` (set via `aggregation_method="groupwise"`) to get one score per
+group so you can spot underperforming entities:
 
 ```python
 from yohou.metrics import MeanAbsoluteError

@@ -2,27 +2,20 @@
 
 Bundled datasets available in `yohou.datasets`. Each dataset is downloaded on first use and cached locally as Parquet files. The cache directory defaults to `~/yohou_data/` and can be changed via the `data_home` parameter or the `YOHOU_DATA` environment variable.
 
-```python
-from yohou.datasets import fetch_sunspot
-
-bunch = fetch_sunspot()
-bunch.frame.head()
-```
-
 ## Quick Reference
 
 | Function | Shape | Frequency | Series | Observations | Domain |
 |---|---|---|---|---|---|
-| `fetch_sunspot()` | Univariate | Daily | 1 | 73,924 | Astronomy |
-| `fetch_tourism_monthly()` | Panel | Monthly | 366 | ~80/series | Tourism |
-| `fetch_tourism_quarterly()` | Panel | Quarterly | 427 | ~32/series | Tourism |
-| `fetch_hospital()` | Panel | Monthly | 767 | 84/series | Healthcare |
-| `fetch_pedestrian_counts()` | Panel | Hourly | 66 | ~10,000/series | Transport |
-| `fetch_kdd_cup()` | Panel | Hourly | 354 | ~8,760/series | Environment |
-| `fetch_electricity_demand()` | Multivariate | Half-hourly | 5 | ~46,000/series | Energy |
-| `fetch_dominick()` | Panel | Weekly | 115,704 | ~412/series | Retail |
-| `fetch_air_quality_classification()` | Classification | Hourly | 1 | ~8,000 | Environment |
-| `fetch_demand_classification()` | Classification | Half-hourly | 1 | ~46,000 | Energy |
+| [`fetch_sunspot()`](/pages/api/generated/yohou.datasets._fetchers.fetch_sunspot/) | Univariate | Daily | 1 | 73,924 | Astronomy |
+| [`fetch_tourism_monthly()`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/) | Panel | Monthly | 366 | ~80/series | Tourism |
+| [`fetch_tourism_quarterly()`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_quarterly/) | Panel | Quarterly | 427 | ~32/series | Tourism |
+| [`fetch_hospital()`](/pages/api/generated/yohou.datasets._fetchers.fetch_hospital/) | Panel | Monthly | 767 | 84/series | Healthcare |
+| [`fetch_pedestrian_counts()`](/pages/api/generated/yohou.datasets._fetchers.fetch_pedestrian_counts/) | Panel | Hourly | 66 | ~10,000/series | Transport |
+| [`fetch_kdd_cup()`](/pages/api/generated/yohou.datasets._fetchers.fetch_kdd_cup/) | Panel | Hourly | 270 (59 stations × up to 6 pollutants) | ~8,760/series | Environment |
+| [`fetch_electricity_demand()`](/pages/api/generated/yohou.datasets._fetchers.fetch_electricity_demand/) | Panel | Half-hourly | 5 | ~46,000/series | Energy |
+| [`fetch_dominick()`](/pages/api/generated/yohou.datasets._fetchers.fetch_dominick/) | Panel | Weekly | 115,704 | ~412/series | Retail |
+| [`fetch_air_quality_classification()`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/) | Classification | Hourly | 1 | ~8,000 | Environment |
+| [`fetch_demand_classification()`](/pages/api/generated/yohou.datasets._fetchers.fetch_demand_classification/) | Classification | Half-hourly | 1 | ~46,000 | Energy |
 
 ## Return Type
 
@@ -176,7 +169,7 @@ bunch_all = fetch_pedestrian_counts(n_series=None)  # all 66 sensors
 
 [API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_kdd_cup/){ .md-button .md-button--primary .md-button--small }
 
-Hourly air quality measurements from 59 monitoring stations (Beijing and London), 2017 to 2018. Each station reports 6 pollutants (PM2.5, PM10, NO2, CO, O3, SO2), so the total series count equals `n_groups × 6`. Column names follow the `station__measurement` format.
+Hourly air quality measurements from 59 monitoring stations (Beijing and London), 2017 to 2018. Each station reports up to 6 pollutants (PM2.5, PM10, NO2, CO, O3, SO2), so the total loaded series is at most `n_groups × 6`; London stations carry fewer measurements, so the actual count when loading all groups is 270. Column names follow the `station__measurement` format.
 
 | Property | Value |
 |---|---|
@@ -199,7 +192,7 @@ bunch.n_series  # 12 (2 stations × 6 pollutants)
 
 [API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_electricity_demand/){ .md-button .md-button--primary .md-button--small }
 
-Half-hourly electricity demand for 5 Australian states, 2008 to 2015. Fixed multivariate dataset with ~46,000 observations per series.
+Half-hourly electricity demand for 5 Australian states, 2008 to 2015. Fixed panel dataset (`group__column` naming) with ~46,000 observations per series.
 
 | Property | Value |
 |---|---|
@@ -207,7 +200,7 @@ Half-hourly electricity demand for 5 Australian states, 2008 to 2015. Fixed mult
 | Time column | `time` (Datetime) |
 | Target columns | `nsw__demand`, `qun__demand`, `sa__demand`, `tas__demand`, `vic__demand` (Float64) |
 | Series count | 5 (fixed) |
-| Shape | Multivariate |
+| Shape | Panel |
 
 ```python
 from yohou.datasets import fetch_electricity_demand
@@ -324,6 +317,7 @@ Returns a `Bunch` with:
 | `feature_names` | `["temperature", "is_holiday", "wx_temp"]` |
 | `target_names` | `["price"]` |
 | `frequency` | `"1h"` |
+| `DESCR` | Full dataset description (`str`) |
 
 ```python
 from yohou.datasets import make_exogenous_regression
@@ -367,8 +361,11 @@ Returns a `Bunch` with:
 | `X_future` | `pl.DataFrame` with `time` and `is_weekend` (Float64) |
 | `X_forecast` | `pl.DataFrame` with `vintage_time`, `time`, and `pollutant_forecast` (Float64) |
 | `frame` | `pl.DataFrame` joining `y`, `X_actual`, and `X_future` on `time` |
+| `feature_names` | `["pollutant", "is_weekend", "pollutant_forecast"]` |
+| `target_names` | `["air_quality"]` |
 | `classes` | `["good", "moderate", "poor"]` |
 | `frequency` | `"1h"` |
+| `DESCR` | Full dataset description (`str`) |
 
 ```python
 from yohou.datasets import make_exogenous_classification

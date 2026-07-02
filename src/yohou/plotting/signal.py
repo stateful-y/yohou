@@ -86,7 +86,9 @@ def plot_phase(
     height : int | None, default=None
         Plot height in pixels.
     connect_gaps : bool, default=False
-        Whether to connect gaps in the data with lines.
+        Whether to connect segments across any NaN values in the computed
+        spectrum (rarely needed; the FFT output is uniformly dense over a
+        frequency axis, so there are no temporal gaps).
     line_width : float, default=2.0
         Width of the line traces.
 
@@ -251,8 +253,11 @@ def plot_spectrum(
 ) -> go.Figure:
     """Plot periodogram (power spectral density) for frequency domain analysis.
 
-    Creates a periodogram showing the power spectral density via FFT, useful
-    for identifying dominant frequencies and periodic patterns in the data.
+    Creates a periodogram showing the power spectral density via
+    ``scipy.signal.periodogram``, useful for identifying dominant frequencies
+    and periodic patterns in the data. The signal mean is removed before the
+    FFT (``scipy``'s default ``detrend='constant'``), so the DC component is
+    suppressed; this differs from ``plot_phase``, which applies no detrending.
     In non-panel mode, hover text includes the corresponding period
     (1/frequency) and detected peaks are annotated with their period in
     sample units; these enrichments are not applied to panel facets.
@@ -288,7 +293,9 @@ def plot_spectrum(
     height : int | None, default=None
         Plot height in pixels.
     connect_gaps : bool, default=False
-        Whether to connect gaps in the data with lines.
+        Whether to connect segments across any NaN values in the computed
+        spectrum (rarely needed; the FFT output is uniformly dense over a
+        frequency axis, so there are no temporal gaps).
     line_width : float, default=2.0
         Width of the line traces.
     show_peaks : bool, default=False

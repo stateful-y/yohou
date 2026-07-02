@@ -2,12 +2,15 @@
 
 import polars as pl
 import pytest
-from plotly import graph_objects as go
-from plotly_resampler import FigureResampler, FigureWidgetResampler
-from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator
-from plotly_resampler.aggregation.gap_handlers import NoGapHandler
 
-from yohou.plotting._utils import (
+pytest.importorskip("plotly_resampler", reason="plotly-resampler not installed")
+
+from plotly import graph_objects as go  # noqa: E402
+from plotly_resampler import FigureResampler, FigureWidgetResampler  # noqa: E402
+from plotly_resampler.aggregation.aggregators import LTTB, MinMaxAggregator  # noqa: E402
+from plotly_resampler.aggregation.gap_handlers import NoGapHandler  # noqa: E402
+
+from yohou.plotting._utils import (  # noqa: E402
     _build_resampler_kwargs,
     _create_figure,
     _create_subplots,
@@ -30,9 +33,6 @@ _DEFAULT_CONFIG = {
 }
 
 
-# Fixtures
-
-
 @pytest.fixture(autouse=True)
 def _reset_config():
     """Ensure every test starts and ends with the default config."""
@@ -50,9 +50,6 @@ def monthly_1col_df():
         "time": pl.date_range(pl.date(2020, 1, 1), pl.date(2020, 12, 31), "1mo", eager=True),
         "y": [100, 120, 115, 130, 140, 135, 150, 160, 155, 170, 180, 175],
     })
-
-
-# Config system
 
 
 class TestGetConfig:
@@ -115,9 +112,6 @@ class TestConfigContext:
         assert get_config()["resampler"] is False
 
 
-# _get_resampler_mode
-
-
 class TestGetResamplerMode:
     def test_explicit_true(self):
         assert _get_resampler_mode(True) is True
@@ -132,9 +126,6 @@ class TestGetResamplerMode:
         assert _get_resampler_mode(None) is False
         set_config(resampler=True)
         assert _get_resampler_mode(None) is True
-
-
-# _create_figure
 
 
 class TestCreateFigure:
@@ -164,9 +155,6 @@ class TestCreateFigure:
         assert isinstance(fig, FigureResampler)
 
 
-# _create_subplots
-
-
 class TestCreateSubplots:
     def test_default_returns_plain(self):
         fig = _create_subplots(rows=1, cols=2)
@@ -180,9 +168,6 @@ class TestCreateSubplots:
         pytest.importorskip("anywidget")
         fig = _create_subplots("widget", rows=1, cols=1)
         assert isinstance(fig, FigureWidgetResampler)
-
-
-# Resampler parameter pass-through in public functions
 
 
 class TestExplorationResampler:
@@ -257,9 +242,6 @@ class TestConfigContextIntegration:
         assert isinstance(fig, FigureWidgetResampler)
 
 
-# Extended config keys
-
-
 class TestSetConfigExtended:
     def test_n_shown_samples(self):
         set_config(resampler_n_shown_samples=500)
@@ -306,9 +288,6 @@ class TestConfigContextExtended:
         with pytest.raises(RuntimeError), config_context(resampler_n_shown_samples=500):
             raise RuntimeError("boom")
         assert get_config()["resampler_n_shown_samples"] is None
-
-
-# _build_resampler_kwargs
 
 
 class TestBuildResamplerKwargs:
@@ -371,9 +350,6 @@ class TestCreateFigureForwardsConfig:
         assert isinstance(fig._global_gap_handler, NoGapHandler)
 
 
-# _fill_trace_kwargs
-
-
 class TestFillTraceKwargs:
     def test_plain_figure_returns_empty(self):
         fig = go.Figure()
@@ -384,6 +360,3 @@ class TestFillTraceKwargs:
         result = _fill_trace_kwargs(fig)
         assert "gap_handler" in result
         assert isinstance(result["gap_handler"], NoGapHandler)
-
-
-# Re-exports

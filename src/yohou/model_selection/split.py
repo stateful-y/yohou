@@ -30,7 +30,8 @@ class BaseSplitter(BaseEstimator, ABC):
     functionality including polars DataFrame support and panel data awareness.
 
     All concrete splitters should inherit from this class and implement
-    the ``_iter_test_indices()`` method.
+    the ``split()``, ``_iter_test_indices()``, and ``get_n_splits()``
+    methods (all declared abstract here).
 
     Attributes
     ----------
@@ -40,7 +41,8 @@ class BaseSplitter(BaseEstimator, ABC):
     Notes
     -----
     This is an abstract base class. Concrete splitters should inherit from
-    this class and implement ``_iter_test_indices()`` and ``get_n_splits()``.
+    this class and implement ``split()``, ``_iter_test_indices()``, and
+    ``get_n_splits()``.
 
     See Also
     --------
@@ -198,8 +200,9 @@ class ExpandingWindowSplitter(BaseSplitter):
         accumulated.
     test_size : int, default=None
         Used to limit the size of the test set. Defaults to
-        ``n_samples // (n_splits + 1)``, which is the maximum allowed
-        value with no overlap between test sets.
+        ``n_samples // (n_splits + 1)``, a balanced-fold heuristic that
+        keeps the test sets non-overlapping while leaving a non-empty
+        first training set.
 
     Examples
     --------
@@ -493,6 +496,13 @@ class SlidingWindowSplitter(BaseSplitter):
         test : ndarray
             Test set row indices for that split.
 
+        Warns
+        -----
+        UserWarning
+            Raised when ``test_size`` is not a multiple of ``stride``: the
+            last vintage in each fold then has fewer in-test predictions,
+            causing uneven step representation in stepwise scoring.
+
         """
         # Validate data
         y, X_actual = validate_splitter_data(self, y=y, X_actual=X_actual)
@@ -662,6 +672,11 @@ def check_cv(
         The return value is a cross-validator which generates the train/test
         splits via the ``split`` method.
 
+    Raises
+    ------
+    ValueError
+        If ``cv`` is neither an integer nor a ``BaseSplitter`` instance.
+
     """
     cv = 5 if cv is None else cv
     if isinstance(cv, numbers.Integral):
@@ -698,14 +713,17 @@ def check_cv_alignment(
             (``1 + ceil(test_size / stride)``); for example ``test_size=10``
             and ``stride=4`` give ``4`` vintages.
         ``steps_per_vintage``
-            List of step counts per vintage.  All entries equal
-            ``forecasting_horizon`` except possibly the last.
+            List of step counts per vintage.  Every entry equals
+            ``forecasting_horizon``.
         ``step_counts``
-            Dict mapping step number (1-based) to the total number of
-            vintages that include that step.
+            Dict mapping step number (1-based) to a vintage count.  This is
+            an approximation that assumes perfect stride alignment: every
+            step is assigned ``n_vintages``.  When ``test_size`` is not a
+            multiple of ``stride`` the true per-step counts are uneven;
+            use ``is_balanced`` as the authoritative imbalance signal.
         ``is_balanced``
-            ``True`` when every step appears in exactly the same number
-            of vintages.
+            ``True`` when ``test_size`` is a multiple of ``stride`` (every
+            step then appears in the same number of vintages).
 
     Examples
     --------

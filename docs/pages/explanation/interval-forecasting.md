@@ -152,9 +152,11 @@ then produces intervals that adapt to local conditions.
 ### Distance Similarity
 
 [`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
-computes distances between the current prediction context and each calibration point
-in feature space, then converts distances to weights using a numerically stable
-softmax of negative distances with uniform mass reserved for the test point:
+computes distances between the current prediction context (the feature vector derived
+from the point forecaster's observation window at predict time) and each calibration
+feature vector stored during `fit()`. It then converts distances to weights using a
+numerically stable softmax of negative distances with uniform mass reserved for the
+test point:
 
 $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}{1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
 
@@ -296,6 +298,10 @@ combined into a single training pass. For example, coverage rates `[0.9, 0.95]`
 produce quantiles `[0.025, 0.05, 0.5, 0.95, 0.975]` in one model rather than ten
 separate models.
 
+The MultiQuantile path is restricted to `forecasting_horizon=1`. For multi-step
+horizons, a standard single-quantile estimator such as `QuantileRegressor` lets
+`IntervalReductionForecaster` fit multiple models via the `direct` strategy instead.
+
 ### Comparison with Conformal Prediction
 
 Because the quantile models learn the conditional distribution directly from features,
@@ -312,8 +318,10 @@ and
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
 support panel data through the `panel_strategy` parameter:
 
-- **`"global"`** (default): treats each group (entity) independently, fitting
-  separate calibration sets or quantile models per group.
+- **`"global"`** (default): fits a single shared model across all groups, but
+  maintains per-group transformer state and observation buffers. Groups share a
+  single calibration set or quantile model. For independent per-group models, use
+  [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/).
 - **`"multivariate"`**: pools data across groups, sharing calibration scores or
   quantile models. This is useful when individual groups have limited data and
   borrowing strength across entities improves interval quality.

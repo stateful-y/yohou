@@ -53,7 +53,7 @@ forecaster = PointReductionForecaster(
 
 ## Combine Multiple Feature Transformers
 
-Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to combine different feature types into a single feature matrix:
+Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to concatenate [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/), and [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/) into a single feature matrix:
 
 ```python
 from yohou.compose import FeatureUnion
@@ -109,7 +109,7 @@ interval_forecaster = IntervalReductionForecaster(
     reduction_strategy="multi-output",
 )
 interval_forecaster.fit(y, forecasting_horizon=12, coverage_rates=[0.1, 0.5, 0.9])
-y_pred_int = interval_forecaster.predict()
+y_pred_int = interval_forecaster.predict_interval()
 ```
 
 For conformal calibration on top of a point reduction forecaster, see [Produce Prediction Intervals](interval-forecasting.md).

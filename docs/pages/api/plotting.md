@@ -4,11 +4,11 @@ template: api-submodule.html
 
 # yohou.plotting
 
-Interactive time series visualization functions using Plotly. All plotting functions support panel data via the `groups` parameter.
+Interactive time series visualization functions using Plotly. Exploration and diagnostic functions accept a `groups` parameter for panel data; evaluation and model-selection functions that aggregate across groups do not.
 
 **User guide**: See the [Visualization](../explanation/visualization.md) section for further details.
 
-## Exploration
+### Exploration
 
 | Name | Description |
 | --- | --- |

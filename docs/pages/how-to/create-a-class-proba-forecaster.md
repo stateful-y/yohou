@@ -214,7 +214,7 @@ def test_majority_class_forecaster(class_proba_y_X_factory):
 
     run_checks(
         forecaster,
-        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test),
+        _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
     )
 ```
 

@@ -99,7 +99,8 @@ class TestPointScorerPanelGroupFiltering:
         assert score_sales != score_demand
 
         # They should also differ from all groups score (which averages both)
-        assert score_sales != score_all or score_demand != score_all
+        assert score_sales != score_all
+        assert score_demand != score_all
 
     def test_point_scorer_filter_component_names_panel(self, panel_point_data):
         """Test filtering by component_names for panel data."""
@@ -295,8 +296,6 @@ class TestEdgeCases:
         cov_invalid = EmpiricalCoverage(coverage_rates=[0.99])
 
         # Should raise ValueError about missing rate
-        import pytest
-
         with pytest.raises(ValueError, match="coverage_rates.*not found"):
             cov_invalid.fit(y_true)
             cov_invalid.score(y_true, y_pred)

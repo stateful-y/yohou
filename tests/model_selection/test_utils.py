@@ -595,6 +595,87 @@ class TestFitAndScoreReturnTrainScore:
         assert result["train_scores"] <= 0.0  # negated score (lower_is_better defaults)
         assert "test_scores" in result
 
+    def test_train_score_window_smaller_than_test_is_nan(self):
+        """Train score must be NaN, not silently wrong, when train < test window.
+
+        With ``len(train) < len(test)`` the rewind index
+        ``len(train) - len(test)`` is negative. Polars wraps negative integer
+        indices to the end of the frame, so the old code silently scored the
+        wrong rows. The train score must instead be NaN (unavailable) for that
+        fold, while the test score is still computed correctly.
+        """
+        length = 10
+        fh = 4
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "target": [float(i) for i in range(length)]})
+        # First fold of ExpandingWindowSplitter(n_splits=2, test_size=4):
+        # train has 2 rows, test has 4 rows -> len(train) < len(test).
+        train = np.arange(0, 2)
+        test = np.arange(2, 6)
+
+        result = _fit_and_score(
+            SeasonalNaive(seasonality=1),
+            y,
+            None,
+            fh,
+            scorer=MeanAbsoluteError(),
+            train=train,
+            test=test,
+            verbose=0,
+            parameters=None,
+            fit_params=None,
+            predict_func_params=None,
+            score_params=None,
+            return_train_score=True,
+        )
+
+        assert "train_scores" in result
+        assert isinstance(result["train_scores"], float)
+        assert np.isnan(result["train_scores"])
+        # The test score must still be computed correctly.
+        assert "test_scores" in result
+        assert not np.isnan(result["test_scores"])
+
+    def test_train_score_window_smaller_than_test_multimetric_is_nan(self):
+        """Multimetric train scores are NaN per metric when train < test window."""
+        length = 10
+        fh = 4
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "target": [float(i) for i in range(length)]})
+        train = np.arange(0, 2)
+        test = np.arange(2, 6)
+
+        scorer = _MultimetricScorer(scorers={"mae": MeanAbsoluteError(), "mse": MeanSquaredError()})
+        result = _fit_and_score(
+            SeasonalNaive(seasonality=1),
+            y,
+            None,
+            fh,
+            scorer=scorer,
+            train=train,
+            test=test,
+            verbose=0,
+            parameters=None,
+            fit_params=None,
+            predict_func_params=None,
+            score_params=None,
+            return_train_score=True,
+        )
+
+        assert isinstance(result["train_scores"], dict)
+        assert np.isnan(result["train_scores"]["mae"])
+        assert np.isnan(result["train_scores"]["mse"])
+
 
 class TestFitAndScoreOptionalReturns:
     """Tests for _fit_and_score optional return flags."""

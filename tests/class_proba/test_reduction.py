@@ -103,81 +103,41 @@ class TestClassProbaReductionSystematic:
 
 
 class TestClassProbaReductionFitPredict:
-    """Tests for fit/predict lifecycle."""
+    """Tests for fit/predict lifecycle.
 
-    def test_predict_class_proba_returns_probabilities(self, class_proba_data):
-        """predict_class_proba returns probability columns."""
-        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
-        forecaster = ClassProbaReductionForecaster(
-            estimator=DecisionTreeClassifier(random_state=42),
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+    Probability sums, bounds, prediction structure, label output, the
+    ``classes_`` attribute, and the forecaster-type / uses-reduction tags are all
+    covered unconditionally by the systematic suite in
+    ``TestClassProbaReductionSystematic`` (``check_class_proba_prediction_sums``,
+    ``check_class_proba_prediction_bounds``, ``check_class_proba_prediction_structure``,
+    ``check_class_proba_predict_returns_labels``, ``check_class_proba_classes_attribute``,
+    ``check_class_proba_prediction_types``, and
+    ``check_forecaster_tags_match_capabilities``), so they are not re-asserted here.
+    """
 
-        assert "vintage_time" in y_pred.columns
-        assert "time" in y_pred.columns
-        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
-        assert len(proba_cols) == 3  # 3 classes
+    def test_nan_handling_drop_warns_and_predicts(self, class_proba_data):
+        """nan_handling='drop' removes NaN feature rows with a warning."""
+        import warnings
 
-    def test_predict_returns_string_labels(self, class_proba_data):
-        """predict returns argmax class labels."""
-        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
-        forecaster = ClassProbaReductionForecaster(
-            estimator=DecisionTreeClassifier(random_state=42),
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
-        y_pred = forecaster.predict(forecasting_horizon=3)
-
-        assert "weather" in y_pred.columns
-        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
-        assert len(proba_cols) == 0
-
-        valid_classes = set(forecaster.classes_["weather"])
-        for val in y_pred["weather"].cast(pl.String).to_list():
-            assert val in valid_classes
-
-    def test_classes_discovered_at_fit(self, class_proba_data):
-        """classes_ and label_to_code_ populated correctly after fit."""
         y_train, _, X_actual_train, _ = class_proba_data
+        # Inject NaN into two feature rows so the drop branch removes them.
+        X_with_nan = X_actual_train.with_columns(
+            pl.when(pl.int_range(pl.len()).is_in([5, 10])).then(None).otherwise(pl.col("temp")).alias("temp")
+        )
+
         forecaster = ClassProbaReductionForecaster(
             estimator=DecisionTreeClassifier(random_state=42),
+            nan_handling="drop",
         )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            forecaster.fit(y_train, X_with_nan, forecasting_horizon=1)
+            messages = [str(w.message) for w in caught]
 
-        assert "weather" in forecaster.classes_
-        assert sorted(forecaster.classes_["weather"]) == forecaster.classes_["weather"]
-        assert set(forecaster.classes_["weather"]) == {"sunny", "rainy", "cloudy"}
-
-        assert "weather" in forecaster.label_to_code_
-        assert len(forecaster.label_to_code_["weather"]) == 3
-
-    def test_probabilities_sum_to_one(self, class_proba_data):
-        """Per-row probabilities sum to approximately 1.0."""
-        y_train, _, X_actual_train, _ = class_proba_data
-        forecaster = ClassProbaReductionForecaster(
-            estimator=DecisionTreeClassifier(random_state=42),
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
+        assert any("NaN handling dropped" in m for m in messages)
         y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
-
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
-        row_sums = y_pred.select(proba_cols).sum_horizontal()
-        for s in row_sums:
-            assert abs(s - 1.0) < 1e-6
-
-    def test_probabilities_in_bounds(self, class_proba_data):
-        """All probability values in [0, 1]."""
-        y_train, _, X_actual_train, _ = class_proba_data
-        forecaster = ClassProbaReductionForecaster(
-            estimator=DecisionTreeClassifier(random_state=42),
-        )
-        forecaster.fit(y_train, X_actual_train, forecasting_horizon=1)
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=1)
-
-        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
-        for col in proba_cols:
-            assert y_pred[col].min() >= 0.0
-            assert y_pred[col].max() <= 1.0
+        assert len(proba_cols) == 3
 
     def test_direct_strategy(self, class_proba_data):
         """Direct strategy produces correct output."""
@@ -227,21 +187,55 @@ class TestObservePredictClassProba:
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) == 0
 
+    def test_rewind_encodes_categorical_string_labels(self, class_proba_data):
+        """rewind() accepts raw string-label y, encoding it before validation.
 
-class TestTags:
-    """Tests for tag reporting."""
+        ``BaseClassProbaForecaster.rewind`` overrides the base to call
+        ``_encode_y_input`` first; passing raw string labels (not pre-encoded)
+        pins that encode-then-super contract and leaves a predictable buffer.
+        """
+        y_train, y_test, X_actual_train, X_actual_test = class_proba_data
+        forecaster = ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+        )
+        forecaster.fit(y_train, X_actual_train, forecasting_horizon=3)
 
-    def test_forecaster_type_tag(self):
-        """forecaster_type should be 'class_proba'."""
-        forecaster = ClassProbaReductionForecaster()
-        tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == frozenset({"class_proba"})
+        # Observe new ground truth, then rewind with raw string-label data.
+        forecaster.observe(y=y_test[:5], X_actual=X_actual_test[:5])
+        forecaster.rewind(y=y_train[-3:], X_actual=X_actual_train[-3:])
 
-    def test_uses_reduction_tag(self):
-        """uses_reduction should be True."""
-        forecaster = ClassProbaReductionForecaster()
-        tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.uses_reduction is True
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
+        assert len(proba_cols) == 3
+        row_sums = y_pred.select(proba_cols).sum_horizontal()
+        for s in row_sums:
+            assert abs(s - 1.0) < 1e-6
+
+
+class TestClassProbaNotFitted:
+    """predict_class_proba / observe_predict_class_proba guard against unfitted use.
+
+    ``check_forecaster_methods_call_check_is_fitted`` only exercises ``predict``
+    and ``observe_predict``; the class-proba variants have their own
+    ``check_is_fitted`` guards that the systematic suite does not reach.
+    """
+
+    def test_predict_class_proba_raises_not_fitted(self):
+        """predict_class_proba on an unfitted instance raises NotFittedError."""
+        from sklearn.exceptions import NotFittedError
+
+        forecaster = ClassProbaReductionForecaster(estimator=DecisionTreeClassifier(random_state=42))
+        with pytest.raises(NotFittedError):
+            forecaster.predict_class_proba(forecasting_horizon=3)
+
+    def test_observe_predict_class_proba_raises_not_fitted(self, class_proba_data):
+        """observe_predict_class_proba on an unfitted instance raises NotFittedError."""
+        from sklearn.exceptions import NotFittedError
+
+        _, y_test, _, X_actual_test = class_proba_data
+        forecaster = ClassProbaReductionForecaster(estimator=DecisionTreeClassifier(random_state=42))
+        with pytest.raises(NotFittedError):
+            forecaster.observe_predict_class_proba(y=y_test[:3], X_actual=X_actual_test[:3], forecasting_horizon=3)
 
 
 class TestRecursivePredict:
@@ -284,17 +278,6 @@ class TestRecursivePredict:
             estimator=DecisionTreeClassifier(random_state=42),
         )
         forecaster.fit(y, forecasting_horizon=3)
-
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=6)
-        assert len(y_pred) == 6
-
-    def test_predict_longer_horizon_without_X(self, class_proba_data):
-        """Recursive prediction works without exogenous features."""
-        y_train, _, X_actual_train, _ = class_proba_data
-        forecaster = ClassProbaReductionForecaster(
-            estimator=DecisionTreeClassifier(random_state=42),
-        )
-        forecaster.fit(y_train, forecasting_horizon=3)
 
         y_pred = forecaster.predict_class_proba(forecasting_horizon=6)
         assert len(y_pred) == 6

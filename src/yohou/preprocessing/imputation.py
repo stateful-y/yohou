@@ -48,10 +48,13 @@ class SimpleImputer(SklearnTransformer):
     copy : bool, default=True
         Passed through to sklearn's SimpleImputer to control whether a copy of
         X is created. If False, imputation may be done in-place where possible.
+    **kwargs : dict
+        Additional keyword arguments forwarded to
+        :class:`sklearn.impute.SimpleImputer`.
 
     Attributes
     ----------
-    instance_ : SimpleImputer
+    instance_ : sklearn.impute.SimpleImputer
         The fitted sklearn SimpleImputer instance.
     statistics_ : ndarray of shape (n_features,)
         The imputation fill value for each feature (same as sklearn's statistics_).
@@ -155,8 +158,9 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     0
 
     With a lag transformer the imputation happens in the projected lag space,
-    so the output contains the lag columns (``value_lag_1``, ``value_lag_2``,
-    ``value_lag_3``), not the original ``value`` column:
+    so the output contains the projected lag column (``value_lag_3``), not the
+    original ``value`` column. (Pass ``lag=[1, 2, 3]`` to project to multiple lag
+    columns instead.)
 
     >>> from yohou.preprocessing import LagTransformer
     >>> X = pl.DataFrame({
@@ -341,6 +345,8 @@ class SimpleTimeImputer(BaseTransformer):
         - "fill_both": Forward fill then backward fill (handles edges)
     limit : int or None, default=None
         Maximum number of consecutive NaN values to fill. If None, no limit.
+        Has no effect when ``method="linear"``, as polars ``interpolate()`` does
+        not support a gap limit.
 
     Examples
     --------
@@ -351,15 +357,17 @@ class SimpleTimeImputer(BaseTransformer):
 
     >>> X = pl.DataFrame({
     ...     "time": [datetime(2020, 1, i) for i in range(1, 8)],
-    ...     "value": [1.0, np.nan, np.nan, 4.0, np.nan, 6.0, 7.0],
+    ...     "value": [1.0, None, None, 4.0, None, 6.0, 7.0],
     ... })
 
-    >>> # Linear interpolation
+    >>> # Linear interpolation (fills polars nulls)
     >>> imputer = SimpleTimeImputer(method="linear")
     >>> imputer.fit(X)
     SimpleTimeImputer()
     >>> X_imputed = imputer.transform(X)
     >>> X_imputed["value"].null_count()
+    0
+    >>> X_imputed["value"].is_nan().sum()
     0
 
     >>> # Forward fill with limit

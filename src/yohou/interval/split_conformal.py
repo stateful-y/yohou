@@ -126,9 +126,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
-            lags, rolling statistics, and other derived features. If
-            ``None``, only target-derived features are used.
+            with ``y``. Passed directly to the wrapped
+            ``point_forecaster_``; any feature transformation is the
+            responsibility of that inner estimator. If ``None``, only
+            target-derived features are used.
         forecasting_horizon : int, default=1
             Number of time steps to forecast into the future.
         coverage_rates : list of float or None, default=None
@@ -137,11 +138,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``[0.95]``.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
-            values available for past and future dates. Bypasses the
-            feature transformer.
+            values available for past and future dates.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -239,40 +239,42 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         return self
 
-    def _observe_standard(
+    def _observe_conformity(
         self,
         y: pl.DataFrame,
-        X_actual: pl.DataFrame | None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-    ) -> "SplitConformalForecaster":
+    ) -> None:
         """Update similarity state and conformity scores for new observations.
 
-        Called during ``observe()`` before the point forecaster absorbs
-        the new data so that ``predict()`` still reflects the pre-observe
-        state.
+        This conformity/similarity update is panel-agnostic: it operates on
+        the full-frame ``y`` and delegates to ``point_forecaster_.predict``
+        (which handles panel dispatch internally). It is therefore called
+        unconditionally by ``observe()`` *before* the panel/standard branch,
+        so the panel path does not silently skip it.
+
+        Called *before* the point forecaster absorbs the new data so that
+        ``predict()`` still reflects the pre-observe state.
 
         Parameters
         ----------
         y : pl.DataFrame
             New target observations.
-        X_actual : pl.DataFrame or None
-            Exogenous features aligned with ``y``.
         X_future : pl.DataFrame or None, default=None
-            Known future features, forwarded to the point forecaster's
-            pre-observe ``predict`` call so post-observe conformity scores
-            match the features used at ``predict_interval`` time.
+            Known future features for the point forecaster's pre-observe
+            ``predict`` call. Note that ``observe()`` does not forward its
+            own ``X_future`` here, so this argument is ``None`` in practice;
+            the caller's ``X_future`` is applied only by the subsequent
+            ``point_forecaster_.observe()`` call.
         X_forecast : pl.DataFrame or None, default=None
-            External forecasts, forwarded to the point forecaster's
-            pre-observe ``predict`` call.
-
-        Returns
-        -------
-        self
+            External forecasts for the point forecaster's pre-observe
+            ``predict`` call. As with ``X_future``, ``observe()`` does not
+            forward its own ``X_forecast`` here, so this argument is ``None``
+            in practice.
 
         """
         if not hasattr(self, "similarities_"):
-            return super()._observe_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
+            return
 
         # Generate predictions *before* the point forecaster is updated
         y_pred = self.point_forecaster_.predict(
@@ -296,21 +298,17 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scores_step = conformity_scores_step.with_columns(step=step)
             self.conformity_scores_ = pl.concat([self.conformity_scores_, conformity_scores_step])
 
-        return super()._observe_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
-
-    def _rewind_standard(
-        self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None,
-        X_future: pl.DataFrame | None = None,
-        X_forecast: pl.DataFrame | None = None,
-    ) -> "SplitConformalForecaster":
+    def _rewind_conformity(self, y: pl.DataFrame, X_actual: pl.DataFrame | None) -> None:
         """Rewind similarity state and conformity scores.
 
         Removes post-fit observations from similarity and conformity
         score state.  The number of rows removed equals the number
-        added by ``_observe_standard`` since fit (capped so we never
+        added by ``_observe_conformity`` since fit (capped so we never
         remove fit-time data).
+
+        Like ``_observe_conformity``, this is panel-agnostic and is called
+        unconditionally by ``rewind()`` before the panel/standard branch, so
+        the panel path does not skip the score rollback.
 
         Parameters
         ----------
@@ -318,18 +316,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Target observations to rewind (used for row count).
         X_actual : pl.DataFrame or None
             Exogenous features (passed through to similarity rewind).
-        X_future : pl.DataFrame or None, default=None
-            Known future features (unused, accepted for API consistency).
-        X_forecast : pl.DataFrame or None, default=None
-            External forecasts (unused, accepted for API consistency).
-
-        Returns
-        -------
-        self
 
         """
         if not hasattr(self, "similarities_"):
-            return super()._rewind_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
+            return
 
         n_rewind = len(y)
 
@@ -352,8 +342,6 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y_rewind = y.head(n_remove)
                 similarity_step.rewind(y=y_rewind, y_pred=y_rewind, X_actual=X_actual)
 
-        return super()._rewind_standard(y, X_actual, X_future, X_forecast)  # ty: ignore[invalid-return-type]
-
     def observe(
         self,
         y: pl.DataFrame,
@@ -375,9 +363,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
-            lags, rolling statistics, and other derived features. If
-            ``None``, only target-derived features are used.
+            with ``y``. Passed directly to the wrapped
+            ``point_forecaster_``; any feature transformation is the
+            responsibility of that inner estimator. If ``None``, only
+            target-derived features are used.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
@@ -401,11 +390,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y, X_actual, groups = validate_forecaster_data(self, y, X_actual, reset=False, groups=groups)
 
-        # Update similarity / conformity scores *before* the point
-        # forecaster absorbs the new data so we can still call predict()
-        # to obtain the prediction-vs-actual residual.
+        # Update similarity / conformity scores *before* the point forecaster
+        # absorbs the new data so we can still call predict() to obtain the
+        # prediction-vs-actual residual. This update is panel-agnostic, so it
+        # runs unconditionally ahead of the panel/standard branch; routing it
+        # through the standard branch alone would silently skip it on panel
+        # data.
+        self._observe_conformity(y)
+
         if self.groups_ is None:
-            self._observe_standard(y, X_actual=X_actual)
+            super()._observe_standard(y, X_actual=X_actual)
         else:
             BasePanelForecaster._observe_panel(self, y, X_actual=X_actual, groups=groups)
 
@@ -460,9 +454,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         # Rewind conformity / similarity state *before* the point forecaster
         # rolls back, mirroring the order used by observe() so both methods
-        # maintain the same state invariant.
+        # maintain the same state invariant. As in observe(), this rollback is
+        # panel-agnostic and runs unconditionally ahead of the branch.
+        self._rewind_conformity(y, X_actual=X_actual)
+
         if self.groups_ is None:
-            self._rewind_standard(y, X_actual=X_actual)
+            super()._rewind_standard(y, X_actual=X_actual)
         else:
             BasePanelForecaster._rewind_panel(self, y, X_actual=X_actual, groups=groups)
 
@@ -547,8 +544,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     ) -> pl.DataFrame:
         """Alternate recursive observe and predict.
 
-        Equivalent to calling ``observe(y, X_actual)`` then ``predict()``.
-        Returns point predictions.
+        Produces a rolling sequence of predictions, observing ``stride``
+        rows between each. Returns the concatenation of the initial
+        prediction and one prediction per stride step.
 
         Parameters
         ----------
@@ -669,7 +667,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             used at fit time.
         strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction intervals
-            during recursive multi-step forecasting.
+            during recursive multi-step forecasting:
+
+            - ``"mean"``: use the mean of the interval bounds
+            - ``"median"``: use the median of the interval bounds
+            - ``"point"``: use the point forecast directly (if available)
+
+            If ``None``, defaults to ``"mean"``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -690,6 +694,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         pl.DataFrame
             Interval predictions with ``"vintage_time"``, ``"time"``, and
             lower/upper bound columns for each target at each coverage rate.
+
+        Raises
+        ------
+        sklearn.exceptions.NotFittedError
+            If the forecaster has not been fitted yet.
+        ValueError
+            If ``y`` / ``X_actual`` have invalid structure, ``coverage_rates`` not in
+            [0, 1], or ``groups`` contains names not seen during fit.
 
         """
         check_is_fitted(

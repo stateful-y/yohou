@@ -67,6 +67,32 @@ def panel_data():
     return y_true, y_pred
 
 
+@pytest.fixture
+def panel_data_differentiated():
+    """Panel data where grpA predicts perfectly and grpB predicts inverted.
+
+    This makes each group's ranking score distinct (grpA high, grpB low), so a
+    panel subselection differs from the full-panel score.
+    """
+    dates = [datetime(2020, 1, i) for i in range(1, 5)]
+    y_true = pl.DataFrame({
+        "time": dates,
+        "grpA__weather": ["sunny", "rainy", "sunny", "rainy"],
+        "grpB__weather": ["sunny", "rainy", "sunny", "rainy"],
+    })
+    y_pred = pl.DataFrame({
+        "vintage_time": [datetime(2019, 12, 31)] * 4,
+        "time": dates,
+        # grpA: confident and correct.
+        "grpA__weather_proba_sunny": [0.9, 0.1, 0.8, 0.2],
+        "grpA__weather_proba_rainy": [0.1, 0.9, 0.2, 0.8],
+        # grpB: confident and inverted (wrong ranking).
+        "grpB__weather_proba_sunny": [0.1, 0.9, 0.2, 0.8],
+        "grpB__weather_proba_rainy": [0.9, 0.1, 0.8, 0.2],
+    })
+    return y_true, y_pred
+
+
 def _sklearn_labels(y_true_df, y_pred_df, target="weather"):
     """Extract sklearn-format labels from yohou DataFrames."""
     true_labels = y_true_df[target].to_list()
@@ -346,6 +372,26 @@ class TestROCAuC:
         assert isinstance(score, float)
         assert 0.0 <= score <= 1.0
 
+    @pytest.mark.parametrize("group", ["grpA", "grpB"])
+    def test_panel_subselection(self, panel_data_differentiated, group):
+        """groups=[...] restricts the score to the named group for ranking scorers."""
+        y_true, y_pred = panel_data_differentiated
+
+        full = ROCAuC()
+        full.fit(y_true)
+        full_score = full.score(y_true, y_pred)
+
+        subselected = ROCAuC(groups=[group])
+        subselected.fit(y_true)
+        sub_score = subselected.score(y_true, y_pred)
+
+        assert isinstance(sub_score, float)
+        assert 0.0 <= sub_score <= 1.0
+        # grpA is perfect, grpB inverted; neither matches the full-panel average.
+        assert sub_score != full_score
+        expected = 1.0 if group == "grpA" else 0.0
+        assert np.isclose(sub_score, expected)
+
 
 class TestPRAuC:
     def test_matches_sklearn(self, class_data_5rows):
@@ -374,6 +420,26 @@ class TestPRAuC:
         score = scorer.score(y_true, y_pred)
         assert isinstance(score, float)
         assert 0.0 <= score <= 1.0
+
+    @pytest.mark.parametrize("group", ["grpA", "grpB"])
+    def test_panel_subselection(self, panel_data_differentiated, group):
+        """groups=[...] restricts the score to the named group for ranking scorers."""
+        y_true, y_pred = panel_data_differentiated
+
+        full = PRAuC()
+        full.fit(y_true)
+        full_score = full.score(y_true, y_pred)
+
+        subselected = PRAuC(groups=[group])
+        subselected.fit(y_true)
+        sub_score = subselected.score(y_true, y_pred)
+
+        assert isinstance(sub_score, float)
+        assert 0.0 <= sub_score <= 1.0
+        # The two groups score differently, so neither matches the full-panel value.
+        assert sub_score != full_score
+        if group == "grpA":
+            assert np.isclose(sub_score, 1.0)
 
 
 class TestRegistry:
@@ -521,26 +587,6 @@ class TestRankingCombinedWeights:
         score = scorer.score(y_true, y_pred)
         assert isinstance(score, float)
 
-    def test_ranking_dict_weights_ignored(self):
-        """Callable weight resolves to ndarray for ranking scorers."""
-        dates = [datetime(2020, 1, i) for i in range(1, 6)]
-        y_true = pl.DataFrame({
-            "time": dates,
-            "weather": ["sunny", "rainy", "cloudy", "sunny", "rainy"],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 5,
-            "time": dates,
-            "weather_proba_sunny": [0.7, 0.1, 0.2, 0.6, 0.1],
-            "weather_proba_rainy": [0.2, 0.8, 0.1, 0.3, 0.8],
-            "weather_proba_cloudy": [0.1, 0.1, 0.7, 0.1, 0.1],
-        })
-        scorer = ROCAuC()
-        scorer.fit(y_true)
-        # No weights: should produce valid score
-        score_no_weight = scorer.score(y_true, y_pred)
-        assert isinstance(score_no_weight, float)
-
 
 class TestRankingSkipConstantClasses:
     def test_roc_auc_skips_absent_class(self):
@@ -588,20 +634,30 @@ class TestRankingSkipConstantClasses:
 
 class TestHardLabelPartialCollapse:
     def test_precision_stepwise_only(self, class_data_5rows):
-        """Precision with stepwise only (no vintagewise) exercises partial collapse."""
+        """Precision with stepwise only (no vintagewise) keeps a vintage axis."""
         y_true, y_pred = class_data_5rows
         scorer = Precision(aggregation_method=["stepwise", "componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # vintagewise was NOT collapsed, so vintage_time survives as the row axis;
+        # componentwise renames the value column to the metric name.
+        assert isinstance(result, pl.DataFrame)
+        assert "vintage_time" in result.columns
+        assert "precision" in result.columns
+        assert "forecasting_step" not in result.columns
+        # Single vintage in the fixture -> single output row.
+        assert result.height == 1
 
     def test_recall_vintagewise_only(self, class_data_5rows):
-        """Recall with vintagewise only exercises partial collapse."""
+        """Recall with vintagewise only keeps a forecasting_step axis."""
         y_true, y_pred = class_data_5rows
         scorer = Recall(aggregation_method=["vintagewise", "componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # stepwise was NOT collapsed, so forecasting_step survives as the row axis.
+        assert isinstance(result, pl.DataFrame)
+        assert "forecasting_step" in result.columns
+        assert "recall" in result.columns
 
     def test_precision_stepwise_no_vintage(self):
         """Precision with stepwise collapse on data without vintage_time."""
@@ -619,15 +675,30 @@ class TestHardLabelPartialCollapse:
         scorer = Precision(aggregation_method=["stepwise", "componentwise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # No vintage_time column to retain, so stepwise collapse leaves a single
+        # metric column with no axis columns.
+        assert isinstance(result, pl.DataFrame)
+        assert result.columns == ["precision"]
+        assert result.height == 1
+        # The single retained value is a valid precision in [0, 1].
+        value = result["precision"].item()
+        assert 0.0 <= value <= 1.0
 
     def test_precision_collapse_all_rows(self, class_data_5rows):
-        """Precision with stepwise+vintagewise collapses all rows."""
+        """Precision with stepwise+vintagewise collapses to a single value column."""
         y_true, y_pred = class_data_5rows
         scorer = Precision(aggregation_method=["stepwise", "vintagewise"])
         scorer.fit(y_true)
         result = scorer.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # Both time axes collapsed but componentwise NOT requested, so the value
+        # column keeps the target name and there is a single fully-collapsed row.
+        assert isinstance(result, pl.DataFrame)
+        assert "weather" in result.columns
+        assert "vintage_time" not in result.columns
+        assert "forecasting_step" not in result.columns
+        assert result.height == 1
+        value = result["weather"].item()
+        assert 0.0 <= value <= 1.0
 
 
 @pytest.fixture

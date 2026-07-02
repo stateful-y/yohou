@@ -256,21 +256,30 @@ class TestPickleFittedScorers:
         params=[pytest.param(pair, id=pair[0]) for pair in _FITTED_SCORERS],
     )
     def fitted_scorer(self, request):
-        """Fit and return a scorer."""
+        """Fit a scorer and return it with contract-compliant scoring frames.
+
+        ``y_pred`` carries a ``vintage_time`` column (per the prediction data
+        contract) and a nonzero offset so the round-trip exercises real
+        vintage-keyed scoring rather than scoring a frame against itself.
+        """
         _, factory = request.param
-        df = _make_time_series(30, 1)
+        y_truth = _make_time_series(30, 1)
+        y_pred = y_truth.with_columns(
+            pl.lit(datetime(2020, 12, 31)).alias("vintage_time"),
+            (pl.col("col_0") + 0.5).alias("col_0"),
+        ).select(["vintage_time", "time", "col_0"])
         s = factory()
-        s.fit(df)
-        return s, df
+        s.fit(y_truth)
+        return s, y_truth, y_pred
 
     def test_fitted_score_preserved(self, fitted_scorer):
         """Fitted scorer produces same score after pickle round-trip."""
-        scorer, df = fitted_scorer
-        original_score = scorer.score(df, df)
+        scorer, y_truth, y_pred = fitted_scorer
+        original_score = scorer.score(y_truth, y_pred)
 
         data = pickle.dumps(scorer)
         restored = pickle.loads(data)  # noqa: S301
-        restored_score = restored.score(df, df)
+        restored_score = restored.score(y_truth, y_pred)
 
         assert original_score == restored_score
 

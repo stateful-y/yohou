@@ -268,8 +268,12 @@ class FunctionTransformer(BaseTransformer):
         X = validate_transformer_data(self, X=X, reset=True)
         BaseTransformer.fit(self, X, y, **params)
 
-        # Auto-detect warmup from NaN rows
+        # Auto-detect warmup from NaN rows. BaseTransformer.fit ran
+        # _update_X_observed while _observation_horizon was still 0, so the
+        # buffer is empty; re-sync it now that the real horizon is known,
+        # otherwise observe_transform would have no warmup history to prepend.
         self._observation_horizon = self._detect_warmup(X)
+        self._update_X_observed(X)
 
         if self.check_inverse and self.func is not None and self.inverse_func is not None:
             self._check_inverse_transform(X)

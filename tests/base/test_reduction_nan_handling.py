@@ -274,7 +274,7 @@ class TestNanHandlingDrop:
             forecaster.fit(y=y, forecasting_horizon=2)
 
     def test_panel_data_nan_handling(self):
-        """4.11: NaN in panel data is handled correctly."""
+        """4.11: NaN in wide-format panel data is dropped per group."""
         length = 20
         times = pl.datetime_range(
             start=datetime(2021, 1, 1),
@@ -282,26 +282,22 @@ class TestNanHandlingDrop:
             interval="1s",
             eager=True,
         )
+        a_values = [float(i) for i in range(length)]
+        a_values[5] = float("nan")
         y = pl.DataFrame({
-            "time": pl.concat([times, times]),
-            "value": [float(i) for i in range(length)] * 2,
-            "group": ["A"] * length + ["B"] * length,
+            "time": times,
+            "A__value": a_values,
+            "B__value": [float(i + 100) for i in range(length)],
         })
-        y = y.with_columns(
-            pl
-            .when((pl.col("group") == "A") & (pl.col("value") == 5.0))
-            .then(None)
-            .otherwise(pl.col("value"))
-            .alias("value")
-        )
         forecaster = PointReductionForecaster(
             estimator=_RecordingEstimator(),
             nan_handling="drop",
-            panel_strategy="global",
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             forecaster.fit(y=y, forecasting_horizon=2)
+        # Wide-format ``group__column`` naming triggers real panel dispatch.
+        assert forecaster.groups_ == ["A", "B"]
         assert not _has_nan(forecaster.estimator_.y_fit_)
 
 

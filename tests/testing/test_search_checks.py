@@ -6,6 +6,8 @@ import polars as pl
 import pytest
 
 from conftest import run_checks
+from yohou.interval import SplitConformalForecaster
+from yohou.metrics.interval import EmpiricalCoverage
 from yohou.metrics.point import MeanAbsoluteError, MeanSquaredError
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, RandomizedSearchCV
 from yohou.point.naive import SeasonalNaive
@@ -20,10 +22,12 @@ from yohou.testing.search import (
     check_search_cv_results_structure,
     check_search_error_score_handling,
     check_search_fit_sets_attributes,
+    check_search_interval_predict_delegates,
     check_search_method_availability,
     check_search_multimetric_scoring,
     check_search_not_fitted_error,
     check_search_observe_delegates,
+    check_search_panel_data,
     check_search_predict_delegates,
     check_search_refit_false_no_forecaster,
     check_search_return_train_score,
@@ -114,6 +118,27 @@ class TestSearchCheckFunctionsNoFit:
         """check_search_not_fitted_error on unfitted search raises."""
         check_search_not_fitted_error(grid_search_cv, search_data)
 
+    def test_not_fitted_distinguishes_error_paths(self, grid_search_cv):
+        """Disambiguate the two not-fitted paths the check accepts together.
+
+        ``check_search_not_fitted_error`` accepts either ``NotFittedError`` or
+        ``AttributeError`` for ``predict()``. Pin which is which: accessing a
+        fitted attribute raises ``NotFittedError``, while ``predict()`` on an
+        unfitted search is gated off by ``@available_if`` and raises
+        ``AttributeError`` (best_forecaster_ does not exist yet).
+        """
+        from sklearn.base import clone
+        from sklearn.exceptions import NotFittedError
+        from sklearn.utils.validation import check_is_fitted
+
+        unfitted = clone(grid_search_cv)
+
+        with pytest.raises(NotFittedError):
+            check_is_fitted(unfitted, "best_forecaster_")
+
+        with pytest.raises(AttributeError):
+            unfitted.predict(forecasting_horizon=1)
+
 
 class TestSearchCheckFunctionsFit:
     """Tests for search check functions that require fitting."""
@@ -196,6 +221,102 @@ class TestSearchCheckFunctionsDelegation:
         gs, y = fitted_grid_search
         y_reset = y.tail(10)
         check_search_rewind_delegates(gs, y_reset)
+
+
+class TestSearchCheckFunctionsIntervalDelegation:
+    """Tests for the interval-scoring delegation check (conditionally yielded)."""
+
+    @pytest.fixture(scope="class")
+    def interval_search_data(self):
+        """Training target with enough history for a calibrated conformal search."""
+        n = 120
+        times = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        return pl.DataFrame({"time": times, "val": [float(i % 7) for i in range(n)]})
+
+    @pytest.fixture(scope="class")
+    def fitted_interval_search(self, interval_search_data):
+        """Fitted GridSearchCV scored with an interval metric (refit=True)."""
+        gs = GridSearchCV(
+            forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=7),
+                calibration_size=20,
+            ),
+            param_grid={"calibration_size": [20, 30]},
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
+            scoring=EmpiricalCoverage(),
+        )
+        gs.fit(interval_search_data.head(100), forecasting_horizon=3)
+        return gs
+
+    @pytest.mark.slow
+    def test_interval_predict_delegates(self, fitted_interval_search):
+        """check_search_interval_predict_delegates exercises predict_interval delegation."""
+        check_search_interval_predict_delegates(fitted_interval_search)
+
+    def test_interval_predict_delegates_requires_vintage_time(self):
+        """check_search_interval_predict_delegates rejects predictions lacking vintage_time."""
+        from sklearn.base import BaseEstimator
+
+        class _StubSearchNoVintage(BaseEstimator):
+            """Fitted-looking stub whose predict_interval omits vintage_time."""
+
+            def fit(self, *args, **kwargs):
+                # Set a trailing-underscore attr so check_is_fitted() passes.
+                self.best_forecaster_ = object()
+                return self
+
+            def predict_interval(self, coverage_rates=None, X_future=None, X_forecast=None):
+                return pl.DataFrame({
+                    "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+                    "val_lower_0.9": [0.0, 1.0],
+                    "val_upper_0.9": [2.0, 3.0],
+                })
+
+        with pytest.raises(AssertionError, match="vintage_time"):
+            check_search_interval_predict_delegates(_StubSearchNoVintage().fit())
+
+
+class TestSearchCheckFunctionsPanel:
+    """Tests for the panel-data subselection check (conditionally yielded)."""
+
+    @pytest.fixture(scope="class")
+    def panel_search_data(self):
+        """Panel training target with two store groups."""
+        n = 100
+        times = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        return pl.DataFrame({
+            "time": times,
+            "store_1__val": [float(i % 7) for i in range(n)],
+            "store_2__val": [float(i % 5) + 1 for i in range(n)],
+        })
+
+    @pytest.fixture(scope="class")
+    def fitted_panel_search(self, panel_search_data):
+        """Fitted GridSearchCV over panel data."""
+        gs = GridSearchCV(
+            forecaster=SeasonalNaive(seasonality=1),
+            param_grid={"seasonality": [1, 7]},
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
+            scoring=MeanAbsoluteError(),
+        )
+        gs.fit(panel_search_data.head(80), forecasting_horizon=3)
+        return gs, panel_search_data
+
+    @pytest.mark.slow
+    def test_panel_data_subselection(self, fitted_panel_search):
+        """check_search_panel_data verifies the groups parameter propagates through predict()."""
+        gs, y = fitted_panel_search
+        check_search_panel_data(gs, y.tail(20), groups=["store_1"])
 
 
 class TestSearchCheckFunctionsMultimetric:

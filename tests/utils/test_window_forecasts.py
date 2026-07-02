@@ -105,6 +105,59 @@ class TestWindowForecasts:
         assert result["temp_step_2"][0] is None
         assert result["temp_step_2"][1] is None
 
+    def test_empty_observation_times_produces_empty_result(self):
+        """Empty observation_times with non-empty X_forecast returns a 0-row frame.
+
+        Exercises the ``observation_times.is_empty()`` short-circuit of the empty
+        guard (the X_forecast-empty half is covered by
+        test_empty_x_forecast_produces_all_nulls).
+        """
+        X_forecast = pl.DataFrame({
+            "vintage_time": [datetime(2020, 1, 1, 0)] * 2,
+            "time": [datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)],
+            "temp": [10.0, 11.0],
+        })
+        obs = pl.Series([], dtype=pl.Datetime("us"))
+        result = window_forecasts(X_forecast, obs, forecasting_horizon=2, interval="1h")
+
+        assert result.shape == (0, 3)
+        assert result.columns == ["time", "temp_step_1", "temp_step_2"]
+
+    def test_custom_vintage_and_time_cols_match_defaults(self):
+        """Non-default vintage_col/time_col produce the same step values as defaults.
+
+        Verifies the column-name substitution path: building X_forecast with
+        custom index column names and passing them explicitly yields output
+        identical (modulo the always-"time" output index) to the default call.
+        """
+        obs = pl.Series([datetime(2020, 1, 1, 0)])
+
+        default = window_forecasts(
+            pl.DataFrame({
+                "vintage_time": [datetime(2020, 1, 1, 0)] * 2,
+                "time": [datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)],
+                "temp": [10.0, 11.0],
+            }),
+            obs,
+            forecasting_horizon=2,
+            interval="1h",
+        )
+
+        custom = window_forecasts(
+            pl.DataFrame({
+                "vt": [datetime(2020, 1, 1, 0)] * 2,
+                "target_time": [datetime(2020, 1, 1, 1), datetime(2020, 1, 1, 2)],
+                "temp": [10.0, 11.0],
+            }),
+            obs,
+            forecasting_horizon=2,
+            interval="1h",
+            vintage_col="vt",
+            time_col="target_time",
+        )
+
+        assert custom.equals(default)
+
     def test_partial_coverage_produces_partial_nulls(self):
         """Vintage with fewer steps than horizon produces nulls for missing steps."""
         X_forecast = pl.DataFrame({

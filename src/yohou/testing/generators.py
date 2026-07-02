@@ -43,6 +43,7 @@ from .forecaster import (
     check_forecasting_horizon_validation,
     check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
+    check_observe_predict_interval_with_step_columns,
     check_observe_predict_with_step_columns,
     check_predict_time_columns,
     check_predict_X_forecast_override,
@@ -186,7 +187,8 @@ def _yield_yohou_transformer_checks(
     Parameters
     ----------
     transformer : BaseTransformer
-        Fitted transformer instance
+        Transformer instance (fitted or unfitted; individual checks clone as
+        needed)
     X_train : pl.DataFrame
         Training data with "time" column
     y_train : pl.DataFrame, optional
@@ -196,21 +198,16 @@ def _yield_yohou_transformer_checks(
     y_test : pl.DataFrame, optional
         Test target data
     tags : dict, optional
-        Transformer metadata tags (if None, auto-detected from __sklearn_tags__):
+        Transformer metadata tags (if None, auto-detected from __sklearn_tags__).
+        Only the following keys gate which checks are yielded:
         - stateful: bool
-        - observation_horizon: int | None
-        - preserves_dtype: bool
         - invertible: bool
         - supports_panel_data: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -410,7 +407,8 @@ def _yield_yohou_forecaster_checks(
     Parameters
     ----------
     forecaster : BaseForecaster
-        Fitted forecaster instance
+        Forecaster instance (fitted or unfitted; checks that require a specific
+        state clone internally)
     y_train : pl.DataFrame
         Training target data with "time" column
     X_actual_train : pl.DataFrame, optional
@@ -426,16 +424,13 @@ def _yield_yohou_forecaster_checks(
         - supports_panel_data: bool
         - uses_target_transformer: bool
         - uses_feature_transformer: bool
-        - supports_scoring: bool
+        - requires_exogenous: bool
+        - tracks_observations: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -730,6 +725,21 @@ def _yield_yohou_forecaster_checks(
                 },
             )
 
+            if forecaster_type is not None and "interval" in forecaster_type:
+                yield (
+                    "check_observe_predict_interval_with_step_columns",
+                    check_observe_predict_interval_with_step_columns,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "y_test": y_test,
+                        "X_actual_test": X_actual_test,
+                        "X_future": X_future_test,
+                        "X_forecast": X_forecast_test,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
     if _has_step_data and not _requires_exogenous:
         yield (
             "check_requires_exogenous_warns_on_X_future_X_forecast",
@@ -772,20 +782,14 @@ def _yield_yohou_splitter_checks(
     X_actual : pl.DataFrame, optional
         Exogenous features
     tags : dict, optional
-        Splitter metadata tags (if None, auto-detected from __sklearn_tags__):
-        - splitter_type: str | None
+        Splitter metadata tags (if None, auto-detected from __sklearn_tags__).
+        Only the following key gates which checks are yielded:
         - supports_panel_data: bool
-        - produces_non_overlapping_tests: bool
-        - stateful: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -905,16 +909,11 @@ def _yield_yohou_scorer_checks(
         Scorer metadata tags (if None, auto-detected from __sklearn_tags__):
         - prediction_type: str | None
         - lower_is_better: bool
-        - requires_calibration: bool
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:
@@ -987,8 +986,11 @@ def _yield_yohou_scorer_checks(
     if hasattr(scorer, "aggregation_method"):
         validation_test_cases.append(("aggregation_method", ["invalid_method"], "aggregation_method"))
 
-    # Add coverage validation for interval scorers
-    if tags.get("prediction_type") == "interval":
+    # Add coverage validation for interval scorers that accept a coverage_rates
+    # constructor param. Interval-typed conformity scorers (e.g. QuantileResidual)
+    # do not expose coverage_rates, so constructing scorer_class(coverage_rates=...)
+    # would raise a spurious TypeError; skip the coverage cases for those.
+    if tags.get("prediction_type") == "interval" and "coverage_rates" in scorer.get_params():
         validation_test_cases.extend([
             ("coverage_rates", [1.5], "coverage"),  # Out of range
             ("coverage_rates", [-0.5], "coverage"),  # Negative
@@ -1048,15 +1050,13 @@ def _yield_yohou_search_checks(
         - refit: bool (default True)
         - multimetric: bool (default False)
         - supports_panel_data: bool (default True)
+        - interval_scoring: bool (default False); True when the scorer is an
+          instance of BaseIntervalScorer
 
     Yields
     ------
-    check_name : str
-        Name of the check function
-    check_func : callable
-        Check function to execute
-    check_kwargs : dict
-        Keyword arguments for check function (bundled data)
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
     if tags is None:

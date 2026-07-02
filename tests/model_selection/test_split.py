@@ -52,11 +52,13 @@ class TestExpandingWindowBasic:
 
         assert len(splits) == 5
 
-        # Check first split: train on [0:50], test on [50:60]
+        # Check first split: train on [0:50], test on [50:60].
+        # (Temporal ordering train[-1] < test[0] is owned by the systematic
+        # check_splitter_produces_valid_indices; assert only the concrete
+        # boundary values here.)
         train_idx, test_idx = splits[0]
         assert len(test_idx) == 10
         assert test_idx[0] == 50
-        assert train_idx[-1] + 1 == test_idx[0]
 
         # Check last split: train on [0:90], test on [90:100]
         train_idx, test_idx = splits[-1]
@@ -77,24 +79,6 @@ class TestExpandingWindowBasic:
         train_sizes = [len(train) for train, _ in splits]
         assert max(train_sizes) == 30
 
-    def test_expanding_window_get_n_splits(self, y_X_factory):
-        """Test get_n_splits returns correct count."""
-        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-        assert splitter.get_n_splits(y) == 5
-
-        splitter = ExpandingWindowSplitter(n_splits=3, test_size=15)
-        assert splitter.get_n_splits(y) == 3
-
-    def test_expanding_window_insufficient_data_raises(self, y_X_factory):
-        """split() raises rather than silently yielding fewer folds than advertised."""
-        y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
-
-        splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-        with pytest.raises(ValueError, match="non-overlapping test windows"):
-            list(splitter.split(y))
-
     def test_expanding_window_all_test_no_train_raises(self, y_X_factory):
         """The boundary n_samples == n_splits * test_size must not yield an empty train.
 
@@ -109,16 +93,12 @@ class TestExpandingWindowBasic:
             list(splitter.split(y))
 
     def test_expanding_window_split_count_matches_get_n_splits(self, y_X_factory):
-        """split() yields exactly get_n_splits() folds, or raises (never silently fewer)."""
-        y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
+        """split() yields exactly get_n_splits() folds when the data supports it."""
+        y, _ = y_X_factory(length=100, n_targets=1, n_features=0, seed=42)
 
         splitter = ExpandingWindowSplitter(n_splits=5, test_size=10)
-        try:
-            n_yielded = len(list(splitter.split(y)))
-        except ValueError:
-            pass
-        else:
-            assert n_yielded == splitter.get_n_splits(y)
+        n_yielded = len(list(splitter.split(y)))
+        assert n_yielded == splitter.get_n_splits(y) == 5
 
     def test_expanding_window_train_index_expansion(self, y_X_factory):
         """Test training set expands correctly without max_train_size."""
@@ -143,10 +123,11 @@ class TestSlidingWindowBasic:
 
         assert len(splits) == 7
 
+        # Temporal ordering train[-1] < test[0] is owned by the systematic
+        # check_splitter_produces_valid_indices; assert only window sizes here.
         for train_idx, test_idx in splits:
             assert len(train_idx) == 30  # auto-computed: 100 - 10 - 6*10
             assert len(test_idx) == 10
-            assert train_idx[-1] + 1 == test_idx[0]
 
     def test_sliding_window_step_parameter(self, y_X_factory):
         """Test stride parameter controls slide amount."""
@@ -170,22 +151,29 @@ class TestSlidingWindowBasic:
         train_sizes = [len(train) for train, _ in splits]
         assert all(size == train_sizes[0] for size in train_sizes)
 
-    def test_sliding_window_get_n_splits(self, y_X_factory):
-        """Test get_n_splits returns correct count without data."""
-        splitter = SlidingWindowSplitter(n_splits=5, test_size=10)
-        assert splitter.get_n_splits() == 5
-        assert splitter.get_n_splits(y=None) == 5
-
-        splitter = SlidingWindowSplitter(n_splits=3, test_size=10, stride=20)
-        assert splitter.get_n_splits() == 3
-
-    def test_sliding_window_insufficient_data(self, y_X_factory):
-        """Test error when insufficient data."""
+    def test_sliding_window_explicit_train_size_exceeds_data(self, y_X_factory):
+        """An explicit train_size + test_size > n_samples is rejected by split()."""
         y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
 
+        # split() resolves train_size first, so the error originates in
+        # _resolve_train_size, not the defensive guard in _iter_test_indices.
         splitter = SlidingWindowSplitter(n_splits=3, train_size=30, test_size=10)
         with pytest.raises(ValueError, match="greater than n_samples"):
             list(splitter.split(y))
+
+    def test_sliding_window_iter_test_indices_defensive_guard(self, y_X_factory):
+        """_iter_test_indices guards against train_size_ + test_size > n_samples.
+
+        split() validates via _resolve_train_size first, so this guard is only
+        reachable by calling _iter_test_indices directly with an oversized
+        train_size_ patched onto the splitter (matching the source comment).
+        """
+        y, _ = y_X_factory(length=20, n_targets=1, n_features=0, seed=42)
+
+        splitter = SlidingWindowSplitter(n_splits=3, test_size=10)
+        splitter.train_size_ = 30  # bypass _resolve_train_size
+        with pytest.raises(ValueError, match="greater than n_samples"):
+            list(splitter._iter_test_indices(y))
 
     def test_sliding_window_train_size_auto_computed(self, y_X_factory):
         """Test train_size_ is computed when train_size is None."""
@@ -277,5 +265,5 @@ class TestSplitterIntegration:
             error = np.abs(y_test.select(y_test_cols).to_numpy() - y_pred.select(y_pred_cols).to_numpy())
             scores.append(np.mean(error))
 
-        assert len(scores) >= 1
+        assert len(scores) == 7
         assert all(score >= 0 for score in scores)

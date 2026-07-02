@@ -211,10 +211,14 @@ collapses both time axes but preserves the component and group structure.
 
 ### Filtering and weighting groups
 
-Scorers accept a `groups` parameter that can be a list of group names to include
-or a dictionary mapping group names to weights:
+Scorers such as
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/)
+accept a `groups` parameter that can be a list of group names to include or a
+dictionary mapping group names to weights:
 
 ```python
+from yohou.metrics import MeanAbsoluteError
+
 scorer = MeanAbsoluteError(aggregation_method="all", groups=["store_1", "store_2"])
 scorer = MeanAbsoluteError(aggregation_method="all", groups={"store_1": 0.7, "store_2": 0.3})
 ```
@@ -248,5 +252,6 @@ how `observe` and `rewind` propagate through nested components.
 and their relationship to model selection.
 
 For practical recipes, see [How to Work with Panel Data](../how-to/panel-data.md).
+For a hands-on walkthrough, see the [Panel Data Tutorial](../tutorials/panel-data.md).
 The panel utility API is documented in the
 [yohou.utils.panel reference](/pages/api/utils/#panel).

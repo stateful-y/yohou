@@ -209,6 +209,19 @@ class TestFetchCommon:
         assert len(bunch_all.feature_names) == 2
         assert len(bunch_sub.feature_names) == 1
 
+    def test_corrupt_parquet_cache_triggers_redownload(self, tmp_path):
+        """A garbage parquet cache is discarded and the dataset re-downloaded."""
+        bunch = fetch_tourism_monthly(data_home=tmp_path)
+        parquet_path = bunch.filename
+        # Overwrite the cached parquet with bytes that are not a valid file so
+        # ``pl.read_parquet`` raises and the corrupt-cache branch re-downloads.
+        with open(parquet_path, "wb") as fh:
+            fh.write(b"not a parquet file")
+
+        recovered = fetch_tourism_monthly(data_home=tmp_path)
+        assert isinstance(recovered, Bunch)
+        assert recovered.frame.equals(bunch.frame)
+
 
 class TestFetchIntegration:
     """Integration tests that download from Zenodo (requires network)."""
@@ -340,24 +353,78 @@ class TestFetchAirQualityClassificationGuards:
             _fetchers.fetch_air_quality_classification()
 
 
-@pytest.fixture(scope="module")
-def air_quality_data():
-    """Fetch the air quality classification dataset once per module."""
+def _serve_classification_wasm(monkeypatch, y_frame, x_frame):
+    """Route the classification fetchers through the offline WASM path.
+
+    Stubs ``_is_wasm`` to True and ``urlopen`` to deserialize pre-built
+    polars frames, so the fixtures never hit the network during fast runs.
+    """
+    import io
+
+    from yohou.datasets import _fetchers
+
+    y_bytes = y_frame.serialize(format="binary")
+    x_bytes = x_frame.serialize(format="binary")
+
+    def _fake_urlopen(url):
+        return io.BytesIO(y_bytes if url.endswith("_y.bin") else x_bytes)
+
+    monkeypatch.setattr(_fetchers, "_is_wasm", lambda: True)
+    monkeypatch.setattr(_fetchers, "urlopen", _fake_urlopen)
+
+
+@pytest.fixture
+def air_quality_data(monkeypatch):
+    """Air quality classification data served from a stubbed WASM path.
+
+    Mirrors the real dataset's schema (string ``air_quality`` target with the
+    four WHO categories, five numeric panel feature columns) without any
+    network access, so the consuming tests run under ``just test-fast``.
+    """
+    time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1d", eager=True)
+    y = pl.DataFrame(
+        {"time": time, "air_quality": ["good", "moderate", "unhealthy", "hazardous"]},
+        schema={"time": pl.Datetime, "air_quality": pl.Utf8},
+    )
+    X_actual = pl.DataFrame({
+        "time": time,
+        "beijing__pm2.5": [10.0, 20.0, 30.0, 40.0],
+        "beijing__pm10": [11.0, 21.0, 31.0, 41.0],
+        "beijing__no2": [1.0, 2.0, 3.0, 4.0],
+        "beijing__co": [0.1, 0.2, 0.3, 0.4],
+        "beijing__o3": [5.0, 6.0, 7.0, 8.0],
+    })
+    _serve_classification_wasm(monkeypatch, y, X_actual)
     return fetch_air_quality_classification()
 
 
-@pytest.fixture(scope="module")
-def demand_data():
-    """Fetch the demand classification dataset once per module."""
+@pytest.fixture
+def demand_data(monkeypatch):
+    """Demand classification data served from a stubbed WASM path.
+
+    Mirrors the real dataset's schema (string ``demand_level`` target with three
+    categories, four numeric feature columns) without network access. As in the
+    native path, the per-state prefix is stripped so X_actual feature columns
+    carry no ``__`` panel separator.
+    """
+    time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1d", eager=True)
+    y = pl.DataFrame(
+        {"time": time, "demand_level": ["low", "medium", "high", "medium"]},
+        schema={"time": pl.Datetime, "demand_level": pl.Utf8},
+    )
+    X_actual = pl.DataFrame({
+        "time": time,
+        "nsw": [100.0, 200.0, 300.0, 250.0],
+        "qun": [110.0, 210.0, 310.0, 260.0],
+        "sa": [120.0, 220.0, 320.0, 270.0],
+        "tas": [130.0, 230.0, 330.0, 280.0],
+    })
+    _serve_classification_wasm(monkeypatch, y, X_actual)
     return fetch_demand_classification()
 
 
 class TestFetchAirQualityClassification:
     """Tests for fetch_air_quality_classification."""
-
-    def test_returns_bunch(self, air_quality_data):
-        """Result is a sklearn Bunch."""
-        assert isinstance(air_quality_data, Bunch)
 
     def test_bunch_keys(self, air_quality_data):
         """Bunch contains required keys."""
@@ -408,7 +475,7 @@ class TestFetchAirQualityClassification:
 
     def test_no_nulls_in_y(self, air_quality_data):
         """y has no null values."""
-        assert air_quality_data.y.null_count().row(0) == (0, 0)
+        assert air_quality_data.y.null_count().sum_horizontal().item() == 0
 
     def test_descr_is_string(self, air_quality_data):
         """DESCR is a non-empty string."""
@@ -418,10 +485,6 @@ class TestFetchAirQualityClassification:
 
 class TestFetchDemandClassification:
     """Tests for fetch_demand_classification."""
-
-    def test_returns_bunch(self, demand_data):
-        """Result is a sklearn Bunch."""
-        assert isinstance(demand_data, Bunch)
 
     def test_bunch_keys(self, demand_data):
         """Bunch contains required keys."""
@@ -470,14 +533,14 @@ class TestFetchDemandClassification:
         expected = [c for c in demand_data.X_actual.columns if c != "time"]
         assert demand_data.feature_names == expected
 
-    def test_feature_columns_are_panel(self, demand_data):
-        """Feature columns use __ separator convention."""
+    def test_feature_columns_have_no_panel_separator(self, demand_data):
+        """Feature columns drop the ``__`` separator (not panel groups)."""
         for col in demand_data.feature_names:
-            assert "__" in col
+            assert "__" not in col
 
     def test_no_nulls_in_y(self, demand_data):
         """y has no null values."""
-        assert demand_data.y.null_count().row(0) == (0, 0)
+        assert demand_data.y.null_count().sum_horizontal().item() == 0
 
     def test_descr_is_string(self, demand_data):
         """DESCR is a non-empty string."""
@@ -513,3 +576,43 @@ class TestClassificationMissingColumns:
 
         with pytest.raises(ValueError, match="electricity demand"):
             fetch_demand_classification()
+
+
+class TestFetchDemandClassificationRealPath:
+    """fetch_demand_classification strips the panel separator from X_actual.
+
+    These tests exercise the native (non-WASM) path by stubbing
+    ``fetch_electricity_demand`` directly, so the in-process rename logic is
+    covered (the WASM-served ``demand_data`` fixture bypasses it).
+    """
+
+    def _stub_frame(self, monkeypatch):
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 1, 4), interval="1h", eager=True)
+        n = len(time)
+        frame = pl.DataFrame({
+            "time": time,
+            "vic__demand": [float(i) for i in range(n)],
+            "nsw__demand": [1.0] * n,
+            "qun__demand": [2.0] * n,
+            "sa__demand": [3.0] * n,
+            "tas__demand": [4.0] * n,
+        })
+        monkeypatch.setattr(
+            "yohou.datasets._fetchers.fetch_electricity_demand",
+            lambda **kwargs: Bunch(frame=frame),
+        )
+
+    def test_x_actual_columns_have_no_panel_separator(self, monkeypatch):
+        """X_actual feature columns drop the ``__`` separator (regression).
+
+        The state abbreviation is the panel group prefix in the source
+        frame; carried into X_actual it would be misread as panel
+        membership by base-class dispatch. The corrected fetcher renames
+        ``nsw__demand`` -> ``nsw`` (and so on for qun, sa, tas).
+        """
+        self._stub_frame(monkeypatch)
+        bunch = fetch_demand_classification()
+        feature_cols = [c for c in bunch.X_actual.columns if c != "time"]
+        assert feature_cols == ["nsw", "qun", "sa", "tas"]
+        assert all("__" not in c for c in feature_cols)
+        assert bunch.feature_names == ["nsw", "qun", "sa", "tas"]

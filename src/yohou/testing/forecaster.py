@@ -135,7 +135,7 @@ def check_fit_sets_forecaster_attributes(
         f"fit_forecasting_horizon_ should be {forecasting_horizon}, got {forecaster_clone.fit_forecasting_horizon_}"
     )
 
-    assert hasattr(forecaster_clone, "interval_"), "fit() must set interval_ attribute (timedelta)"
+    assert hasattr(forecaster_clone, "interval_"), "fit() must set interval_ attribute (str)"
 
     assert hasattr(forecaster_clone, "groups_"), "fit() must set groups_ attribute (None or list)"
     assert hasattr(forecaster_clone, "local_y_schema_"), (
@@ -207,9 +207,9 @@ def check_forecaster_not_fitted_error(forecaster, y: pl.DataFrame, X_actual: pl.
     forecaster : BaseForecaster
         Unfitted forecaster instance
     y : pl.DataFrame
-        Test target data
+        Unused; retained for API uniformity with other check functions.
     X_actual : pl.DataFrame, optional
-        Test features
+        Unused; retained for API uniformity with other check functions.
 
     Raises
     ------
@@ -260,8 +260,25 @@ def check_predict_time_columns(forecaster, y_test: pl.DataFrame, X_actual_test: 
     assert "vintage_time" in y_pred.columns, "Predictions must have 'vintage_time' column"
     assert "time" in y_pred.columns, "Predictions must have 'time' column"
 
-    # Validate shapes
-    assert len(y_pred) == forecasting_horizon, f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
+    # Validate shapes. Panel forecasters may stack predictions per group, so the
+    # total row count is a multiple of the horizon rather than the horizon
+    # itself. Only assert the strict single-group row count for non-panel
+    # forecasters (groups_ is None); for panel forecasters, require the per-group
+    # row count (rows // n_groups) to equal the horizon.
+    groups = getattr(forecaster, "groups_", None)
+    if groups is None:
+        assert len(y_pred) == forecasting_horizon, (
+            f"Predictions should have {forecasting_horizon} rows, got {len(y_pred)}"
+        )
+    else:
+        n_groups = len(groups)
+        assert len(y_pred) % forecasting_horizon == 0, (
+            f"Panel predictions should have a multiple of {forecasting_horizon} rows, got {len(y_pred)}"
+        )
+        assert len(y_pred) in (forecasting_horizon, n_groups * forecasting_horizon), (
+            f"Panel predictions should have {forecasting_horizon} (wide) or "
+            f"{n_groups * forecasting_horizon} (stacked) rows, got {len(y_pred)}"
+        )
 
     # Validate time column types
     assert isinstance(y_pred["vintage_time"].dtype, pl.Datetime | pl.Date), (
@@ -579,7 +596,7 @@ def check_forecasting_horizon_validation(
 
 
 def check_prediction_types_property(forecaster) -> None:
-    """Check forecaster_type tag is set correctly.
+    """Check forecaster_type tag is None or a frozenset of known prediction types.
 
     Parameters
     ----------
@@ -706,6 +723,10 @@ def check_forecaster_tags_static_after_fit(
         Training features
     forecasting_horizon : int, default=3
         Forecasting horizon
+    X_future : pl.DataFrame, optional
+        Known-future features forwarded to fit().
+    X_forecast : pl.DataFrame, optional
+        External forecast features forwarded to fit().
 
     Raises
     ------
@@ -751,8 +772,9 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
     """Check forecaster tags accurately reflect capabilities.
 
     Validates that tag values match actual forecaster behavior:
-    - forecaster_type matches prediction_types property
-    - stateful tag matches observation horizon or transformer statefulness
+    - forecaster_type is consistent with the forecaster's prediction_types,
+      checked only when the forecaster exposes a prediction_types attribute
+      (a no-op for standard forecasters, which do not)
     - uses_reduction tag matches estimator attribute
     - uses_target_transformer matches target_transformer parameter
     - uses_feature_transformer matches feature_transformer parameter
@@ -833,6 +855,10 @@ def check_forecaster_methods_call_check_is_fitted(
     Validates that predict()/predict_interval(), observe(), rewind(), and
     observe_predict()/observe_predict_interval() methods all check fitted state
     and raise NotFittedError before operating on an unfitted forecaster.
+
+    For class-probability forecasters, predict() is the prediction method
+    exercised (they also expose predict_class_proba(), which delegates through
+    the same fitted-state guard).
 
     Parameters
     ----------
@@ -936,7 +962,7 @@ def check_fit_predict_without_exogenous(
     Parameters
     ----------
     forecaster : BaseForecaster
-        Fitted forecaster instance (will be cloned).
+        Unfitted forecaster instance (will be cloned internally).
     y : pl.DataFrame
         Target time series with ``"time"`` column.
     requires_exogenous : bool, default=False

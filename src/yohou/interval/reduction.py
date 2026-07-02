@@ -34,6 +34,10 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
         includes the raw target, and ``None`` uses only exogenous features.
+    target_transformer : BaseTransformer or None, default=None
+        Transformer applied to the target before tabularization. Interval
+        bounds are produced in the transformed space and inverse-transformed
+        back to the original target scale before being returned.
     feature_transformer : BaseTransformer or None, default=None
         Transformer used to transform the feature time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
@@ -161,6 +165,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
+        target_transformer: BaseTransformer | None = None,
         feature_transformer: BaseTransformer | None = None,
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -170,11 +175,17 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         vintage_weighter: BaseWeighter | None = None,
         sample_weight_alignment: str = "first_step",
     ):
+        # Delegate to the reduction machinery, which threads target_transformer,
+        # feature_transformer, target_as_feature, and panel_strategy down to
+        # BaseForecaster. The reduction pipeline applies the target transformer in
+        # transformed space and inverts it before emitting interval bounds, so the
+        # bounds are returned on the original target scale.
         BaseReductionForecaster.__init__(
             self,
             estimator=estimator,
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
+            target_transformer=target_transformer,
             feature_transformer=feature_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
@@ -183,13 +194,6 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             time_weighter=time_weighter,
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
-        )
-
-        BaseIntervalForecaster.__init__(
-            self,
-            feature_transformer=feature_transformer,
-            target_as_feature=target_as_feature,
-            panel_strategy=panel_strategy,
         )
 
     def _detect_multiquantile_loss(self) -> str | None:
@@ -294,6 +298,14 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         -------
         self
             The fitted forecaster instance.
+
+        Raises
+        ------
+        ValueError
+            If the estimator exposes no quantile parameter, if it exposes
+            more than one quantile parameter, or if a MultiQuantile
+            estimator is used with more than one target column or with
+            ``forecasting_horizon > 1``.
 
         """
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
@@ -412,7 +424,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         coverage_rates: list[StrictFloat] | None = None,
         **params,
     ) -> pl.DataFrame:
-        """Predicts `_fit_forecasting_horizon` steps from the observation horizon.
+        """Predicts `fit_forecasting_horizon_` steps from the observation horizon.
 
         Parameters
         ----------

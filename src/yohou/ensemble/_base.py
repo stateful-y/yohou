@@ -115,6 +115,11 @@ class _BaseEnsembleForecaster:
     forecasters_: list[tuple[str, BaseForecaster]]
     weights: list[float] | None
 
+    # Family the ensemble's children must belong to. Concrete voting
+    # subclasses tighten this to their own base (e.g. BaseIntervalForecaster)
+    # so a wrong-family child fails at fit() rather than deep inside predict.
+    _required_forecaster_type: type = BaseForecaster
+
     def _validate_forecasters_list(self) -> None:
         """Validate the forecasters parameter.
 
@@ -122,7 +127,9 @@ class _BaseEnsembleForecaster:
         ------
         ValueError
             If names are not unique, tuples are malformed, names are not
-            strings, or forecasters are not ``BaseForecaster`` instances.
+            strings, names contain ``"__"``, forecasters are not
+            ``BaseForecaster`` instances, or a forecaster does not belong to
+            the ensemble's required family (``_required_forecaster_type``).
 
         """
         names = []
@@ -135,6 +142,11 @@ class _BaseEnsembleForecaster:
             if not isinstance(forecaster, BaseForecaster):
                 raise ValueError(
                     f"Forecaster '{name}' must be a BaseForecaster instance, got {type(forecaster).__name__}"
+                )
+            if not isinstance(forecaster, self._required_forecaster_type):
+                raise ValueError(
+                    f"Forecaster '{name}' must be a {self._required_forecaster_type.__name__} instance "
+                    f"for this ensemble, got {type(forecaster).__name__}."
                 )
             if "__" in name:
                 raise ValueError(
@@ -448,7 +460,9 @@ class _BaseEnsembleForecaster:
             Aggregation strategy: ``"mean"``, ``"median"``, or
             ``"envelope"``.
         weights : list of float or None
-            Per-forecaster weights for weighted averaging.
+            Per-forecaster weights for weighted averaging. Only used when
+            ``strategy="mean"``; silently ignored for ``"median"`` and
+            ``"envelope"``.
 
         Returns
         -------

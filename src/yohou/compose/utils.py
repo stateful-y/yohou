@@ -22,7 +22,9 @@ def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]]) -> pl.DataFra
         List of transformed DataFrames, each containing a ``"time"`` column.
 
     column_names : list of list of str
-        Column names for each DataFrame.
+        New column names for the non-``"time"`` columns of each DataFrame in
+        ``Xs``; each inner list must have the same length as the non-time
+        columns of the corresponding DataFrame.
 
     Returns
     -------
@@ -66,7 +68,9 @@ def _observe_transform_one(
     y : None
         Not used, present for API consistency.
     weight : float | None
-        Weight to apply to transformed output.
+        Weight to apply to the feature (non-``"time"``) columns of the
+        transformed output; the ``"time"`` column is never scaled so its
+        datetime dtype is preserved.
     params : Any
         Routed parameters for the transformer.
 
@@ -74,6 +78,12 @@ def _observe_transform_one(
     -------
     pl.DataFrame
         Transformed data.
+
+    Raises
+    ------
+    AttributeError
+        If ``transformer`` is a ``BaseTransformer`` subclass that does not
+        expose ``observe_transform``.
 
     """
     # Stateful BaseTransformers must expose observe_transform; the transform()
@@ -117,14 +127,24 @@ def _rewind_transform_one(
     y : None
         Not used, present for API consistency.
     weight : float | None
-        Weight to apply to transformed output.
+        Weight to apply to the feature (non-``"time"``) columns of the
+        transformed output; the ``"time"`` column is never scaled so its
+        datetime dtype is preserved.
     params : Any
         Routed parameters for the transformer.
 
     Returns
     -------
     pl.DataFrame
-        Transformed data with warmup rows discarded.
+        Transformed data; for stateful transformers (``BaseTransformer``
+        subclasses) the first ``observation_horizon`` rows are discarded by
+        ``rewind_transform``; stateless fallback transformers return all rows.
+
+    Raises
+    ------
+    AttributeError
+        If ``transformer`` is a ``BaseTransformer`` subclass that does not
+        expose ``rewind_transform``.
 
     """
     # As in _observe_transform_one, the transform() fallback is only legitimate

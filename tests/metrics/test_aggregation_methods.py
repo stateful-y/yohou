@@ -115,59 +115,23 @@ def equivalence_simple_data():
 
 
 class TestPointScorerAggregation:
-    def test_pointscorer_aggregation_all_returns_scalar(self, point_data):
-        """Test that aggregation_method='all' returns a scalar."""
-        y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method="all")
-        mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
-        assert isinstance(result, float), "aggregation_method='all' should return scalar"
-
-    def test_pointscorer_aggregation_stepwise_vintagewise_returns_dataframe_with_components(self, point_data):
-        """Test that aggregation_method=['stepwise', 'vintagewise'] returns per-component DataFrame."""
-        y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
-        mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
-
-        assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape == (1, 2), "Should have 1 row and 2 component columns"
-        assert set(result.columns) == {"value1", "value2"}, "Should have component columns"
-
-    def test_pointscorer_aggregation_componentwise_returns_dataframe_with_time(self, point_data):
-        """Test that aggregation_method=['componentwise'] returns per-timestep DataFrame."""
-        y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method=["componentwise"])
-        mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
-
-        assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        assert result.shape[0] == 3, "Should have 3 rows"
-        assert "time" in result.columns, "Should have time column"
-        assert "vintage_time" in result.columns, "Should have vintage_time column"
-        assert "mae" in result.columns, "Should have mae column"
-
-    def test_pointscorer_aggregation_stepwise_vintagewise_componentwise_returns_scalar(self, point_data):
-        """Test that both dimensions aggregated returns scalar."""
-        y_true, y_pred = point_data
-        mae = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
-        mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
-        assert isinstance(result, float), "Should return scalar when both dimensions aggregated"
-
     def test_pointscorer_aggregation_all_equivalent_to_all_dimensions(self, point_data):
-        """Test that 'all' is equivalent to ['stepwise', 'vintagewise', 'componentwise']."""
+        """Test that 'all' equals the explicit list of every aggregation dimension."""
         y_true, y_pred = point_data
 
         mae_all = MeanAbsoluteError(aggregation_method="all")
-        mae_all_explicit = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        mae_all_explicit = MeanAbsoluteError(
+            aggregation_method=["stepwise", "vintagewise", "componentwise", "groupwise"]
+        )
 
         mae_all.fit(y_true)
         result_all = mae_all.score(y_true, y_pred)
         mae_all_explicit.fit(y_true)
         result_all_explicit = mae_all_explicit.score(y_true, y_pred)
 
-        assert result_all == result_all_explicit, "'all' should equal ['stepwise', 'vintagewise', 'componentwise']"
+        assert result_all == result_all_explicit, (
+            "'all' should equal ['stepwise', 'vintagewise', 'componentwise', 'groupwise']"
+        )
 
     def test_pointscorer_aggregation_with_multiple_scorers(self, point_data):
         """Test aggregation works across different scorer types."""
@@ -186,6 +150,46 @@ class TestPointScorerAggregation:
 
 
 class TestPanelAggregation:
+    def test_panelaggregation_componentwise_weighted_components_differs_from_unweighted(self):
+        """Weighted ``components`` dict changes the panel-group componentwise collapse.
+
+        Exercises the weighted panel-group branch of ``_collapse_components``:
+        each group's component errors are combined as a weighted mean using the
+        ``components`` weights, which must differ from the equal-weight mean.
+        """
+        y_true = pl.DataFrame({
+            "time": [datetime(2020, 1, 1)],
+            "g1__val_a": [10.0],
+            "g1__val_b": [100.0],
+        })
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)],
+            "time": [datetime(2020, 1, 1)],
+            "g1__val_a": [13.0],  # error 3.0
+            "g1__val_b": [100.0],  # error 0.0
+        })
+
+        # Unweighted: equal weights -> (3.0 + 0.0) / 2 = 1.5
+        mae_unweighted = MeanAbsoluteError(
+            aggregation_method=["componentwise"],
+            components=["val_a", "val_b"],
+        )
+        mae_unweighted.fit(y_true)
+        result_unweighted = mae_unweighted.score(y_true, y_pred)
+        assert result_unweighted["g1__mae"][0] == 1.5
+
+        # Weighted: val_a weight 2, val_b weight 1 -> 3.0*(2/3) + 0.0*(1/3) = 2.0
+        mae_weighted = MeanAbsoluteError(
+            aggregation_method=["componentwise"],
+            components={"val_a": 2.0, "val_b": 1.0},
+        )
+        mae_weighted.fit(y_true)
+        result_weighted = mae_weighted.score(y_true, y_pred)
+        assert result_weighted["g1__mae"][0] == 2.0
+
+        # The weights must actually change the collapsed score.
+        assert result_weighted["g1__mae"][0] != result_unweighted["g1__mae"][0]
+
     def test_panelaggregation_point_metric_componentwise_panel(self):
         # Setup panel data
         y_true = pl.DataFrame({
@@ -371,26 +375,6 @@ class TestIntervalScorerAggregation:
         with pytest.raises(ValueError, match="Invalid aggregation_method 'invalid' in list"):
             cov.fit(y_true)
 
-    def test_intervalscorer_aggregation_all_returns_scalar(self, interval_data):
-        """Test that aggregation_method='all' returns a scalar."""
-        y_true, y_pred = interval_data
-        coverage = EmpiricalCoverage(aggregation_method="all")
-        coverage.fit(y_true)
-        result = coverage.score(y_true, y_pred)
-        assert isinstance(result, float), "aggregation_method='all' should return scalar"
-
-    def test_intervalscorer_aggregation_stepwise_vintagewise_returns_dataframe(self, interval_data):
-        """Test that aggregation_method=['stepwise', 'vintagewise'] returns per-component DataFrame."""
-        y_true, y_pred = interval_data
-        coverage = EmpiricalCoverage(aggregation_method=["stepwise", "vintagewise"])
-        coverage.fit(y_true)
-        result = coverage.score(y_true, y_pred)
-
-        assert isinstance(result, pl.DataFrame), "Should return DataFrame"
-        # 1 row per coverage_rate, component columns + coverage_rate
-        assert "coverage_rate" in result.columns
-        assert result.shape[0] == 1  # single rate
-
     def test_intervalscorer_aggregation_componentwise_returns_dataframe(self, interval_data):
         """Test that aggregation_method=['componentwise'] returns per-timestep DataFrame."""
         y_true, y_pred = interval_data
@@ -451,7 +435,7 @@ class TestIntervalScorerAggregation:
         for scorer in scorers:
             scorer.fit(y_true)
             result = scorer.score(y_true, y_pred)
-            assert isinstance(result, float | dict), f"{scorer.__class__.__name__} should return scalar or dict"
+            assert isinstance(result, float), f"{scorer.__class__.__name__} should return scalar"
 
     def test_intervalscorer_aggregation_coveragewise_aggregation_explicit(self, multi_rate_interval_data):
         """Test explicit aggregation_method='coveragewise'."""
@@ -481,14 +465,6 @@ class TestIntervalScorerAggregation:
 
 
 class TestPanelDataAggregation:
-    def test_paneldata_aggregation_all_returns_scalar(self, panel_point_data):
-        """Test that panel data with aggregation_method='all' returns scalar."""
-        y_true, y_pred = panel_point_data
-        mae = MeanAbsoluteError(aggregation_method="all")
-        mae.fit(y_true)
-        result = mae.score(y_true, y_pred)
-        assert isinstance(result, float), "Panel data with 'all' should return scalar"
-
     def test_paneldata_aggregation_stepwise_vintagewise_returns_dataframe(self, panel_point_data):
         """Test that panel data with stepwise+vintagewise aggregation returns per-group-component DataFrame."""
         y_true, y_pred = panel_point_data
@@ -544,21 +520,23 @@ class TestValidation:
         with pytest.raises(ValueError, match="aggregation_method.*must be"):
             mae.fit(simple_data)
 
-    def test_validation_valid_single_methods_accepted(self):
-        """Test that all valid single methods are accepted as strings or lists."""
+    def test_validation_valid_single_methods_accepted(self, simple_data):
+        """Test that all valid single methods pass fit-time validation."""
         valid_methods = ["stepwise", "vintagewise", "componentwise", "groupwise"]
 
         for method in valid_methods:
-            # Test as list
+            # Test as list: fit must not raise for a valid method.
             mae_list = MeanAbsoluteError(aggregation_method=[method])
+            mae_list.fit(simple_data)
             assert mae_list.aggregation_method == [method]
 
-            # Test as string
+            # Test as string: fit must not raise for a valid method.
             mae_str = MeanAbsoluteError(aggregation_method=method)
+            mae_str.fit(simple_data)
             assert mae_str.aggregation_method == method
 
-    def test_validation_valid_combinations_accepted(self):
-        """Test that valid combinations are accepted."""
+    def test_validation_valid_combinations_accepted(self, simple_data):
+        """Test that valid combinations pass fit-time validation."""
         valid_combinations = [
             ["stepwise"],
             ["vintagewise"],
@@ -571,7 +549,9 @@ class TestValidation:
         ]
 
         for combination in valid_combinations:
+            # fit must not raise for any valid combination.
             mae = MeanAbsoluteError(aggregation_method=combination)
+            mae.fit(simple_data)
             assert mae.aggregation_method == combination
 
     def test_validation_all_string_accepted(self):
@@ -855,7 +835,7 @@ class TestIntervalScorerComponentwiseAggregation:
         assert isinstance(result, pl.DataFrame)
         assert "coverage_rate" in result.columns
 
-    def test_no_spatial_without_coveragewise_returns_float(self):
+    def test_coveragewise_alone_keeps_spatial_dims_returns_dataframe(self):
         """coveragewise alone collapses coverage, spatial dims stay; returns DataFrame with time."""
         times = [datetime(2020, 1, 1), datetime(2020, 1, 2)]
         y_true = pl.DataFrame({"time": times, "val": [10.0, 20.0]})

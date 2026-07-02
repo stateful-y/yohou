@@ -133,6 +133,9 @@ class TestObserveAsofVintageSelection:
 
         assert f._X_forecast_raw_ is not None
         assert len(f._X_forecast_raw_) == 0
+        # The empty raw must keep the original schema (X_forecast.clear(), not a
+        # schemaless empty frame) so later predict() joins by column name still work.
+        assert f._X_forecast_raw_.schema == x_fc.schema
 
 
 class TestPanelObserveAsofVintageSelection:
@@ -192,6 +195,8 @@ class TestPanelObserveAsofVintageSelection:
 
         assert f._X_forecast_raw_ is not None
         assert len(f._X_forecast_raw_) == 0
+        # Cleared raw keeps the original panel schema for later join-by-name.
+        assert f._X_forecast_raw_.schema == x_fc.schema
 
     def test_panel_earlier_vintage_selected(self):
         """Panel: latest vintage before obs_time is selected."""

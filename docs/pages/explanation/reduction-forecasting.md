@@ -56,18 +56,20 @@ The conversion from time series to tabular format is handled by
 a DataFrame and a sequence of lag values, then produces a new DataFrame where each
 row contains shifted versions of the original series.
 
-For a concrete example, given a series `[10, 20, 30, 40, 50]` and `lags=[1, 2]`,
+For a concrete example, given a series `[10, 20, 30, 40, 50]` indexed by date and
+`lags=[1, 2]`,
 [`tabularize`](/pages/api/generated/yohou.utils.tabularization.tabularize/) produces:
 
-| value_lag_1 | value_lag_2 |
-|---|---|
-| 20 | 10 |
-| 30 | 20 |
-| 40 | 30 |
+| time | value_lag_1 | value_lag_2 |
+|---|---|---|
+| 2024-01-03 | 20 | 10 |
+| 2024-01-04 | 30 | 20 |
+| 2024-01-05 | 40 | 30 |
 
-Each lag shifts the series by that many steps. `value_lag_1` is the value one step before
-the current row; `value_lag_2` is two steps before. The first `max(lags)` rows are dropped
-because they would contain nulls.
+The mandatory `time` column is always preserved as the first column, anchoring each
+row to its timestamp. Each lag shifts the series by that many steps. `value_lag_1` is
+the value one step before the current row; `value_lag_2` is two steps before. The
+first `max(lags)` rows are dropped because they would contain nulls.
 
 Inside
 [`BaseReductionForecaster`](/pages/api/generated/yohou.base.reduction.BaseReductionForecaster/),
@@ -317,7 +319,7 @@ machinery.
 [Forecaster Composition](forecaster-composition.md) covers the remaining approaches:
 decomposition pipelines, column forecasters, panel-local forecasters, and
 forecasted-feature chains. Ensemble methods that combine multiple forecasters via
-voting are also described there.
+voting are covered in [Ensemble Forecasting](ensemble-forecasting.md).
 
 The transformers mentioned above (target transformers for stationarity, feature
 transformers for signal enrichment) are discussed in depth in
@@ -336,3 +338,5 @@ regressors. See [Class-Probability Forecasting](class-probability-forecasting.md
 for the full treatment.
 
 For practical recipes, see [How to Build a Reduction Forecaster](../how-to/build-reduction-forecasters.md) and [How to Choose a Forecasting Method](../how-to/choose-forecasting-method.md).
+For a hands-on comparison of the reduction strategies, see the
+[Reduction Strategies Tutorial](../tutorials/reduction-strategies.md).

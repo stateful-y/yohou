@@ -143,6 +143,25 @@ prediction.
 See [Working with Panel Data](panel-data.md) for panel data preparation
 and forecasting.
 
+## 6. Evaluate with Rolling Predictions
+
+Voting forecasters inherit the stateful lifecycle, so you can evaluate an
+ensemble walk-forward with `observe_predict`. It steps through the test set in
+batches of `stride`, emitting one vintage per batch without refitting:
+
+```python
+from yohou.model_selection import train_test_split
+
+y_train, y_test = train_test_split(y, test_size=48)
+
+ensemble.fit(y_train, forecasting_horizon=24)
+y_pred = ensemble.observe_predict(y=y_test, stride=1, forecasting_horizon=24)
+```
+
+The resulting multi-vintage DataFrame feeds directly into per-step and
+per-vintage scoring. See [How to Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md)
+for the scoring workflow.
+
 ## See Also
 
 - [Ensemble Forecasting](../explanation/ensemble-forecasting.md): theory and aggregation formulas

@@ -15,9 +15,10 @@ match the forecast requirement.
 
 ## Limit History with observation_horizon
 
-Each stateful transformer exposes a read-only `observation_horizon` property
-that reports how many past timesteps it retains. The value is derived from the
-constructor parameters: for
+When concept drift makes historical patterns less predictive, limiting history
+avoids diluting the model with stale signal. Each stateful transformer exposes
+a read-only `observation_horizon` property that reports how many past timesteps
+it retains. The value is derived from the constructor parameters: for
 [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
 it equals the maximum lag, and for
 [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/)
@@ -126,15 +127,19 @@ A common recipe for long series: downsample high-frequency data, limit
 look-back via transformer parameters, and evaluate with time-weighted scoring.
 
 ```python
+from sklearn.linear_model import Ridge
 from yohou.preprocessing.resampling import Downsampler
 from yohou.stationarity import SeasonalDifferencing
 from yohou.preprocessing import LagTransformer
 from yohou.compose import FeaturePipeline
+from yohou.point import PointReductionForecaster
+from yohou.model_selection import train_test_split
 from yohou.weighting import ExponentialDecayWeighter
 from yohou.metrics import MeanAbsoluteError
 
 # 1. Downsample hourly data to daily
 downsampler = Downsampler(interval="1d", aggregation="mean")
+y_daily = downsampler.fit_transform(y)
 
 # 2. Build a feature pipeline with bounded look-back
 pipeline = FeaturePipeline([
@@ -142,7 +147,16 @@ pipeline = FeaturePipeline([
     ("lags", LagTransformer(lag=[1, 7, 14])),
 ])
 
-# 3. Evaluate with exponential decay (half-life of one year)
+# 3. Fit a forecaster on the downsampled series
+y_train, y_test = train_test_split(y_daily, test_size=14)
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    feature_transformer=pipeline,
+)
+forecaster.fit(y_train, forecasting_horizon=14)
+y_pred = forecaster.predict()
+
+# 4. Evaluate with exponential decay (half-life of one year)
 scorer = MeanAbsoluteError(time_weighter=ExponentialDecayWeighter(half_life=365))
 scorer.fit(y_train)
 score = scorer.score(y_test, y_pred)

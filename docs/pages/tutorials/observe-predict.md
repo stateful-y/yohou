@@ -9,7 +9,7 @@ In this tutorial, we will walk through a two-year test set in six-month batches,
 
 - Completed [Forecasting Workflow](forecasting-workflow.md)
 
-## Load the Data
+## 1. Load the Data
 
 We use the tourism monthly dataset and work with a single series: visitor arrivals renamed to `tourists`. We hold out the final 24 months as the test set and set a 6-month forecasting horizon:
 
@@ -36,7 +36,7 @@ Series length: 187 months
 Train: 163 months, Test: 24 months
 ```
 
-## Fit the Forecaster
+## 2. Fit the Forecaster
 
 Now build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with seasonal differencing and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
 
@@ -57,7 +57,7 @@ forecaster = PointReductionForecaster(
 forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
 ```
 
-## Single-Shot Predict
+## 3. Single-Shot Predict
 
 First, produce a single-shot forecast: one batch of predictions from the end of the training data, covering the first six months of the test period.
 
@@ -84,9 +84,9 @@ shape: (6, 3)
 
 Notice that all six rows share the same `vintage_time` (July 1992). This tells you the forecaster used only training data up to that date to produce all six predictions at once.
 
-## Walk-Forward with observe_predict
+## 4. Walk-Forward with observe_predict
 
-Now that we have a baseline prediction, let's see how the forecaster performs when it can update itself with actual observations. `observe_predict` steps through `y_test` in batches of size `stride`, observing actual values and issuing a fresh forecast after each batch. Setting `stride=forecasting_horizon` tiles the test set with no gaps or overlaps:
+Now that we have a baseline prediction, let's see how the forecaster performs when it can update itself with actual observations. [`observe_predict`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) steps through `y_test` in batches of size `stride`, observing actual values and issuing a fresh forecast after each batch. Setting `stride=forecasting_horizon` tiles the test set with no gaps or overlaps:
 
 ```python
 y_pred_loop = forecaster.observe_predict(y=y_test, stride=forecasting_horizon)
@@ -129,7 +129,7 @@ The 5 vintages come from 24 test months divided into 6-month strides: $\lceil 24
 
 After observing all 24 test months, the loop issues one final batch that extends beyond the test window. We will filter those out before scoring.
 
-## Score and Compare
+## 5. Score and Compare
 
 Now let's score both approaches. First, filter predictions to the test period, then compare single-shot and walk-forward MASE:
 
@@ -155,7 +155,7 @@ Walk-forward MASE (all 24 months): 0.827
 
 Notice that the single-shot score only covers the first six months, where the model has the freshest lag features. The walk-forward score spans all 24 months, giving a more representative picture of real-world performance.
 
-## Visualize the Predictions
+## 6. Visualize the Predictions
 
 Finally, plot all walk-forward prediction vintages against the actual test values:
 

@@ -12,13 +12,8 @@ from conftest import run_checks
 from yohou.model_selection import ExpandingWindowSplitter, SlidingWindowSplitter
 from yohou.testing import (
     _yield_yohou_splitter_checks,
-    check_splitter_n_splits_consistency,
-    check_splitter_non_overlapping_tests,
     check_splitter_parameter_constraints,
-    check_splitter_produces_valid_indices,
-    check_splitter_tags_accessible_before_fit,
     check_splitter_tags_match_capabilities,
-    check_splitter_tags_static_after_fit,
 )
 
 
@@ -41,17 +36,14 @@ def splitters():
 
 
 class TestSplitterChecks:
-    """Tests for splitter check functions."""
+    """Tests for splitter check functions.
 
-    def test_tags_accessible_before_fit(self):
-        """Test that tags are accessible on splitter instances."""
-        check_splitter_tags_accessible_before_fit(ExpandingWindowSplitter(n_splits=3, test_size=10))
-        check_splitter_tags_accessible_before_fit(SlidingWindowSplitter(n_splits=3, test_size=10))
-
-    def test_tags_static_after_fit(self, splitters, y_data):
-        """Test that tags don't change after split()."""
-        for splitter in splitters:
-            check_splitter_tags_static_after_fit(splitter, y_data)
+    The happy-path tag/index/consistency checks are exercised end-to-end by
+    test_systematic_*_checks below (which run the full generator on both
+    splitters), so only the checks that take arguments not supplied by the
+    generator (expected_tags, hardcoded invalid constraint values) are tested
+    in isolation here.
+    """
 
     def test_tags_match_capabilities(self, splitters, y_data):
         """Test that tags match actual splitter behavior."""
@@ -74,21 +66,6 @@ class TestSplitterChecks:
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
         check_splitter_tags_match_capabilities(splitter, y_data, expected_tags=None)
 
-    def test_produces_valid_indices(self, splitters, y_data):
-        """Test that all splitters produce valid indices."""
-        for splitter in splitters:
-            check_splitter_produces_valid_indices(splitter, y_data)
-
-    def test_n_splits_consistency(self, splitters, y_data):
-        """Test that get_n_splits() matches actual split count."""
-        for splitter in splitters:
-            check_splitter_n_splits_consistency(splitter, y_data)
-
-    def test_non_overlapping_tests(self, splitters, y_data):
-        """Test that test sets don't overlap."""
-        for splitter in splitters:
-            check_splitter_non_overlapping_tests(splitter, y_data)
-
     @pytest.mark.parametrize(
         "splitter_class,param_name,invalid_values",
         [
@@ -103,12 +80,21 @@ class TestSplitterChecks:
         check_splitter_parameter_constraints(splitter_class, param_name, invalid_values)
 
     def test_yield_yohou_splitter_checks(self, splitters, y_data):
-        """Test that generator produces checks for all splitters."""
+        """Generator yields well-formed tuples and the exact expected check count.
+
+        ExpandingWindowSplitter exposes n_splits/test_size constraints (9 checks);
+        SlidingWindowSplitter additionally exposes train_size (10 checks). Pinning
+        the exact count catches a regression that silently drops a yielded check.
+        """
+        expected_counts = {
+            "ExpandingWindowSplitter": 9,
+            "SlidingWindowSplitter": 10,
+        }
         for splitter in splitters:
             checks = list(_yield_yohou_splitter_checks(splitter, y_data))
 
-            # Should yield multiple checks
-            assert len(checks) >= 6, f"Expected at least 6 checks, got {len(checks)}"
+            expected = expected_counts[type(splitter).__name__]
+            assert len(checks) == expected, f"{type(splitter).__name__}: expected {expected} checks, got {len(checks)}"
 
             # Each check should be a tuple (name, func, kwargs)
             for check_name, check_func, check_kwargs in checks:

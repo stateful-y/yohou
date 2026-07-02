@@ -448,41 +448,61 @@ def _fit_and_score(
             # rewind/predict split indexes ``y_train`` correctly regardless of
             # where the training window starts (e.g. SlidingWindowSplitter).
             n_train_rewind = len(train) - len(test)
-            train_rewind = np.arange(n_train_rewind)
-            test_rewind = np.arange(n_train_rewind, len(train))
-            # ``_score`` evaluates only the ``y_train_test`` rows (the last
-            # ``len(test)`` rows of the training window), so the score params
-            # must be sliced to those same absolute indices to keep lengths
-            # aligned.
-            score_params_train = _check_method_params(y, params=score_params, indices=train[test_rewind])
-            y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
-            y_train_test, X_actual_train_test = _safe_split(
-                forecaster, y_train, X_actual_train, test_rewind, train_rewind
-            )
-            forecaster.rewind(
-                y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
-            )
-            y_pred_train = _predict(
-                forecaster,
-                y_train_test,
-                X_actual_train_test,
-                scorer,
-                predict_func_params=predict_func_params,
-                predict_forecasting_horizon=predict_forecasting_horizon,
-                predict_stride=predict_stride,
-                coverage_rates=coverage_rates,
-                X_future=X_future,
-                X_forecast=X_forecast_train,
-            )
-            train_scores = _score(
-                forecaster,
-                y_train_rewind,
-                y_train_test,
-                y_pred_train,
-                scorer,
-                score_params_train,
-                error_score,
-            )
+            if n_train_rewind <= 0:
+                # The training window has no more rows than the test window, so
+                # there is no past left to rewind to and score against. Polars
+                # treats the resulting negative indices as wrap-around offsets
+                # from the end of the frame, which would silently score the
+                # wrong rows. Report the train score as unavailable (NaN)
+                # instead. This typically happens on the first fold of an
+                # expanding-window split with a large test_size.
+                warnings.warn(
+                    "Train score is unavailable for a fold whose training "
+                    f"window ({len(train)} rows) is not larger than its test "
+                    f"window ({len(test)} rows); reporting NaN for that fold.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                if isinstance(scorer, _MultimetricScorer):
+                    train_scores = {name: float("nan") for name in scorer._scorers}
+                else:
+                    train_scores = float("nan")
+            else:
+                train_rewind = np.arange(n_train_rewind)
+                test_rewind = np.arange(n_train_rewind, len(train))
+                # ``_score`` evaluates only the ``y_train_test`` rows (the last
+                # ``len(test)`` rows of the training window), so the score params
+                # must be sliced to those same absolute indices to keep lengths
+                # aligned.
+                score_params_train = _check_method_params(y, params=score_params, indices=train[test_rewind])
+                y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
+                y_train_test, X_actual_train_test = _safe_split(
+                    forecaster, y_train, X_actual_train, test_rewind, train_rewind
+                )
+                forecaster.rewind(
+                    y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
+                )
+                y_pred_train = _predict(
+                    forecaster,
+                    y_train_test,
+                    X_actual_train_test,
+                    scorer,
+                    predict_func_params=predict_func_params,
+                    predict_forecasting_horizon=predict_forecasting_horizon,
+                    predict_stride=predict_stride,
+                    coverage_rates=coverage_rates,
+                    X_future=X_future,
+                    X_forecast=X_forecast_train,
+                )
+                train_scores = _score(
+                    forecaster,
+                    y_train_rewind,
+                    y_train_test,
+                    y_pred_train,
+                    scorer,
+                    score_params_train,
+                    error_score,
+                )
 
     if verbose > 1:
         total_time = score_time + fit_time
@@ -694,8 +714,11 @@ def _predict(
     Returns
     -------
     pl.DataFrame
-        Predictions deduplicated by ``"time"`` (keeping the last
-        occurrence) and sorted by ``"time"``.
+        Predictions deduplicated on ``("vintage_time", "time")`` when a
+        ``"vintage_time"`` column is present (otherwise on ``"time"``),
+        keeping the last occurrence per unique key, and sorted by
+        ``("time", "vintage_time")``. Rows that share a ``"time"`` but
+        differ in ``"vintage_time"`` are all preserved.
     """
     predict_func_params = {} if predict_func_params is None else dict(predict_func_params)
 
@@ -759,8 +782,10 @@ def _score(
 ) -> float | dict[str, float | str] | str:
     """Compute the score(s) of a forecaster from pre-computed predictions.
 
-    Will return a dict of floats if ``scorer`` is a ``_MultiMetricScorer``,
-    otherwise a single float is returned.
+    Returns a float for single scorers, or a dict of ``{name: float}`` if
+    ``scorer`` is a ``_MultimetricScorer``.  When ``error_score != "raise"``
+    and scoring raises an exception, a string traceback is returned instead
+    (or stored per-metric for the multimetric case).
 
     Parameters
     ----------

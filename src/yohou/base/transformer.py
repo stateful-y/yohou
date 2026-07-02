@@ -23,7 +23,9 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
     Yohou transformers operate on polars DataFrames with a mandatory
     ``"time"`` column and support stateful windowing via ``observe``,
-    ``rewind``, and ``observe_transform`` methods.
+    ``rewind``, ``observe_transform``, and ``rewind_transform`` methods.
+    ``observe_transform`` observes new data and then transforms it, while
+    ``rewind_transform`` rewinds state to a window and then transforms it.
 
     Attributes
     ----------
@@ -43,7 +45,8 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
     **stateless** (``observation_horizon == 0``).  Stateful transformers
     maintain an internal memory buffer of the most recent
     ``observation_horizon`` rows, which is updated by ``observe()`` and
-    truncated by ``rewind()``.
+    replaced by ``rewind()`` (which sets the memory to the last
+    ``observation_horizon`` rows of the provided data).
 
     All transformers preserve the ``"time"`` column through
     ``transform()`` and ``inverse_transform()``.

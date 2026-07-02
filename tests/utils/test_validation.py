@@ -578,17 +578,24 @@ class TestCheckSchema:
             check_schema(df, expected_schema, groups=["sales"])
 
     def test_check_schema_panel_empty_group_names(self):
-        """Test check_schema with empty groups list behaves like non-panel."""
+        """Test check_schema with an empty groups list drops all schema columns.
+
+        ``groups=[]`` is NOT equivalent to ``groups=None``: the panel branch
+        builds the prefixed expected columns by looping over ``groups``, so an
+        empty list produces an empty expansion and only the "time" column
+        survives. (``groups=None`` would instead keep the unprefixed schema
+        columns such as "value".)
+        """
         df = pl.DataFrame({
             "time": [1, 2, 3],
             "value": [10, 20, 30],
         })
         expected_schema = {"value": pl.Int64}
 
-        # Empty list should behave like None (non-panel)
         result = check_schema(df, expected_schema, groups=[])
 
-        assert result.columns == ["time"]  # Only time because empty group list means no columns
+        # Empty group list => no prefixed columns expanded => only "time" remains.
+        assert result.columns == ["time"]
 
     def test_check_schema_panel_selects_only_specified_columns(self):
         """Test check_schema selects only columns matching the schema with prefixes."""
@@ -770,13 +777,22 @@ class TestCheckPanelGroupNames:
         assert result == ["d", "a", "c"]
 
     def test_check_groups_duplicate_requests(self):
-        """Test check_groups with duplicate requested groups."""
+        """Duplicated *valid* groups must not be mistaken for missing groups.
+
+        ``check_groups`` detects missing groups via ``set`` difference. The
+        regression this guards against is the set arithmetic (or a future
+        dedup-on-return) misclassifying a repeated valid group: passing
+        ``["sales", "sales", ...]`` against fitted ``["sales", "inventory"]``
+        must NOT raise a missing-group ValueError, and the duplicates must be
+        returned verbatim.
+        """
         fitted = ["sales", "inventory"]
         requested = ["sales", "sales", "inventory"]
 
+        # No pytest.raises here: a duplicated valid group is accepted, not
+        # flagged as missing.
         result = check_groups(fitted_panel_groups=fitted, requested_panel_groups=requested)
 
-        # Should preserve duplicates as provided (validation only checks existence)
         assert result == ["sales", "sales", "inventory"]
 
     def test_check_groups_case_sensitive(self):
@@ -1517,6 +1533,117 @@ class TestCheckScorerColumnSelection:
         assert all("weather_proba_" in c for c in y_pred_out.columns if c != "time")
         assert not any("mood" in c for c in y_pred_out.columns)
 
+    def test_check_scorer_column_selection_preserves_vintage_time_global(self):
+        """vintage_time must survive global component column selection.
+
+        Multi-vintage predictions carry a ``vintage_time`` column that groups
+        rows by forecast origin. Dropping it during column selection breaks
+        multi-vintage scoring, so it must be preserved whenever a filter is
+        active (regression for vintage-time-dropped-by-column-selection).
+        """
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        # Two vintages: the first covers two timestamps, the second three.
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({"time": times, "sales": range(5), "revenue": range(5, 10)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "sales": range(100, 105),
+            "revenue": range(105, 110),
+        })
+
+        scorer = MeanAbsoluteError(components=["sales"])
+
+        y_true_out, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+        assert set(y_true_out.columns) == {"time", "sales"}
+
+    def test_check_scorer_column_selection_preserves_vintage_time_panel(self):
+        """vintage_time must survive panel group/component column selection."""
+        from yohou.metrics import MeanAbsoluteError
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({
+            "time": times,
+            "sales__store_1": range(5),
+            "sales__store_2": range(5, 10),
+            "revenue__store_1": range(10, 15),
+        })
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "sales__store_1": range(100, 105),
+            "sales__store_2": range(105, 110),
+            "revenue__store_1": range(110, 115),
+        })
+
+        scorer = MeanAbsoluteError(groups=["sales"])
+
+        _, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="point",
+            coverage_rates=None,
+            interval_pattern=None,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+
+    def test_check_scorer_column_selection_preserves_vintage_time_interval(self):
+        """vintage_time must survive interval coverage-rate column selection."""
+        import re
+
+        from yohou.metrics import IntervalScore
+
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        vintage = pl.Series(
+            "vintage_time",
+            [datetime(2019, 12, 31)] * 2 + [datetime(2020, 1, 2)] * 3,
+        )
+        y_true = pl.DataFrame({"time": times, "value": range(5)})
+        y_pred = pl.DataFrame({
+            "time": times,
+            "vintage_time": vintage,
+            "value_lower_0.9": [0.0] * 5,
+            "value_upper_0.9": [10.0] * 5,
+            "value_lower_0.95": [0.0] * 5,
+            "value_upper_0.95": [10.0] * 5,
+        })
+        scorer = IntervalScore(coverage_rates=[0.95])
+        interval_pattern = re.compile(r"^(.+)_(lower|upper)_([\d.]+)$")
+
+        _, y_pred_out = check_scorer_column_selection(
+            scorer=scorer,
+            y_true=y_true,
+            y_pred=y_pred,
+            pred_type="interval",
+            coverage_rates=[0.95],
+            interval_pattern=interval_pattern,
+        )
+
+        assert "vintage_time" in y_pred_out.columns
+        assert y_pred_out["vintage_time"].to_list() == vintage.to_list()
+
 
 class TestCheckTimeColumnEdgeCases:
     """Additional edge case tests for check_time_column."""
@@ -1544,19 +1671,8 @@ class TestCheckIntervalSubDay:
         result = check_interval_consistency(df)
         assert "h" in result
 
-    def test_inconsistent_interval_raises(self):
-        """Inconsistent intervals raise ValueError."""
-        df = pl.DataFrame({
-            "time": [
-                datetime(2020, 1, 1),
-                datetime(2020, 1, 2),
-                datetime(2020, 1, 5),
-                datetime(2020, 1, 9),
-                datetime(2020, 1, 20),
-            ]
-        })
-        with pytest.raises(ValueError, match="inconsistent"):
-            check_interval_consistency(df)
+    # Inconsistent-interval rejection is covered (with a stronger message match)
+    # by TestCheckIntervalConsistency.test_check_interval_consistency_truly_inconsistent.
 
 
 class TestCheckContinuityBranchCoverage:
@@ -1578,6 +1694,41 @@ class TestCheckContinuityBranchCoverage:
         })
         with pytest.raises(ValueError, match="interval"):
             check_continuity(df_p, df_n, expected_interval="1d")
+
+    def test_check_intervals_false_skips_internal_interval_check(self):
+        """check_intervals=False skips the internal-interval pre-check.
+
+        df_p has internally inconsistent spacing (1d then 2d) but ends one
+        expected step (1d) before df_n starts. With check_intervals=True this
+        raises ("Cannot infer a regular frequency pattern"); with
+        check_intervals=False the internal check is skipped, so only the
+        boundary continuity (the 1d gap) is validated and no error is raised.
+        """
+        df_p = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 4)],
+        })
+        df_n = pl.DataFrame({
+            "time": [datetime(2020, 1, 5)],
+        })
+
+        # Sanity: the same inputs are rejected when interval checking is on.
+        with pytest.raises(ValueError, match="Cannot infer a regular frequency pattern"):
+            check_continuity(df_p, df_n, expected_interval="1d", check_intervals=True)
+
+        # With check_intervals=False the contiguous boundary passes.
+        check_continuity(df_p, df_n, expected_interval="1d", check_intervals=False)
+
+    def test_check_intervals_false_still_detects_boundary_gap(self):
+        """check_intervals=False still validates the gap between df_p and df_n."""
+        df_p = pl.DataFrame({
+            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 4)],
+        })
+        # Next frame starts at 1/10, far past the expected 1/5: a real gap.
+        df_n = pl.DataFrame({
+            "time": [datetime(2020, 1, 10)],
+        })
+        with pytest.raises(ValueError, match="Gap detected"):
+            check_continuity(df_p, df_n, expected_interval="1d", check_intervals=False)
 
 
 class TestCheckForecastingHorizonPositive:
@@ -1623,6 +1774,102 @@ class TestCheckXActualRequired:
         """X_actual provided with positive horizon passes without error."""
         X = pl.DataFrame({"time": [datetime(2020, 1, 1)], "val": [1.0]})
         check_X_actual_required(X, observation_horizon=5, context="predict")
+
+
+class TestCheckSufficientRows:
+    """Tests for check_sufficient_rows."""
+
+    def test_too_few_rows_raises(self):
+        """A DataFrame with fewer than min_rows raises ValueError."""
+        from yohou.utils.validation import check_sufficient_rows
+
+        df = pl.DataFrame({"time": [datetime(2020, 1, 1), datetime(2020, 1, 2)]})
+        with pytest.raises(ValueError, match="requires at least 3 rows"):
+            check_sufficient_rows(df, min_rows=3, context="for the test")
+
+    def test_exactly_enough_rows_passes(self):
+        """A DataFrame with exactly min_rows passes without error."""
+        from yohou.utils.validation import check_sufficient_rows
+
+        df = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), "1d", eager=True),
+        })
+        check_sufficient_rows(df, min_rows=3, context="for the test")
+
+    def test_error_uses_df_name(self):
+        """The provided df_name appears in the error message."""
+        from yohou.utils.validation import check_sufficient_rows
+
+        df = pl.DataFrame({"time": [datetime(2020, 1, 1)]})
+        with pytest.raises(ValueError, match="y has 1 rows"):
+            check_sufficient_rows(df, min_rows=2, context="for memory buffer", df_name="y")
+
+
+class TestValidateSearchData:
+    """Tests for validate_search_data (the GridSearchCV/RandomizedSearchCV entry point)."""
+
+    def test_y_none_raises(self):
+        """y=None raises ValueError before any other validation runs."""
+        from yohou.utils.validation import validate_search_data
+
+        with pytest.raises(ValueError, match="`y` cannot be None"):
+            validate_search_data(None, None)
+
+    def test_valid_global_data_returns_interval(self):
+        """Valid global y and X_actual return the shared time interval."""
+        from yohou.utils.validation import validate_search_data
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y = pl.DataFrame({"time": time, "sales": [100, 110, 120, 130, 140]})
+        X = pl.DataFrame({"time": time, "holiday": [0, 0, 1, 0, 0]})
+
+        assert validate_search_data(y, X) == "1d"
+
+    def test_valid_global_data_without_X_returns_interval(self):
+        """y alone (X_actual=None) is validated and the interval is returned."""
+        from yohou.utils.validation import validate_search_data
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 5), "1d", eager=True)
+        y = pl.DataFrame({"time": time, "sales": [100, 110, 120, 130, 140]})
+
+        assert validate_search_data(y, None) == "1d"
+
+    def test_consistent_panel_groups_pass(self):
+        """Panel y and X_actual with matching groups validate successfully."""
+        from yohou.utils.validation import validate_search_data
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "sales__store_1": range(20, 30),
+            "sales__store_2": range(30, 40),
+        })
+
+        assert validate_search_data(y, X) == "1d"
+
+    def test_mismatched_panel_groups_raise(self):
+        """Panel y and X_actual with different groups raise via check_panel_groups_match."""
+        from yohou.utils.validation import validate_search_data
+
+        time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 10), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": time,
+            "sales__store_1": range(10),
+            "sales__store_2": range(10, 20),
+        })
+        X = pl.DataFrame({
+            "time": time,
+            "temp__sensor_1": range(20, 30),
+            "temp__sensor_2": range(30, 40),
+        })
+
+        with pytest.raises(ValueError, match="Panel groups mismatch between `y` and `X_actual`"):
+            validate_search_data(y, X)
 
 
 class TestValidateColumnNames:

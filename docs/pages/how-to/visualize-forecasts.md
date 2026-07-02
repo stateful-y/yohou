@@ -19,12 +19,12 @@ Load a dataset, fit a forecaster, and generate predictions:
 ```python
 from yohou.datasets import fetch_tourism_monthly
 from yohou.point import PointReductionForecaster
-from yohou.utils import train_test_split
+from yohou.model_selection import train_test_split
 from sklearn.linear_model import Ridge
 
 bunch = fetch_tourism_monthly(n_series=1)
 y = bunch.frame
-y_train, y_test = train_test_split(y, forecasting_horizon=12)
+y_train, y_test = train_test_split(y, test_size=12)
 
 forecaster = PointReductionForecaster(estimator=Ridge())
 forecaster.fit(y_train, forecasting_horizon=12)
@@ -106,12 +106,14 @@ fig = plot_forecast(
 
 By default, faceting is by individual series (`facet_by="member"`). Set
 `facet_by="group"` to facet by panel group instead. The `facet_by`,
-`facet_n_cols`, and `groups` parameters work identically on `plot_residuals`
-and `plot_calibration`.
+`facet_n_cols`, and `groups` parameters work identically on
+[`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+and
+[`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/).
 
 ## 5. Inspect Residuals
 
-[`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+`plot_residuals`
 produces a 4-panel diagnostic (residuals over time, residuals vs fitted,
 histogram, Q-Q plot) for a single series, or a faceted layout for panel
 data:
@@ -135,7 +137,7 @@ fig = plot_residuals(
 
 ## 6. Check Calibration
 
-[`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
+`plot_calibration`
 compares nominal coverage rates against empirical coverage for interval
 forecasts:
 
@@ -190,4 +192,5 @@ a static figure.
 - [Visualize and Compare Model Scores](visualize-scores.md) for plotting per-step and per-vintage accuracy metrics
 - [Forecast with Class Probabilities](class-probability-forecasting.md) for class-probability chart types
 - [Working with Panel Data](panel-data.md) for panel data preparation and forecasting
+- [About Visualization](../explanation/visualization.md): design decisions behind the plotting API
 - [`yohou.plotting` API reference](/pages/api/plotting/)

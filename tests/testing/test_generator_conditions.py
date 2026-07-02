@@ -303,6 +303,7 @@ class TestForecasterGeneratorConditions:
         )
         assert "check_panel_data" in names
         assert "check_panel_single_group" in names
+        assert "check_panel_invalid_group_raises" in names
 
     def test_non_panel_data_skips_panel_checks(self, y_X_factory):
         """Non-panel data should skip panel checks."""
@@ -359,6 +360,69 @@ class TestForecasterGeneratorConditions:
         }
         assert step_checks.issubset(set(names)), f"Missing step checks: {step_checks - set(names)}"
         assert "check_requires_exogenous_warns_on_X_future_X_forecast" not in names
+
+    def test_interval_step_column_check_yielded(self, y_X_factory):
+        """Interval forecaster with step data + requires_exogenous yields the interval step check."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=200,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        f = SplitConformalForecaster(
+            point_forecaster=PointReductionForecaster(estimator=DecisionTreeRegressor()),
+            calibration_size=30,
+        )
+        f.fit(y[:150], X[:150], forecasting_horizon=5, X_future=X_future, X_forecast=X_forecast)
+
+        names = _check_names(
+            _yield_yohou_forecaster_checks(
+                f,
+                y[:140],
+                X[:140],
+                y[140:160],
+                X[140:160],
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+                tags={"forecaster_type": frozenset({"interval", "point"})},
+            )
+        )
+        assert "check_observe_predict_interval_with_step_columns" in names
+
+    def test_interval_step_column_check_not_yielded_for_point(self, y_X_factory):
+        """A point-only forecaster must not yield the interval step check."""
+        y, X, X_future, X_forecast = y_X_factory(
+            length=80,
+            n_targets=1,
+            n_features=2,
+            seed=42,
+            n_future_features=2,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
+        f = PointReductionForecaster(estimator=DecisionTreeRegressor())
+        f.fit(y[:60], X[:60], forecasting_horizon=5, X_future=X_future, X_forecast=X_forecast)
+
+        names = _check_names(
+            _yield_yohou_forecaster_checks(
+                f,
+                y[:50],
+                X[:50],
+                y[50:60],
+                X[50:60],
+                X_future_train=X_future,
+                X_future_test=X_future,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+                tags={"forecaster_type": frozenset({"point"}), "uses_reduction": True},
+            )
+        )
+        assert "check_observe_predict_interval_with_step_columns" not in names
 
     def test_step_column_checks_not_yielded_without_exogenous(self, y_X_factory):
         """Without X_future/X_forecast, step-column checks should not be yielded."""
@@ -465,10 +529,12 @@ class TestSplitterGeneratorConditions:
         y, X = y_X_factory(length=100, n_targets=1, n_features=2, seed=42)
         splitter = ExpandingWindowSplitter(n_splits=3, test_size=10)
 
+        # ExpandingWindowSplitter defines _parameter_constraints, so the
+        # generator must emit parameter-constraint checks unconditionally.
+        assert hasattr(ExpandingWindowSplitter, "_parameter_constraints")
         names = _check_names(_yield_yohou_splitter_checks(splitter, y, X, tags={"supports_panel_data": False}))
         constraint_checks = [n for n in names if "check_splitter_parameter_constraints" in n]
-        if hasattr(ExpandingWindowSplitter, "_parameter_constraints"):
-            assert len(constraint_checks) > 0, "Should yield parameter constraint checks"
+        assert len(constraint_checks) > 0, "Should yield parameter constraint checks"
 
 
 class TestScorerGeneratorConditions:
@@ -533,6 +599,51 @@ class TestScorerGeneratorConditions:
             )
         )
         assert "check_scorer_coverage_rate_subselection" not in names
+
+    def test_interval_scorer_yields_coverage_rates_validation(self, y_X_factory):
+        """Interval scorer with a coverage_rates ctor param yields coverage validation checks."""
+        from yohou.metrics.interval import EmpiricalCoverage
+
+        y_truth, y_pred = self._make_scorer_data(y_X_factory)
+        scorer = EmpiricalCoverage()
+
+        names = _check_names(
+            _yield_yohou_scorer_checks(
+                scorer,
+                y_truth,
+                y_pred,
+                tags={"prediction_type": "interval"},
+            )
+        )
+        coverage_validation = [n for n in names if "check_scorer_parameter_validation[coverage_rates" in n]
+        assert len(coverage_validation) > 0, "Interval scorer with coverage_rates should yield coverage validation"
+
+    def test_conformity_scorer_skips_coverage_rates_validation(self, y_X_factory):
+        """Interval-typed scorer lacking a coverage_rates ctor param skips coverage validation.
+
+        Conformity scorers (e.g. QuantileResidual) are interval-typed but do not
+        accept a ``coverage_rates`` constructor argument, so wiring the coverage
+        validation check would construct ``scorer_class(coverage_rates=...)`` and
+        fail spuriously. The generator must guard the yield on that param.
+        """
+        from yohou.metrics.conformity import Residual
+
+        y_truth, y_pred = self._make_scorer_data(y_X_factory)
+        scorer = Residual()
+        assert "coverage_rates" not in scorer.get_params()
+
+        names = _check_names(
+            _yield_yohou_scorer_checks(
+                scorer,
+                y_truth,
+                y_pred,
+                tags={"prediction_type": "interval"},
+            )
+        )
+        coverage_validation = [n for n in names if "check_scorer_parameter_validation[coverage_rates" in n]
+        assert coverage_validation == [], (
+            f"Scorer without coverage_rates param must skip coverage validation, got {coverage_validation}"
+        )
 
 
 class TestSearchGeneratorConditions:

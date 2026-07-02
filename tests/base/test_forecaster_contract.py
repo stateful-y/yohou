@@ -1,18 +1,19 @@
 """Contract tests for BaseForecaster lifecycle methods.
 
-Verifies fit, observe, rewind, predict, observation_horizon,
-tags, and fitted attributes using a minimal concrete forecaster.
+Verifies fit, observe, rewind, predict, and observation_horizon
+behaviour not covered by the systematic check suite, using a minimal
+concrete forecaster.
 """
 
 import sys
 from pathlib import Path
 
-import polars as pl
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import SimpleTransformer
 from yohou.point import PointReductionForecaster
+from yohou.stationarity.transformers import SeasonalDifferencing
 
 
 class TestBaseForecasterFit:
@@ -33,30 +34,10 @@ class TestBaseForecasterFit:
 class TestBaseForecasterPredict:
     """Tests for predict lifecycle."""
 
-    def test_predict_returns_dataframe(self, y_X_factory):
-        """Predict returns a polars DataFrame."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=3)
-        result = f.predict()
-        assert isinstance(result, pl.DataFrame)
-
-    def test_predict_has_time_columns(self, y_X_factory):
-        """Predict output has vintage_time and time columns."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=3)
-        result = f.predict()
-        assert "time" in result.columns
-        assert "vintage_time" in result.columns
-
-    def test_predict_length_matches_horizon(self, y_X_factory):
-        """Predict returns rows equal to forecasting_horizon."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=5)
-        result = f.predict()
-        assert len(result) == 5
+    # Column presence (vintage_time/time), dtype, and length==forecasting_horizon
+    # are exhaustively covered by check_predict_time_columns in the systematic
+    # suite (tests/test_common.py); only the predict-time horizon override below
+    # is unique to this file.
 
     def test_predict_different_horizon(self, y_X_factory):
         """Predict with different horizon than fit."""
@@ -65,34 +46,6 @@ class TestBaseForecasterPredict:
         f.fit(y, forecasting_horizon=3)
         result = f.predict(forecasting_horizon=7)
         assert len(result) == 7
-
-
-class TestBaseForecasterObserve:
-    """Tests for observe() method."""
-
-    def test_observe_returns_self(self, y_X_factory):
-        """Observe returns the forecaster instance."""
-        y, X = y_X_factory(length=60, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y[:50], forecasting_horizon=1)
-        result = f.observe(y[50:])
-        assert result is f
-
-    # observe() before fit raising NotFittedError is covered by the observe()
-    # branch of check_forecaster_methods_call_check_is_fitted in the systematic
-    # suite (tests/test_common.py).
-
-
-class TestBaseForecasterRewind:
-    """Tests for rewind() method."""
-
-    def test_rewind_returns_self(self, y_X_factory):
-        """Rewind returns the forecaster instance."""
-        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
-        f = PointReductionForecaster()
-        f.fit(y, forecasting_horizon=1)
-        result = f.rewind(y)
-        assert result is f
 
 
 class TestBaseForecasterObservationHorizon:
@@ -115,41 +68,82 @@ class TestBaseForecasterObservationHorizon:
         assert f.observation_horizon >= 5
 
 
-class TestBaseForecasterTags:
-    """Tests for __sklearn_tags__()."""
-
-    def test_estimator_type_is_forecaster(self):
-        """Tags report estimator_type as forecaster."""
-        f = PointReductionForecaster()
-        tags = f.__sklearn_tags__()
-        assert tags.estimator_type == "forecaster"
-
-    def test_forecaster_type_is_point(self):
-        """PointReductionForecaster has forecaster_type=point tag."""
-        f = PointReductionForecaster()
-        tags = f.__sklearn_tags__()
-        assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
+# estimator_type == "forecaster" and forecaster_type == frozenset({"point"})
+# are covered by check_forecaster_tags_accessible_before_fit and
+# check_forecaster_tags_match_capabilities in the systematic suite
+# (tests/test_common.py).
 
 
 class TestBaseForecasterWithExogenous:
     """Tests for forecasters with exogenous features."""
 
     def test_fit_with_X(self, y_X_factory):
-        """Fit with exogenous features completes successfully."""
+        """Fit with exogenous features yields a usable forecaster."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=2)
         f = PointReductionForecaster()
         f.fit(y, X, forecasting_horizon=1)
         # Verify the forecaster can produce predictions
         result = f.predict()
-        assert isinstance(result, pl.DataFrame)
+        assert len(result) == 1
 
     def test_observe_with_X(self, y_X_factory):
-        """Observe with exogenous features succeeds."""
+        """Observe with exogenous features advances the observation buffer."""
         y, X = y_X_factory(length=60, n_targets=1, n_features=2)
         f = PointReductionForecaster()
         f.fit(y[:50], X[:50], forecasting_horizon=1)
         result = f.observe(y[50:], X[50:])
         assert result is f
+        # Non-panel buffer update: observed_time_ advances to the last new row.
+        assert f.observed_time_ == y["time"][-1]
+
+
+class TestBaseForecasterEmptyObserve:
+    """Tests that observe() rejects an empty observation batch.
+
+    An empty ``y`` updates the transformers' observation state with zero rows,
+    leaving ``_X_t_observed`` at 0 rows while ``_y_observed`` keeps its
+    prepended history. observe() then returns silently and the corruption only
+    surfaces deep in the regressor at the next predict() ("Found array with 0
+    sample(s)"). observe() must instead fail fast with a clear ValueError.
+    """
+
+    def test_empty_observe_raises_no_buffer(self, y_X_factory):
+        """observe(empty y) raises ValueError with observation_horizon == 0."""
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster()
+        f.fit(y[:40], forecasting_horizon=3)
+        assert f.observation_horizon == 0
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
+
+    def test_empty_observe_raises_with_buffer(self, y_X_factory):
+        """observe(empty y) raises instead of silently corrupting predict().
+
+        With a stateful target transformer, ``observation_horizon > 0`` so the
+        prepended ``_y_observed`` history previously let observe() pass while
+        leaving ``_X_t_observed`` empty; predict() then crashed in the
+        regressor. The guard must reject the empty batch up front, and predict()
+        must keep working afterwards.
+        """
+        y, X = y_X_factory(length=50, n_targets=1, n_features=0)
+        f = PointReductionForecaster(target_transformer=SeasonalDifferencing(seasonality=3))
+        f.fit(y[:40], forecasting_horizon=3)
+        assert f.observation_horizon >= 3
+
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
+
+        # State must be untouched: predict still works after the rejected observe.
+        result = f.predict(forecasting_horizon=3)
+        assert len(result) == 3
+
+    def test_empty_observe_raises_panel(self, y_X_factory):
+        """observe(empty y) raises for panel data too."""
+        y, X = y_X_factory(length=60, n_targets=1, n_features=0, panel=True, n_groups=2)
+        f = PointReductionForecaster()
+        f.fit(y[:50], forecasting_horizon=1)
+        with pytest.raises(ValueError, match="empty"):
+            f.observe(y[:0])
 
 
 class TestBaseForecasterPreFitValidation:
@@ -171,6 +165,28 @@ class TestBaseForecasterPreFitValidation:
         f = PointReductionForecaster(target_as_feature=None)
         with pytest.raises(ValueError, match="target_as_feature=None requires X"):
             f.fit(y, forecasting_horizon=1)
+
+    def test_panel_group_mismatch_message_lists_both_group_sets(self, y_X_factory):
+        """Mismatched panel groups raise the canonical message listing both group sets.
+
+        The message must match the shape produced by ``check_panel_groups_match``
+        (the word "mismatch" plus both the y and X_actual group lists), not a
+        terse "do not have the same local group names" string.
+        """
+        y, _ = y_X_factory(length=50, n_targets=1, n_features=0, panel=True, n_groups=2)
+        x_panel, _ = y_X_factory(length=50, n_targets=1, n_features=0, panel=True, n_groups=2)
+        # Rename X_actual's group prefixes so they no longer match y's groups.
+        x_panel = x_panel.rename({c: c.replace("group_", "store_") for c in x_panel.columns if c != "time"})
+
+        f = PointReductionForecaster()
+        with pytest.raises(ValueError, match="mismatch") as exc_info:
+            f.fit(y, x_panel, forecasting_horizon=1)
+
+        message = str(exc_info.value)
+        assert "group_0" in message and "group_1" in message, f"y group set must be listed in the error, got: {message}"
+        assert "store_0" in message and "store_1" in message, (
+            f"X_actual group set must be listed in the error, got: {message}"
+        )
 
 
 class TestBaseForecasterRewindObservationHorizonZero:

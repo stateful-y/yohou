@@ -127,7 +127,7 @@ feature_transformer = FeaturePipeline([
 ])
 ```
 
-Pass the composed transformer to a forecaster:
+Pass the composed transformer to a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/):
 
 ```python
 from yohou.point import PointReductionForecaster

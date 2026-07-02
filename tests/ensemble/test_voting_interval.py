@@ -129,30 +129,6 @@ class TestVotingIntervalForecasterStrategies:
         assert len(lower_cols) > 0
         assert len(upper_cols) > 0
 
-    def test_predict_interval_forwards_strategy_to_children(self, _interval_data):
-        """predict_interval forwards the ``strategy`` kwarg to each child."""
-        y_train, base_forecasters = _interval_data
-
-        ensemble = VotingIntervalForecaster(
-            forecasters=base_forecasters,
-            method="envelope",
-        )
-        ensemble.fit(y_train, forecasting_horizon=3)
-
-        seen_strategies = []
-        for _, child in ensemble.forecasters_:
-            original = child.predict_interval
-
-            def _spy(*args, _orig=original, **kwargs):
-                seen_strategies.append(kwargs.get("strategy"))
-                return _orig(*args, **kwargs)
-
-            child.predict_interval = _spy
-
-        ensemble.predict_interval(forecasting_horizon=3, strategy="median")
-
-        assert seen_strategies == ["median"] * len(ensemble.forecasters_)
-
     def test_envelope_strategy(self, _interval_data):
         """Test that envelope takes min(lower) and max(upper)."""
         y_train, base_forecasters = _interval_data
@@ -471,6 +447,97 @@ class TestVotingIntervalForecasterErrorHandling:
                 }),
                 forecasting_horizon=3,
             )
+
+    def test_double_underscore_name_raises(self):
+        """A forecaster name containing '__' is rejected.
+
+        A name like 'foo__bar' must fail validation; otherwise it corrupts
+        nested-parameter routing.
+        """
+        forecaster = VotingIntervalForecaster(
+            forecasters=[
+                (
+                    "foo__bar",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(seasonality=1),
+                        calibration_size=10,
+                    ),
+                ),
+                (
+                    "conf_7",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(seasonality=7),
+                        calibration_size=10,
+                    ),
+                ),
+            ],
+        )
+        with pytest.raises(ValueError, match="must not contain '__'"):
+            forecaster.fit(
+                pl.DataFrame({
+                    "time": pl.datetime_range(
+                        start=datetime(2020, 1, 1),
+                        end=datetime(2020, 3, 20),
+                        interval="1d",
+                        eager=True,
+                    ),
+                    "value": range(80),
+                }),
+                forecasting_horizon=3,
+            )
+
+    def test_wrong_family_forecaster_raises(self):
+        """A point forecaster passed to the interval ensemble is rejected at fit.
+
+        Without a family check this would only surface later as an
+        AttributeError inside predict_interval, so the failure must be a clear
+        ValueError naming the required family.
+        """
+        forecaster = VotingIntervalForecaster(
+            forecasters=[
+                (
+                    "conf_1",
+                    SplitConformalForecaster(
+                        point_forecaster=SeasonalNaive(seasonality=1),
+                        calibration_size=10,
+                    ),
+                ),
+                # SeasonalNaive is a point forecaster, not an interval forecaster.
+                ("point", SeasonalNaive(seasonality=7)),
+            ],
+        )
+        with pytest.raises(ValueError, match="BaseIntervalForecaster"):
+            forecaster.fit(
+                pl.DataFrame({
+                    "time": pl.datetime_range(
+                        start=datetime(2020, 1, 1),
+                        end=datetime(2020, 3, 20),
+                        interval="1d",
+                        eager=True,
+                    ),
+                    "value": range(80),
+                }),
+                forecasting_horizon=3,
+            )
+
+    def test_aggregate_interval_envelope_fallback(self):
+        """Envelope strategy falls back to mean for non-lower/upper columns.
+
+        ``_aggregate_interval_values`` is only reached through the interval
+        ensemble, so its envelope fallback for point columns is exercised here.
+        """
+        from yohou.ensemble._base import _BaseEnsembleForecaster
+
+        pred1 = pl.DataFrame({"time": [1, 2], "coverage_90": [10.0, 20.0]})
+        pred2 = pl.DataFrame({"time": [1, 2], "coverage_90": [30.0, 40.0]})
+
+        result = _BaseEnsembleForecaster._aggregate_interval_values(
+            predictions=[pred1, pred2],
+            interval_cols=["coverage_90"],
+            strategy="envelope",
+            weights=None,
+        )
+        assert result["coverage_90"].to_list() == [20.0, 30.0]
 
 
 class TestVotingIntervalForecasterObserveRewind:

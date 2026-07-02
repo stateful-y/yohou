@@ -143,6 +143,10 @@ class TestPointReductionPanel:
         forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
         y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
+        # Verify the mandatory prediction time-column contract on the panel path.
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
+
         # Verify panel structure
         global_cols, panel_groups = inspect_panel(y_pred)
         assert len(panel_groups) == 5
@@ -463,7 +467,15 @@ class TestDecompositionPipelinePanel:
 
     @pytest.mark.integration
     def test_decomposition_pipeline_panel_per_group_trends(self, linear_panel_5groups):
-        """Test DecompositionPipeline captures trends on panel data."""
+        """Test a bare (un-wrapped) DecompositionPipeline on panel data.
+
+        This is the cross-group code path: a single DecompositionPipeline fits
+        its trend across all groups at once (distinct from
+        test_decomposition_pipeline_panel_residuals_near_zero, which wraps the
+        pipeline in LocalPanelForecaster for independent per-group fitting). The
+        per-group slope still emerges, so each group's forecast must increase by
+        its own slope step.
+        """
         y = linear_panel_5groups
         y_train = y[:80]
 
@@ -481,11 +493,14 @@ class TestDecompositionPipelinePanel:
         global_cols, panel_groups = inspect_panel(y_pred)
         assert len(panel_groups) == 5
 
-        # Predictions should be reasonable (trend + residual)
+        # Each group continues its own positive linear trend: the step between
+        # consecutive forecasts must equal that group's slope (group_idx + 1).
         for group_idx in range(5):
             group_name = f"g{group_idx}"
             y_pred_group = get_group_df(y_pred, group_name, schema={"value": pl.Float64})
             assert len(y_pred_group) == 5
+            diffs = np.diff(y_pred_group["value"].to_numpy())
+            np.testing.assert_allclose(diffs, float(group_idx + 1), atol=0.5)
 
     @pytest.mark.integration
     def test_decomposition_pipeline_panel_residuals_near_zero(self, linear_panel_5groups):
@@ -687,8 +702,10 @@ class TestForecastedFeatureForecasterPanel:
 
         y_train = y[:80]
         X_actual_train = X_actual[:80]
-        _X_future = X_actual[80:85]  # Actual future features
 
+        # strategy="actual" reuses the rewound actual feature buffer at predict
+        # time and does not consume a separate future-feature argument, so no
+        # X_future is passed to predict() below.
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
@@ -914,24 +931,19 @@ class TestGridSearchPanel:
         assert hasattr(search, "best_forecaster_")
         assert hasattr(search, "best_params_")
 
-        # Predict with best estimator
-        y_pred = search.predict(forecasting_horizon=5)
-
-        # Verify panel structure maintained
-        global_cols, panel_groups = inspect_panel(y_pred)
+        # Predict via the search wrapper preserves all five panel groups.
+        global_cols, panel_groups = inspect_panel(search.predict(forecasting_horizon=5))
         assert len(panel_groups) == 5
+
+        # The unwrapped best_forecaster_ predicts the same panel structure.
+        _, best_panel_groups = inspect_panel(search.best_forecaster_.predict(forecasting_horizon=5))
+        assert len(best_panel_groups) == 5
 
     @pytest.mark.integration
     def test_gridsearch_panel_cv_splits_handle_panel(self, linear_panel_5groups):
-        """Test that CV splits correctly handle panel data (all groups in each split)."""
+        """Test that every CV split retains all panel groups."""
         y = linear_panel_5groups
         y_train = y[:80]
-
-        forecaster = PointReductionForecaster(
-            estimator=Ridge(),
-        )
-
-        param_grid = {"estimator__alpha": [0.1, 1.0]}
 
         cv = SlidingWindowSplitter(
             train_size=40,
@@ -939,53 +951,31 @@ class TestGridSearchPanel:
             stride=10,
         )
 
-        search = GridSearchCV(
-            forecaster,
-            param_grid,
-            cv=cv,
-            scoring=MeanAbsoluteError(),
-        )
+        # Directly verify every train/test slice keeps all five panel groups,
+        # rather than relying on "successful fit" to imply it.
+        _, full_groups = inspect_panel(y_train)
+        full_group_set = set(full_groups.keys())
+        assert len(full_group_set) == 5
 
-        search.fit(y_train, forecasting_horizon=5)
+        splits = list(cv.split(y_train))
+        assert len(splits) > 0
+        for train_idx, test_idx in splits:
+            _, train_groups = inspect_panel(y_train[train_idx.tolist()])
+            _, test_groups = inspect_panel(y_train[test_idx.tolist()])
+            assert set(train_groups.keys()) == full_group_set
+            assert set(test_groups.keys()) == full_group_set
 
-        # Verify each CV split had all groups
-        # This is implicitly tested by successful fit
-        assert search.n_splits_ > 0
-
-    @pytest.mark.integration
-    def test_gridsearch_panel_best_forecaster_maintains_structure(self, linear_panel_5groups):
-        """Test that best forecaster from GridSearchCV maintains panel structure."""
-        y = linear_panel_5groups
-        y_train = y[:80]
-
-        forecaster = PointReductionForecaster(
-            estimator=Ridge(),
-        )
-
+        # And confirm the search itself produces a finite score per param combo.
         param_grid = {"estimator__alpha": [0.1, 1.0]}
-
-        cv = SlidingWindowSplitter(
-            train_size=40,
-            test_size=5,
-            stride=10,
-        )
-
         search = GridSearchCV(
-            forecaster,
+            PointReductionForecaster(estimator=Ridge()),
             param_grid,
             cv=cv,
             scoring=MeanAbsoluteError(),
         )
-
         search.fit(y_train, forecasting_horizon=5)
-
-        # Use best_forecaster_ to predict
-        best_forecaster = search.best_forecaster_
-        y_pred = best_forecaster.predict(forecasting_horizon=5)
-
-        # Verify panel structure
-        global_cols, panel_groups = inspect_panel(y_pred)
-        assert len(panel_groups) == 5
+        assert len(search.cv_results_["params"]) == 2
+        assert np.all(np.isfinite(search.cv_results_["mean_test_score"]))
 
     @pytest.mark.integration
     def test_gridsearch_panel_with_interval_forecaster(self):

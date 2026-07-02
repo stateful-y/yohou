@@ -103,7 +103,9 @@ class RenderContext:
         Subplot column (1-indexed).
     facet_by : str
         ``"group"``, ``"member"``, or ``"column"`` - indicates the
-        faceting axis.
+        faceting axis.  ``"column"`` is set automatically by the non-panel
+        (column-mode) code path; it is not a value accepted by
+        `facet_figure`'s own ``facet_by`` parameter.
     facet_name : str
         The facet axis value (group name when ``facet_by="group"``,
         member name when ``facet_by="member"``, column name when
@@ -148,7 +150,8 @@ def _subplot_spacing(n: int, base: float = 0.3, floor: float = 0.04) -> float:
     Returns
     -------
     float
-        ``max(floor, base / n)``
+        ``max(floor, base / max(n, 1))`` (the ``max(n, 1)`` guards against
+        division by zero when ``n`` is 0).
     """
     return max(floor, base / max(n, 1))
 
@@ -630,8 +633,10 @@ class PanelColorManager:
     Parameters
     ----------
     color_palette : list[str] | None, default=None
-        Custom colour hex codes.  When ``None`` the default
-        `palette_yohou` palette is used.
+        Custom colour hex codes.  Any falsy value (``None`` or an empty
+        list ``[]``) falls back to the default `palette_yohou` palette.
+        Note this differs from `resolve_color_palette`, which raises
+        ``ValueError`` for an empty list.
 
     Examples
     --------
@@ -902,9 +907,11 @@ def apply_default_layout(
     y_label : str | None, default=None
         Y-axis label.
     width : int | None, default=None
-        Plot width in pixels.
+        Plot width in pixels.  When ``None``, defaults to
+        :data:`DEFAULT_WIDTH` (1000 px).
     height : int | None, default=None
-        Plot height in pixels.
+        Plot height in pixels.  When ``None``, height is left unset and
+        Plotly auto-sizes the figure.
     hovermode : str | None, default=None
         Plotly hovermode (e.g. ``"x unified"``).  ``None`` keeps the
         default (``"closest"`` from :data:`DEFAULT_LAYOUT`).
@@ -1056,7 +1063,7 @@ def _add_confidence_bands(
     col: int | None = None,
     color: str = "#DC2626",
 ) -> None:
-    """Add symmetric or asymmetric dashed confidence band traces.
+    """Add upper and lower dashed confidence band traces.
 
     Parameters
     ----------
@@ -1291,7 +1298,8 @@ def facet_figure(
         Non-panel only.  Maps a facet name (subplot title) to a list
         of columns that should be available in ``RenderContext.sub_df``.
         Mutually exclusive with *columns* in non-panel mode.  Example:
-        ``{"sales": ["sales_proba_low", "sales_proba_high"]}``.
+        ``{"sales": ["sales_proba_low", "sales_proba_high"]}``.  Silently
+        ignored when *groups* is provided (panel mode).
     facet_by : Literal["group", "member"], default="member"
         Faceting axis (panel mode only).
 
@@ -1299,6 +1307,9 @@ def facet_figure(
           overlaid within each subplot (cross-entity comparison).
         - ``"group"`` - one subplot per group; members are overlaid
           within each subplot (within-entity analysis).
+
+        When ``facet_by="member"`` and the panel contains more than one
+        group, hovermode is automatically set to ``"x unified"``.
     facet_n_cols : int, default=2
         Number of columns in the facet grid.
     title : str | None, default=None
@@ -1338,13 +1349,12 @@ def facet_figure(
     Examples
     --------
     >>> import polars as pl
-    >>> from yohou.plotting._utils import facet_figure, RenderContext, LegendTracker
+    >>> from yohou.plotting._utils import facet_figure, RenderContext
     >>> df = pl.DataFrame({
     ...     "time": [1, 2, 3],
     ...     "sales__a": [10, 20, 30],
     ...     "sales__b": [15, 25, 35],
     ... })
-    >>> tracker = LegendTracker()
     >>> def render(ctx: RenderContext) -> None:
     ...     ctx.fig.add_scatter(
     ...         x=ctx.sub_df["time"],
@@ -1353,7 +1363,7 @@ def facet_figure(
     ...         row=ctx.row,
     ...         col=ctx.col,
     ...     )
-    >>> fig = facet_figure(df, render)
+    >>> fig = facet_figure(df, render, groups=["sales"])  # panel mode
     >>> len(fig.data) > 0
     True
 

@@ -78,6 +78,9 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
     - Requires at least 2 complete seasonal cycles for "average"/"median" methods
     - "naive" method only requires 1 complete cycle
     - Works best with detrended data (consider using with differencing transformers)
+    - When fitted on panel data, a single seasonal pattern is learned by
+      pooling all group observations, and the same pattern is used for
+      every group at predict time (regardless of ``panel_strategy``)
 
     """
 
@@ -321,8 +324,13 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     harmonics : list of int or None, default=None
         List of Fourier harmonics to use (e.g., [1, 2, 3] uses first 3 harmonics).
         When ``None``, a single first harmonic ``[1]`` is used at fit time.
-    estimator : RegressorMixin, default=ElasticNet()
-        Regression model used to fit Fourier coefficients.
+        Must be non-empty if provided; all entries must be positive integers
+        not exceeding ``seasonality / 2`` (Nyquist limit). Raises ``ValueError``
+        at fit time otherwise.
+    estimator : RegressorMixin or None, default=None
+        Regression model used to fit Fourier coefficients. When ``None``, a
+        fresh ``ElasticNet()`` is constructed inside ``__init__`` (so that
+        separate instances never share one estimator object).
     target_transformer : BaseTransformer, optional
         Transformer for target variable.
     panel_strategy : {"global", "multivariate"}, default="global"
@@ -370,7 +378,8 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     -----
     - Handles non-integer seasonality (e.g., 365.25 days/year)
     - Produces smooth seasonal curves
-    - Can represent multiple seasonalities by using more harmonics
+    - Can represent complex seasonality shapes by using multiple harmonics
+      (subharmonics of the single configured period)
     - Unlike pattern-based methods, representation is continuous and differentiable
 
     """
@@ -378,14 +387,14 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
     _parameter_constraints: dict = {
         **_BaseSeasonalityForecaster._parameter_constraints,
         "harmonics": [list, None],
-        "estimator": [RegressorMixin],
+        "estimator": [RegressorMixin, None],
     }
 
     def __init__(
         self,
         seasonality: float,
         harmonics: list[int] | None = None,
-        estimator: RegressorMixin = ElasticNet(),
+        estimator: RegressorMixin | None = None,
         target_transformer=None,
         panel_strategy="global",
     ):
@@ -396,6 +405,9 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         )
 
         self.harmonics = harmonics
+        # Store the param as-is (None default, not a mutable ElasticNet()) so
+        # instances never share one estimator object; the default is built at
+        # fit time. This keeps get_params/repr consistent with the signature.
         self.estimator = estimator
 
     def _build_fourier_features(self, X_time_indices: np.ndarray) -> np.ndarray:
@@ -465,7 +477,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
 
         estimator = Pipeline([
             ("fourier_features", FunctionTransformer(func=self._build_fourier_features)),
-            ("regressor", clone(self.estimator)),
+            ("regressor", clone(self.estimator if self.estimator is not None else ElasticNet())),
         ])
 
         self._fit_estimator(estimator, y_t)

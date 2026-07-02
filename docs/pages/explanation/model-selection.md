@@ -87,11 +87,13 @@ The helper [`check_cv`](/pages/api/generated/yohou.model_selection.split.check_c
 
 Not all test errors deserve equal attention. A forecast that performed well last month but poorly six months ago may still be the right choice for production. Yohou scorers carry their weighting as a constructor parameter: pass a weighter to `time_weighter` to assign different importance to each test-set time step.
 
-Three built-in weighters map a key `pl.Series` to a weight `pl.Series`:
+The most commonly used weighters for scoring map a key `pl.Series` to a weight `pl.Series`:
 
 - [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
 - [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
 - [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+
+For the full set, including `LookupWeighter`, `TableWeighter`, and `CompositeWeighter`, see [Weighting](weighting.md).
 
 Because the weighting lives on the scorer instance, a weighted scorer is a self-contained cross-validation objective; there is no per-call weight argument to route:
 
@@ -133,68 +135,19 @@ See [How to Use Time Weighting](../how-to/time-weighting.md) for the full set of
 
 ## Cross-Validation
 
-The simplest way to compute a cross-validated score is [`cross_val_score`](/pages/api/generated/yohou.model_selection.validation.cross_val_score/). It takes a forecaster, target data, a scorer, and an optional splitter, then returns a `pl.DataFrame` with `split` (0-indexed fold identifier) and `score` columns:
-
-```python
-from sklearn.linear_model import Ridge
-from yohou.point import PointReductionForecaster
-from yohou.metrics import MeanAbsoluteError
-from yohou.model_selection import cross_val_score, ExpandingWindowSplitter
-
-forecaster = PointReductionForecaster(estimator=Ridge())
-scores = cross_val_score(
-    forecaster,
-    y,
-    scoring=MeanAbsoluteError(),
-    cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
-    forecasting_horizon=14,
-)
-print(scores)  # DataFrame with split and score columns
-print(f"Mean: {scores['score'].mean():.2f} (+/- {scores['score'].std():.2f})")
-```
+The simplest way to compute a cross-validated score is [`cross_val_score`](/pages/api/generated/yohou.model_selection.validation.cross_val_score/). It takes a forecaster, target data, a scorer, and an optional splitter, then returns a `pl.DataFrame` with `split` (0-indexed fold identifier) and `score` columns. The mean of the `score` column summarizes overall skill, and its standard deviation reflects how stable that skill is across folds: a low spread suggests the model generalizes consistently through time, while a high spread warns that performance depends heavily on which window the forecaster trains on.
 
 ### The `cross_validate` Function
 
 For richer output, [`cross_validate`](/pages/api/generated/yohou.model_selection.validation.cross_validate/) returns a `pl.DataFrame` with a `split` column, timing columns (`fit_time`, `score_time`), and score columns. In single-scorer mode the score column is `test_score`. When `return_train_score=True` is set, a `train_score` column is added. Two additional optional flags change the return type to a dictionary: `return_forecaster` stores the fitted forecaster from each fold, and `return_indices` stores the train/test index arrays. When either flag is set, the result is a dictionary with a `"results"` key containing the DataFrame, plus `"forecaster"` and/or `"indices"` keys.
 
-When a dictionary of scorers is passed, the score columns follow the pattern `test_{name}` and (if requested) `train_{name}` for each scorer name:
-
-```python
-from yohou.metrics import MeanAbsoluteError, RootMeanSquaredError
-from yohou.model_selection import cross_validate, ExpandingWindowSplitter
-
-results = cross_validate(
-    forecaster,
-    y,
-    scoring={
-        "mae": MeanAbsoluteError(),
-        "rmse": RootMeanSquaredError(),
-    },
-    cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
-    forecasting_horizon=14,
-)
-print(results["test_mae"])   # per-fold MAE column
-print(results["test_rmse"])  # per-fold RMSE column
-print(results["fit_time"])   # time spent fitting each fold
-```
+When a dictionary of scorers is passed, the score columns follow the pattern `test_{name}` and (if requested) `train_{name}` for each scorer name, so a `{"mae": ..., "rmse": ...}` mapping yields `test_mae` and `test_rmse` columns alongside the timing columns. This makes it possible to confirm that a model's ranking is robust across metric families rather than an artifact of one summary statistic.
 
 `return_train_score` defaults to `False` to save computation, since training scores require an additional scoring pass over the (often much larger) training set.
 
 ### Obtaining Predictions by Cross-Validation
 
-[`cross_val_predict`](/pages/api/generated/yohou.model_selection.validation.cross_val_predict/) generates out-of-fold predictions rather than scores. For each fold the forecaster is fitted on the training data and predictions are produced on the test data. The function concatenates all fold predictions into a single `pl.DataFrame` with a `split` column identifying the originating fold.
-
-```python
-from yohou.model_selection import cross_val_predict, ExpandingWindowSplitter
-
-predictions = cross_val_predict(
-    forecaster,
-    y,
-    cv=ExpandingWindowSplitter(n_splits=5, test_size=14),
-    forecasting_horizon=14,
-)
-print(predictions.head())  # columns include "time", predictions, and "split"
-```
+[`cross_val_predict`](/pages/api/generated/yohou.model_selection.validation.cross_val_predict/) generates out-of-fold predictions rather than scores. For each fold the forecaster is fitted on the training data and predictions are produced on the test data. The function concatenates all fold predictions into a single `pl.DataFrame` with a `split` column identifying the originating fold (alongside the usual `time` and prediction columns).
 
 These predictions are useful for visualizing how the forecaster performs across different folds and for model blending (stacking), where out-of-fold predictions serve as features for a second-level model. Note that scoring the concatenated predictions is not equivalent to the per-fold averaged scores from `cross_val_score`, because each prediction comes from a model trained on a different subset of the data.
 
@@ -227,17 +180,7 @@ The `refit` parameter also accepts a string (to name the scorer for multi-metric
 
 ### Multi-Metric Evaluation
 
-Passing a dictionary of scorers enables simultaneous evaluation on multiple metrics. In this case, `refit` must name the scorer to optimize or be set to `False`:
-
-```python
-search = GridSearchCV(
-    forecaster=my_forecaster,
-    param_grid=param_grid,
-    scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
-    cv=cv,
-    refit="mae",
-)
-```
+Passing a dictionary of scorers (for example `{"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()}`) enables simultaneous evaluation on multiple metrics. In this case, `refit` must name the scorer to optimize (`refit="mae"`) or be set to `False`, because the search can no longer infer a single objective from the scoring argument alone.
 
 ### Randomized Search
 
@@ -247,7 +190,7 @@ search = GridSearchCV(
 
 Both search classes parallelize fold evaluation via `n_jobs` and control dispatch with `pre_dispatch` to limit memory usage. When a candidate fails to fit, `error_score` determines the behavior: set it to `np.nan` (the default) to record the failure and continue, or to `"raise"` to abort immediately. Failed fits produce a `FitFailedWarning` with the traceback.
 
-Both classes integrate with sklearn's metadata routing so that `time_weight` and other metadata flow through to scorers without extra configuration.
+Both classes integrate with sklearn's metadata routing so that `coverage_rates` and `groups` flow through to the correct estimators automatically. Time-axis weighting lives on constructor parameters, not on metadata, so no routing configuration is needed for weighters.
 
 ## Choosing a Forecasting Method
 
@@ -274,5 +217,7 @@ The splitters and search utilities tie together several other parts of yohou. Sc
 [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) work with all forecaster types: point, interval, and class-probability. For classification forecasters, pass a class-proba scorer such as [`LogLoss()`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the `scoring` parameter.
 
 For practical recipes, see [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md).
+For a hands-on tour of the temporal splitters, see the
+[Cross-Validation Splitters Tutorial](../tutorials/cross-validation-splitters.md).
 
 Interactive examples: [CV Splitters](/examples/cv_splitters/), [Cross-Validation](/examples/cross_validation/), [Hyperparameter Search](/examples/hyperparameter_search/), and [Time-Weighted Scoring](/examples/time_weighted_scoring/).

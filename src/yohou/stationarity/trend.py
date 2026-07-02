@@ -28,7 +28,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
     degree : int, default=1
         Polynomial degree. degree=1 gives linear trend, degree=2 quadratic, etc.
         Higher degrees can overfit - typically use degree <= 3.
-    estimator : RegressorMixin, default=ElasticNet()
+    estimator : RegressorMixin or None, default=None
         Regression model used to fit polynomial coefficients.
     target_transformer : BaseTransformer, optional
         Transformer for target variable (e.g., LogTransformer).
@@ -86,18 +86,21 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
 
     _parameter_constraints: dict = {
         "degree": [Interval(numbers.Integral, 0, None, closed="left")],
-        "estimator": [RegressorMixin],
+        "estimator": [RegressorMixin, None],
     }
 
     def __init__(
         self,
         degree: StrictInt = 1,
-        estimator: RegressorMixin = ElasticNet(),
+        estimator: RegressorMixin | None = None,
         target_transformer=None,
         panel_strategy="global",
     ):
         super().__init__(target_transformer=target_transformer, panel_strategy=panel_strategy)
         self.degree = degree
+        # Store the param as-is (None default, not a mutable ElasticNet()) so
+        # instances never share one estimator object; the default is built at
+        # fit time. This keeps get_params/repr consistent with the signature.
         self.estimator = estimator
 
     def _fit(
@@ -115,12 +118,13 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             Transformed features (unused).
         forecasting_horizon : int
-            Number of steps ahead to forecast.
+            Number of steps ahead to forecast (not used; stored by the base
+            class as ``fit_forecasting_horizon_``).
 
         """
         estimator = Pipeline([
             ("poly_features", PolynomialFeatures(degree=self.degree, include_bias=True)),
-            ("regressor", clone(self.estimator)),
+            ("regressor", clone(self.estimator if self.estimator is not None else ElasticNet())),
         ])
 
         self._fit_estimator(estimator, y_t)

@@ -187,8 +187,9 @@ class TestLevel1ForecasterPipelines:
         else:
             np.testing.assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
-        # Verify output structure
+        # Verify output structure (full prediction time-column contract)
         assert len(y_pred) == horizon
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
         assert "value" in y_pred.columns
 
@@ -623,8 +624,12 @@ class TestLevel5FullTower:
         actual_b = y_pred.select("col_b").to_numpy().flatten()
         actual_c = y_pred.select("col_c").to_numpy().flatten()
 
-        np.testing.assert_allclose(actual_a, expected_a, atol=3.0, rtol=0.02)
-        np.testing.assert_allclose(actual_b, expected_b, atol=3.0, rtol=0.02)
+        # col_a/col_b flow through ForecastedFeatureForecaster with
+        # LinearRegression on a purely linear series, so they must reconstruct
+        # exactly. Only col_c (PolynomialTrend + SeasonalNaive decomposition)
+        # needs slack for the SeasonalNaive residual offset.
+        np.testing.assert_allclose(actual_a, expected_a, atol=1e-6, rtol=1e-6)
+        np.testing.assert_allclose(actual_b, expected_b, atol=1e-6, rtol=1e-6)
         np.testing.assert_allclose(actual_c, expected_c, atol=3.0, rtol=0.02)
 
     def test_level5_full_tower_observe_predict(self, full_tower_forecaster, linear_series):
@@ -667,6 +672,8 @@ class TestLevel5FullTower:
         actual_b = y_pred.select("col_b").to_numpy().flatten()
         actual_c = y_pred.select("col_c").to_numpy().flatten()
 
-        np.testing.assert_allclose(actual_a, expected_a, atol=3.0, rtol=0.02)
-        np.testing.assert_allclose(actual_b, expected_b, atol=3.0, rtol=0.02)
+        # After observe(), col_a/col_b still reconstruct the linear series to
+        # numerical precision; only the col_c decomposition path needs slack.
+        np.testing.assert_allclose(actual_a, expected_a, atol=1e-8, rtol=1e-8)
+        np.testing.assert_allclose(actual_b, expected_b, atol=1e-8, rtol=1e-8)
         np.testing.assert_allclose(actual_c, expected_c, atol=3.0, rtol=0.02)

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks as _run_checks_base
 from yohou.metrics import (
@@ -181,28 +180,6 @@ class TestRMSE:
             f"RMSE ({rmse_score}) != sqrt(MeanSquaredError) ({np.sqrt(mse_score)})"
         )
 
-    def test_rmse_units_match_target(self, y_true_y_pred):
-        """RMSE should have same units as target (not squared like MeanSquaredError)."""
-        y_true, y_pred = y_true_y_pred
-
-        mae = MeanAbsoluteError()
-        rmse = RootMeanSquaredError()
-        mse = MeanSquaredError()
-
-        mae.fit(y_true)
-        rmse.fit(y_true)
-        mse.fit(y_true)
-        mae_score = mae.score(y_true, y_pred)
-        rmse_score = rmse.score(y_true, y_pred)
-        mse_score = mse.score(y_true, y_pred)
-
-        # RMSE should be between MAE and sqrt(MeanSquaredError) for typical errors
-        # RMSE should be closer in magnitude to MAE than to MeanSquaredError
-        assert mae_score > 0, "MAE should be positive"
-        assert rmse_score > 0, "RMSE should be positive"
-        assert rmse_score < mse_score, f"RMSE ({rmse_score}) should be less than MeanSquaredError ({mse_score})"
-        assert np.isclose(rmse_score, np.sqrt(mse_score)), "RMSE should equal sqrt(MeanSquaredError)"
-
     def test_rmse_perfect_prediction(self):
         """RMSE should be zero for perfect predictions."""
         y_true = pl.DataFrame({
@@ -239,23 +216,6 @@ class TestRMSE:
 
 
 class TestRMSSE:
-    def test_rmsse_requires_fit(self):
-        """RootMeanSquaredScaledError should raise error if used without fit()."""
-        y_true = pl.DataFrame({
-            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
-            "value": [10.0, 20.0],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)] * 2,
-            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
-            "value": [12.0, 19.0],
-        })
-
-        rmsse = RootMeanSquaredScaledError(seasonality=1)
-
-        with pytest.raises(NotFittedError, match="fitted"):
-            rmsse.score(y_true, y_pred)
-
     def test_rmsse_requires_training_data(self):
         """RootMeanSquaredScaledError fit() should raise error if y_train is None."""
         rmsse = RootMeanSquaredScaledError(seasonality=1)
@@ -263,17 +223,18 @@ class TestRMSSE:
         with pytest.raises(ValueError, match="`y_train` is required for scorer.fit"):
             rmsse.fit(y_train=None)
 
-    def test_rmsse_seasonality_too_large_error(self):
-        """RootMeanSquaredScaledError should raise error if seasonality > training length - 1."""
+    @pytest.mark.parametrize("scorer_cls", [RootMeanSquaredScaledError, MeanAbsoluteScaledError])
+    def test_scaled_seasonality_too_large_error(self, scorer_cls):
+        """Scaled scorers raise if seasonality > training length - 1."""
         y_train = pl.DataFrame({
             "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
             "value": [10.0, 20.0, 30.0],
         })
 
-        rmsse = RootMeanSquaredScaledError(seasonality=5)  # Too large for 3-row training data
+        scorer = scorer_cls(seasonality=5)  # Too large for 3-row training data
 
         with pytest.raises(ValueError, match="Training data length.*must be greater than seasonality"):
-            rmsse.fit(y_train)
+            scorer.fit(y_train)
 
     def test_rmsse_scaling_factors(self):
         """RootMeanSquaredScaledError should compute correct per-column scaling factors."""
@@ -631,31 +592,43 @@ class TestComponentwise:
         # Verify all values are positive (since we added constant error)
         assert (result["mae"] > 0).all(), "All componentwise MAE values should be positive"
 
-    def test_aggregate_parameter_validation(self):
-        """aggregation_method parameter should accept valid list or string values."""
-        # Valid: aggregation_method=['stepwise', 'vintagewise']
-        mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
-        assert mae_sv.aggregation_method == ["stepwise", "vintagewise"]
+    def test_aggregation_method_controls_output_shape(self, y_true_y_pred):
+        """Each valid aggregation_method yields the documented score() output type/shape."""
+        y_true, y_pred = y_true_y_pred  # 3 timesteps, 1 component, 1 vintage
 
-        # Valid: aggregation_method=['componentwise']
-        mae_componentwise = MeanAbsoluteError(aggregation_method=["componentwise"])
-        assert mae_componentwise.aggregation_method == ["componentwise"]
-
-        # Valid: aggregation_method=['groupwise']
-        mae_groupwise = MeanAbsoluteError(aggregation_method=["groupwise"])
-        assert mae_groupwise.aggregation_method == ["groupwise"]
-
-        # Valid: aggregation_method='all' (aggregates all dimensions)
+        # 'all' (and the equivalent fully-collapsing list) collapses to a scalar float.
         mae_all = MeanAbsoluteError(aggregation_method="all")
-        assert mae_all.aggregation_method == "all"
+        mae_all.fit(y_true)
+        all_score = mae_all.score(y_true, y_pred)
+        assert isinstance(all_score, float)
 
-        # Default should be 'all'
+        mae_full = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
+        mae_full.fit(y_true)
+        full_score = mae_full.score(y_true, y_pred)
+        assert isinstance(full_score, float)
+        assert np.isclose(full_score, all_score)
+
+        # Collapsing only the row dimensions keeps one value column, one row.
+        mae_sv = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise"])
+        mae_sv.fit(y_true)
+        sv_result = mae_sv.score(y_true, y_pred)
+        assert isinstance(sv_result, pl.DataFrame)
+        assert sv_result.shape == (1, 1)
+        assert sv_result["value"].dtype == pl.Float64
+
+        # Componentwise returns one row per timestep with a named metric column.
+        mae_componentwise = MeanAbsoluteError(aggregation_method=["componentwise"])
+        mae_componentwise.fit(y_true)
+        cw_result = mae_componentwise.score(y_true, y_pred)
+        assert isinstance(cw_result, pl.DataFrame)
+        assert cw_result.shape[0] == 3
+        assert "time" in cw_result.columns
+        assert "mae" in cw_result.columns
+
+        # Default is equivalent to 'all'.
         mae_default = MeanAbsoluteError()
-        assert mae_default.aggregation_method == "all"
-
-        # Valid: multiple aggregation methods
-        mae_multi = MeanAbsoluteError(aggregation_method=["stepwise", "vintagewise", "componentwise"])
-        assert mae_multi.aggregation_method == ["stepwise", "vintagewise", "componentwise"]
+        mae_default.fit(y_true)
+        assert isinstance(mae_default.score(y_true, y_pred), float)
 
 
 class TestMAPE:
@@ -817,25 +790,6 @@ class TestMASE:
         assert isinstance(score, float)
         assert score > 0
 
-    def test_mase_requires_fit(self):
-        """MASE should require fit() before score()."""
-        from yohou.metrics import MeanAbsoluteScaledError
-
-        y_true = pl.DataFrame({
-            "time": [datetime(2020, 1, 1)],
-            "value": [10.0],
-        })
-        y_pred = pl.DataFrame({
-            "vintage_time": [datetime(2019, 12, 31)],
-            "time": [datetime(2020, 1, 1)],
-            "value": [12.0],
-        })
-
-        mase = MeanAbsoluteScaledError(seasonality=2)
-
-        with pytest.raises(NotFittedError, match="fitted"):
-            mase.score(y_true, y_pred)
-
     def test_mase_requires_training_data(self):
         """MASE should raise error if fit() called with None."""
         from yohou.metrics import MeanAbsoluteScaledError
@@ -844,20 +798,6 @@ class TestMASE:
 
         with pytest.raises(ValueError, match="`y_train` is required for scorer.fit"):
             mase.fit(y_train=None)
-
-    def test_mase_seasonality_too_large_error(self):
-        """MASE should raise error if seasonality > training length - 1."""
-        from yohou.metrics import MeanAbsoluteScaledError
-
-        y_train = pl.DataFrame({
-            "time": [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3)],
-            "value": [10.0, 20.0, 30.0],
-        })
-
-        mase = MeanAbsoluteScaledError(seasonality=5)
-
-        with pytest.raises(ValueError, match="Training data length.*must be greater than seasonality"):
-            mase.fit(y_train)
 
     def test_mase_scale_independent(self):
         """MASE should be scale-independent."""
@@ -1030,6 +970,80 @@ class TestMAETimeWeight:
         score = mae.score(y_true, y_pred)
         assert isinstance(score, float)
         assert score > 0
+
+
+class TestMAEStepWeight:
+    """Tests for MAE score with step_weighter applied along the forecasting-step axis."""
+
+    @staticmethod
+    def _data():
+        # Single vintage 2019-12-31 with daily times => forecasting_step = 1..5.
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "value": [11.0, 22.0, 33.0, 44.0, 55.0],
+        })
+        return y_true, y_pred
+
+    def test_non_uniform_step_weights_change_score(self):
+        """Non-uniform step weights produce a different score than the unweighted mean."""
+        y_true, y_pred = self._data()
+
+        # Unweighted per-step abs errors [1, 2, 3, 4, 5] -> mean 3.0.
+        plain = MeanAbsoluteError()
+        plain.fit(y_true)
+        plain_score = plain.score(y_true, y_pred)
+        assert plain_score == pytest.approx(3.0, abs=1e-9)
+
+        # Up-weight step 1 (error 1.0): weighted mean drops below 3.0.
+        weighted = MeanAbsoluteError(step_weighter=LookupWeighter(mapping={1: 10.0}, default=1.0))
+        weighted.fit(y_true)
+        weighted_score = weighted.score(y_true, y_pred)
+        # (10*1 + 1*2 + 1*3 + 1*4 + 1*5) / (10 + 1 + 1 + 1 + 1) = 24/14.
+        assert weighted_score == pytest.approx(24.0 / 14.0, abs=1e-9)
+        assert weighted_score < plain_score
+
+    def test_zero_step_weight_prefilters_row(self):
+        """A step weight of 0.0 pre-filters that step's row before aggregation."""
+        y_true, y_pred = self._data()
+
+        # Drop step 1 (error 1.0); remaining errors [2, 3, 4, 5] -> mean 3.5.
+        scorer = MeanAbsoluteError(step_weighter=LookupWeighter(mapping={1: 0.0}, default=1.0))
+        scorer.fit(y_true)
+        score = scorer.score(y_true, y_pred)
+        assert score == pytest.approx(3.5, abs=1e-9)
+
+
+class TestMAEAllZeroWeightErrorPath:
+    """The all-rows-zero-weight guard in _pre_filter_zero_weights raises ValueError."""
+
+    def test_combined_weighters_zeroing_every_row_raises(self):
+        """time_weighter and step_weighter that jointly zero every row raise ValueError.
+
+        A single weighter cannot reach this branch: zeroing every key trips the
+        weighter-level "all weights are zero" guard first. The base-class
+        "All rows have zero weight" branch is only reachable when two weighters,
+        each with a positive total, together zero out every row.
+        """
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0, 20.0, 30.0, 40.0, 50.0]})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2019, 12, 31)] * 5,
+            "time": times,
+            "value": [11.0, 22.0, 33.0, 44.0, 55.0],
+        })
+
+        # time_weighter zeros the first two timestamps (rows 0, 1), nonzero elsewhere.
+        time_weighter = LookupWeighter(mapping={times[0]: 0.0, times[1]: 0.0}, default=1.0)
+        # step_weighter zeros steps 3, 4, 5 (rows 2, 3, 4), nonzero on steps 1, 2.
+        step_weighter = LookupWeighter(mapping={3: 0.0, 4: 0.0, 5: 0.0}, default=1.0)
+
+        scorer = MeanAbsoluteError(time_weighter=time_weighter, step_weighter=step_weighter)
+        scorer.fit(y_true)
+        with pytest.raises(ValueError, match="All rows have zero weight"):
+            scorer.score(y_true, y_pred)
 
 
 class TestMaxAbsoluteErrorSystematic:
@@ -1352,6 +1366,57 @@ class TestMDA:
         assert result.shape == (1, 1)
 
 
+class TestPointScorerWeighterSignatureConsistency:
+    """MedianAE, R2, and MDA must expose the same weighter params as their siblings.
+
+    Every other ``BasePointScorer`` (MAE, MSE, RMSE, ...) accepts
+    ``time_weighter`` and ``step_weighter`` in addition to ``vintage_weighter``.
+    These three previously omitted the time/step weighters from their
+    constructors, breaking the cross-family signature contract.
+    """
+
+    @pytest.mark.parametrize("scorer_cls", [MedianAbsoluteError, R2Score, MeanDirectionalAccuracy])
+    def test_accepts_and_stores_time_and_step_weighters(self, scorer_cls):
+        """Constructor accepts time_weighter/step_weighter and stores them as-is."""
+        tw = LookupWeighter(mapping={}, default=1.0)
+        sw = LookupWeighter(mapping={}, default=1.0)
+        scorer = scorer_cls(time_weighter=tw, step_weighter=sw)
+        assert scorer.time_weighter is tw
+        assert scorer.step_weighter is sw
+
+    @pytest.mark.parametrize("scorer_cls", [MedianAbsoluteError, R2Score, MeanDirectionalAccuracy])
+    def test_weighter_params_in_get_params(self, scorer_cls):
+        """time_weighter and step_weighter appear in get_params (sklearn introspection)."""
+        params = scorer_cls().get_params()
+        assert "time_weighter" in params
+        assert "step_weighter" in params
+        assert "vintage_weighter" in params
+
+
+class TestPointScorerLowerIsBetterProperty:
+    """R2 and MDA must report lower_is_better via the base property, not a shadow attr.
+
+    ``BaseScorer.lower_is_better`` is a read-only ``@property`` backed by the
+    ``_lower_is_better`` class attribute. Declaring a plain ``lower_is_better``
+    class attribute on a subclass shadows that property inconsistently.
+    """
+
+    @pytest.mark.parametrize("scorer_cls", [R2Score, MeanDirectionalAccuracy])
+    def test_lower_is_better_is_property(self, scorer_cls):
+        """lower_is_better is the inherited property, not a shadowing class attribute."""
+        # The plain bool class attribute, if present, shadows the property.
+        assert isinstance(type(scorer_cls()).lower_is_better, property)
+        assert "lower_is_better" not in vars(scorer_cls)
+
+    @pytest.mark.parametrize("scorer_cls", [R2Score, MeanDirectionalAccuracy])
+    def test_lower_is_better_property_and_tag_agree(self, scorer_cls):
+        """The property and the scorer tag both report False (higher is better)."""
+        scorer = scorer_cls()
+        assert scorer.lower_is_better is False
+        tags = scorer.__sklearn_tags__()
+        assert tags.scorer_tags.lower_is_better is False
+
+
 class TestMaxAEPartialCollapse:
     def test_max_ae_stepwise_only(self):
         """MaxAbsoluteError with stepwise only exercises partial collapse."""
@@ -1367,7 +1432,12 @@ class TestMaxAEPartialCollapse:
         max_ae = MaxAbsoluteError(aggregation_method=["stepwise", "componentwise"])
         max_ae.fit(y_true)
         result = max_ae.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # Stepwise collapses the forecasting-step axis; one row remains per vintage.
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (1, 2)
+        assert result.columns == ["vintage_time", "max_ae"]
+        # Max over per-step abs errors |2, 1, 2| = 2.
+        assert result["max_ae"][0] == 2.0
 
     def test_max_ae_vintagewise_only(self):
         """MaxAbsoluteError with vintagewise only exercises partial collapse."""
@@ -1383,7 +1453,12 @@ class TestMaxAEPartialCollapse:
         max_ae = MaxAbsoluteError(aggregation_method=["vintagewise", "componentwise"])
         max_ae.fit(y_true)
         result = max_ae.score(y_true, y_pred)
-        assert isinstance(result, (float, pl.DataFrame))
+        # Vintagewise collapses the vintage axis; the per-step rows are preserved.
+        assert isinstance(result, pl.DataFrame)
+        assert result.shape == (3, 3)
+        assert result.columns == ["vintage_time", "forecasting_step", "max_ae"]
+        # Per-step abs errors |12-10|, |19-20|, |28-30| = [2, 1, 2].
+        assert result["max_ae"].to_list() == [2.0, 1.0, 2.0]
 
     def test_max_ae_collapse_all_rows(self):
         """MaxAbsoluteError with stepwise+vintagewise collapses all rows."""

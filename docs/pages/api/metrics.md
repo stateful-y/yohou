@@ -4,7 +4,9 @@ template: api-submodule.html
 
 # yohou.metrics
 
-Scorers for evaluating point forecasts, prediction intervals, and conformal prediction calibration.
+Scorers for evaluating point forecasts, prediction intervals, class-probability forecasts, and conformal prediction calibration.
+
+**User guide**: See [Forecast Accuracy](../explanation/forecast-accuracy.md) for vintage-based evaluation and accuracy scoring.
 
 ### Base Classes
 

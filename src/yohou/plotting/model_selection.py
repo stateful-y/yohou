@@ -176,8 +176,9 @@ def plot_splits(
     height : int | None, default=None
         Plot height in pixels. Defaults to 300 + n_splits * 30.
     resampler : bool | Literal["widget"] | None, default=None
-        Enable plotly-resampler for large datasets.  ``True`` or
-        ``"widget"`` creates a ``FigureWidgetResampler``; ``False`` or
+        Enable plotly-resampler for large datasets.  ``True`` creates a
+        ``FigureResampler`` (Dash-based server callback); ``"widget"`` creates
+        a ``FigureWidgetResampler`` (notebook-native widget); ``False`` or
         ``None`` uses a plain ``go.Figure``.
     line_width : float, default=10.0
         Width of the train/test bars.
@@ -193,6 +194,8 @@ def plot_splits(
         If y is not a Polars DataFrame or splitter is not a BaseSplitter.
     ValueError
         If DataFrame is empty or missing 'time' column.
+        If the splitter produces no splits for the given ``y`` (check the
+        ``n_splits`` and ``test_size`` configuration).
 
     Examples
     --------

@@ -71,3 +71,13 @@
 *[MRO]: Method Resolution Order, the sequence Python follows when searching for a method across a class hierarchy.
 *[vintage weight]: A metadata weight applied per vintage in multi-vintage scoring to control the relative importance of each forecast vintage.
 *[step weight]: A metadata weight applied per forecast step to control the relative importance of predictions at different horizons.
+*[stationarity]: A property of a time series whose statistical properties (mean, variance, autocorrelation) do not change over time.
+*[deseasonalization]: Removing the seasonal component from a time series, typically before fitting a non-seasonal model.
+*[observation time]: The timestamp at which a forecast is issued, equivalent to the end of the observation window and the anchor for all step offsets.
+*[tabularization]: Converting a time series into a supervised-learning feature matrix by sliding a window over the data to produce rows of lagged values.
+*[diversity]: The degree to which base forecasters in an ensemble make uncorrelated errors; higher diversity yields larger variance-reduction benefits.
+*[base forecaster]: One of the individual estimators combined inside a voting ensemble; each produces predictions that are then aggregated.
+*[distribution shift]: A train/predict mismatch where the model trains on one input distribution (such as perfect-foresight features) and predicts on another (forecasted features), degrading accuracy.
+*[rolling origin evaluation]: Temporal cross-validation where each fold advances the training cutoff forward through the series; another name for walk-forward or rolling evaluation.
+*[meta-forecaster]: A forecaster that wraps one or more base forecasters and delegates fitting and prediction to them, adding decomposition, chaining, or panel dispatch.
+*[voting]: Combining predictions from multiple base forecasters by averaging (soft voting) or majority vote (hard voting), optionally weighted per forecaster.

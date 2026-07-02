@@ -150,7 +150,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         This default differs from `ColumnTransformer` (which defaults to
         ``verbose_feature_names_out=True``): the forecaster side preserves
         original column names by default, while the transformer side prefixes
-        by default for feature clarity.
+        by default for feature clarity. Columns from the remainder forecaster
+        are never prefixed, even when this is ``True``.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -165,8 +166,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
 
     named_forecasters_ : Bunch
         Access any fitted forecaster by name.
-        ``forecaster.named_forecasters_['sales']`` returns the fitted
-        forecaster for the 'sales' group.
+        ``forecaster.named_forecasters_['sales']`` returns the forecaster
+        named 'sales' (a forecaster name from the ``forecasters`` argument,
+        not a panel-data group).
 
     remainder_forecaster_ : BaseForecaster or None
         The fitted remainder forecaster, or ``None`` if ``remainder`` is a
@@ -214,7 +216,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
       (no overlapping columns allowed)
     - Columns not assigned to any forecaster are handled according to
       ``remainder``: dropped, or forecasted by an estimator
-    - Forecasters are fitted in parallel when ``n_jobs > 1``
+    - Forecasters are fitted in parallel when ``n_jobs`` is not ``None`` or
+      ``1`` (e.g., ``-1`` uses all CPUs)
     - Predictions are concatenated in the order: forecasters, then remainder
     - All forecasters (including the remainder) receive the same exogenous
       inputs: ``X_actual``, ``X_future``, and ``X_forecast``
@@ -345,15 +348,23 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         Raises
         ------
         ValueError
-            If column assignments overlap or if assigned columns don't exist.
+            If names are duplicated, contain ``"__"``, collide with a
+            constructor argument, if column assignments overlap, or if
+            assigned columns don't exist.
 
         """
-        # Validate unique names
+        # Validate unique names (kept first so the duplicate message stays stable)
         names = [name for name, _, _ in self.forecasters]  # ty: ignore[invalid-assignment]
         name_counts = Counter(names)
         duplicates = [name for name, count in name_counts.items() if count > 1]
         if duplicates:
             raise ValueError(f"Duplicate forecaster names: {duplicates}")
+
+        # Reuse the _BaseComposition checks for the remaining naming rules: reject
+        # names containing "__" (which would corrupt nested-parameter routing) and
+        # names that collide with constructor arguments. Names are already unique
+        # here, so its uniqueness check is a no-op.
+        self._validate_names(names)
 
         # Build column map and track assigned columns
         column_map: dict[str, list[str]] = {}
@@ -1028,6 +1039,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         self,
         forecasting_horizon: int | None = None,
         groups: list[str] | None = None,
+        predict_transformed: bool = False,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -1040,6 +1052,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Forecasting horizon. If None, uses horizon from fit.
         groups : list of str or None, default=None
             Group prefixes for panel data.
+        predict_transformed : bool, default=False
+            Return transformed predictions. Forwarded to each child
+            forecaster for parity with ``predict``/``predict_interval``.
         X_future : pl.DataFrame or None, default=None
             Known future features override. Re-derives step columns
             without mutating forecaster state.
@@ -1070,6 +1085,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred = forecaster.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                predict_transformed=predict_transformed,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **forecaster_params.predict_class_proba,
@@ -1084,6 +1100,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             y_pred_remainder = self.remainder_forecaster_.predict_class_proba(
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
+                predict_transformed=predict_transformed,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **remainder_params.predict_class_proba,
@@ -1104,6 +1121,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         forecasting_horizon: int | None = None,
         groups: list[str] | None = None,
         stride: int | None = None,
+        predict_transformed: bool = False,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
@@ -1125,6 +1143,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         stride : int or None, default=None
             Number of observations per update step. If None, uses
             ``fit_forecasting_horizon_``.
+        predict_transformed : bool, default=False
+            If ``True``, return predictions in transformed space. Forwarded
+            to each child for parity with ``observe_predict``/
+            ``observe_predict_interval``.
         X_future : pl.DataFrame or None, default=None
             Known future features.
         X_forecast : pl.DataFrame or None, default=None
@@ -1154,6 +1176,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             stride=stride,
             observe_fn=self.observe,
             forecasting_horizon=fh,
+            predict_transformed=predict_transformed,
             **params,
         )
 

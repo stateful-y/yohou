@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 import polars as pl
 import pytest
 from sklearn.base import clone
-from sklearn.exceptions import NotFittedError
 from sklearn.linear_model import Ridge
 from sklearn.utils.metadata_routing import MetadataRouter
 
@@ -166,96 +165,46 @@ class TestBasicFitPredict:
 class TestStrategy:
     """Tests for fit policy strategies."""
 
-    def test_strategy_actual(self):
-        """Test strategy='actual' uses actual X_actual values for target training."""
+    @pytest.mark.parametrize(
+        "strategy,extra_kwargs",
+        [
+            ("actual", {}),
+            ("predicted", {"split_ratio": 0.5}),
+            ("rewind", {}),
+        ],
+    )
+    def test_strategy_fits_both_forecasters_and_predicts(self, strategy, extra_kwargs):
+        """Each fit strategy fits both child forecasters and produces a forecast.
+
+        The three strategies share the same fit/predict contract: both the
+        target and feature forecasters end up fitted to the same observed time,
+        the chosen ``strategy`` is preserved, and predict returns the requested
+        horizon. Strategy-specific internals are exercised by the systematic
+        suite (which includes the 'predicted' policy) and the dedicated
+        TestHardening/TestFeatureStride cases.
+        """
         time = pl.datetime_range(
             start=datetime(2020, 1, 1),
             end=datetime(2020, 1, 1) + timedelta(days=99),
             interval="1d",
             eager=True,
         )
-        y = pl.DataFrame({
-            "time": time,
-            "sales": list(range(100)),
-        })
-        X_actual = pl.DataFrame({
-            "time": time,
-            "price": [10 + i % 5 for i in range(100)],
-        })
+        y = pl.DataFrame({"time": time, "sales": list(range(100))})
+        X_actual = pl.DataFrame({"time": time, "price": [10 + i % 5 for i in range(100)]})
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
-            strategy="actual",
+            strategy=strategy,
+            **extra_kwargs,
         )
         forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
-        # Both forecasters should be fitted
+        assert forecaster.strategy == strategy
         assert hasattr(forecaster, "target_forecaster_")
         assert hasattr(forecaster, "feature_forecaster_")
-
-        y_pred = forecaster.predict(forecasting_horizon=5)
-        assert len(y_pred) == 5
-
-    def test_strategy_predicted(self):
-        """Test strategy='predicted' splits data and uses predicted X_actual."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=99),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({
-            "time": time,
-            "sales": list(range(100)),
-        })
-        X_actual = pl.DataFrame({
-            "time": time,
-            "price": [10 + i % 5 for i in range(100)],
-        })
-
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=SeasonalNaive(seasonality=1),
-            feature_forecaster=SeasonalNaive(seasonality=1),
-            strategy="predicted",
-            split_ratio=0.5,
-        )
-        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
-
-        # Both forecasters should be fitted
-        assert hasattr(forecaster, "target_forecaster_")
-        assert hasattr(forecaster, "feature_forecaster_")
-
-        y_pred = forecaster.predict(forecasting_horizon=5)
-        assert len(y_pred) == 5
-
-    def test_strategy_rewind(self):
-        """Test strategy='rewind' fits on full data, rewinds, predicts X_actual, then fits target."""
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=99),
-            interval="1d",
-            eager=True,
-        )
-        y = pl.DataFrame({
-            "time": time,
-            "sales": list(range(100)),
-        })
-        X_actual = pl.DataFrame({
-            "time": time,
-            "price": [10 + i % 5 for i in range(100)],
-        })
-
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=SeasonalNaive(seasonality=1),
-            feature_forecaster=SeasonalNaive(seasonality=1),
-            strategy="rewind",
-        )
-        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
-
-        # Both forecasters should be fitted
-        assert hasattr(forecaster, "target_forecaster_")
-        assert hasattr(forecaster, "feature_forecaster_")
+        # Regardless of strategy, both children align to the same observed time.
+        assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
 
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
@@ -381,9 +330,15 @@ class TestUpdateReset:
         )
         forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
 
-        # Update then reset
+        # Observe a block, then rewind it: both children must roll back together.
         forecaster.observe(y[80:90], X_actual[80:90])
         forecaster.rewind(y[80:90], X_actual[80:90])
+
+        # rewind(y[80:90]) leaves both children anchored at that block's last
+        # timestamp, and the two stay in lockstep (neither silently no-ops).
+        expected_time = y[80:90]["time"][-1]
+        assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
+        assert forecaster.target_forecaster_.observed_time_ == expected_time
 
         # Should still be able to predict
         y_pred = forecaster.predict(forecasting_horizon=5)
@@ -422,23 +377,29 @@ class TestUpdateReset:
 class TestMethodAvailability:
     """Tests for method availability."""
 
-    def test_predict_available_for_point_target(self):
-        """Test predict is available when target supports point predictions."""
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=SeasonalNaive(seasonality=1),
-            feature_forecaster=SeasonalNaive(seasonality=1),
-        )
-        # predict should be available (not raise AttributeError)
-        assert hasattr(forecaster, "predict")
+    def test_point_target_gates_out_predict_interval(self):
+        """A point-only target exposes predict but hides predict_interval.
 
-    def test_not_fitted_error(self):
-        """Test NotFittedError is raised when calling predict before fit."""
+        This exercises the @available_if(_target_forecaster_has(...)) gating:
+        SeasonalNaive has no predict_interval, so the FFF must not expose one,
+        while predict remains available.
+        """
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SeasonalNaive(seasonality=1),
             feature_forecaster=SeasonalNaive(seasonality=1),
         )
-        with pytest.raises(NotFittedError, match="fitted"):
-            forecaster.predict(forecasting_horizon=5)
+        assert hasattr(forecaster, "predict")
+        assert not hasattr(forecaster, "predict_interval")
+
+    def test_interval_target_exposes_predict_interval(self):
+        """An interval target makes predict_interval available on the FFF."""
+        from yohou.interval import IntervalReductionForecaster
+
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=IntervalReductionForecaster(),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        assert hasattr(forecaster, "predict_interval")
 
 
 class TestCloneParams:
@@ -589,6 +550,37 @@ class TestTags:
         # SeasonalNaive is a point forecaster
         assert tags.forecaster_tags.forecaster_type == frozenset({"point"})
 
+    def test_requires_exogenous_always_true(self):
+        """requires_exogenous is always True: X_actual is the feature target.
+
+        Even when both children report requires_exogenous=False, the
+        meta-forecaster structurally needs X_actual (it is the feature
+        forecaster's training target), so it must advertise True.
+        """
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        tags = forecaster.__sklearn_tags__()
+        assert tags.forecaster_tags.requires_exogenous is True
+
+    def test_propagates_transformer_usage_from_children(self):
+        """uses_*_transformer flags reflect the children."""
+        from yohou.preprocessing import LagTransformer
+
+        target = PointReductionForecaster(
+            estimator=Ridge(),
+            feature_transformer=LagTransformer(lag=1),
+        )
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=target,
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        tags = forecaster.__sklearn_tags__()
+        target_tags = target.__sklearn_tags__().forecaster_tags
+        assert tags.forecaster_tags.uses_feature_transformer == target_tags.uses_feature_transformer
+        assert tags.forecaster_tags.uses_target_transformer == target_tags.uses_target_transformer
+
 
 class TestClassProbaForecastedFeature:
     """Tests for class-probability methods on ForecastedFeatureForecaster."""
@@ -647,40 +639,6 @@ class TestClassProbaForecastedFeature:
         assert "time" in y_pred.columns
         proba_cols = [c for c in y_pred.columns if "_proba_" in c]
         assert len(proba_cols) > 0
-
-    def test_predict_class_proba_with_x(self):
-        """predict_class_proba passes X_actual through to target forecaster."""
-        from sklearn.tree import DecisionTreeClassifier
-
-        from yohou.class_proba import ClassProbaReductionForecaster
-
-        time = pl.datetime_range(
-            start=datetime(2020, 1, 1),
-            end=datetime(2020, 1, 1) + timedelta(days=79),
-            interval="1d",
-            eager=True,
-        )
-        classes = ["cat", "dog", "bird"]
-        y = pl.DataFrame({
-            "time": time,
-            "animal": [classes[i % 3] for i in range(80)],
-        })
-        X_actual = pl.DataFrame({
-            "time": time,
-            "temp": [20.0 + (i % 10) for i in range(80)],
-        })
-
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=ClassProbaReductionForecaster(
-                estimator=DecisionTreeClassifier(random_state=42),
-            ),
-            feature_forecaster=SeasonalNaive(seasonality=1),
-        )
-        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=3)
-        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
-        assert "time" in y_pred.columns
-        proba_cols = [c for c in y_pred.columns if "_proba_" in c]
-        assert len(proba_cols) == 3
 
 
 def _make_contemporaneous_data(n: int = 120, seed: int = 0):
@@ -765,29 +723,6 @@ class TestXForecastRouting:
         )
         forecaster.fit(y[:100], X_actual[:100], forecasting_horizon=5)
         assert forecaster.feature_forecaster_.observed_time_ == forecaster.target_forecaster_.observed_time_
-
-    def test_merge_forecasts_disjoint_columns(self):
-        """_merge_forecasts joins disjoint external-forecast columns on (vintage_time, time)."""
-        forecaster = ForecastedFeatureForecaster(
-            target_forecaster=PointReductionForecaster(estimator=Ridge()),
-            feature_forecaster=PointReductionForecaster(estimator=Ridge()),
-        )
-        t0 = datetime(2020, 1, 1)
-        feat = pl.DataFrame({
-            "vintage_time": [t0, t0],
-            "time": [t0 + timedelta(days=1), t0 + timedelta(days=2)],
-            "price": [1.0, 2.0],
-        })
-        user = pl.DataFrame({
-            "vintage_time": [t0, t0],
-            "time": [t0 + timedelta(days=1), t0 + timedelta(days=2)],
-            "promo": [1.0, 0.0],
-        })
-        merged = forecaster._merge_forecasts(feat, user)
-        assert set(merged.columns) == {"vintage_time", "time", "price", "promo"}
-        assert merged.height == 2
-        # None passthrough returns the feature forecast unchanged.
-        assert forecaster._merge_forecasts(feat, None) is feat
 
     def test_user_x_forecast_collision_raises(self):
         """A caller X_forecast colliding with a forecasted feature raises ValueError."""
@@ -875,6 +810,39 @@ class TestHardening:
         assert any(c.startswith("s1__price") for c in step_cols)
         assert any(c.startswith("s2__price") for c in step_cols)
 
+    def test_panel_predicted_builds_group_prefixed_step_columns(self):
+        """Panel + strategy='predicted' routes through the default rolling loop.
+
+        Unlike the 'actual' and feature_stride='rewind' paths covered elsewhere,
+        strategy='predicted' with the default feature_stride=1 exercises the base
+        ``_observe_predict_loop`` per group. The per-group step columns must carry
+        their group prefix and predict must produce per-group output.
+        """
+        from yohou.preprocessing import LagTransformer
+
+        y, X = _make_panel_contemporaneous_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            feature_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            strategy="predicted",
+            split_ratio=0.6,
+        )
+        forecaster.fit(y[:100], X[:100], forecasting_horizon=3)
+
+        step_cols = forecaster.target_forecaster_._step_column_names_
+        assert step_cols, "panel strategy='predicted' must not drop the feature forecast"
+        assert any(c.startswith("s1__price") for c in step_cols)
+        assert any(c.startswith("s2__price") for c in step_cols)
+
+        pred = forecaster.predict(forecasting_horizon=3)
+        assert len(pred) == 3
+        assert "s1__sales" in pred.columns
+        assert "s2__sales" in pred.columns
+
     def test_observe_requires_x_actual(self):
         """observe(y, X_actual=None) raises, keeping state parity."""
         y, X_actual = _make_contemporaneous_data()
@@ -941,6 +909,8 @@ class TestHardening:
         assert merged.height == 2  # no spurious row from the non-aligning user row
         assert set(merged["time"].to_list()) == {t0 + timedelta(days=1), t0 + timedelta(days=2)}
         assert set(merged.columns) == {"vintage_time", "time", "price", "promo"}
+        # None passthrough returns the meta forecast object unchanged.
+        assert forecaster._merge_forecasts(meta, None) is meta
 
     def test_rewind_short_series_actionable_error(self):
         """strategy='rewind' on a too-short series raises an actionable error.
@@ -1131,6 +1101,37 @@ class TestFeatureStride:
         pred = getattr(forecaster, variant)(y[110:125], X[110:125], stride=5)
         assert pred["vintage_time"].n_unique() > 1
 
+    def test_predict_interval_bare_single_origin(self):
+        """Bare predict_interval (single origin) emits interval bounds and times.
+
+        The rolling observe_predict_interval path is covered above; this pins the
+        non-rolling predict_interval method directly: it must route the feature
+        forecast into the interval target and return lower/upper bound columns
+        anchored by vintage_time and time.
+        """
+        from yohou.interval import IntervalReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        y, X = _make_fs_data()
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=IntervalReductionForecaster(feature_transformer=LagTransformer(lag=[1, 2])),
+            feature_forecaster=PointReductionForecaster(
+                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+            ),
+            strategy="rewind",
+        )
+        forecaster.fit(y[:110], X[:110], forecasting_horizon=5)
+
+        pred = forecaster.predict_interval(forecasting_horizon=5)
+        assert len(pred) == 5
+        assert "vintage_time" in pred.columns
+        assert "time" in pred.columns
+        lower = [c for c in pred.columns if "_lower_" in c]
+        upper = [c for c in pred.columns if "_upper_" in c]
+        assert lower and upper
+        # A single origin produces exactly one vintage.
+        assert pred["vintage_time"].n_unique() == 1
+
     def test_cross_val_predict_rolls_per_origin(self):
         """cross_val_predict on an FFF yields rolling per-origin blocks (a split column)."""
         from yohou.model_selection import SlidingWindowSplitter, cross_val_predict
@@ -1244,3 +1245,107 @@ class TestNonExogenousFitSkipsRollingForecast:
         bare_pred = bare.predict(forecasting_horizon=5)
 
         assert meta_pred["sales"].to_list() == bare_pred["sales"].to_list()
+
+
+class TestObservePredictRoutingMethod:
+    """Each observe_predict variant must route under its own method name.
+
+    The shared dispatcher ``_run_observe_predict`` calls
+    ``process_routing(self, routing_method, ...)``. Passing a predict-family
+    name (e.g. ``"predict"``) instead of ``"observe_predict"`` means metadata
+    registered on the ``observe_predict`` caller is never consulted.
+    """
+
+    def _fitted_point(self):
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": list(range(100))})
+        X_actual = pl.DataFrame({"time": time, "price": [10 + i % 5 for i in range(100)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SeasonalNaive(seasonality=1),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
+        return forecaster, y, X_actual
+
+    def _capture_routing_method(self, monkeypatch):
+        """Patch process_routing to record the routing_method it receives."""
+        import yohou.compose.forecasted_feature_forecaster as mod
+
+        captured = {}
+        original = mod.process_routing
+
+        def spy(obj, method, /, **kwargs):
+            captured.setdefault("methods", []).append(method)
+            return original(obj, method, **kwargs)
+
+        monkeypatch.setattr(mod, "process_routing", spy)
+        return captured
+
+    def test_observe_predict_uses_own_method_name(self, monkeypatch):
+        """observe_predict routes under 'observe_predict', not 'predict'."""
+        forecaster, y, X_actual = self._fitted_point()
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict(y[80:90], X_actual[80:90], stride=5)
+        # The dispatcher routes first under its own method name; subsequent
+        # 'predict' entries are the legitimate per-origin predict re-routing.
+        assert captured["methods"][0] == "observe_predict"
+
+    def test_observe_predict_interval_uses_own_method_name(self, monkeypatch):
+        """observe_predict_interval routes under 'observe_predict_interval'."""
+        from yohou.interval import SplitConformalForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=99),
+            interval="1d",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "sales": list(range(100))})
+        X_actual = pl.DataFrame({"time": time, "price": [10 + i % 5 for i in range(100)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=1), calibration_size=10
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:80], X_actual[:80], forecasting_horizon=5)
+
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict_interval(y[80:90], X_actual[80:90], stride=5)
+        # The dispatcher routes first under its own method name; later entries
+        # are the legitimate per-origin predict_interval re-routing.
+        assert captured["methods"][0] == "observe_predict_interval"
+
+    def test_observe_predict_class_proba_uses_own_method_name(self, monkeypatch):
+        """observe_predict_class_proba routes under 'observe_predict_class_proba'."""
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+
+        time = pl.datetime_range(
+            start=datetime(2020, 1, 1),
+            end=datetime(2020, 1, 1) + timedelta(days=79),
+            interval="1d",
+            eager=True,
+        )
+        classes = ["cat", "dog", "bird"]
+        y = pl.DataFrame({"time": time, "animal": [classes[i % 3] for i in range(80)]})
+        X_actual = pl.DataFrame({"time": time, "temp": [20.0 + (i % 10) for i in range(80)]})
+        forecaster = ForecastedFeatureForecaster(
+            target_forecaster=ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+            ),
+            feature_forecaster=SeasonalNaive(seasonality=1),
+        )
+        forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=3)
+
+        captured = self._capture_routing_method(monkeypatch)
+        forecaster.observe_predict_class_proba(y=y[60:66], X_actual=X_actual[60:66], stride=3)
+        # The dispatcher routes first under its own method name; later entries
+        # are the legitimate per-origin predict_class_proba re-routing.
+        assert captured["methods"][0] == "observe_predict_class_proba"

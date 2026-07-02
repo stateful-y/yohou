@@ -175,7 +175,10 @@ def _fetch_dataset(
     -------
     Bunch
         Dictionary-like object with ``frame``, ``feature_names``,
-        ``DESCR``, ``frequency``, ``n_series``, ``filename`` keys.
+        ``DESCR``, ``frequency``, ``n_series``, ``filename`` keys. The
+        ``filename`` value is the path to the cached parquet file on the
+        native path, or the CDN URL of the pre-processed binary on the
+        WASM/Pyodide path.
 
     """
     if _is_wasm():
@@ -1003,7 +1006,11 @@ def fetch_air_quality_classification(
             ``"hazardous"``.
         X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 5 pollutant feature columns
-            (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``).
+            (``"pm10"``, ``"no2"``, ``"co"``, ``"o3"``, ``"so2"``). The
+            station prefix is stripped from these columns to yield bare
+            measurement names. (By contrast,
+            [`fetch_demand_classification`][yohou.datasets._fetchers.fetch_demand_classification]
+            preserves the ``__`` panel column names.)
         feature_names : list of str
             Feature column names (excludes ``"time"``).
         target_names : list of str
@@ -1140,8 +1147,11 @@ def fetch_demand_classification(
             of ``"low"``, ``"medium"``, or ``"high"``.
         X_actual : pl.DataFrame
             DataFrame with ``"time"`` and 4 state demand columns
-            (``"nsw__demand"``, ``"qun__demand"``, ``"sa__demand"``,
-            ``"tas__demand"``).
+            (``"nsw"``, ``"qun"``, ``"sa"``, ``"tas"``). The state prefix is
+            stripped from the source ``"{state}__demand"`` columns so the
+            ``__`` separator (which signals panel group membership) is not
+            carried into exogenous features, mirroring
+            [`fetch_air_quality_classification`][yohou.datasets._fetchers.fetch_air_quality_classification].
         feature_names : list of str
             Feature column names (excludes ``"time"``).
         target_names : list of str
@@ -1205,7 +1215,7 @@ def fetch_demand_classification(
     )
 
     y = frame.select("time", demand_level.alias("demand_level"))
-    X_actual = frame.select("time", *feature_cols)
+    X_actual = frame.select("time", *feature_cols).rename({c: c.split("__")[0] for c in feature_cols})
 
     classes = sorted(y["demand_level"].unique().to_list())
 

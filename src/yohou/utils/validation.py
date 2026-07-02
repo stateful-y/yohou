@@ -110,6 +110,8 @@ def check_scorer_column_selection(
     ------
     ValueError
         If groups or components are invalid.
+    ValueError
+        If any of the requested ``coverage_rates`` are not present in ``y_pred``.
 
     See Also
     --------
@@ -122,6 +124,15 @@ def check_scorer_column_selection(
 
     if not (has_panel_specs or has_component_specs or coverage_rates is not None):
         return y_true, y_pred
+
+    # Leading time columns that must survive every y_pred subselection. The
+    # "time" column is always present; "vintage_time" is present for
+    # multi-vintage predictions (from observe_predict with a stride) and must
+    # be preserved so downstream scoring can still group rows by forecast
+    # origin. Dropping it here would silently collapse multi-vintage scoring.
+    y_pred_lead_cols = ["time"]
+    if "vintage_time" in y_pred.columns:
+        y_pred_lead_cols.append("vintage_time")
 
     # Validate coverage_rates if present (interval scorers)
     if coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
@@ -185,7 +196,7 @@ def check_scorer_column_selection(
             # Check for interval columns in y_pred if prediction_type is interval
             if pred_type == "interval":
                 # For interval, y_pred has _lower_ and _upper_ columns corresponding to y_true columns
-                y_pred_selected_cols = ["time"]
+                y_pred_selected_cols = list(y_pred_lead_cols)
 
                 for col in selected_cols:
                     if col == "time":
@@ -210,7 +221,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(y_pred_selected_cols)
             elif pred_type == "class_proba":
                 # Class proba: y_pred has {target}_proba_{class} columns
-                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                y_pred_selected_cols = [c for c in y_pred_lead_cols if c in y_pred.columns]
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -220,7 +231,7 @@ def check_scorer_column_selection(
             else:
                 # Point forecast: columns should match directly
                 y_pred_cols = set(y_pred.columns)
-                valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+                valid_y_pred_cols = y_pred_lead_cols + [c for c in selected_cols if c != "time" and c in y_pred_cols]
 
                 missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
                 if missing_pred_cols:
@@ -252,7 +263,7 @@ def check_scorer_column_selection(
 
             # For global data, logic is simpler
             if pred_type == "interval":
-                y_pred_selected_cols = ["time"]
+                y_pred_selected_cols = list(y_pred_lead_cols)
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -273,7 +284,7 @@ def check_scorer_column_selection(
                 y_true = y_true.select(selected_cols)
                 y_pred = y_pred.select(y_pred_selected_cols)
             elif pred_type == "class_proba":
-                y_pred_selected_cols = ["time"] if "time" in y_pred.columns else []
+                y_pred_selected_cols = [c for c in y_pred_lead_cols if c in y_pred.columns]
                 for col in selected_cols:
                     if col == "time":
                         continue
@@ -282,7 +293,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(y_pred_selected_cols)
             else:
                 y_pred_cols = set(y_pred.columns)
-                valid_y_pred_cols = [c for c in selected_cols if c in y_pred_cols]
+                valid_y_pred_cols = y_pred_lead_cols + [c for c in selected_cols if c != "time" and c in y_pred_cols]
 
                 missing_pred_cols = set(selected_cols) - {"time"} - y_pred_cols
                 if missing_pred_cols:
@@ -295,7 +306,7 @@ def check_scorer_column_selection(
                 y_pred = y_pred.select(valid_y_pred_cols)
     elif coverage_rates is not None and pred_type == "interval" and interval_pattern is not None:
         # No component filter, but coverage rate filter
-        y_pred_selected_cols = ["time"]
+        y_pred_selected_cols = list(y_pred_lead_cols)
 
         # Filter y_pred columns to only those matching requested rates
         for col in y_pred.columns:
@@ -424,8 +435,8 @@ def check_groups(
 def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame") -> None:
     """Validate that all panel groups in a DataFrame have the same local column structure.
 
-    For panel data with multiple groups (e.g., sales__store_1, sales__store_2),
-    this checks that all groups within the same prefix have identical local column names.
+    For panel data with multiple groups (e.g., store_1__sales, store_2__sales),
+    this checks that all groups have identical local column names.
 
     Parameters
     ----------
@@ -446,16 +457,17 @@ def check_panel_internal_consistency(df: pl.DataFrame, df_name: str = "DataFrame
     >>> # Valid panel data - both groups have same local columns
     >>> df = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
-    ...     "sales__store_1": [10, 20],
-    ...     "sales__store_2": [30, 40],
+    ...     "store_1__sales": [10, 20],
+    ...     "store_2__sales": [30, 40],
     ... })
     >>> check_panel_internal_consistency(df, "y")  # No error
 
-    >>> # Invalid - store_2 missing in second group
+    >>> # Invalid - group "store_1" has local column "sales" but group
+    >>> # "store_2" has local column "revenue"
     >>> df_bad = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
-    ...     "sales__store_1": [10],
-    ...     "revenue__store_1": [100],
+    ...     "store_1__sales": [10],
+    ...     "store_2__revenue": [100],
     ... })
     >>> check_panel_internal_consistency(df_bad, "y")  # doctest: +SKIP
     Traceback (most recent call last):
@@ -664,6 +676,8 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
     ------
     ValueError
         If the time intervals are not consistent throughout the DataFrame.
+    ValueError
+        If ``df`` has fewer than 2 rows (impossible to infer an interval).
 
     Examples
     --------
@@ -866,10 +880,14 @@ def validate_column_names(df: pl.DataFrame) -> None:
     """Validate that __ separator is used only for panel data group names.
 
     The __ separator is reserved for panel data groups following the pattern
-    <GROUP>__<SERIES> (e.g., "sales__store_1"). This function ensures column
+    <GROUP>__<SERIES> (e.g., "store_1__sales"). This function ensures column
     names either:
     - Don't contain __ at all (global columns), OR
-    - Follow the exact pattern ^[^_]+__[^_]+.*$ (group columns)
+    - Contain __ exactly once, splitting into a non-empty group part and a
+      non-empty series part, with no underscore immediately before or after
+      the __ (i.e. the group must not end with _ and the series must not
+      start with _). Underscores elsewhere in either part are allowed, so a
+      leading underscore on the group (e.g. "_group__series") is not rejected.
 
     Parameters
     ----------
@@ -986,6 +1004,9 @@ def check_schema(
     ------
     ValueError
         If incoming schema doesn't match expected schema.
+    polars.exceptions.ColumnNotFoundError
+        If ``df`` is missing a column listed in ``expected_schema`` (or in the
+        prefixed panel expansion when ``groups`` is provided).
 
     Examples
     --------
@@ -1136,12 +1157,17 @@ def check_continuity(
 
     check_intervals : bool, default=True
         If True, validates that both DataFrames have consistent internal intervals.
+        Single-row DataFrames cannot have an internal interval and are skipped by
+        this check (relevant for single-step observation updates).
 
     Raises
     ------
     ValueError
         If there is a gap or overlap between df_p and df_n, or if internal
         intervals don't match expected_interval.
+    ValueError
+        If df_p and df_n each have internally consistent but mutually
+        incompatible intervals (only checked when both have at least 2 rows).
 
     Examples
     --------

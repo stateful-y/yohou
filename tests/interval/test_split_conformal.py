@@ -315,6 +315,28 @@ class TestSplitConformalObserveRewind:
         for group_time in scf.observed_time_.values():
             assert group_time == expected_time
 
+    def test_observe_updates_conformity_panel(self, y_X_factory):
+        """observe on panel data must run the conformity/similarity update.
+
+        Regression test: the panel branch dispatched through
+        ``BasePanelForecaster._observe_panel`` previously skipped the
+        conformity/similarity score update that the standard branch runs, so
+        ``conformity_scores_`` stayed frozen at its fit-time size and prediction
+        intervals went silently stale after the first panel ``observe``.
+        """
+        y, _ = y_X_factory(length=250, n_targets=1, n_features=0, seed=42, panel=True, n_groups=2)
+
+        scf = SplitConformalForecaster(calibration_size=50, similarity=DistanceSimilarity())
+        scf.fit(y[:200], forecasting_horizon=1, coverage_rates=[0.9])
+
+        n_before = scf.conformity_scores_.height
+        scf.observe(y[200:210])
+        n_after_observe = scf.conformity_scores_.height
+        assert n_after_observe > n_before, "panel observe did not append new conformity scores"
+
+        scf.rewind(y[200:210])
+        assert scf.conformity_scores_.height == n_before, "panel rewind did not roll back conformity scores"
+
     def test_observe_not_fitted(self):
         """Test observe raises error when not fitted."""
         scf = SplitConformalForecaster()
@@ -572,7 +594,7 @@ class TestSplitConformalObserveRewindSimilarity:
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
             conformity_scorer=AbsoluteResidual(),
-            similarity=SeasonalSimilarity(seasonalities=[7.0]),
+            similarity=SeasonalSimilarity(seasonality=[7.0]),
         )
         scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
 
@@ -614,6 +636,49 @@ class TestSplitConformalObserveRewindSimilarity:
 
         assert len(sim_step._X_observed) == n_before
         assert len(scf.conformity_scores_) == n_scores_before
+
+    def test_panel_observe_rewind_with_similarity(self):
+        """Panel observe/rewind dispatches through the panel + similarity branch.
+
+        With ``groups_`` set and ``similarity`` configured, observe and rewind
+        route through ``BasePanelForecaster._observe_panel``/``_rewind_panel``;
+        the round-trip must complete and rewind must restore the pre-observe
+        intervals exactly. This panel + similarity path was previously
+        unexercised (the panel observe tests use ``similarity=None``).
+        """
+        n = 250
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        np.random.seed(42)
+        v1 = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        v2 = [20.0 + 3.0 * np.sin(2 * np.pi * i / 7) + np.random.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "g1__value": v1, "g2__value": v2})
+        y_train = y[:200]
+        y_test = y[200:]
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y_train, forecasting_horizon=1, coverage_rates=[0.9])
+        assert scf.groups_ == ["g1", "g2"]
+
+        iv_before = scf.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+        for i in range(10):
+            scf.observe(y_test[i : i + 1])
+        scf.rewind(y_train[190:200])
+
+        iv_after = scf.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+        for group in ["g1", "g2"]:
+            lower = f"{group}__value_lower_0.9"
+            upper = f"{group}__value_upper_0.9"
+            assert lower in iv_after.columns
+            assert upper in iv_after.columns
+            assert bool((iv_after[upper] >= iv_after[lower]).all())
+        assert iv_before.equals(iv_after)
 
 
 class TestSplitConformalWithExogenousFeatures:

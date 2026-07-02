@@ -167,7 +167,12 @@ class SeasonalNaive(BasePointForecaster):
 
     @property
     def _observation_horizon(self) -> int:
-        """Return seasonality as the observation horizon."""
+        """Size of the rolling observation buffer.
+
+        ``SeasonalNaive`` retains the last ``seasonality`` rows so that
+        ``_predict_one`` can tile the full seasonal pattern over the
+        forecast horizon.
+        """
         return self.seasonality
 
     def _predict_one(
@@ -315,7 +320,12 @@ class MeanSeasonalNaive(BasePointForecaster):
 
     @property
     def _observation_horizon(self) -> int:
-        """Return seasonality * n_seasons as the observation horizon."""
+        """Size of the rolling observation buffer.
+
+        ``MeanSeasonalNaive`` retains the last ``seasonality * n_seasons``
+        rows so that ``_compute_mean_pattern`` can average each seasonal
+        position across the ``n_seasons`` most recent cycles.
+        """
         return self.seasonality * self.n_seasons
 
     def _compute_mean_pattern(self, y_values: pl.DataFrame) -> pl.DataFrame:
@@ -325,7 +335,10 @@ class MeanSeasonalNaive(BasePointForecaster):
         ----------
         y_values : pl.DataFrame
             Observed values (excluding the "time" column) with exactly
-            ``seasonality * n_seasons`` rows.
+            ``seasonality * n_seasons`` rows. The caller guarantees this row
+            count by slicing ``_y_observed`` to ``observation_horizon``;
+            ``fit`` raises ``ValueError`` first when the training data is
+            shorter than ``seasonality * n_seasons``.
 
         Returns
         -------

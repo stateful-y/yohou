@@ -60,6 +60,10 @@ class TestObservePredictStride:
         # Concatenate all predictions
         y_pred_full = pl.concat(all_preds)
 
+        # Verify the mandatory prediction time-column contract.
+        assert "vintage_time" in y_pred_full.columns
+        assert "time" in y_pred_full.columns
+
         # Verify: predictions cover exactly len(y_test) time steps
         assert len(y_pred_full) == len(y_test), (
             f"Stride={stride}: Expected {len(y_test)} predictions, got {len(y_pred_full)}"
@@ -331,6 +335,10 @@ class TestHorizonMismatch:
         forecaster.fit(y[:80], forecasting_horizon=fit_fh)
 
         y_pred = forecaster.predict(forecasting_horizon=predict_fh)
+
+        # Verify the mandatory prediction time-column contract.
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
 
         # Verify correct number of output rows
         assert len(y_pred) == predict_fh, (
@@ -637,6 +645,11 @@ class TestPanelStrideHorizon:
         forecaster.observe(y_test)
         y_pred = forecaster.predict(forecasting_horizon=5, groups=["alpha", "beta"])
 
+        # Verify the mandatory prediction time-column contract on the panel path.
+        assert "vintage_time" in y_pred.columns
+        assert "time" in y_pred.columns
+        assert y_pred["time"].n_unique() == 5
+
         # Verify only 2 groups returned (plus time columns)
         assert "alpha__series" in y_pred.columns
         assert "beta__series" in y_pred.columns
@@ -729,6 +742,10 @@ class TestPanelStrideHorizon:
             all_preds.append(y_pred)
 
         y_pred_full = pl.concat(all_preds)
+
+        # Verify the mandatory prediction time-column contract on the panel path.
+        assert "vintage_time" in y_pred_full.columns
+        assert "time" in y_pred_full.columns
 
         # Verify coverage and group selection
         assert len(y_pred_full) == len(y_test)

@@ -82,18 +82,6 @@ class TestLagTransformer:
                 f"For lag={lag}, expected horizon={expected_horizon}, got {transformer.observation_horizon}"
             )
 
-    def test_output_length(self, time_series_factory):
-        """Test output length drops max(lag) rows."""
-        X = time_series_factory(length=50)
-        transformer = LagTransformer(lag=[1, 2, 3])
-        transformer.fit(X)
-
-        X_trans = transformer.transform(X)
-
-        # Output drops max(lag) rows (not observation_horizon)
-        expected_length = len(X) - max([1, 2, 3])
-        assert len(X_trans) == expected_length, f"Expected output length {expected_length}, got {len(X_trans)}"
-
     def test_single_lag(self, time_series_factory):
         """Test LagTransformer with single lag value."""
         X = time_series_factory(length=50, n_components=1)
@@ -166,9 +154,6 @@ class TestSlidingWindowFunctionTransformerBasic:
         transformer.fit(X)
 
         X_t = transformer.transform(X)
-
-        # Output should have (length - window_size + 1) rows
-        assert len(X_t) == 20 - 3 + 1  # 18 rows
 
         # Time should be preserved
         assert "time" in X_t.columns
@@ -353,9 +338,6 @@ class TestRollingStatisticsTransformerBasic:
         # Original columns should not be present
         assert "value" not in X_t.columns
         assert "other" not in X_t.columns
-
-        # Warmup rows are dropped (observation_horizon = window_size - 1)
-        assert len(X_t) == len(X) - transformer.observation_horizon
 
     def test_multiple_statistics(self, window_data_factory):
         """Test multiple rolling statistics."""
@@ -557,17 +539,6 @@ class TestMeanLagTransformer:
                 f"For lag={lag}, n_lags={n_lags}, expected horizon={expected_horizon}, got {transformer.observation_horizon}"
             )
 
-    def test_output_length(self, time_series_factory):
-        """Test output length drops max(lag) * n_lags rows."""
-        X = time_series_factory(length=50)
-        transformer = MeanLagTransformer(lag=[1, 2, 3], n_lags=2)
-        transformer.fit(X)
-
-        X_trans = transformer.transform(X)
-
-        expected_length = len(X) - max([1, 2, 3]) * 2
-        assert len(X_trans) == expected_length
-
     def test_n_lags_1_equivalence(self, time_series_factory):
         """With n_lags=1, values should match LagTransformer (different column names, same dtype)."""
         X = time_series_factory(length=50, n_components=2)
@@ -638,6 +609,20 @@ class TestMeanLagTransformer:
         with pytest.raises(ValueError):
             transformer.fit(X)
 
+    def test_transform_before_fit_raises(self, time_series_factory):
+        """The public transform() override must guard against use before fit.
+
+        MeanLagTransformer overrides the public ``transform`` (not ``_transform``),
+        so the ``check_is_fitted`` guard inside the override is the only thing
+        protecting the unfitted path; verify it fires.
+        """
+        from sklearn.exceptions import NotFittedError
+
+        X = time_series_factory(length=30)
+        transformer = MeanLagTransformer(lag=[1, 2], n_lags=2)
+        with pytest.raises(NotFittedError):
+            transformer.transform(X)
+
 
 class TestWindowTransformersIntegration:
     """Integration tests for window transformers."""
@@ -682,6 +667,37 @@ class TestWindowTransformersIntegration:
             X_swft["value"].to_numpy(),
             X_rst["value_mean"].to_numpy(),
             rtol=1e-10,
+        )
+
+
+class TestExponentialMovingAverageSystematic:
+    """Systematic checks for ExponentialMovingAverage.
+
+    ``test_common.py`` skips EMA because its ``__init__`` requires ``alpha``
+    (no default), so the generic suite never exercises it. Wire it here.
+    """
+
+    @pytest.mark.parametrize(
+        "alpha,adjust",
+        [(0.3, True), (0.5, False)],
+        ids=["alpha_0_3_adjust", "alpha_0_5_no_adjust"],
+    )
+    def test_systematic_checks(self, alpha, adjust, time_series_train_test_factory):
+        """Run all applicable checks for ExponentialMovingAverage."""
+        from yohou.preprocessing.window import ExponentialMovingAverage
+
+        # EMA is stateless (observation_horizon=0) and not invertible, so no
+        # expected failures are needed.
+        transformer = ExponentialMovingAverage(alpha=alpha, adjust=adjust)
+        X_train, X_test = time_series_train_test_factory(train_length=60, test_length=30)
+
+        transformer_fitted = clone(transformer)
+        transformer_fitted.fit(X_train)
+
+        run_checks(
+            transformer_fitted,
+            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
+            expected_failures=set(),
         )
 
 

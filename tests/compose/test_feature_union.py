@@ -329,6 +329,54 @@ class TestFeatureUnionTags:
         assert tags.transformer_tags is not None
 
 
+class TestFeatureUnionObserveRewind:
+    """Tests for FeatureUnion inherited observe/rewind state maintenance."""
+
+    def test_observe_after_fit_does_not_raise(self, time_series_factory):
+        """observe must operate on the fitted union without raising.
+
+        Regression test: FeatureUnion inherited BaseTransformer.observe, which
+        guards on ``X_schema_``/``feature_names_in_``/``n_features_in_`` via
+        check_is_fitted. FeatureUnion never sets ``X_schema_``, so the inherited
+        method raised NotFittedError on every fitted union.
+        """
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([
+            ("s1", SimpleTransformer(observation_horizon=2)),
+            ("s2", SimpleTransformer(observation_horizon=3)),
+        ])
+        union.fit(X[:40])
+
+        result = union.observe(X[40:45])
+        assert result is union
+
+        # Fan-out reaches each child: per-child buffers reflect new data.
+        for _, child in union.transformer_list:
+            assert child._X_observed["time"][-1] == X[44]["time"][0]
+
+    def test_rewind_after_fit_does_not_raise(self, time_series_factory):
+        """rewind must operate on the fitted union without raising."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([
+            ("s1", SimpleTransformer(observation_horizon=2)),
+            ("s2", SimpleTransformer(observation_horizon=3)),
+        ])
+        union.fit(X[:40])
+
+        result = union.rewind(X[30:40])
+        assert result is union
+
+        for _, child in union.transformer_list:
+            assert child._X_observed["time"][-1] == X[39]["time"][0]
+
+    def test_observe_not_fitted_raises(self, time_series_factory):
+        """observe before fit raises NotFittedError."""
+        X = time_series_factory(length=50, n_components=2)
+        union = FeatureUnion([("s1", SimpleTransformer(observation_horizon=2))])
+        with pytest.raises(NotFittedError):
+            union.observe(X)
+
+
 class TestFeatureUnionObserveRewindTransform:
     """Tests for FeatureUnion observe_transform and rewind_transform paths."""
 

@@ -9,7 +9,7 @@ In this tutorial, we will wrap a point forecaster with [`SplitConformalForecaste
 
 - Completed [Getting Started](getting-started.md)
 
-## Load the Data
+## 1. Load the Data
 
 We use the tourism monthly dataset and extract a single series. The `T1__` prefix is the panel identifier (see [Core Concepts](../explanation/core-concepts.md)); we rename the column to plain `tourists`:
 
@@ -44,7 +44,7 @@ print(f"Train: {len(y_train)} months, Test: {forecasting_horizon} months")
 Train: 175 months, Test: 12 months
 ```
 
-## Build a Point Forecaster
+## 2. Build a Point Forecaster
 
 We first build a reduction forecaster with lag features and seasonal differencing. This is the same pattern as [Getting Started](getting-started.md):
 
@@ -64,7 +64,7 @@ point_forecaster = PointReductionForecaster(
 )
 ```
 
-## Wrap with SplitConformalForecaster
+## 3. Wrap with SplitConformalForecaster
 
 [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) takes any point forecaster and wraps it to produce prediction intervals. It holds out `calibration_size` training observations to measure forecasting errors, then constructs intervals wide enough to cover 95% of those errors:
 
@@ -80,7 +80,7 @@ conformal.fit(y_train, forecasting_horizon=forecasting_horizon)
 
 Notice that the API follows the same `fit`/`predict` pattern as every other forecaster in Yohou.
 
-## Predict Intervals
+## 4. Predict Intervals
 
 Now we call `predict_interval` to get the lower and upper bounds. The default coverage rate is 0.95 (a 95% prediction interval):
 
@@ -107,7 +107,7 @@ shape: (4, 4)
 
 Notice the column names: `tourists_lower_0.95` and `tourists_upper_0.95`, derived from the target column name and the coverage rate. Each row gives the interval for one forecast step.
 
-## Visualize the Intervals
+## 5. Visualize the Intervals
 
 [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) detects the interval columns automatically and renders them as a shaded band:
 
@@ -120,7 +120,7 @@ fig.show()
 
 You should see the forecast line with a shaded 95% band around it. The training history appears on the left, and the test actuals overlay the forecast period.
 
-## Check Empirical Coverage
+## 6. Check Empirical Coverage
 
 How many of the 12 test points actually fall inside the predicted intervals? [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) measures this:
 

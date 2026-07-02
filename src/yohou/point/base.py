@@ -18,10 +18,10 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    target_transformer : instance of `BaseTransformer` or None, default=None
-        Transformer used to transform the target time series into the new target.
     feature_transformer : instance of `BaseTransformer` or None, default=None
         Transformer used to transform the feature time series (``X_actual``) into features.
+    target_transformer : instance of `BaseTransformer` or None, default=None
+        Transformer used to transform the target time series into the new target.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -163,11 +163,15 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         ----------
         X_future : pl.DataFrame or None, default=None
             Known future features override. Re-derives step columns
-            without mutating forecaster state.
+            without mutating forecaster state. Has no effect when the
+            forecaster was fitted without future or forecast features (no
+            step columns were registered at fit time).
         X_forecast : pl.DataFrame or None, default=None
             External forecast override with ``"vintage_time"`` and
             ``"time"`` columns. Re-derives step columns using as-of
-            matching without mutating forecaster state.
+            matching without mutating forecaster state. Has no effect when
+            the forecaster was fitted without future or forecast features
+            (no step columns were registered at fit time).
         forecasting_horizon : int or None, default=None
             Number of time steps to forecast into the future.  If ``None``,
             uses the horizon specified at fit time.
@@ -283,8 +287,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             are used.  Ignored when the forecaster was not fitted on panel
             data.
         stride : int or None, default=None
-            Step size for rolling update-predict.  If ``None``, defaults to
-            ``fit_forecasting_horizon_`` (the horizon used at fit time).
+            Step size for rolling update-predict. Must be a positive
+            integer. If ``None``, defaults to ``fit_forecasting_horizon_``
+            (the horizon used at fit time).
         predict_transformed : bool, default=False
             If ``True``, return predictions in the transformed space without
             applying inverse target transformation.

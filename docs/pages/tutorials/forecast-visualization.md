@@ -108,7 +108,7 @@ Points close to the diagonal indicate well-calibrated intervals. If points fall 
 
 ## 6. Decomposition Visualization
 
-With the forecast comparison and calibration settled, let's look inside a structured model with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) to understand what each component contributes:
+With the forecast comparison and calibration settled, let's look inside a structured model by building a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) with a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) and a [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/), then visualizing it with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) to understand what each component contributes:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -136,7 +136,7 @@ Each component appears as a separate subplot showing its contribution. Check tha
 
 ## 7. Time Weight Visualization
 
-Finally, let's examine how the training data is weighted with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/), since this affects which historical periods influence the model most:
+Finally, let's examine how the training data is weighted with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/) by computing [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) weights and attaching them as a column, since this affects which historical periods influence the model most:
 
 ```python
 from yohou.plotting import plot_time_weight
@@ -158,13 +158,13 @@ The plot shows the weight assigned to each training observation. Exponential dec
 
 ```python
 import polars as pl
-from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from yohou.class_proba import ClassProbaReductionForecaster
 
 # Discretize the target into categories
 y_cat = y.with_columns(
-    pl.when(pl.col("Trips") < 20_000).then(pl.lit("low"))
-    .when(pl.col("Trips") < 40_000).then(pl.lit("medium"))
+    pl.when(pl.col("tourists") < 2_000).then(pl.lit("low"))
+    .when(pl.col("tourists") < 3_500).then(pl.lit("medium"))
     .otherwise(pl.lit("high"))
     .alias("demand")
 ).select("time", "demand")
@@ -172,7 +172,7 @@ y_cat = y.with_columns(
 y_cat_train, y_cat_test = train_test_split(y_cat, test_size=forecasting_horizon)
 
 cls_forecaster = ClassProbaReductionForecaster(
-    estimator=GradientBoostingClassifier(),
+    estimator=RandomForestClassifier(n_estimators=50, random_state=42),
 )
 cls_forecaster.fit(y_cat_train, forecasting_horizon=forecasting_horizon)
 
@@ -181,7 +181,7 @@ fig = plot_forecast(y_cat_test, y_cat_pred, y_train=y_cat_train[-24:])
 fig.show()
 ```
 
-If you also call `predict_class_proba()`, passing the result to `plot_forecast` renders stacked probability bars alongside the hard labels. See the companion notebook for the full interactive example.
+If you also call `predict_class_proba()`, passing the result to `plot_forecast` renders a stacked area chart where each class is a coloured band whose height equals the predicted probability, with diamond markers showing the true class. See the companion notebook for the full interactive example.
 
 ## What You Built
 
@@ -189,5 +189,7 @@ We followed a complete model comparison workflow: visually compared two forecast
 
 ## Next Steps
 
+- [Interval Forecasting](interval-forecasting.md): Build and evaluate prediction intervals step by step
+- [Interval Forecasting](../explanation/interval-forecasting.md): Coverage guarantees and calibration sizing
 - [Visualization](../explanation/visualization.md) for the conceptual overview of the plotting workflow
 - [How to Visualize Scores](../how-to/visualize-scores.md) for scoring visualization patterns

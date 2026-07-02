@@ -69,13 +69,13 @@ def panel_splits():
 class TestPredict:
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "fit_forecasting_horizon, predict_forecasting_horizon, expected_a",
+        "fit_forecasting_horizon, predict_forecasting_horizon",
         [
-            (3, 2, [17, 18]),
-            (5, 5, [17, 18, 19, 20, 21]),
+            (3, 2),
+            (5, 5),
         ],
     )
-    def test_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, expected_a, standard_splits):
+    def test_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, standard_splits):
         y_train, y_test, X_actual_train, X_actual_test = standard_splits
         coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         forecaster = IntervalReductionForecaster()
@@ -103,16 +103,14 @@ class TestPredict:
 class TestObservePredict:
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a",
+        "fit_forecasting_horizon, predict_forecasting_horizon, stride",
         [
-            (1, 1, 1, [17]),
-            (3, 3, 2, [17, 18, 19]),
-            (3, 2, 1, [17, 18]),
+            (1, 1, 1),
+            (3, 3, 2),
+            (3, 2, 1),
         ],
     )
-    def test_observe_predict(
-        self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a, standard_splits
-    ):
+    def test_observe_predict(self, fit_forecasting_horizon, predict_forecasting_horizon, stride, standard_splits):
         """Test interval observe_predict (non-recursive predict)."""
         y_train, y_test, X_actual_train, X_actual_test = standard_splits
         coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -143,16 +141,14 @@ class TestObservePredict:
 class TestObservePredictGlobal:
     @pytest.mark.slow
     @pytest.mark.parametrize(
-        "fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a",
+        "fit_forecasting_horizon, predict_forecasting_horizon, stride",
         [
-            (1, 1, 1, [17]),
-            (3, 3, 2, [17, 18, 19]),
-            (3, 2, 1, [17, 18]),
+            (1, 1, 1),
+            (3, 3, 2),
+            (3, 2, 1),
         ],
     )
-    def test_observe_predict_global(
-        self, fit_forecasting_horizon, predict_forecasting_horizon, stride, expected_a, panel_splits
-    ):
+    def test_observe_predict_global(self, fit_forecasting_horizon, predict_forecasting_horizon, stride, panel_splits):
         """Test panel interval observe_predict (non-recursive predict)."""
         y_train_panel, y_test_panel, X_train_panel, X_test_panel = panel_splits
         coverage_rates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
@@ -277,11 +273,12 @@ class TestDirectStrategyInterval:
                 assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
 
     @pytest.mark.slow
-    def test_predict_panel(self, panel_splits):
-        """Direct strategy works with panel interval data."""
+    @pytest.mark.parametrize("reduction_strategy", ["direct", "dir-rec"])
+    def test_predict_panel(self, reduction_strategy, panel_splits):
+        """Direct and dir-rec strategies work with panel interval data."""
         y_train, _y_test, X_actual_train, X_actual_test = panel_splits
         coverage_rates = [0.9]
-        forecaster = IntervalReductionForecaster(reduction_strategy="direct")
+        forecaster = IntervalReductionForecaster(reduction_strategy=reduction_strategy)
         forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=3, coverage_rates=coverage_rates)
 
         y_pred = forecaster.predict_interval(
@@ -345,26 +342,6 @@ class TestDirRecStrategyInterval:
             for cr in coverage_rates:
                 assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
 
-    @pytest.mark.slow
-    def test_predict_panel(self, panel_splits):
-        """Dir-rec strategy works with panel interval data."""
-        y_train, _y_test, X_actual_train, X_actual_test = panel_splits
-        coverage_rates = [0.9]
-        forecaster = IntervalReductionForecaster(reduction_strategy="dir-rec")
-        forecaster.fit(y=y_train, X_actual=X_actual_train, forecasting_horizon=3, coverage_rates=coverage_rates)
-
-        y_pred = forecaster.predict_interval(
-            forecasting_horizon=3,
-            coverage_rates=coverage_rates,
-        )
-
-        assert y_pred.shape[0] == 3
-        for group in ["x", "y"]:
-            for target in ["a", "b"]:
-                for cr in coverage_rates:
-                    assert f"{group}__{target}_lower_{cr}" in y_pred.columns
-                    assert f"{group}__{target}_upper_{cr}" in y_pred.columns
-
 
 class TestObservePredictDirectDirRecInterval:
     """Tests for observe_predict_interval with direct and dir-rec strategies."""
@@ -397,44 +374,6 @@ class TestObservePredictDirectDirRecInterval:
                 assert f"{col}_upper_{cr}" in y_pred.columns
                 assert f"{col}_lower_{cr}" in y_pred.columns
                 assert all(y_pred[f"{col}_upper_{cr}"] + 1e-14 >= y_pred[f"{col}_lower_{cr}"])
-
-
-class _MockMultiQuantileRegressor(BaseEstimator, RegressorMixin):
-    """Lightweight stand-in for CatBoostRegressor with MultiQuantile loss.
-
-    Stores quantiles parsed from ``loss_function`` and returns linear
-    predictions (intercept + slope) per quantile.  This is intentionally
-    simple: it just validates the code path through
-    ``IntervalReductionForecaster``.
-    """
-
-    def __init__(self, loss_function="MultiQuantile:alpha=0.025,0.975"):
-        self.loss_function = loss_function
-
-    def _parse_quantiles(self):
-        prefix = "MultiQuantile:alpha="
-        alpha_str = self.loss_function[len(prefix) :]
-        return [float(q) for q in alpha_str.split(",")]
-
-    def fit(self, X_actual, y, **kwargs):
-        self.quantiles_ = self._parse_quantiles()
-        self.n_quantiles_ = len(self.quantiles_)
-        self.intercept_ = np.zeros(self.n_quantiles_)
-        self.slope_ = np.zeros(self.n_quantiles_)
-        y = np.asarray(y)
-        if y.ndim == 2:
-            y = y[:, 0]
-        for i, q in enumerate(self.quantiles_):
-            self.intercept_[i] = np.quantile(y, q)
-            self.slope_[i] = 0.01 * q
-        return self
-
-    def predict(self, X_actual):
-        n = X_actual.shape[0]
-        preds = np.empty((n, self.n_quantiles_))
-        for i in range(self.n_quantiles_):
-            preds[:, i] = self.intercept_[i] + self.slope_[i] * np.mean(X_actual, axis=1)
-        return preds
 
 
 class TestMultiQuantile:
@@ -674,6 +613,54 @@ class TestLGBMQuantileAlpha:
             forecaster.fit(y=y, forecasting_horizon=1, coverage_rates=[0.9])
 
 
+class TestIntervalReductionNanHandling:
+    """Tests for ``nan_handling='drop'`` on the interval reduction path."""
+
+    @pytest.mark.slow
+    def test_drop_fits_and_predicts_with_nan_features(self):
+        """``nan_handling='drop'`` drops NaN training rows and still yields valid intervals.
+
+        The drop path lives in ``base.reduction`` and is routed through
+        ``IntervalReductionForecaster._estimator_predict_one`` only for interval
+        forecasters; it is otherwise untested in ``tests/interval/``.
+        """
+        length = 30
+        time = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        )
+        y = pl.DataFrame({"time": time, "a": [float(i) for i in range(length)]})
+
+        feature = [float(i) for i in range(length)]
+        feature[5] = float("nan")
+        feature[12] = float("nan")
+        X_actual = pl.DataFrame({"time": time, "c": feature})
+
+        coverage_rates = [0.9]
+        forecaster = IntervalReductionForecaster(nan_handling="drop")
+        with pytest.warns(UserWarning, match="NaN handling dropped"):
+            forecaster.fit(
+                y=y[:24],
+                X_actual=X_actual[:24],
+                forecasting_horizon=2,
+                coverage_rates=coverage_rates,
+            )
+
+        y_pred = forecaster.predict_interval(
+            forecasting_horizon=2,
+            X_actual=X_actual[24:],
+            coverage_rates=coverage_rates,
+        )
+
+        assert y_pred.shape[0] == 2
+        for cr in coverage_rates:
+            assert f"a_lower_{cr}" in y_pred.columns
+            assert f"a_upper_{cr}" in y_pred.columns
+            assert all(y_pred[f"a_upper_{cr}"] + 1e-14 >= y_pred[f"a_lower_{cr}"])
+
+
 class TestIntervalReductionWithFeaturesSystematicChecks:
     """Systematic checks for IntervalReductionForecaster with exogenous features."""
 
@@ -755,3 +742,41 @@ class TestMultiStepPanelInterval:
                 coverage_rates=coverage_rates,
                 strategy="point",
             )
+
+
+class TestIntervalReductionTargetTransformer:
+    """IntervalReductionForecaster exposes a target_transformer parameter."""
+
+    def test_target_transformer_in_params(self):
+        """target_transformer is a constructor parameter, like the other reduction families."""
+        forecaster = IntervalReductionForecaster()
+        assert "target_transformer" in forecaster.get_params()
+        assert forecaster.get_params()["target_transformer"] is None
+
+    def test_target_transformer_passes_through_to_reduction_machinery(self):
+        """A passed target_transformer is stored and threaded into the reduction pipeline."""
+        from sklearn.linear_model import QuantileRegressor
+        from sklearn.multioutput import MultiOutputRegressor
+
+        from yohou.stationarity import SeasonalDifferencing
+
+        transformer = SeasonalDifferencing(seasonality=7)
+        forecaster = IntervalReductionForecaster(
+            estimator=MultiOutputRegressor(QuantileRegressor(alpha=0.0)),
+            target_transformer=transformer,
+        )
+        # Stored on the instance and visible through get_params (and clone).
+        assert forecaster.target_transformer is transformer
+        assert forecaster.get_params()["target_transformer"] is transformer
+        from sklearn.base import clone
+
+        assert clone(forecaster).get_params()["target_transformer"] is not None
+
+        time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 2, 10), interval="1d", eager=True)
+        y = pl.DataFrame({"time": time, "value": pl.Series(range(41), dtype=pl.Float64)})
+        forecaster.fit(y[:30], forecasting_horizon=3, coverage_rates=[0.5])
+
+        # The transformed-space schema reflects the seasonal differencing transform,
+        # proving the target_transformer flowed into the reduction pipeline at fit time.
+        assert forecaster.local_y_t_schema_ == {"diff_s_7_value": pl.Float64}
+        assert forecaster.target_transformer_ is not None

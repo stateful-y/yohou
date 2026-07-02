@@ -67,6 +67,12 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
         List of (name, class), where ``name`` is the class name as string
         and ``class`` is the actual type of the class.
 
+    Raises
+    ------
+    ValueError
+        If any element of ``type_filter`` is not one of the documented valid
+        strings.
+
     Examples
     --------
     >>> from yohou.utils.discovery import all_estimators
@@ -75,6 +81,14 @@ def all_estimators(type_filter: str | list[str] | None = None) -> list[tuple[str
     <class 'list'>
     >>> forecasters = all_estimators(type_filter='forecaster')
     >>> points = all_estimators(type_filter='point')
+
+    Notes
+    -----
+    When ``type_filter`` is supplied, each candidate class is instantiated with
+    no arguments to inspect its tags. Estimators whose constructor requires
+    positional arguments cannot be tag-inspected and are excluded from filtered
+    results. Use ``all_estimators()`` with no filter to retrieve all concrete
+    estimators regardless of their constructor signature.
 
     See Also
     --------

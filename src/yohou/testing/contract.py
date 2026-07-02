@@ -128,8 +128,11 @@ def check_get_set_params_round_trip(estimator) -> None:
     Raises
     ------
     AssertionError
-        If the round-trip mutates shallow params or a shallow key is not a
-        constructor parameter.
+        If a ``get_params(deep=False)`` key is absent from the constructor
+        parameters.
+    AssertionError
+        If ``set_params(**get_params(deep=True))`` mutates any shallow
+        parameter value.
 
     """
     name = type(estimator).__name__

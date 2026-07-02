@@ -20,7 +20,8 @@ Test coverage (~23 tests):
 - Ridge with time_weight: analytical verification of sample_weight conversion
 - IntervalReductionForecaster: coverage_rates to predict_interval
 - Composite methods: observe_predict metadata splitting
-- rewind_transform: known routing gap (not in get_metadata_routing())
+- rewind_transform: metadata routing exists in get_metadata_routing() but is not
+  exercised by tests in this file
 """
 
 from datetime import date, datetime, timedelta
@@ -259,7 +260,7 @@ class ConsumingForecaster(BasePointForecaster):
     _tags = {
         "forecaster_type": frozenset({"point"}),
         "uses_reduction": False,
-        "requires_exogenous_X": True,
+        "requires_exogenous": True,
     }
 
     def __init__(self, registry=None):
@@ -889,31 +890,38 @@ class TestColumnForecasterPanelRouting:
     """Tests for ColumnForecaster groups pass-through to child forecasters."""
 
     def test_column_forecaster_groups_passed_to_children_predict(self):
-        """Verify groups is forwarded to child forecasters in predict."""
+        """Verify groups subselects child predictions to the requested groups."""
         registry = _Registry()
 
         forecaster = ConsumingForecaster(registry=registry)
 
         cf = ColumnForecaster(
-            forecasters=[("f", forecaster, ["sales__store1", "sales__store2", "sales__store3"])],
+            forecasters=[("f", forecaster, ["store1__sales", "store2__sales", "store3__sales"])],
             remainder="drop",
         )
 
-        # Panel data with 3 groups
+        # Panel data with 3 groups (store1, store2, store3)
         y = pl.DataFrame({
             "time": pl.datetime_range(start=date(2020, 1, 1), end=date(2020, 1, 10), interval="1d", eager=True),
-            "sales__store1": np.linspace(1, 10, 10),
-            "sales__store2": np.linspace(11, 20, 10),
-            "sales__store3": np.linspace(21, 30, 10),
+            "store1__sales": np.linspace(1, 10, 10),
+            "store2__sales": np.linspace(11, 20, 10),
+            "store3__sales": np.linspace(21, 30, 10),
         })
 
         cf.fit(y, forecasting_horizon=3)
+        assert cf.groups_ == ["store1", "store2", "store3"]
 
-        # Predict all groups (groups=None)
-        y_pred = cf.predict(forecasting_horizon=3)
+        # groups=None returns all three groups.
+        y_pred_all = cf.predict(forecasting_horizon=3)
+        all_cols = {c for c in y_pred_all.columns if c not in {"time", "vintage_time"}}
+        assert all_cols == {"store1__sales", "store2__sales", "store3__sales"}
 
-        pred_cols = [c for c in y_pred.columns if c not in {"time", "vintage_time"}]
-        assert len(pred_cols) == 3, f"Expected 3 prediction columns, got {pred_cols}"
+        # Passing a non-None groups must forward through to the child and restrict
+        # the output to exactly that group's columns. If groups routing were broken
+        # (ignored), the output would still contain all three groups.
+        y_pred_one = cf.predict(forecasting_horizon=3, groups=["store1"])
+        one_cols = {c for c in y_pred_one.columns if c not in {"time", "vintage_time"}}
+        assert one_cols == {"store1__sales"}, f"groups filtering not forwarded, got {one_cols}"
 
     def test_column_forecaster_observe_passes_data_to_children(self):
         """Verify observe passes column-subsetted data to each child forecaster."""
@@ -922,35 +930,33 @@ class TestColumnForecasterPanelRouting:
         forecaster = ConsumingForecaster(registry=registry)
 
         cf = ColumnForecaster(
-            forecasters=[("f", forecaster, ["sales__store1", "sales__store2", "sales__store3"])],
+            forecasters=[("f", forecaster, ["store1__sales", "store2__sales", "store3__sales"])],
             remainder="drop",
         )
 
         y_train = pl.DataFrame({
             "time": pl.datetime_range(start=date(2020, 1, 1), end=date(2020, 1, 10), interval="1d", eager=True),
-            "sales__store1": np.linspace(1, 10, 10),
-            "sales__store2": np.linspace(11, 20, 10),
-            "sales__store3": np.linspace(21, 30, 10),
+            "store1__sales": np.linspace(1, 10, 10),
+            "store2__sales": np.linspace(11, 20, 10),
+            "store3__sales": np.linspace(21, 30, 10),
         })
 
         y_new = pl.DataFrame({
             "time": pl.datetime_range(start=date(2020, 1, 11), end=date(2020, 1, 15), interval="1d", eager=True),
-            "sales__store1": np.linspace(11, 15, 5),
-            "sales__store2": np.linspace(21, 25, 5),
-            "sales__store3": np.linspace(31, 35, 5),
+            "store1__sales": np.linspace(11, 15, 5),
+            "store2__sales": np.linspace(21, 25, 5),
+            "store3__sales": np.linspace(31, 35, 5),
         })
 
         cf.fit(y_train, forecasting_horizon=3)
-
-        # Observe all data
         cf.observe(y_new)
 
-        # Verify observe completed without error and internal state updated.
-        # The observation buffer is bounded (it holds the latest observed batch,
-        # not the full accumulated history) so memory stays constant when
-        # observing repeatedly.
-        assert cf._y_observed is not None
-        assert len(cf._y_observed) == len(y_new)
+        # The child forecaster must have received the new batch: its per-group
+        # observed_time_ should advance to the last timestamp in y_new. This is
+        # state-sensitive (a no-op observe leaves observed_time_ at the fit tail).
+        child = cf.forecasters_[0][1]
+        last_time = y_new["time"][-1]
+        assert child.observed_time_ == dict.fromkeys(cf.groups_, last_time)
 
     def test_column_forecaster_rewind_passes_data_to_children(self):
         """Verify rewind passes column-subsetted data to each child forecaster."""
@@ -959,41 +965,44 @@ class TestColumnForecasterPanelRouting:
         forecaster = ConsumingForecaster(registry=registry)
 
         cf = ColumnForecaster(
-            forecasters=[("f", forecaster, ["sales__store1", "sales__store2"])],
+            forecasters=[("f", forecaster, ["store1__sales", "store2__sales"])],
             remainder="drop",
         )
 
         y_train = pl.DataFrame({
             "time": pl.datetime_range(start=date(2020, 1, 1), end=date(2020, 1, 20), interval="1d", eager=True),
-            "sales__store1": np.linspace(1, 20, 20),
-            "sales__store2": np.linspace(11, 30, 20),
+            "store1__sales": np.linspace(1, 20, 20),
+            "store2__sales": np.linspace(11, 30, 20),
         })
 
         y_reset = pl.DataFrame({
             "time": pl.datetime_range(start=date(2020, 1, 16), end=date(2020, 1, 20), interval="1d", eager=True),
-            "sales__store1": np.linspace(16, 20, 5),
-            "sales__store2": np.linspace(26, 30, 5),
+            "store1__sales": np.linspace(16, 20, 5),
+            "store2__sales": np.linspace(26, 30, 5),
         })
 
         cf.fit(y_train, forecasting_horizon=3)
-
-        # Rewind to last 5 rows
         cf.rewind(y_reset)
 
-        # Verify rewind completed and internal state updated
-        assert cf._y_observed is not None
-        assert len(cf._y_observed) == 5  # Reset to 5 rows
+        # After rewind, the child's per-group observed_time_ must equal the last
+        # timestamp of the reset window, proving the subsetted data reached it.
+        child = cf.forecasters_[0][1]
+        last_time = y_reset["time"][-1]
+        assert child.observed_time_ == dict.fromkeys(cf.groups_, last_time)
 
 
 @pytest.mark.integration
 class TestCoverageRatesRouting:
     """Metadata routing tests for coverage_rates to interval forecasters."""
 
-    def test_predict_interval_routes_coverage_rates_through_forecasted_feature(self):
-        """Verify coverage_rates reaches target forecaster's predict_interval.
+    def test_predict_interval_produces_coverage_columns_via_forecasted_feature(self):
+        """Verify coverage columns are produced through ForecastedFeatureForecaster.
 
-        Tests that coverage_rates metadata is routed correctly through
-        ForecastedFeatureForecaster to the target interval forecaster.
+        This is a structural coverage check, not a routing-delivery check: it
+        confirms that requesting coverage_rates=[0.9, 0.95] through a
+        ForecastedFeatureForecaster wrapping an interval target forecaster yields
+        the matching lower/upper columns. Routing delivery to a recording child is
+        covered separately by the time_weight ConsumingForecaster tests.
 
         """
         # Create simple interval forecaster with quantile-capable regressor
@@ -1034,9 +1043,9 @@ class TestCoverageRatesRouting:
         coverage_rates = [0.9, 0.95]
         y_pred = chained.predict_interval(forecasting_horizon=3, coverage_rates=coverage_rates)
 
-        # Verify coverage_rates metadata was routed to target forecaster's regressor predict
-        # Note: IntervalReductionForecaster doesn't directly call regressor.predict with coverage_rates,
-        # but we can verify the prediction has correct coverage columns
+        # Verify the prediction carries the requested coverage columns. The
+        # interval forecaster does not call regressor.predict with coverage_rates
+        # directly, so this asserts the produced column structure, not delivery.
         expected_cols = set()
         for rate in coverage_rates:
             expected_cols.add(f"target_lower_{rate}")
@@ -1075,11 +1084,12 @@ class TestCoverageRatesRouting:
 class TestCompositeMethodRouting:
     """Metadata routing tests for composite methods (observe_predict, observe_transform)."""
 
-    def test_observe_predict_routes_separate_metadata_through_feature_pipeline(self):
-        """Verify observe_predict routes observe and predict metadata separately.
+    def test_observe_transform_graceful_without_observe_method(self):
+        """Verify observe_transform on FeaturePipeline handles a transformer lacking observe.
 
-        Tests the composite method routing: observe_predict should route observe-specific
-        metadata to observe() and predict-specific metadata to predict() within transformers.
+        ConsumingTransformer has no observe() method, so FeaturePipeline must fall
+        back to transform-only behavior. This checks graceful handling (no error,
+        row count preserved), not metadata routing.
 
         """
         registry = _Registry()

@@ -59,7 +59,7 @@ def _fit_transform_transformers_one(
     -----
     Transformation order matters:
     1. Apply target_transformer to y → y_t
-    2. Concatenate y_t with X_actual (aligned by observation horizon)
+    2. Align X_actual to y_t timestamps via a semi-join, then concatenate with y_t
     3. Apply feature_transformer to combined → X_t
     4. Trim y_t if feature transformer has its own observation horizon
 
@@ -134,7 +134,7 @@ def _build_feature_input(
     Notes
     -----
     The target_as_feature parameter controls what features are available:
-    - ``"transformed"``: Transformed target + exogenous features (default)
+    - ``"transformed"``: Transformed target + exogenous features
     - ``"raw"``: Original target + exogenous features
     - ``None``: Only exogenous features (no target)
 
@@ -257,7 +257,8 @@ def _rewind_transformers_one(
     Returns
     -------
     pl.DataFrame or None
-        Transformed new observations.
+        Feature matrix containing the single transformed row aligned to the
+        latest observation timestamp after rewinding state.
 
     """
     y_t = y
@@ -302,11 +303,10 @@ def _rewind_transformers_one(
                 X_feat_extra = X_feat_extra.tail(deficit)
                 X_feat_in = pl.concat([X_feat_extra, X_feat_in], how="vertical")
 
-        # Use rewind_transform (combined operation) instead of separate
-        # rewind() + observe_transform().  Composite transformers such as
-        # FeatureUnion only implement the combined method; calling rewind()
-        # directly on them raises NotFittedError because their fit() does
-        # not set the base-class fitted attributes.
+        # Use rewind_transform (combined operation): this path needs the
+        # transformed output X_t_all, so the combined rewind-and-transform is
+        # the right call rather than a state-only rewind() followed by a
+        # separate transform.
         X_t_all = feature_transformer.rewind_transform(X_feat_in)
         # Keep the row aligned to the most-recent observation timestamp rather
         # than blindly taking the last row: when the feature transformer drops

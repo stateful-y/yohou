@@ -54,8 +54,10 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
     `FeaturePipeline` allows you to sequentially apply a list of time series
     transformers to preprocess the data.
 
-    Steps of the pipeline must be 'transforms', that is, they must implement
-    `fit`, `transform` and `observe` methods.
+    Steps of the pipeline must be instances of `BaseTransformer`. Non-last
+    steps must also implement `transform`. The pipeline dispatches
+    `observe_transform()` internally; steps do not need to expose a bare
+    `observe` method.
 
     The purpose of the pipeline is to assemble several steps that can be
     cross-validated together while setting different parameters. For this, it
@@ -99,9 +101,9 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         underlying first estimator in `steps` exposes such an attribute
         when fit.
 
-    feature_names_in_ : ndarray of shape (`n_features_in_`,)
-        Names of features seen during ``fit``. Only defined if the
-        underlying estimator exposes such an attribute when fit.
+    feature_names_in_ : list[str]
+        List of feature names seen during ``fit`` of the first step. Only
+        defined if the underlying estimator exposes such an attribute when fit.
 
     See Also
     --------
@@ -556,6 +558,11 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         -------
         self
 
+        Raises
+        ------
+        NotFittedError
+            If the pipeline has not been fitted yet.
+
         """
         check_is_fitted(self)
 
@@ -589,6 +596,8 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Raises
         ------
+        NotFittedError
+            If the pipeline has not been fitted yet.
         ValueError
             If ``X`` is not temporally continuous with previous
             observations.
@@ -645,11 +654,11 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable
+        X : pl.DataFrame
             Training data. Must fulfill input requirements of first step of the
             pipeline.
 
-        y : iterable, default=None
+        y : pl.DataFrame or None, default=None
             Training targets. Must fulfill label requirements for all steps of
             the pipeline.
 
@@ -668,7 +677,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Returns
         -------
-        self : object
+        self : FeaturePipeline
             FeaturePipeline with fitted steps.
         """
         routed_params = self._check_method_params(method="fit", props=params)
@@ -698,11 +707,11 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable
+        X : pl.DataFrame
             Training data. Must fulfill input requirements of first step of the
             pipeline.
 
-        y : iterable, default=None
+        y : pl.DataFrame or None, default=None
             Training targets. Must fulfill label requirements for all steps of
             the pipeline.
 
@@ -749,7 +758,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         Parameters
         ----------
-        X : iterable
+        X : pl.DataFrame
             Data to transform. Must fulfill input requirements of first step
             of the pipeline.
 
@@ -777,8 +786,10 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         """Observe and transform the data through the pipeline.
 
         This method atomically observes each transformer with new data and
-        transforms it in sequence. The transformation uses the pre-observe state,
-        then updates the memory. This is more efficient and correct than calling
+        transforms it in sequence. Each step transforms using its own
+        pre-observe memory and then updates its state before passing the result
+        to the next step. The pipeline does not take a global snapshot; state is
+        updated step-by-step. This is more efficient and correct than calling
         observe() then transform() separately.
 
         Parameters

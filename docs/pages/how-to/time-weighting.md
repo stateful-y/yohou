@@ -200,7 +200,8 @@ weighter is rejected at construction rather than at `score` time. See
 [Multi-vintage Scoring](multi-vintage-scoring.md) for details.
 
 Because the weighting lives on the scorer instance, a weighted scorer is a valid
-cross-validation objective with no per-call weight argument:
+[`cross_validate`](/pages/api/generated/yohou.model_selection.validation.cross_validate/)
+objective with no per-call weight argument:
 
 ```python
 from yohou.model_selection import cross_validate
@@ -215,6 +216,7 @@ hyperparameters addressed with the `__` syntax. Tune the decay half-life, and
 even the decay basis, directly:
 
 ```python
+from yohou.metrics import MeanAbsoluteError
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
 
 forecaster = PointReductionForecaster(
@@ -228,6 +230,7 @@ search = GridSearchCV(
         "time_weighter__half_life": [90, 180, 365, 730],
         "time_weighter__scale": ["elapsed", "position"],
     },
+    scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
 )
 search.fit(y_train, forecasting_horizon=12)
@@ -244,6 +247,7 @@ search = GridSearchCV(
         ExponentialDecayWeighter(half_life=180),
         LinearDecayWeighter(max_steps=100),
     ]},
+    scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
 )
 search.fit(y_train, forecasting_horizon=12)

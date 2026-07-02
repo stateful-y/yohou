@@ -328,4 +328,4 @@ explains the stationarity transforms that prepare series for reduction forecaste
 [Extending Yohou](extending-yohou.md) describes how to subclass the base classes to
 implement custom algorithms within this architecture.
 
-For practical starting points, see [How to Build a Reduction Forecaster](../how-to/build-reduction-forecasters.md) and [How to Choose a Forecasting Method](../how-to/choose-forecasting-method.md).
+For practical starting points, see [How to Build a Reduction Forecaster](../how-to/build-reduction-forecasters.md) and [How to Choose a Forecasting Method](../how-to/choose-forecasting-method.md). For an end-to-end walkthrough, see the [Forecasting Workflow Tutorial](../tutorials/forecasting-workflow.md).

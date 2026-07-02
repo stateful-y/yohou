@@ -13,6 +13,13 @@ them in a new session to produce predictions without retraining.
 
 ## 1. Save a Fitted Forecaster
 
+The example uses [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/),
+but the same approach applies to any Yohou estimator. Because every Yohou
+forecaster extends sklearn's `BaseEstimator` and stores all state as Python
+attributes, standard serializers capture the complete fitted object (see
+[Core Concepts](../explanation/core-concepts.md) for how this state is
+structured).
+
 Use `joblib` to serialize the forecaster after fitting. `joblib` handles large
 NumPy arrays more efficiently than `pickle` and is the recommended approach
 for scikit-learn compatible estimators:

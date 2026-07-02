@@ -9,7 +9,7 @@ In this tutorial, we will forecast air quality categories using [`ClassProbaRedu
 
 - Completed [Getting Started](getting-started.md)
 
-## Load and Inspect the Data
+## 1. Load and Inspect the Data
 
 The air quality classification dataset contains hourly PM2.5 readings from Beijing (2017 to 2019), labelled with one of four WHO air quality classes: good, moderate, unhealthy, and hazardous. Five pollutant features are available as `X_actual`: PM10, NO2, CO, O3, and SO2.
 
@@ -42,7 +42,7 @@ shape: (3, 2)
 └─────────────────────┴─────────────┘
 ```
 
-## Train/Test Split
+## 2. Train/Test Split
 
 We split the data so that the last 24 hours form the test set (one full day ahead) using [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/):
 
@@ -74,7 +74,7 @@ shape: (2, 2)
 └─────────────┴───────┘
 ```
 
-## Fit the Forecaster
+## 3. Fit the Forecaster
 
 [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) wraps any Scikit-Learn classifier that supports `predict_proba` and uses a reduction strategy to produce forecasts for each step in the horizon. We pass `X_actual` at fit time so the model learns to use pollutant readings as features:
 
@@ -95,7 +95,7 @@ forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, X_actual=X_trai
 
 [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains feature transformers sequentially, just like sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html). Here we use a single [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) that creates autoregressive features from 1, 2, 3, and 24 hours back.
 
-## Predict Class Probabilities
+## 4. Predict Class Probabilities
 
 Calling `predict_class_proba` produces a probability distribution over all four classes for each hour in the forecast horizon. We pass `X_test` so the model can use pollutant readings from the test window:
 
@@ -135,7 +135,7 @@ The first line shows the full column names. Polars may truncate long names in th
     underlying classifier (e.g., with [`CalibratedClassifierCV`](https://scikit-learn.org/stable/modules/generated/sklearn.calibration.CalibratedClassifierCV.html)) before passing
     it to [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/).
 
-## Evaluate
+## 5. Evaluate
 
 We score the probabilistic forecasts with [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), which measures calibration quality (lower is better), and with [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/), which evaluates the argmax class prediction against the true label (higher is better). Both scorers require a `.fit(y_train)` call to infer the panel structure and time interval from the training data:
 

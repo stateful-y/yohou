@@ -108,18 +108,13 @@ class TestSeasonalNaive:
 
 
 class TestSeasonalNaiveWithoutExogenous:
-    """Tests for SeasonalNaive with X_actual=None throughout the lifecycle."""
+    """Tests for SeasonalNaive with X_actual=None through the stateful lifecycle.
 
-    def test_fit_predict_without_exogenous(self, naive_data):
-        """SeasonalNaive should work without exogenous features (requires_exogenous=False)."""
-        y, _ = naive_data
-        forecaster = SeasonalNaive(seasonality=3)
-        forecaster.fit(y[:17], X_actual=None, forecasting_horizon=3)
-        y_pred = forecaster.predict(forecasting_horizon=3)
-
-        assert isinstance(y_pred, pl.DataFrame)
-        assert "time" in y_pred.columns
-        assert len(y_pred) == 3
+    The plain fit/predict X_actual=None path and the requires_exogenous tag are
+    already validated by the systematic suite (check_fit_predict_without_exogenous),
+    so only the observe/rewind variants, which the systematic checks run with
+    non-None X_actual, are exercised here.
+    """
 
     def test_observe_predict_without_exogenous(self, naive_data):
         """SeasonalNaive observe_predict should work without exogenous features."""
@@ -129,6 +124,7 @@ class TestSeasonalNaiveWithoutExogenous:
         y_pred = forecaster.observe_predict(y[17:19], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
 
     def test_rewind_without_exogenous(self, naive_data):
@@ -142,12 +138,6 @@ class TestSeasonalNaiveWithoutExogenous:
 
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
-
-    def test_requires_exogenous_tag(self):
-        """SeasonalNaive should have requires_exogenous=False tag."""
-        forecaster = SeasonalNaive(seasonality=3)
-        tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.requires_exogenous is False
 
     def test_seasonal_naive_checks_with_step_data(self, y_X_factory):
         """Systematic checks include requires_exogenous warning when step data provided."""
@@ -348,20 +338,38 @@ class TestMeanSeasonalNaive:
 
             pl.testing.assert_frame_equal(y_mean, y_naive)
 
+    def test_n_seasons_1_preserves_integer_dtype(self):
+        """n_seasons=1 returns the observed values verbatim, preserving the column dtype.
+
+        With a Float64 fixture the dtype check is vacuous, so use an explicit
+        Int64 column: averaging would upcast to Float64, the verbatim path must not.
+        """
+        length = 30
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 12, 16),
+                end=datetime(2021, 12, 16, 0, 0, length - 1),
+                interval="1s",
+                eager=True,
+            ),
+            "a": pl.Series(range(length), dtype=pl.Int64),
+        })
+
+        mean_naive = MeanSeasonalNaive(seasonality=3, n_seasons=1)
+        mean_naive.fit(y=y[:24], X_actual=None, forecasting_horizon=3)
+        y_mean = mean_naive.predict(forecasting_horizon=3)
+
+        assert y_mean.schema["a"] == pl.Int64
+
 
 class TestMeanSeasonalNaiveWithoutExogenous:
-    """Tests for MeanSeasonalNaive with X_actual=None throughout the lifecycle."""
+    """Tests for MeanSeasonalNaive with X_actual=None through the stateful lifecycle.
 
-    def test_fit_predict_without_exogenous(self, mean_naive_data):
-        """MeanSeasonalNaive should work without exogenous features."""
-        y, _ = mean_naive_data
-        forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        forecaster.fit(y[:40], X_actual=None, forecasting_horizon=3)
-        y_pred = forecaster.predict(forecasting_horizon=3)
-
-        assert isinstance(y_pred, pl.DataFrame)
-        assert "time" in y_pred.columns
-        assert len(y_pred) == 3
+    The plain fit/predict X_actual=None path and the requires_exogenous tag are
+    already validated by the systematic suite (check_fit_predict_without_exogenous),
+    so only the observe/rewind variants, which the systematic checks run with
+    non-None X_actual, are exercised here.
+    """
 
     def test_observe_predict_without_exogenous(self, mean_naive_data):
         """MeanSeasonalNaive observe_predict should work without exogenous features."""
@@ -371,6 +379,7 @@ class TestMeanSeasonalNaiveWithoutExogenous:
         y_pred = forecaster.observe_predict(y[40:42], X_actual=None)
 
         assert isinstance(y_pred, pl.DataFrame)
+        assert "vintage_time" in y_pred.columns
         assert "time" in y_pred.columns
 
     def test_rewind_without_exogenous(self, mean_naive_data):
@@ -384,12 +393,6 @@ class TestMeanSeasonalNaiveWithoutExogenous:
 
         assert isinstance(y_pred, pl.DataFrame)
         assert len(y_pred) == 3
-
-    def test_requires_exogenous_tag(self):
-        """MeanSeasonalNaive should have requires_exogenous=False tag."""
-        forecaster = MeanSeasonalNaive(seasonality=3, n_seasons=2)
-        tags = forecaster.__sklearn_tags__()
-        assert tags.forecaster_tags.requires_exogenous is False
 
 
 class TestMeanSeasonalNaivePanel:

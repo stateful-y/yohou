@@ -238,7 +238,8 @@ class SplitterTags:
         Type of cross-validation splitter:
         - "expanding": Expanding window (train set grows over time)
         - "sliding": Sliding window (fixed train set size)
-        - "gap": Wraps another splitter to add gap between train and test
+        - "gap": Reserved for a future gap splitter (wraps another splitter to
+          add a gap between train and test); not used by any shipped splitter
         - None: Not determined or not applicable
     supports_panel_data : bool, default=False
         Whether the splitter can handle panel data (multiple time series

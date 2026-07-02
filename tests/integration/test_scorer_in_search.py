@@ -65,7 +65,13 @@ class TestScorerReceivesForecasterInCV:
     """Verify scorer.fit() receives the fitted forecaster during CV folds."""
 
     def test_single_metric_scorer_gets_forecaster_horizon(self, daily_series):
-        """_HorizonAwareScorer should not raise during CV scoring."""
+        """search.fit() completes without _HorizonAwareScorer raising NotFittedError.
+
+        _HorizonAwareScorer._compute_raw_errors asserts forecaster_horizon_ was set,
+        which only happens if _score() passed forecaster=... to scorer.fit() inside
+        each CV fold. If routing were broken, fit() would raise here. (Generic
+        attribute presence is already covered by check_search_fit_sets_attributes.)
+        """
         scorer = _HorizonAwareScorer()
         cv = SlidingWindowSplitter(n_splits=2, test_size=10)
 
@@ -75,11 +81,42 @@ class TestScorerReceivesForecasterInCV:
             scoring=scorer,
             cv=cv,
         )
+        # Must not raise: every fold scored the forecaster-aware scorer successfully.
+        search.fit(daily_series, forecasting_horizon=5)
+
+        # The selected scorer_ carries the forecaster horizon from the refit fold,
+        # proving the forecaster reached scorer.fit() (not merely that fit ran).
+        assert search.scorer_.forecaster_horizon_ == 5
+
+    def test_scorer_in_cv_with_refit_false(self, daily_series):
+        """With refit=False, CV scoring still receives the forecaster per fold.
+
+        Exercises the refit=False branch of GridSearchCV._fit, where the
+        ``if self.refit:`` block (which refits best_forecaster_ and re-fits the
+        scorer with it) is skipped. The forecaster-aware scorer must still succeed
+        during the CV folds (otherwise fit() would raise), and the no-refit contract
+        must hold: best_params_/best_score_ are set but best_forecaster_ is not, so
+        predict() is unavailable.
+        """
+        scorer = _HorizonAwareScorer()
+        cv = SlidingWindowSplitter(n_splits=2, test_size=10)
+
+        search = GridSearchCV(
+            SeasonalNaive(),
+            param_grid={"seasonality": [7, 14]},
+            scoring=scorer,
+            cv=cv,
+            refit=False,
+        )
+        # Must not raise: each fold scored the forecaster-aware scorer successfully.
         search.fit(daily_series, forecasting_horizon=5)
 
         assert hasattr(search, "best_params_")
         assert hasattr(search, "best_score_")
-        assert search.best_params_["seasonality"] in (7, 14)
+        # refit=False skips the refit block, so no best_forecaster_ is produced.
+        assert not hasattr(search, "best_forecaster_")
+        with pytest.raises(AttributeError):
+            search.predict(forecasting_horizon=3)
 
     def test_scorer_has_forecaster_horizon_after_refit(self, daily_series):
         """After refit, scorer_ should have forecaster_horizon_ from best_forecaster_."""

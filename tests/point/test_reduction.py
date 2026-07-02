@@ -457,10 +457,14 @@ class TestDirectLinearRegressionAnalytical:
         expected = [2.0 * 40 + 10.0, 2.0 * 41 + 10.0, 2.0 * 42 + 10.0]
         np.testing.assert_allclose(y_pred["value"].to_numpy(), expected, rtol=1e-5, atol=1e-5)
 
-    def test_direct_ar1_process(self):
-        """Direct strategy on AR(1) recovers exact one-step predictions.
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
+    def test_ar1_horizon_1_recovers_exact_prediction(self, strategy):
+        """Direct and dir-rec recover the exact AR(1) one-step prediction.
 
-        For horizon=1, direct is equivalent to the standard approach.
+        At horizon=1 both strategies reduce to the multi-output one-step model
+        (whose AR(1) correctness is asserted in
+        TestLinearRegressionAnalytical.test_linear_regression_ar1_process), so a
+        single parametrized check covers both rather than two separate copies.
         """
         phi = 0.8
         c = 5.0
@@ -479,7 +483,7 @@ class TestDirectLinearRegressionAnalytical:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            reduction_strategy="direct",
+            reduction_strategy=strategy,
         )
         forecaster.fit(y_train, X_actual=None, forecasting_horizon=1)
 
@@ -533,33 +537,6 @@ class TestDirRecLinearRegressionAnalytical:
         y_pred = forecaster.predict(forecasting_horizon=3)
         np.testing.assert_allclose(y_pred["value"].to_numpy(), [42.0, 42.0, 42.0], rtol=1e-5)
 
-    def test_dir_rec_ar1_horizon_1(self):
-        """Dir-rec with horizon=1 is identical to direct/multi-output."""
-        phi = 0.8
-        c = 5.0
-        length = 50
-        time = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, length - 1),
-            interval="1s",
-            eager=True,
-        )
-        values = [10.0]
-        for _ in range(1, length):
-            values.append(phi * values[-1] + c)
-        y = pl.DataFrame({"time": time, "value": values})
-        y_train = y[:40]
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-            reduction_strategy="dir-rec",
-        )
-        forecaster.fit(y_train, X_actual=None, forecasting_horizon=1)
-
-        y_pred = forecaster.predict(forecasting_horizon=1)
-        expected_value = phi * y_train["value"][-1] + c
-        np.testing.assert_allclose(y_pred["value"][0], expected_value, rtol=1e-10, atol=1e-10)
-
     def test_dir_rec_perfect_linear_trend(self):
         """Dir-rec on perfect linear trend produces near-exact predictions."""
         length = 50
@@ -584,11 +561,17 @@ class TestDirRecLinearRegressionAnalytical:
 
 
 class TestDirectHorizonMismatch:
-    """Tests for predicting with a different horizon than fit horizon."""
+    """Recursive prediction (predict_fh > fit_fh) for direct/dir-rec strategies.
+
+    The non-recursive predict_fh <= fit_fh shape cases are covered by
+    TestDirectStrategy.test_predict_shape and TestDirRecStrategy.test_predict_shape;
+    the recursive multi-output case by TestPredict.test_predict_recursive_no_x.
+    Only the recursive scenario for the direct/dir-rec strategies is exercised here.
+    """
 
     @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
     def test_predict_larger_horizon_than_fit(self, strategy):
-        """When predict horizon > fit horizon, recursive application is used."""
+        """When predict horizon > fit horizon, recursive application extends the forecast."""
         length = 50
         time = pl.datetime_range(
             start=datetime(2021, 1, 1),
@@ -605,35 +588,20 @@ class TestDirectHorizonMismatch:
         )
         forecaster.fit(y_train, X_actual=None, forecasting_horizon=2)
 
-        # Predict 5 steps even though fit horizon was 2
+        # Predict 5 steps even though fit horizon was 2.
         y_pred = forecaster.predict(forecasting_horizon=5)
 
         assert y_pred.shape[0] == 5
         assert "value" in y_pred.columns
-
-    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
-    def test_predict_smaller_horizon_than_fit(self, strategy):
-        """When predict horizon < fit horizon, only first H' steps used."""
-        length = 50
-        time = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, length - 1),
+        # Recursive extension must produce a contiguous 1s time range continuing
+        # immediately after the last training timestamp.
+        expected_time = pl.datetime_range(
+            start=datetime(2021, 1, 1, 0, 0, 40),
+            end=datetime(2021, 1, 1, 0, 0, 44),
             interval="1s",
             eager=True,
         )
-        y = pl.DataFrame({"time": time, "value": [float(i) for i in range(length)]})
-        y_train = y[:40]
-
-        forecaster = PointReductionForecaster(
-            estimator=LinearRegression(),
-            reduction_strategy=strategy,
-        )
-        forecaster.fit(y_train, X_actual=None, forecasting_horizon=5)
-
-        y_pred = forecaster.predict(forecasting_horizon=2)
-
-        assert y_pred.shape[0] == 2
-        assert "value" in y_pred.columns
+        assert y_pred["time"].to_list() == expected_time.to_list()
 
 
 class TestParameterValidation:
@@ -655,6 +623,47 @@ class TestParameterValidation:
 
         with pytest.raises(ValueError, match="reduction_strategy"):
             forecaster.fit(y, forecasting_horizon=3)
+
+
+class TestNanHandlingDrop:
+    """Point-unit coverage of nan_handling='drop' across reduction strategies.
+
+    The full nan_handling matrix lives in tests/base/test_reduction_nan_handling.py;
+    this asserts the user-facing contract (warning on fit, NaN-feature rows
+    predicted as NaN) for both the multi-output and direct strategies through
+    PointReductionForecaster.
+    """
+
+    @staticmethod
+    def _series_with_trailing_nan(length: int = 30) -> pl.DataFrame:
+        values = [float(i) for i in range(length)]
+        values[-1] = float("nan")
+        values[-2] = float("nan")
+        return pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 0, length - 1),
+                interval="1s",
+                eager=True,
+            ),
+            "value": values,
+        })
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct"])
+    def test_drop_warns_and_predicts_nan_on_nan_features(self, strategy):
+        """drop warns at fit and returns NaN predictions when features are NaN."""
+        y = self._series_with_trailing_nan()
+        forecaster = PointReductionForecaster(
+            estimator=LinearRegression(),
+            reduction_strategy=strategy,
+            nan_handling="drop",
+        )
+
+        with pytest.warns(UserWarning):
+            forecaster.fit(y=y, forecasting_horizon=2)
+
+        y_pred = forecaster.predict(forecasting_horizon=2)
+        assert y_pred["value"].is_nan().all()
 
 
 class TestDtypePreservation:
@@ -1099,8 +1108,12 @@ class TestPanelGroupMismatchErrors:
         )
 
         forecaster = PointReductionForecaster()
-        with pytest.raises(ValueError, match="do not have the same local group names"):
+        # The canonical mismatch message lists both group sets.
+        with pytest.raises(ValueError, match="Panel groups mismatch") as exc_info:
             forecaster.fit(y, X_actual=X_actual, forecasting_horizon=3)
+        message = str(exc_info.value)
+        assert "group_a" in message and "group_b" in message
+        assert "group_c" in message and "group_d" in message
 
 
 class TestEmptyTrainingData:
@@ -1121,21 +1134,28 @@ class TestEmptyTrainingData:
             forecaster.fit(y, forecasting_horizon=10)
 
 
+class TestParameterDefaults:
+    """Pin the public defaults the generic get/set-params round-trip cannot assert.
+
+    The round-trip and clone-preservation contracts for every declared parameter
+    are already covered by check_get_set_params_round_trip /
+    check_clone_preserves_forecaster_params in the systematic suite; only the
+    specific default values are pinned here.
+    """
+
+    @pytest.mark.parametrize(
+        "param,expected_default",
+        [("n_jobs", None), ("target_as_feature", "transformed")],
+    )
+    def test_param_default(self, param, expected_default):
+        """The named parameter is exposed with its documented default."""
+        params = PointReductionForecaster().get_params()
+        assert param in params
+        assert params[param] == expected_default
+
+
 class TestNJobsParameter:
     """Tests for n_jobs parallel execution on direct strategy."""
-
-    def test_n_jobs_in_get_params(self):
-        """n_jobs should appear in get_params()."""
-        forecaster = PointReductionForecaster()
-        params = forecaster.get_params()
-        assert "n_jobs" in params
-        assert params["n_jobs"] is None
-
-    def test_n_jobs_set_params(self):
-        """n_jobs should be settable via set_params()."""
-        forecaster = PointReductionForecaster()
-        forecaster.set_params(n_jobs=2)
-        assert forecaster.n_jobs == 2
 
     def test_n_jobs_direct_matches_sequential(self, reduction_data):
         """Direct strategy with n_jobs=2 gives same results as n_jobs=1."""
@@ -1162,38 +1182,6 @@ class TestNJobsParameter:
         )
 
 
-class TestTargetAsFeatureParam:
-    """Tests for target_as_feature parameter on PointReductionForecaster."""
-
-    def test_target_as_feature_in_get_params(self):
-        """target_as_feature should appear in get_params()."""
-        forecaster = PointReductionForecaster()
-        params = forecaster.get_params()
-        assert "target_as_feature" in params
-        assert params["target_as_feature"] == "transformed"
-
-    def test_target_as_feature_set_params(self):
-        """target_as_feature should be settable via set_params()."""
-        forecaster = PointReductionForecaster()
-        forecaster.set_params(target_as_feature=None)
-        assert forecaster.target_as_feature is None
-
-    def test_target_as_feature_constructor(self):
-        """target_as_feature should be settable via constructor."""
-        forecaster = PointReductionForecaster(target_as_feature="raw")
-        assert forecaster.target_as_feature == "raw"
-        params = forecaster.get_params()
-        assert params["target_as_feature"] == "raw"
-
-    def test_target_as_feature_clone(self):
-        """target_as_feature should survive clone()."""
-        from sklearn.base import clone
-
-        forecaster = PointReductionForecaster(target_as_feature=None)
-        cloned = clone(forecaster)
-        assert cloned.target_as_feature is None
-
-
 class TestPanelTimeWeight:
     """Tests for time_weight on panel data in reduction forecasters."""
 
@@ -1208,8 +1196,9 @@ class TestPanelTimeWeight:
         f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
         f.fit(y[:50], forecasting_horizon=3)
         y_pred = f.predict()
+        # The time-column contract is owned by check_predict_time_columns;
+        # here we only confirm the weighted panel fit/predict round-trip succeeds.
         assert len(y_pred) == 3
-        assert "time" in y_pred.columns
 
     def test_panel_dataframe_time_weight(self, y_X_factory):
         """DataFrame time_weight with global weight column works on panel data."""
@@ -1392,8 +1381,9 @@ class TestPipelineSampleWeightRouting:
         f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
         f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
+        # check_predict_time_columns owns the time-column contract; this test
+        # only confirms the Ridge-final pipeline accepts the routed time weight.
         assert len(y_pred) == 3
-        assert "time" in y_pred.columns
 
     def test_pipeline_unsupported_final_step_raises(self, simple_series):
         """Pipeline whose final step lacks sample_weight raises ValueError."""
@@ -1416,8 +1406,9 @@ class TestPipelineSampleWeightRouting:
         f.set_params(time_weighter=LookupWeighter(mapping={}, default=1.0))
         f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
+        # check_predict_time_columns owns the time-column contract; this guard
+        # only confirms a plain Ridge estimator accepts the routed time weight.
         assert len(y_pred) == 3
-        assert "time" in y_pred.columns
 
     def test_pipeline_with_non_weight_aware_intermediate_step(self, simple_series):
         """Pipeline with intermediate step that lacks set_fit_request for sample_weight."""
@@ -1433,5 +1424,6 @@ class TestPipelineSampleWeightRouting:
         with pytest.warns(UserWarning, match="Could not disable sample_weight routing"):
             f.fit(simple_series, forecasting_horizon=3)
         y_pred = f.predict()
+        # The warning is the assertion under test; the predict round-trip only
+        # confirms fit still produced a usable forecaster.
         assert len(y_pred) == 3
-        assert "time" in y_pred.columns
