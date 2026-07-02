@@ -544,9 +544,6 @@ class TestSeasonalSimilarityIntegration:
         assert len(non_time_cols) >= 2
 
 
-# ── CompositeSimilarity ──────────────────────────────────────────────
-
-
 @pytest.fixture
 def composite_data():
     """Create daily data with weekly seasonality for composite tests."""

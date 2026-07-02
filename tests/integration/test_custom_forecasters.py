@@ -265,9 +265,6 @@ class _UniformClassProbaForecaster(BaseClassProbaForecaster):
         return self._add_time_columns(y_pred)
 
 
-# Fixtures
-
-
 @pytest.fixture
 def daily_series():
     rng = np.random.default_rng(42)

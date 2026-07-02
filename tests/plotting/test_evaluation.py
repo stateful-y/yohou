@@ -1609,9 +1609,6 @@ class TestPlotScoreTimeSeriesPanelGroupScoreCols:
         assert_figure_valid(fig)
 
 
-# Panel legend deduplication integration tests
-
-
 class TestPanelLegendDedupResiduals:
     """Verify panel residuals produce no duplicate legend entries."""
 
@@ -1635,9 +1632,6 @@ class TestPanelLegendDedupResiduals:
         fig = plot_residuals(y_pred, y_truth, groups=["g1", "g2"])
         names = visible_legend_names(fig)
         assert len(names) == len(set(names)), f"Duplicate legend entries: {names}"
-
-
-# Additional coverage tests for uncovered branches
 
 
 class TestPlotResidualsPanelMissingTruthCols:

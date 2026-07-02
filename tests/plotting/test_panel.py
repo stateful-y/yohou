@@ -373,9 +373,6 @@ class TestPanelTimeWeight:
         assert len(fig.data) >= 2
 
 
-# Cross-module: invalid groups
-
-
 class TestPanelInvalidGroups:
     """Verify ValueError for non-existent groups."""
 
