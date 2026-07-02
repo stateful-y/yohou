@@ -11,7 +11,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 if TYPE_CHECKING:
-    from yohou.metrics._context import ScoringContext
+    from yohou.utils._context import ScoringContext
 
 from yohou.utils import validate_scorer_data
 from yohou.utils._compat import Interval, _fit_context

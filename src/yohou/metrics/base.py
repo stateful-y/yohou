@@ -12,9 +12,9 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.metrics._context import ScoringContext
 from yohou.utils import Tags, inspect_panel, validate_scorer_data
 from yohou.utils._compat import StrOptions, _fit_context
+from yohou.utils._context import ScoringContext
 from yohou.utils.validation import check_interval_consistency
 from yohou.weighting import BaseWeighter
 from yohou.weighting.weighters import _normalize_weights, _resolve_weighter_to_array
