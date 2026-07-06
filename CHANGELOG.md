@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.10] - 2026-07-02
+
+This **minor release** includes 22 commits.
+
+
+### Features
+- Replace exact vintage matching with as-of selection  ([#74](https://github.com/stateful-y/yohou/pull/74)) by @gtauzin
+- Make y_test optional in plot_forecast and fix weighted_quantile normalization  ([#76](https://github.com/stateful-y/yohou/pull/76)) by @gtauzin
+- Add cross_validate, cross_val_score, cross_val_predict  ([#68](https://github.com/stateful-y/yohou/pull/68)) by @gtauzin
+- Make time-axis weighting estimator-based and tunable  ([#81](https://github.com/stateful-y/yohou/pull/81)) by @gtauzin
+- Make CompositeSimilarity a real composition; rename TemporalSimilarity  ([#82](https://github.com/stateful-y/yohou/pull/82)) by @gtauzin
+- Add weighter, similarity, and composition check harnesses  ([#83](https://github.com/stateful-y/yohou/pull/83)) by @gtauzin
+- Add quantile calibration mode with square [0,1] axes  ([#89](https://github.com/stateful-y/yohou/pull/89)) by @gtauzin
+- Add plot_nested_splits for nested CV visualization  ([#90](https://github.com/stateful-y/yohou/pull/90)) by @gtauzin
+- Add configurable line_shape for all line plots  ([#92](https://github.com/stateful-y/yohou/pull/92)) by @gtauzin
+
+### Bug Fixes
+- Remap vintage_time in _predict_with_step_override  ([#67](https://github.com/stateful-y/yohou/pull/67)) by @gtauzin
+- Clip forecast step columns to forecasting horizon window  ([#69](https://github.com/stateful-y/yohou/pull/69)) by @gtauzin
+- Override observe_predict_interval in SplitConformalForecaster  ([#73](https://github.com/stateful-y/yohou/pull/73)) by @gtauzin
+- Handle NaN features at predict time when nan_handling='drop'  ([#77](https://github.com/stateful-y/yohou/pull/77)) by @gtauzin
+- Handle Pipeline steps that lack set_fit_request for sample_weight  ([#78](https://github.com/stateful-y/yohou/pull/78)) by @gtauzin
+- Support scikit-learn 1.9.0 callback context and empty FeatureUnion by @gtauzin
+- Route forecasted features through X_forecast  ([#80](https://github.com/stateful-y/yohou/pull/80)) by @gtauzin
+- Correct CalibrationError to empirical-coverage deviation  ([#84](https://github.com/stateful-y/yohou/pull/84)) by @gtauzin
+- Remediate issues across codebase  ([#85](https://github.com/stateful-y/yohou/pull/85)) by @gtauzin
+- Remediate correctness findings  ([#86](https://github.com/stateful-y/yohou/pull/86)) by @gtauzin
+- Remediate remaining code quality issues  ([#87](https://github.com/stateful-y/yohou/pull/87)) by @gtauzin
+- Remediate more QA findings  ([#91](https://github.com/stateful-y/yohou/pull/91)) by @gtauzin
+
+### Refactoring
+- Remove pivot_forecasts (no longer used internally)  ([#75](https://github.com/stateful-y/yohou/pull/75)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.9] - 2026-05-19
 
 This **minor release** includes 2 commits.
