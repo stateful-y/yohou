@@ -108,8 +108,15 @@ def check_clone_preserves_params(estimator) -> None:
                     )
         elif isinstance(orig_val, BaseEstimator):
             assert type(orig_val) is type(cloned_val), f"{name}: parameter {key!r} changed type under clone()"
-        else:
-            assert _safe_equal(orig_val, cloned_val), (
+        elif not _safe_equal(orig_val, cloned_val):
+            # A param whose type does not override ``__eq__`` compares by identity,
+            # so a clone that rebuilds it from ``get_params`` cannot make two
+            # instances compare equal (e.g. a third-party torch loss module). For
+            # such opaque objects, require only that the clone preserves the type;
+            # value-comparable params (ints, strings, arrays, ...) still fail on a
+            # genuine value change.
+            uses_identity_eq = type(orig_val).__eq__ is object.__eq__
+            assert uses_identity_eq and type(orig_val) is type(cloned_val), (
                 f"{name}: parameter {key!r} expected {orig_val!r}, got {cloned_val!r}"
             )
 
