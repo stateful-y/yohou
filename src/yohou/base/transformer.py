@@ -1,4 +1,18 @@
-"""Base class for time series transformers."""
+"""Base classes for time series transformers.
+
+The transformer hierarchy has a private shared root, ``_BaseTransformer``, which
+holds the sklearn scaffolding common to every transformer (parameter-constraint
+merging, tag construction, ``fit_transform``, and the ``_fit``/``_transform``
+hooks). Two public bases specialise it:
+
+- ``BaseActualTransformer`` -- single-axis transformers that operate on a frame
+  with a mandatory ``"time"`` column, supporting stateful windowing via
+  ``observe``/``rewind``. This is the base for the whole preprocessing and
+  stationarity catalogue. ``BaseTransformer`` is an alias for it.
+- ``BaseForecastTransformer`` -- transformers over ``X_forecast`` frames (two
+  time axes: ``"vintage_time"`` and ``"time"``); see
+  ``yohou.base.forecast_transformer``.
+"""
 
 import abc
 from typing import Any
@@ -14,59 +28,38 @@ from yohou.utils import (
 from yohou.utils._compat import _fit_context
 
 __all__ = [
+    "BaseActualTransformer",
     "BaseTransformer",
 ]
 
 
-class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
-    """Base class for time series transformers.
+class _BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
+    """Private shared base for all yohou transformers.
 
-    Yohou transformers operate on polars DataFrames with a mandatory
-    ``"time"`` column and support stateful windowing via ``observe``,
-    ``rewind``, ``observe_transform``, and ``rewind_transform`` methods.
-    ``observe_transform`` observes new data and then transforms it, while
-    ``rewind_transform`` rewinds state to a window and then transforms it.
+    Holds the estimator scaffolding common to every transformer kind:
+    parameter-constraint merging across the MRO, tag construction (including
+    the ``kind`` tag), the ``fit_transform`` convenience method, and the
+    ``_fit``/``_transform`` subclass hooks. Concrete behaviour (single-axis vs
+    forecast-frame validation, memory management) lives in the public
+    ``BaseActualTransformer`` and ``BaseForecastTransformer`` subclasses.
 
     Attributes
     ----------
     feature_names_in_ : list[str]
-        Names of the non-time columns seen during ``fit``.
+        Names of the non-index columns seen during ``fit``.
     n_features_in_ : int
-        Number of non-time columns seen during ``fit``.
+        Number of non-index columns seen during ``fit``.
     X_schema_ : dict[str, pl.DataType]
-        Column name to dtype mapping seen during ``fit``.
-    interval_ : str
-        Detected time interval of the training data (e.g., ``"1d"``,
-        ``"1h"``).
-
-    Notes
-    -----
-    Transformers can be **stateful** (``observation_horizon > 0``) or
-    **stateless** (``observation_horizon == 0``).  Stateful transformers
-    maintain an internal memory buffer of the most recent
-    ``observation_horizon`` rows, which is updated by ``observe()`` and
-    replaced by ``rewind()`` (which sets the memory to the last
-    ``observation_horizon`` rows of the provided data).
-
-    All transformers preserve the ``"time"`` column through
-    ``transform()`` and ``inverse_transform()``.
-
-    See Also
-    --------
-    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Base class for forecasters.
-    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Creates lagged features from time series.
-    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Stateful seasonal differencing transformer.
+        Column name to dtype mapping (non-index columns) seen during ``fit``.
 
     """
 
     _parameter_constraints: dict = {}
 
-    # Fitted attributes (set during fit())
-    _observation_horizon: int
+    # Fitted attributes shared by every transformer kind (set during fit()).
     feature_names_in_: list[str]
     n_features_in_: int
     X_schema_: dict[str, pl.DataType]
-    interval_: str
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Merge parameter constraints from all classes in the MRO."""
@@ -118,6 +111,137 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return tags
 
+    @abc.abstractmethod
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "_BaseTransformer":
+        """Fit the transformer to input data (implemented by the kind-specific base)."""
+
+    @abc.abstractmethod
+    def transform(self, X: pl.DataFrame, **params) -> pl.DataFrame:
+        """Transform the input (implemented by the kind-specific base)."""
+
+    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> pl.DataFrame:
+        """Fit the transformer and return transformed data.
+
+        Equivalent to calling ``fit(X).transform(X)``.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Input time series.
+        y : pl.DataFrame or None, default=None
+            Ignored.  Present for API compatibility.
+        **params : dict
+            Metadata to route to nested estimators.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed time series.
+
+        """
+        self.fit(X, y, **params)
+        return self.transform(X, **params)
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Subclass hook called at the end of ``fit()``.
+
+        Override this to implement custom fitting logic.  The default
+        implementation does nothing.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Validated input time series.
+        y : pl.DataFrame or None
+            Ignored.  Present for API compatibility.
+
+        """
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Subclass hook called by ``transform()``.
+
+        Override this to implement the core transformation logic. The
+        input ``X`` has already been validated.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Validated input time series.
+
+        Returns
+        -------
+        pl.DataFrame
+            Transformed time series.
+
+        """
+        raise NotImplementedError(f"{type(self).__name__} must implement _transform() or override transform().")
+
+    @abc.abstractmethod
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
+        """Get output feature names for transformation.
+
+        Parameters
+        ----------
+        input_features : list of str or None, default=None
+            Column names of the input features.  If ``None``, uses the
+            feature names seen during ``fit``.
+
+        Returns
+        -------
+        list of str
+            Output feature names after transformation.
+
+        """
+
+
+class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
+    """Base class for single-axis (``"actual"``-kind) time series transformers.
+
+    Yohou transformers operate on polars DataFrames with a mandatory
+    ``"time"`` column and support stateful windowing via ``observe``,
+    ``rewind``, ``observe_transform``, and ``rewind_transform`` methods.
+    ``observe_transform`` observes new data and then transforms it, while
+    ``rewind_transform`` rewinds state to a window and then transforms it.
+
+    Attributes
+    ----------
+    feature_names_in_ : list[str]
+        Names of the non-time columns seen during ``fit``.
+    n_features_in_ : int
+        Number of non-time columns seen during ``fit``.
+    X_schema_ : dict[str, pl.DataType]
+        Column name to dtype mapping seen during ``fit``.
+    interval_ : str
+        Detected time interval of the training data (e.g., ``"1d"``,
+        ``"1h"``).
+
+    Notes
+    -----
+    Transformers can be **stateful** (``observation_horizon > 0``) or
+    **stateless** (``observation_horizon == 0``).  Stateful transformers
+    maintain an internal memory buffer of the most recent
+    ``observation_horizon`` rows, which is updated by ``observe()`` and
+    replaced by ``rewind()`` (which sets the memory to the last
+    ``observation_horizon`` rows of the provided data).
+
+    All transformers preserve the ``"time"`` column through
+    ``transform()`` and ``inverse_transform()``.
+
+    See Also
+    --------
+    - [`BaseForecastTransformer`][yohou.base.forecast_transformer.BaseForecastTransformer] : Base class for X_forecast transformers.
+    - [`BaseForecaster`][yohou.base.forecaster.BaseForecaster] : Base class for forecasters.
+    - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Creates lagged features from time series.
+    - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Stateful seasonal differencing transformer.
+
+    """
+
+    _tags: dict = {"kind": "actual"}
+
+    # Fitted attributes specific to single-axis transformers (set during fit()).
+    _observation_horizon: int
+    interval_: str
+
     @property
     def observation_horizon(self) -> int:
         """Get the number of time steps needed for stateful operations.
@@ -164,7 +288,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
                 self.observed_time_ = X["time"][-1]
 
     @_fit_context(prefer_skip_nested_validation=True)
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "BaseTransformer":
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "BaseActualTransformer":
         """Fit the transformer to input data.
 
         Parameters
@@ -205,52 +329,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return self
 
-    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Subclass hook called at the end of ``fit()``.
-
-        Override this to implement custom fitting logic.  The default
-        implementation does nothing.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Validated input time series (with ``"time"`` column).
-        y : pl.DataFrame or None
-            Ignored.  Present for API compatibility.
-
-        """
-
-    def fit_transform(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> pl.DataFrame:
-        """Fit the transformer and return transformed data.
-
-        Equivalent to calling ``fit(X).transform(X)``.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Input time series with a ``"time"`` column (datetime) and one or
-            more numeric columns.
-        y : pl.DataFrame or None, default=None
-            Ignored.  Present for API compatibility.
-        **params : dict
-            Metadata to route to nested estimators.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series with a ``"time"`` column and transformed
-            value columns.
-
-        Raises
-        ------
-        ValueError
-            If ``X`` is missing the ``"time"`` column or contains invalid data.
-
-        """
-        self.fit(X, y, **params)
-        return self.transform(X, **params)
-
-    def rewind(self, X: pl.DataFrame) -> "BaseTransformer":
+    def rewind(self, X: pl.DataFrame) -> "BaseActualTransformer":
         """Rewind internal memory to the last ``observation_horizon`` rows.
 
         Parameters
@@ -279,7 +358,7 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return self
 
-    def observe(self, X: pl.DataFrame) -> "BaseTransformer":
+    def observe(self, X: pl.DataFrame) -> "BaseActualTransformer":
         """Observe new data and update internal memory.
 
         Extends the internal memory buffer with new observations, then
@@ -335,25 +414,6 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
         return self._transform(X)
-
-    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
-        """Subclass hook called by ``transform()``.
-
-        Override this to implement the core transformation logic. The
-        input ``X`` has already been validated.
-
-        Parameters
-        ----------
-        X : pl.DataFrame
-            Validated input time series.
-
-        Returns
-        -------
-        pl.DataFrame
-            Transformed time series.
-
-        """
-        raise NotImplementedError(f"{type(self).__name__} must implement _transform() or override transform().")
 
     def inverse_transform(self, X_t: pl.DataFrame, X_p: pl.DataFrame | None = None) -> pl.DataFrame:
         """Inverse-transform the data back to the original space.
@@ -488,19 +548,11 @@ class BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
 
         return X_t
 
-    @abc.abstractmethod
-    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
-        """Get output feature names for transformation.
 
-        Parameters
-        ----------
-        input_features : list of str or None, default=None
-            Column names of the input features.  If ``None``, uses the
-            feature names seen during ``fit``.
-
-        Returns
-        -------
-        list of str
-            Output feature names after transformation.
-
-        """
+# ``BaseTransformer`` is the historical name for the single-axis transformer
+# base. It remains an alias for ``BaseActualTransformer`` so the large body of
+# existing references (leaf transformers, composition estimators, forecaster
+# slots, tests) keep resolving while the ``forecast``-kind hierarchy is added
+# alongside. The canonical rename to ``BaseActualTransformer`` completes when
+# the composition estimators become kind-polymorphic.
+BaseTransformer = BaseActualTransformer

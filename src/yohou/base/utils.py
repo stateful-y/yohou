@@ -15,6 +15,43 @@ if TYPE_CHECKING:
     from yohou.base import BaseTransformer
 
 
+def _require_actual_transformer(transformer: object, slot: str) -> None:
+    """Raise if ``transformer`` is a forecast-kind transformer in an actual slot.
+
+    A forecaster's ``target_transformer`` / ``feature_transformer`` operate on
+    the single-axis target / ``X_actual`` frames, so they must be actual-kind.
+    Leaf forecast transformers are already rejected by the parameter constraint
+    (they are not ``BaseActualTransformer`` instances); this catches a
+    forecast-kind composition (e.g. a ``FeatureUnion`` of forecast transformers),
+    which is structurally an actual transformer but reports ``kind="forecast"``.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer assigned to the slot (or ``None``).
+    slot : str
+        Slot name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` reports ``kind == "forecast"``.
+
+    """
+    if transformer is None:
+        return
+    get_tags = getattr(transformer, "__sklearn_tags__", None)
+    if get_tags is None:
+        return
+    transformer_tags = getattr(get_tags(), "transformer_tags", None)
+    if transformer_tags is not None and getattr(transformer_tags, "kind", "actual") == "forecast":
+        raise ValueError(
+            f"{slot} must be an actual-kind transformer (operating on the single-axis "
+            f"target/X_actual frame), but got a forecast-kind transformer. Forecast "
+            f"transformers belong on the X_forecast channel, not in {slot}."
+        )
+
+
 def _fit_transform_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
@@ -70,6 +107,9 @@ def _fit_transform_transformers_one(
     - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers
 
     """
+    _require_actual_transformer(target_transformer, "target_transformer")
+    _require_actual_transformer(feature_transformer, "feature_transformer")
+
     y_t = y
     target_transformer_fitted = None
     if target_transformer is not None:

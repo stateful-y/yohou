@@ -24,6 +24,7 @@ from sklearn.utils.validation import (
 )
 
 from yohou.base import BaseTransformer
+from yohou.base.transformer import _BaseTransformer
 from yohou.utils import Tags
 from yohou.utils._compat import (
     FORCE_INT_REMAINDER_COLS,
@@ -46,7 +47,14 @@ from yohou.utils._compat import (
 )
 from yohou.utils.panel import panel_aware_prefix
 
-from .utils import _hstack, _observe_transform_one, _rewind_transform_one
+from .utils import (
+    _hstack,
+    _observe_transform_one,
+    _rewind_transform_one,
+    check_homogeneous_kinds,
+    common_kind,
+    index_columns,
+)
 
 __all__ = ["ColumnTransformer"]
 
@@ -341,6 +349,12 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
                 non_none_min_values = [v for v in min_values if v is not None]
                 tags.input_tags.min_value = max(non_none_min_values) if non_none_min_values else None
 
+                # A column transformer inherits its kind from its (homogeneous) children.
+                named = [(name, t) for name, t, _ in self.transformers]
+                if hasattr(self, "remainder") and self.remainder not in ("drop", "passthrough", None):
+                    named.append(("remainder", self.remainder))
+                tags.transformer_tags.kind = common_kind(named)
+
         return tags
 
     @property
@@ -531,8 +545,10 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             if hasattr(trans, "get_feature_names_out"):
                 result = trans.get_feature_names_out()
                 if result is not None:
-                    # Sub-transformers may include "time" in their output; strip it.
-                    filtered = [f for f in result if f != "time"]
+                    # Sub-transformers may include index columns ("time", and
+                    # "vintage_time" for forecast frames) in their output; strip them.
+                    index_cols = getattr(self, "_index_columns_", ["time"])
+                    filtered = [f for f in result if f not in index_cols]
                     if filtered:
                         names = filtered
             if self.verbose_feature_names_out:
@@ -737,13 +753,19 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         for t in transformers:
             if t in ("drop", "passthrough"):
                 continue
-            if not isinstance(t, BaseTransformer):
+            if not isinstance(t, _BaseTransformer):
                 # Used to validate the transformers in the `transformers` list
                 raise TypeError(
-                    "All estimators should be instances of `BaseTransformer` "
-                    "or be the strings 'drop' or 'passthrough' "
+                    "All estimators should be instances of `BaseActualTransformer` or "
+                    "`BaseForecastTransformer` or be the strings 'drop' or 'passthrough' "
                     f"'{t}' (type {type(t)}) doesn't"
                 )
+
+        # A column transformer must be homogeneous in kind (all actual or all forecast).
+        named = [(name, t) for name, t, _ in self.transformers]
+        if hasattr(self, "remainder") and self.remainder not in ("drop", "passthrough", None):
+            named.append(("remainder", self.remainder))
+        check_homogeneous_kinds(named, "ColumnTransformer")
 
     def _call_func_on_transformers(
         self,
@@ -919,10 +941,14 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
         X = _check_X(X)
 
-        # Strip time column early - before sklearn validation which stores column indices
-        # This ensures all column references are to the non-time columns
-        self._time_column_ = X.select(cs.by_name("time"))
-        X_no_time = X.select(~cs.by_name("time"))
+        # Strip index columns early - before sklearn validation which stores column indices
+        # This ensures all column references are to the non-index (feature) columns.
+        # For an X_forecast frame the index is ["vintage_time", "time"]; for a
+        # single-axis frame it is ["time"]. Index columns are never routed to a
+        # sub-transformer, never assigned to remainder, and always carried through.
+        self._index_columns_ = index_columns(X)
+        self._time_column_ = X.select(cs.by_name(*self._index_columns_))
+        X_no_time = X.select(pl.exclude(self._index_columns_))
 
         # Set feature_names_in_ and n_features_in_ on the stripped data
         _check_feature_names(self, X_no_time, reset=True)
@@ -991,8 +1017,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         X = _check_X(X)
 
         # Strip time column early, consistent with fit_transform
-        time_column = X.select(cs.by_name("time"))
-        X_no_time = X.select(~cs.by_name("time"))
+        time_column = X.select(cs.by_name(*self._index_columns_))
+        X_no_time = X.select(pl.exclude(self._index_columns_))
 
         # If ColumnTransformer was fit with named columns, we select columns by
         # name instead. This enables the user to pass X at transform time with
@@ -1080,8 +1106,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         X = _check_X(X)
 
         # Strip time column early, consistent with fit_transform and transform
-        time_column = X.select(cs.by_name("time"))
-        X_no_time = X.select(~cs.by_name("time"))
+        time_column = X.select(cs.by_name(*self._index_columns_))
+        X_no_time = X.select(pl.exclude(self._index_columns_))
 
         n_samples = _num_samples(X_no_time)
 
@@ -1133,8 +1159,8 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         """
         _raise_for_params(params, self, "rewind_transform")
         check_is_fitted(self)
-        time_column = X.select(cs.by_name("time"))
-        X_no_time = X.select(~cs.by_name("time"))
+        time_column = X.select(cs.by_name(*self._index_columns_))
+        X_no_time = X.select(pl.exclude(self._index_columns_))
 
         n_samples = _num_samples(X_no_time)
 
@@ -1190,15 +1216,18 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
         ]
         # Build transformer_names and feature_names_outs from the same filtered
         # population so prefixes stay paired with the right columns: transformers
-        # whose output is time-only (shape[1] == 1) carry no feature columns and
+        # whose output is index-only (n_index columns, e.g. just "time", or
+        # "vintage_time"+"time" for a forecast frame) carry no feature columns and
         # must be dropped from both lists in parallel.
-        feature_Xs = [X for X in Xs if X.shape[1] != 1]
+        index_cols = getattr(self, "_index_columns_", ["time"])
+        n_index = len(index_cols)
+        feature_Xs = [X for X in Xs if X.shape[1] != n_index]
         if not feature_Xs:  # pragma: no cover - defensive: a configured transformer emits at least one feature
-            # Every transformer emitted only the time column; nothing to stack.
-            return Xs[0].select(cs.by_name("time"))
-        transformer_names = [name for name, X in zip(all_transformer_names, Xs, strict=False) if X.shape[1] != 1]
+            # Every transformer emitted only the index columns; nothing to stack.
+            return Xs[0].select(cs.by_name(*index_cols))
+        transformer_names = [name for name, X in zip(all_transformer_names, Xs, strict=False) if X.shape[1] != n_index]
         # feature_names_outs is a list of lists - one list per transformer
-        feature_names_outs = [[col for col in X.columns if col != "time"] for X in feature_Xs]
+        feature_names_outs = [[col for col in X.columns if col not in index_cols] for X in feature_Xs]
         # Track the original column counts per transformer for re-grouping after prefixing
         column_counts = [len(cols) for cols in feature_names_outs]
 

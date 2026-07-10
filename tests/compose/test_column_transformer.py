@@ -532,7 +532,7 @@ class TestColumnTransformerCoveragePaths:
         ct = ColumnTransformer(
             transformers=[("bad", StandardScaler(), ["a"])],
         )
-        with pytest.raises(TypeError, match="BaseTransformer"):
+        with pytest.raises(TypeError, match="BaseActualTransformer"):
             ct._validate_transformers()
 
     def test_remainder_passthrough(self, time_series_3col):

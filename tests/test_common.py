@@ -41,6 +41,8 @@ _SKIP_COMMON = {
     "FeaturePipeline",
     "FeatureUnion",
     "ForecastedFeatureForecaster",
+    # Forecast-frame meta-transformer (tested in tests/compose/test_per_vintage.py)
+    "PerVintageActualTransformer",
     # Search CVs (tested in tests/model_selection/)
     "GridSearchCV",
     "RandomizedSearchCV",

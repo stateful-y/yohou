@@ -5,7 +5,6 @@ from copy import deepcopy
 from typing import Any, cast
 
 import polars as pl
-import polars.selectors as cs
 from joblib import Memory
 from sklearn.pipeline import Pipeline as sklearn_Pipeline
 from sklearn.utils import (
@@ -22,8 +21,10 @@ from sklearn.utils.validation import (
 )
 
 from yohou.base import BaseTransformer
+from yohou.base.transformer import _BaseTransformer
 from yohou.compose.column_transformer import ColumnTransformer
 from yohou.compose.feature_union import FeatureUnion
+from yohou.compose.utils import check_homogeneous_kinds, common_kind, index_columns
 from yohou.utils import Tags
 from yohou.utils._compat import (
     HasMethods,
@@ -496,6 +497,9 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 # min_value is the one of the first transformer
                 tags.input_tags.min_value = transformers[0].__sklearn_tags__().input_tags.min_value
 
+                # A pipeline inherits its kind from its (homogeneous) steps.
+                tags.transformer_tags.kind = common_kind([(name, t) for name, t in self.steps])
+
         return tags
 
     @property
@@ -635,12 +639,15 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         for t in transformers:
             if t is None or t == "passthrough":
                 continue
-            if not isinstance(t, BaseTransformer):
+            if not isinstance(t, _BaseTransformer):
                 raise TypeError(
-                    "All steps should be instances of `BaseTransformer` "
-                    "or be the string 'passthrough' "
+                    "All steps should be instances of `BaseActualTransformer` or "
+                    "`BaseForecastTransformer` or be the string 'passthrough' "
                     f"'{t}' (type {type(t)}) doesn't"
                 )
+
+        # A pipeline must be homogeneous in kind (all actual or all forecast).
+        check_homogeneous_kinds([(name, t) for name, t in self.steps], "FeaturePipeline")
 
     @_fit_context(
         # estimators in FeaturePipeline.steps are not validated yet
@@ -689,7 +696,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         # Set pipeline-level attributes for rewind/observe validation.
         # Individual steps are already fitted with their own attributes.
-        self.X_schema_ = dict(X.select(~cs.by_name("time")).schema)
+        self.X_schema_ = dict(X.select(pl.exclude(index_columns(X))).schema)
         self._update_X_observed(X)
 
         return self

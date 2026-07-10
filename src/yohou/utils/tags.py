@@ -88,12 +88,20 @@ class TransformerTags:
         revert transformations.
     preserves_dtype : bool, default=False
         Whether the transformer preserves input data types.
+    kind : {"actual", "forecast"}, default="actual"
+        Which exogenous frame shape the transformer consumes and produces.
+        ``"actual"`` transformers operate on a single-axis ``["time", ...]``
+        frame; ``"forecast"`` transformers operate on an ``X_forecast`` frame
+        carrying ``["vintage_time", "time", ...]``. Leaf transformers stamp
+        this statically via their base class; composition estimators aggregate
+        it from their children.
 
     """
 
     stateful: bool = False
     invertible: bool = False
     preserves_dtype: bool = False
+    kind: Literal["actual", "forecast"] = "actual"
 
 
 @dataclass

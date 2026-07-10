@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Features
+- Add `BaseForecastTransformer`, a base class for transformers over `X_forecast`
+  frames (two time axes: `vintage_time` and `time`), and `PerVintageActualTransformer`,
+  which lifts any stateless `BaseActualTransformer` onto the vintage axis by applying
+  it independently to each vintage.
+- Add a `kind` tag (`"actual"` | `"forecast"`) to `TransformerTags`. The composition
+  estimators (`FeatureUnion`, `FeaturePipeline`, `ColumnTransformer`) now operate on
+  either kind, derive their kind from their children, and reject mixed-kind
+  compositions. `ColumnTransformer` treats `vintage_time` as a protected index column.
+
+### Refactor
+- Split the transformer base into a private `_BaseTransformer` (shared scaffolding),
+  `BaseActualTransformer` (single-axis, with the observe/rewind memory API), and
+  `BaseForecastTransformer` (forecast frames, stateless). `BaseTransformer` is now an
+  alias for `BaseActualTransformer`; prefer `BaseActualTransformer` in new code.
+
+
 ## [0.1.0-alpha.9] - 2026-05-19
 
 This **minor release** includes 2 commits.

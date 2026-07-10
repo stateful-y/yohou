@@ -14,6 +14,7 @@ import polars as pl
 import pytest
 from sklearn.linear_model import Ridge
 
+from yohou.preprocessing import FunctionTransformer
 from yohou.utils.discovery import all_estimators
 
 # Estimators that need explicit constructor arguments.
@@ -24,6 +25,7 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
     "ExponentialMovingAverage": {"alpha": 0.3},
     "FeaturePipeline": {"steps": []},
     "FeatureUnion": {"transformer_list": []},
+    "PerVintageActualTransformer": {"transformer": FunctionTransformer()},
     "ForecastedFeatureForecaster": {
         "target_forecaster": None,
         "feature_forecaster": None,
@@ -56,6 +58,7 @@ _NESTED_ESTIMATORS = {
     "GridSearchCV",
     "IntervalReductionForecaster",
     "LocalPanelForecaster",
+    "PerVintageActualTransformer",
     "PointReductionForecaster",
     "PolynomialTrendForecaster",
     "RandomizedSearchCV",

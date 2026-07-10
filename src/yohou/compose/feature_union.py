@@ -34,7 +34,14 @@ from yohou.utils._compat import (
 )
 from yohou.utils.panel import panel_aware_prefix
 
-from .utils import _hstack, _observe_transform_one, _rewind_transform_one
+from .utils import (
+    _hstack,
+    _observe_transform_one,
+    _rewind_transform_one,
+    check_homogeneous_kinds,
+    common_kind,
+    index_columns,
+)
 
 __all__ = ["FeatureUnion"]
 
@@ -409,6 +416,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
                 non_none_min_values = [v for v in min_values if v is not None]
                 tags.input_tags.min_value = max(non_none_min_values) if non_none_min_values else None
 
+                # A union inherits its kind from its (homogeneous) children.
+                tags.transformer_tags.kind = common_kind(list(self.transformer_list))
+
         return tags
 
     def __sklearn_is_fitted__(self) -> bool:
@@ -471,7 +481,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         """
         transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+        raw_column_names = [[col for col in X_t.columns if col not in index_columns(X_t)] for X_t in Xs]
 
         if self.verbose_feature_names_out:
             return [
@@ -598,6 +608,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             FeatureUnion class instance.
         """
         _raise_for_params(fit_params, self, "fit")
+        check_homogeneous_kinds(list(self.transformer_list), "FeatureUnion")
         routed_params = process_routing(self, "fit", **fit_params)
         transformers = self._parallel_func(X, y, _fit_one, routed_params)
 
@@ -631,6 +642,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             concatenated feature columns from all transformers, aligned to the
             intersection of their time grids.
         """
+        check_homogeneous_kinds(list(self.transformer_list), "FeatureUnion")
         routed_params = process_routing(self, "fit_transform", **params)
         results = self._parallel_func(X, y, _fit_transform_one, routed_params)
         if not results:
