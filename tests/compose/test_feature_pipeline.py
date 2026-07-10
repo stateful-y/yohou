@@ -317,7 +317,7 @@ class TestFeaturePipelineValidation:
         """Non-transformer step raises TypeError during fit."""
         X = time_series_factory(length=50)
         pipe = FeaturePipeline([("bad", 42)])
-        with pytest.raises(TypeError, match="BaseTransformer|doesn't"):
+        with pytest.raises(TypeError, match="BaseActualTransformer|doesn't"):
             pipe.fit(X)
 
     def test_not_fitted_observe_raises(self, time_series_factory):

@@ -14,7 +14,7 @@ from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
 from sklearn_wrap.base import BaseClassWrapper, _fit_context
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import validate_transformer_data
 
 __all__ = ["SklearnScaler", "SklearnTransformer"]
@@ -52,7 +52,7 @@ def _transformer_has_inverse(self) -> bool:
     return hasattr(self.instance_, "inverse_transform")
 
 
-class SklearnTransformer(BaseClassWrapper, BaseTransformer):
+class SklearnTransformer(BaseClassWrapper, BaseActualTransformer):
     """Wrapper to integrate sklearn transformers into the Yohou pipeline.
 
     Preserves the polars DataFrame structure and "time" column while applying
@@ -172,7 +172,7 @@ class SklearnTransformer(BaseClassWrapper, BaseTransformer):
         X = validate_transformer_data(self, X=X, reset=True)
 
         # Call parent fit (stores schema, memory, etc.)
-        BaseTransformer.fit(self, X, y, **params)
+        BaseActualTransformer.fit(self, X, y, **params)
 
         # Strip time column before fitting sklearn transformer
         X_no_time = X.select(~cs.by_name("time"))

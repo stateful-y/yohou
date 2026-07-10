@@ -429,7 +429,7 @@ class TestFunctionTransformerStateful:
         """Plain fit() must leave _X_observed consistent with the detected horizon.
 
         Regression test: warmup detection sets ``_observation_horizon`` *after*
-        ``BaseTransformer.fit`` already ran ``_update_X_observed`` with horizon
+        ``BaseActualTransformer.fit`` already ran ``_update_X_observed`` with horizon
         zero, leaving the buffer empty. A subsequent ``observe_transform`` then
         had no warmup history to prepend and returned ``len(X) - horizon`` rows
         instead of ``len(X)``.

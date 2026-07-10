@@ -15,7 +15,7 @@ from yohou.base.utils import (
 from yohou.utils import add_interval, get_group_df, inspect_panel
 
 if TYPE_CHECKING:
-    from yohou.base.transformer import BaseTransformer
+    from yohou.base.transformer import BaseActualTransformer
 
 __all__ = ["BasePanelForecaster"]
 
@@ -36,8 +36,8 @@ class BasePanelForecaster:
     """
 
     # Type hints for attributes set by BaseForecaster
-    target_transformer: "BaseTransformer | None"
-    feature_transformer: "BaseTransformer | None"
+    target_transformer: "BaseActualTransformer | None"
+    feature_transformer: "BaseActualTransformer | None"
     target_as_feature: str | None
     groups_: list[str]
     local_y_schema_: dict[str, pl.DataType]
@@ -157,8 +157,8 @@ class BasePanelForecaster:
         """
         y_t: dict[str, pl.DataFrame] = {}
         X_t: dict[str, pl.DataFrame | None] = {}
-        target_transformer: dict[str, BaseTransformer | None] = {}
-        feature_transformer: dict[str, BaseTransformer | None] = {}
+        target_transformer: dict[str, BaseActualTransformer | None] = {}
+        feature_transformer: dict[str, BaseActualTransformer | None] = {}
 
         for group_name in self.groups_:
             # Extract group data using get_group_df

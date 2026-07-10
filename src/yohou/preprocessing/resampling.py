@@ -6,14 +6,14 @@ from typing import Literal, cast
 import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils._compat import StrOptions, _check_feature_names_in
 from yohou.utils.validation import check_interval_consistency, interval_to_timedelta, parse_interval
 
 __all__ = ["Downsampler", "Upsampler"]
 
 
-class Downsampler(BaseTransformer):
+class Downsampler(BaseActualTransformer):
     """Downsample time series to a lower frequency using aggregation.
 
     Reduces the frequency of time series data by grouping consecutive time
@@ -203,7 +203,7 @@ class Downsampler(BaseTransformer):
         return list(input_features)
 
 
-class Upsampler(BaseTransformer):
+class Upsampler(BaseActualTransformer):
     """Upsample time series to a higher frequency using interpolation.
 
     Increases the frequency of time series data by creating new time points

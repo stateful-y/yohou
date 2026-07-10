@@ -23,7 +23,7 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import Tags
 from yohou.utils._compat import (
     _BaseComposition,
@@ -46,7 +46,7 @@ from .utils import (
 __all__ = ["FeatureUnion"]
 
 
-class FeatureUnion(BaseTransformer, _BaseComposition):
+class FeatureUnion(BaseActualTransformer, _BaseComposition):
     """Concatenates results of multiple transformer objects.
 
     This estimator applies a list of transformer objects in parallel to the
@@ -112,7 +112,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     --------
     `sklearn.pipeline.FeatureUnion` : Underlying scikit-learn feature union class.
     - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformer chaining.
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for transformers.
     - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Common transformer for lag features.
 
     Notes
@@ -546,7 +546,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         self.verbose_feature_names_out = verbose_feature_names_out
 
     def _validate_transformers(self) -> None:
-        """Validate all transformers are BaseTransformer instances.
+        """Validate all transformers are BaseActualTransformer instances.
 
         Raises
         ------
@@ -786,7 +786,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         FeatureUnion holds no buffer of its own; the union's stateful memory is
         the union of its children's buffers. This override fans ``observe`` out
         to each child so their memory advances. The inherited
-        ``BaseTransformer.observe`` cannot be used because it guards on
+        ``BaseActualTransformer.observe`` cannot be used because it guards on
         ``X_schema_``, which FeatureUnion never sets.
 
         Parameters
@@ -811,7 +811,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Mirrors :meth:`observe` by delegating to each child's ``rewind`` so the
         union's per-child buffers are rolled back to the provided window. The
-        inherited ``BaseTransformer.rewind`` cannot be used because it guards on
+        inherited ``BaseActualTransformer.rewind`` cannot be used because it guards on
         ``X_schema_``, which FeatureUnion never sets.
 
         Parameters

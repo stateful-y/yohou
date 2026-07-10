@@ -7,7 +7,7 @@ import polars as pl
 import polars.testing as plt
 import pytest
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 
 class TestHstack:
@@ -209,8 +209,8 @@ class TestRewindTransformOne:
         assert result.schema["time"] == pl.Datetime
 
 
-class _StatefulWithoutMethods(BaseTransformer):
-    """A BaseTransformer that has lost its stateful observe/rewind methods.
+class _StatefulWithoutMethods(BaseActualTransformer):
+    """A BaseActualTransformer that has lost its stateful observe/rewind methods.
 
     Used to verify the guards reject a broken stateful transformer rather
     than silently falling back to a stateless ``transform``.
@@ -238,7 +238,7 @@ class TestStatefulFallbackGuards:
     """Stateful BaseTransformers missing their methods must error, not fall back."""
 
     def test_observe_transform_one_rejects_broken_stateful(self):
-        """A BaseTransformer without observe_transform raises AttributeError."""
+        """A BaseActualTransformer without observe_transform raises AttributeError."""
         from yohou.compose.utils import _observe_transform_one
 
         X = pl.DataFrame({"time": [1], "a": [1.0]})
@@ -246,7 +246,7 @@ class TestStatefulFallbackGuards:
             _observe_transform_one(_StatefulWithoutMethods(), X, y=None, weight=None, params={})
 
     def test_rewind_transform_one_rejects_broken_stateful(self):
-        """A BaseTransformer without rewind_transform raises AttributeError."""
+        """A BaseActualTransformer without rewind_transform raises AttributeError."""
         from yohou.compose.utils import _rewind_transform_one
 
         X = pl.DataFrame({"time": [1], "a": [1.0]})

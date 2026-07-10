@@ -5,7 +5,7 @@ from typing import Any, Literal, cast
 import polars as pl
 import polars.selectors as cs
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 #: The kind of frame a transformer consumes/produces.
 Kind = Literal["actual", "forecast"]
@@ -198,20 +198,20 @@ def _observe_transform_one(
     Raises
     ------
     AttributeError
-        If ``transformer`` is a ``BaseTransformer`` subclass that does not
+        If ``transformer`` is a ``BaseActualTransformer`` subclass that does not
         expose ``observe_transform``.
 
     """
     # Stateful BaseTransformers must expose observe_transform; the transform()
     # fallback is only legitimate for stateless transformers (e.g.
-    # FunctionTransformer used for passthrough). A BaseTransformer that reaches
+    # FunctionTransformer used for passthrough). A BaseActualTransformer that reaches
     # the fallback has lost its stateful method and would silently use stale
     # state, so surface that as an error.
     if hasattr(transformer, "observe_transform"):
         X_transformed = transformer.observe_transform(X, **params.get("observe_transform", {}))
-    elif isinstance(transformer, BaseTransformer):
+    elif isinstance(transformer, BaseActualTransformer):
         raise AttributeError(
-            f"{type(transformer).__name__} is a BaseTransformer but has no "
+            f"{type(transformer).__name__} is a BaseActualTransformer but has no "
             "'observe_transform' method; cannot observe-transform it statefully."
         )
     else:
@@ -252,25 +252,25 @@ def _rewind_transform_one(
     Returns
     -------
     pl.DataFrame
-        Transformed data; for stateful transformers (``BaseTransformer``
+        Transformed data; for stateful transformers (``BaseActualTransformer``
         subclasses) the first ``observation_horizon`` rows are discarded by
         ``rewind_transform``; stateless fallback transformers return all rows.
 
     Raises
     ------
     AttributeError
-        If ``transformer`` is a ``BaseTransformer`` subclass that does not
+        If ``transformer`` is a ``BaseActualTransformer`` subclass that does not
         expose ``rewind_transform``.
 
     """
     # As in _observe_transform_one, the transform() fallback is only legitimate
-    # for stateless transformers; a BaseTransformer missing rewind_transform has
+    # for stateless transformers; a BaseActualTransformer missing rewind_transform has
     # lost its stateful method and must not silently fall back.
     if hasattr(transformer, "rewind_transform"):
         X_transformed = transformer.rewind_transform(X, **params.get("rewind_transform", {}))
-    elif isinstance(transformer, BaseTransformer):
+    elif isinstance(transformer, BaseActualTransformer):
         raise AttributeError(
-            f"{type(transformer).__name__} is a BaseTransformer but has no "
+            f"{type(transformer).__name__} is a BaseActualTransformer but has no "
             "'rewind_transform' method; cannot rewind-transform it statefully."
         )
     else:

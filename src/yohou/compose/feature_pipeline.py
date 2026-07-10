@@ -20,7 +20,7 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.base.transformer import _BaseTransformer
 from yohou.compose.column_transformer import ColumnTransformer
 from yohou.compose.feature_union import FeatureUnion
@@ -48,14 +48,14 @@ __all__ = [
 # TODO: Could transform_input (sklearn's Pipeline feature for routing metadata
 # through pipeline steps) make sense for forecasting? E.g., routing y vs X to
 # different steps, or passing validation sets through the pipeline.
-class FeaturePipeline(BaseTransformer, _BaseComposition):
+class FeaturePipeline(BaseActualTransformer, _BaseComposition):
     """
     A sequence of time series transformers.
 
     `FeaturePipeline` allows you to sequentially apply a list of time series
     transformers to preprocess the data.
 
-    Steps of the pipeline must be instances of `BaseTransformer`. Non-last
+    Steps of the pipeline must be instances of `BaseActualTransformer`. Non-last
     steps must also implement `transform`. The pipeline dispatches
     `observe_transform()` internally; steps do not need to expose a bare
     `observe` method.
@@ -109,7 +109,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
     See Also
     --------
     `sklearn.pipeline.Pipeline` : Underlying scikit-learn pipeline class.
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for time series transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for time series transformers.
     - [`FeatureUnion`][yohou.compose.feature_union.FeatureUnion] : Parallel transformer combination.
     - [`ColumnTransformer`][yohou.compose.column_transformer.ColumnTransformer] : Apply transformers to specific columns.
 
@@ -623,12 +623,12 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         return self
 
     def _validate_steps(self) -> None:
-        """Validate that all steps are BaseTransformer instances.
+        """Validate that all steps are BaseActualTransformer instances.
 
         Raises
         ------
         TypeError
-            If any step is not a BaseTransformer or 'passthrough'.
+            If any step is not a BaseActualTransformer or 'passthrough'.
 
         """
         names, transformers = zip(*self.steps, strict=False)

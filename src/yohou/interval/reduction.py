@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseReductionForecaster, BaseTransformer
+from yohou.base import BaseActualTransformer, BaseReductionForecaster
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -34,11 +34,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
         includes the raw target, and ``None`` uses only exogenous features.
-    target_transformer : BaseTransformer or None, default=None
+    target_transformer : BaseActualTransformer or None, default=None
         Transformer applied to the target before tabularization. Interval
         bounds are produced in the transformed space and inverse-transformed
         back to the original target scale before being returned.
-    feature_transformer : BaseTransformer or None, default=None
+    feature_transformer : BaseActualTransformer or None, default=None
         Transformer used to transform the feature time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
@@ -165,8 +165,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
-        target_transformer: BaseTransformer | None = None,
-        feature_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,

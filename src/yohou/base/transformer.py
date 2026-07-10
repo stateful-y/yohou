@@ -8,7 +8,7 @@ hooks). Two public bases specialise it:
 - ``BaseActualTransformer`` -- single-axis transformers that operate on a frame
   with a mandatory ``"time"`` column, supporting stateful windowing via
   ``observe``/``rewind``. This is the base for the whole preprocessing and
-  stationarity catalogue. ``BaseTransformer`` is an alias for it.
+  stationarity catalogue.
 - ``BaseForecastTransformer`` -- transformers over ``X_forecast`` frames (two
   time axes: ``"vintage_time"`` and ``"time"``); see
   ``yohou.base.forecast_transformer``.
@@ -29,7 +29,6 @@ from yohou.utils._compat import _fit_context
 
 __all__ = [
     "BaseActualTransformer",
-    "BaseTransformer",
 ]
 
 
@@ -547,12 +546,3 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         self.rewind(X)
 
         return X_t
-
-
-# ``BaseTransformer`` is the historical name for the single-axis transformer
-# base. It remains an alias for ``BaseActualTransformer`` so the large body of
-# existing references (leaf transformers, composition estimators, forecaster
-# slots, tests) keep resolving while the ``forecast``-kind hierarchy is added
-# alongside. The canonical rename to ``BaseActualTransformer`` completes when
-# the composition estimators become kind-polymorphic.
-BaseTransformer = BaseActualTransformer

@@ -39,7 +39,7 @@ For step-by-step implementation guides, see [Create a Point Forecaster](../how-t
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) | `yohou.base` | `_transform()`, `get_feature_names_out()` |
+| [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) | `yohou.base` | `_transform()`, `get_feature_names_out()` |
 
 Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required only for invertible transformers).
 

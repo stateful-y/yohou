@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in
 
 __all__ = ["OutlierPercentileHandler", "OutlierThresholdHandler"]
@@ -58,7 +58,7 @@ def _apply_outlier_handling(
     return X.select(exprs)
 
 
-class OutlierThresholdHandler(BaseTransformer):
+class OutlierThresholdHandler(BaseActualTransformer):
     """Handle outliers based on fixed threshold values.
 
     Values outside the specified thresholds are either clipped to the threshold
@@ -194,7 +194,7 @@ class OutlierThresholdHandler(BaseTransformer):
         return list(input_features)
 
 
-class OutlierPercentileHandler(BaseTransformer):
+class OutlierPercentileHandler(BaseActualTransformer):
     """Handle outliers based on percentile thresholds.
 
     Values outside the specified percentile range are either clipped to the

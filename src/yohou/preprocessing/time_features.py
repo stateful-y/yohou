@@ -8,12 +8,12 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils._compat import Interval
 from yohou.utils.validation import interval_to_timedelta
 
 
-class FourierFeatureTransformer(BaseTransformer):
+class FourierFeatureTransformer(BaseActualTransformer):
     r"""Generate Fourier harmonic features from the time column.
 
     Creates sin/cos feature pairs at specified harmonics of a given
@@ -198,7 +198,7 @@ class FourierFeatureTransformer(BaseTransformer):
         return generated
 
 
-class TimeIndexTransformer(BaseTransformer):
+class TimeIndexTransformer(BaseActualTransformer):
     r"""Convert the time column to a numeric index with optional polynomial terms.
 
     Produces integer or normalized time step indices starting from the

@@ -33,7 +33,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.linear_model import QuantileRegressor, Ridge
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.compose import (
     ColumnForecaster,
     ColumnTransformer,
@@ -54,14 +54,14 @@ from yohou.testing.metadata_routing import (
 from yohou.weighting import TableWeighter
 
 
-class ConsumingTransformer(BaseTransformer):
+class ConsumingTransformer(BaseActualTransformer):
     """Transformer that records all received metadata.
 
     Used to verify metadata routing in composition classes. All metadata passed
     to fit/transform is recorded in self._records for later verification.
 
-    Extends yohou's BaseTransformer so it can be used in FeaturePipeline,
-    FeatureUnion, and ColumnTransformer (which require BaseTransformer steps).
+    Extends yohou's BaseActualTransformer so it can be used in FeaturePipeline,
+    FeatureUnion, and ColumnTransformer (which require BaseActualTransformer steps).
 
     Parameters
     ----------
@@ -114,7 +114,7 @@ class ConsumingTransformer(BaseTransformer):
         if self.registry is not None:
             self.registry.append(self)
         self._observation_horizon = 0
-        BaseTransformer.fit(self, X, y)
+        BaseActualTransformer.fit(self, X, y)
         return self
 
     def transform(self, X, time_weight=None, **kwargs):

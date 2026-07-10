@@ -34,7 +34,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         - "naive": Use last complete cycle
         - "average": Mean across all cycles
         - "median": Median across all cycles (robust to outliers)
-    target_transformer : BaseTransformer, optional
+    target_transformer : BaseActualTransformer, optional
         Transformer for target variable.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data.  See `BaseForecaster` for details.
@@ -331,7 +331,7 @@ class FourierSeasonalityForecaster(_BaseSeasonalityForecaster):
         Regression model used to fit Fourier coefficients. When ``None``, a
         fresh ``ElasticNet()`` is constructed inside ``__init__`` (so that
         separate instances never share one estimator object).
-    target_transformer : BaseTransformer, optional
+    target_transformer : BaseActualTransformer, optional
         Transformer for target variable.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data.  See `BaseForecaster` for details.

@@ -14,7 +14,7 @@ from sklearn.utils.metadata_routing import (
 )
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
@@ -50,12 +50,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         dict for inspection. Keys are forecaster names, values are pl.DataFrame
         with residuals.
 
-    target_transformer : BaseTransformer or None, default=None
+    target_transformer : BaseActualTransformer or None, default=None
         Transformer applied to target time series before decomposition.
         Use `target_transformer=LogTransformer()` for multiplicative decomposition
         (additive in log-space).
 
-    feature_transformer : BaseTransformer or None, default=None
+    feature_transformer : BaseActualTransformer or None, default=None
         Transformer applied to exogenous features before passing to component
         forecasters. Applied once at DecompositionPipeline level; all components receive
         the same transformed features.
@@ -173,8 +173,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         self,
         forecasters: list[tuple[str, BasePointForecaster]],
         store_residuals: bool = False,
-        target_transformer: BaseTransformer | None = None,
-        feature_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BasePointForecaster.__init__(
@@ -589,7 +589,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             # Handle panel data (target_transformer_ and _y_observed are dicts)
             if self.groups_ is None:
                 # Non-panel data
-                assert isinstance(self.target_transformer_, BaseTransformer)
+                assert isinstance(self.target_transformer_, BaseActualTransformer)
                 assert not isinstance(self._y_observed, dict)
                 y_pred_inv = self.target_transformer_.inverse_transform(X_t=y_pred_no_obs, X_p=self._y_observed)
 
@@ -935,7 +935,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         X_t_dict: dict[str, pl.DataFrame] | None = None
         if self.target_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.target_transformer_, BaseTransformer)
+                assert isinstance(self.target_transformer_, BaseActualTransformer)
                 y_t = self.target_transformer_.observe_transform(y)
             else:
                 assert isinstance(self.target_transformer_, dict)
@@ -946,7 +946,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         if X_actual is not None and self.feature_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseTransformer)
+                assert isinstance(self.feature_transformer_, BaseActualTransformer)
                 X_t = self.feature_transformer_.observe_transform(X_actual)
             else:
                 assert isinstance(self.feature_transformer_, dict)
@@ -1070,7 +1070,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         X_t_dict: dict[str, pl.DataFrame] | None = None
         if self.target_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.target_transformer_, BaseTransformer)
+                assert isinstance(self.target_transformer_, BaseActualTransformer)
                 y_t = self.target_transformer_.rewind_transform(y)
             else:
                 assert isinstance(self.target_transformer_, dict)
@@ -1081,7 +1081,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         if X_actual is not None and self.feature_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseTransformer)
+                assert isinstance(self.feature_transformer_, BaseActualTransformer)
                 X_t = self.feature_transformer_.rewind_transform(X_actual)
             else:
                 assert isinstance(self.feature_transformer_, dict)

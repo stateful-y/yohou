@@ -173,17 +173,17 @@ Pipeline { #pipeline }
     accumulate observation horizons. See [Feature Pipelines](feature-pipelines.md).
 
 Target transformer { #target-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     applied to the target series `y` before tabularization. Used for operations like
     differencing or scaling that should be inverted after prediction.
 
 Feature transformer { #feature-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     applied to the feature matrix `X` before tabularization. Used for creating
     lag features, rolling statistics, or other derived inputs.
 
 Stateful transformer { #stateful-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     that maintains an internal observation window of recent values and updates
     it during `observe()`. Stateful transformers have a non-zero `observation_horizon`
     because they need to remember past values (e.g., lag features, rolling statistics)
@@ -191,7 +191,7 @@ Stateful transformer { #stateful-transformer }
     how observation horizons propagate through pipelines.
 
 Stateless transformer { #stateless-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     whose output depends only on its fitted parameters and the current input, with no
     dependence on prior observations. Has an `observation_horizon` of 0. Examples
     include scaling, log transforms, and calendar feature extraction.

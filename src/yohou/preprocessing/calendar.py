@@ -4,7 +4,7 @@ import numpy as np
 import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 ALL_FEATURES = (
     "year",
@@ -118,7 +118,7 @@ def _extract_feature(feature: str) -> pl.Expr:
     raise ValueError(msg)
 
 
-class CalendarFeatureTransformer(BaseTransformer):
+class CalendarFeatureTransformer(BaseActualTransformer):
     r"""Extract calendar-based features from the time column.
 
     Creates new integer feature columns derived from the datetime index,
@@ -253,7 +253,7 @@ class CalendarFeatureTransformer(BaseTransformer):
         return [f"cal_{f}" for f in self.applicable_features_]
 
 
-class HolidayFeatureTransformer(BaseTransformer):
+class HolidayFeatureTransformer(BaseActualTransformer):
     r"""Extract holiday indicator features from a user-provided holiday calendar.
 
     Produces a binary ``holiday_indicator`` column (and optional proximity

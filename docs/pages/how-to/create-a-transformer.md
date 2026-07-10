@@ -14,9 +14,9 @@ transformation needs.
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
 
-## 1. Subclass `BaseTransformer`
+## 1. Subclass `BaseActualTransformer`
 
-Create a class that extends [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+Create a class that extends [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
 and implement three methods:
 
 - **`_fit(X, y=None)`**: store any state computed from the training data.
@@ -29,10 +29,10 @@ and implement three methods:
 ```python
 import polars as pl
 import polars.selectors as cs
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 
-class ScaleTransformer(BaseTransformer):
+class ScaleTransformer(BaseActualTransformer):
     """Multiplies all numeric columns by a constant factor."""
 
     _parameter_constraints: dict = {
@@ -68,7 +68,7 @@ tag the transformer as invertible. This lets forecasters automatically
 undo target transformations when producing predictions:
 
 ```python
-class ScaleTransformer(BaseTransformer):
+class ScaleTransformer(BaseActualTransformer):
     """Multiplies all numeric columns by a constant factor."""
 
     _tags = {"invertible": True}
@@ -111,11 +111,11 @@ import numbers
 
 import polars as pl
 import polars.selectors as cs
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils._compat import Interval
 
 
-class RollingMeanTransformer(BaseTransformer):
+class RollingMeanTransformer(BaseActualTransformer):
     """Replaces each value with the rolling mean over the last ``window`` steps."""
 
     _tags = {"stateful": True}
@@ -166,7 +166,7 @@ features), reflect this in `get_feature_names_out`. The output must match the
 actual columns produced by `_transform` (excluding `"time"`):
 
 ```python
-class SimpleLagTransformer(BaseTransformer):
+class SimpleLagTransformer(BaseActualTransformer):
     """Creates a single lag-1 feature for each input column."""
 
     _tags = {"stateful": True}
@@ -212,7 +212,7 @@ If your transformer only makes sense for non-panel data, override
 from yohou.utils.tags import Tags
 
 
-class MyUnivariateTransformer(BaseTransformer):
+class MyUnivariateTransformer(BaseActualTransformer):
     def __sklearn_tags__(self) -> Tags:
         tags = super().__sklearn_tags__()
         tags.transformer_tags.supports_panel_data = False

@@ -13,7 +13,7 @@ import pytest
 from sklearn.base import clone
 
 from conftest import run_checks
-from yohou.base import BaseForecaster, BaseTransformer
+from yohou.base import BaseActualTransformer, BaseForecaster
 from yohou.interval.base import BaseSimilarity
 from yohou.metrics.base import BaseScorer
 from yohou.model_selection.split import BaseSplitter
@@ -84,7 +84,9 @@ _XFAIL_CHECKS: dict[str, set[str]] = {
 def _collect_transformers() -> list[tuple[str, type]]:
     """Collect all transformer classes for testing."""
     return [
-        (name, cls) for name, cls in all_estimators() if issubclass(cls, BaseTransformer) and name not in _SKIP_COMMON
+        (name, cls)
+        for name, cls in all_estimators()
+        if issubclass(cls, BaseActualTransformer) and name not in _SKIP_COMMON
     ]
 
 
@@ -94,7 +96,7 @@ def _collect_forecasters() -> list[tuple[str, type]]:
         (name, cls)
         for name, cls in all_estimators()
         if issubclass(cls, BaseForecaster)
-        and not issubclass(cls, BaseTransformer)  # exclude transformers
+        and not issubclass(cls, BaseActualTransformer)  # exclude transformers
         and name not in _SKIP_COMMON
     ]
 

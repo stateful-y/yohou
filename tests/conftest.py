@@ -18,7 +18,7 @@ import polars.selectors as cs
 import pytest
 from sklearn.exceptions import NotFittedError
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 
 def run_checks(
@@ -85,7 +85,7 @@ def run_checks(
         pytest.fail("\n\n".join(messages))
 
 
-class SimpleTransformer(BaseTransformer):
+class SimpleTransformer(BaseActualTransformer):
     """Identity transformer with configurable observation horizon.
 
     Used for testing composition classes, parameter passing, and
@@ -107,7 +107,7 @@ class SimpleTransformer(BaseTransformer):
         self._observation_horizon = value
 
     def fit(self, X, y=None):
-        BaseTransformer.fit(self, X, y)
+        BaseActualTransformer.fit(self, X, y)
         return self
 
     def transform(self, X):
@@ -117,7 +117,7 @@ class SimpleTransformer(BaseTransformer):
         return self.feature_names_in_
 
 
-class StatelessTransformer(BaseTransformer):
+class StatelessTransformer(BaseActualTransformer):
     """Transformer with observation_horizon=0 (works without fitting)."""
 
     def __init__(self, multiplier=2.0):
@@ -129,7 +129,7 @@ class StatelessTransformer(BaseTransformer):
         return 0
 
     def fit(self, X, y=None):
-        BaseTransformer.fit(self, X, y)
+        BaseActualTransformer.fit(self, X, y)
         return self
 
     def transform(self, X):
@@ -139,7 +139,7 @@ class StatelessTransformer(BaseTransformer):
         return [col for col in input_features if col != "time"] if input_features else []
 
 
-class InvertibleTransformer(BaseTransformer):
+class InvertibleTransformer(BaseActualTransformer):
     """Transformer with perfect inverse_transform."""
 
     _tags = {"invertible": True}
@@ -168,7 +168,7 @@ class InvertibleTransformer(BaseTransformer):
         return self.feature_names_in_
 
 
-class PanelAwareTransformer(BaseTransformer):
+class PanelAwareTransformer(BaseActualTransformer):
     """Transformer explicitly handling panel data columns."""
 
     def __init__(self, observation_horizon=1):

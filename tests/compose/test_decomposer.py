@@ -66,7 +66,7 @@ class TestPanelObserveRewind:
 
     In panel mode the base class stores ``target_transformer_``/
     ``feature_transformer_`` as dicts keyed by group, so ``observe``/``rewind``
-    must branch on ``groups_`` instead of asserting a single ``BaseTransformer``
+    must branch on ``groups_`` instead of asserting a single ``BaseActualTransformer``
     (which would raise ``AssertionError``).
     """
 
@@ -112,7 +112,7 @@ class TestPanelObserveRewind:
         Covers the ``feature_transformer_`` panel branch (and the shared
         ``_panel_X_actual_schema`` helper): with X_actual present in panel
         mode, ``observe``/``rewind`` build the per-group transform dict instead
-        of asserting a single ``BaseTransformer``. The ``with_shared`` parameter
+        of asserting a single ``BaseActualTransformer``. The ``with_shared`` parameter
         exercises both the local-only and local-plus-shared X_actual schemas.
         """
         from yohou.preprocessing import FunctionTransformer

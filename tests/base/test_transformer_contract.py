@@ -1,4 +1,4 @@
-"""Contract tests for BaseTransformer lifecycle methods.
+"""Contract tests for BaseActualTransformer lifecycle methods.
 
 Verifies fit, transform, observe, rewind, observe_transform,
 rewind_transform, tags, and fitted attributes using concrete test

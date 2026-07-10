@@ -498,7 +498,7 @@ class TestScalerObservationHorizon:
 
         # Stateless transformers keep an empty observation buffer; a regression
         # that stored rows on fit would make this non-empty.
-        assert hasattr(scaler, "_X_observed"), "BaseTransformer should expose _X_observed after fit"
+        assert hasattr(scaler, "_X_observed"), "BaseActualTransformer should expose _X_observed after fit"
         assert scaler._X_observed is not None
         assert len(scaler._X_observed) == 0, "Stateless scaler must not buffer observations"
 

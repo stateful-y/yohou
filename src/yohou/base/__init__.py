@@ -8,7 +8,7 @@ from .forecaster import (
 from .panel import BasePanelForecaster
 from .reduction import BaseReductionForecaster
 from .standard import BaseStandardForecaster
-from .transformer import BaseActualTransformer, BaseTransformer
+from .transformer import BaseActualTransformer
 
 __all__ = [
     "BaseActualTransformer",
@@ -17,6 +17,5 @@ __all__ = [
     "BasePanelForecaster",
     "BaseReductionForecaster",
     "BaseStandardForecaster",
-    "BaseTransformer",
     "PredictionType",
 ]

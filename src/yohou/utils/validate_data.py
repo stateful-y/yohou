@@ -229,7 +229,7 @@ def validate_plotting_params(
 
 
 if TYPE_CHECKING:
-    from yohou.base import BaseForecaster, BaseTransformer
+    from yohou.base import BaseActualTransformer, BaseForecaster
     from yohou.metrics.base import BaseScorer
     from yohou.model_selection import BaseSplitter
     from yohou.utils._context import ScoringContext
@@ -994,7 +994,7 @@ def validate_forecaster_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[True],
@@ -1009,7 +1009,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1024,7 +1024,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1039,7 +1039,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1053,7 +1053,7 @@ def validate_transformer_data(
 
 
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: bool = True,
@@ -1068,7 +1068,7 @@ def validate_transformer_data(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         The transformer instance.
     X : pl.DataFrame or None, default=None
         Input data.
@@ -1111,7 +1111,7 @@ def validate_transformer_data(
 
     See Also
     --------
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for all transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for all transformers.
     - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """

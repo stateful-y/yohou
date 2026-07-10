@@ -46,14 +46,14 @@ class TestSeeAlsoRegexTransformations:
 
     def test_full_pipeline_bullet_mkdocs_link(self):
         """Full three-step pipeline transforms bullet MkDocs link to numpydoc format."""
-        line = "    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class."
+        line = "    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class."
         # Step 1: collapse MkDocs link
         result = _MKDOCS_LINK_RE.sub(r"\1", line)
         # Step 2: strip bullet
         result = _BULLET_PREFIX_RE.sub(r"\1", result)
         # Step 3: strip backticks (no-op in this case since step 1 removed them)
         result = _BACKTICK_NAME_RE.sub(r"\1", result)
-        assert result == "    yohou.base.transformer.BaseTransformer : Base class."
+        assert result == "    yohou.base.transformer.BaseActualTransformer : Base class."
 
     def test_backtick_only_line_unchanged_by_mkdocs_and_bullet_regexes(self):
         """A backtick-only line (no bullet, no MkDocs link) passes through steps 1-2 unchanged."""

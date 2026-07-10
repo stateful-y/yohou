@@ -10,7 +10,7 @@ from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseForecaster, BaseTransformer
+from yohou.base import BaseActualTransformer, BaseForecaster
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 from yohou.utils._compat import _fit_context
 
@@ -229,7 +229,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseTransformer` or None, default=None
+    feature_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
@@ -268,7 +268,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def __init__(
         self,
-        feature_transformer: BaseTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:

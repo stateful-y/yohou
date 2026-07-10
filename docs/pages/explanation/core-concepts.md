@@ -125,7 +125,7 @@ This keeps the base class focused on point prediction while allowing specialized
 forecasters to add their prediction types.
 
 For transformers, the pattern mirrors forecasters.
-[`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) extends
+[`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) extends
 `BaseEstimator` with `observe` and `rewind` for memory management. The composite
 `observe_transform` method transforms using pre-existing memory, then updates state.
 `rewind_transform` applies the full transformation (which internally drops the first
@@ -148,7 +148,7 @@ classDiagram
     class BaseReductionForecaster
     class BaseSearchCV
 
-    class BaseTransformer
+    class BaseActualTransformer
     class BaseScorer
     class BasePointScorer
     class BaseIntervalScorer
@@ -157,7 +157,7 @@ classDiagram
     class BaseSimilarity
 
     BaseEstimator <|-- BaseForecaster
-    BaseEstimator <|-- BaseTransformer
+    BaseEstimator <|-- BaseActualTransformer
     BaseEstimator <|-- BaseScorer
     BaseEstimator <|-- BaseSplitter
     BaseEstimator <|-- BaseSimilarity

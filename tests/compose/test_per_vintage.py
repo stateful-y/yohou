@@ -5,7 +5,7 @@ from datetime import datetime
 import polars as pl
 import pytest
 
-from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseTransformer
+from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.compose import FeatureUnion, PerVintageActualTransformer
 from yohou.preprocessing import FunctionTransformer, LagTransformer
 from yohou.testing.forecast_transformer import FORECAST_TRANSFORMER_CHECKS
@@ -99,11 +99,6 @@ def test_feature_schema_mismatch_at_transform_raises():
 # --- the kind split ------------------------------------------------------------
 
 
-def test_base_transformer_is_actual_alias():
-    """BaseTransformer is the historical alias for BaseActualTransformer."""
-    assert BaseTransformer is BaseActualTransformer
-
-
 def test_actual_leaves_report_actual_kind():
     """Existing single-axis leaves report kind='actual' by default."""
     for tx in (FunctionTransformer(), LagTransformer(lag=1)):
@@ -119,10 +114,9 @@ def test_forecast_transformer_reports_forecast_kind():
 def test_forecast_transformer_excluded_from_actual_hierarchy():
     """A forecast transformer is not a BaseActualTransformer, so actual-only slots reject it.
 
-    This is the durable invariant the ``isinstance``-based slot guards rely on.
-    Kind-polymorphic composition (a FeatureUnion of forecast transformers) is a
-    Stage 2 concern; until then the supported path is compose-then-lift, i.e.
-    ``PerVintageActualTransformer(FeatureUnion([...actual...]))``.
+    This is the durable invariant the ``isinstance``-based slot guards rely on:
+    ``BaseForecastTransformer`` is a sibling of ``BaseActualTransformer`` under the
+    private ``_BaseTransformer`` root, not a subclass.
     """
     tx = PerVintageActualTransformer(_net_load_transformer())
     assert not isinstance(tx, BaseActualTransformer)

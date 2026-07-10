@@ -18,11 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   either kind, derive their kind from their children, and reject mixed-kind
   compositions. `ColumnTransformer` treats `vintage_time` as a protected index column.
 
-### Refactor
-- Split the transformer base into a private `_BaseTransformer` (shared scaffolding),
-  `BaseActualTransformer` (single-axis, with the observe/rewind memory API), and
-  `BaseForecastTransformer` (forecast frames, stateless). `BaseTransformer` is now an
-  alias for `BaseActualTransformer`; prefer `BaseActualTransformer` in new code.
+### Breaking
+- **Renamed `BaseTransformer` to `BaseActualTransformer`.** The transformer base is
+  split into a private `_BaseTransformer` (shared scaffolding), `BaseActualTransformer`
+  (single-axis, with the observe/rewind memory API), and `BaseForecastTransformer`
+  (forecast frames, stateless). `BaseTransformer` is removed; update imports and
+  subclasses to `BaseActualTransformer`.
 
 
 ## [0.1.0-alpha.9] - 2026-05-19

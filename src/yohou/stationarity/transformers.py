@@ -6,7 +6,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import Tags, validate_transformer_data
 from yohou.utils._compat import Interval, _check_feature_names_in
 from yohou.utils.panel import panel_aware_prefix
@@ -23,7 +23,7 @@ __all__ = [
 
 
 def _inverse_seasonal_diff(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X_t: pl.DataFrame,
     X_p: pl.DataFrame | None,
     seasonality: int,
@@ -36,7 +36,7 @@ def _inverse_seasonal_diff(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         The calling transformer, used for data validation and to read
         ``feature_names_in_`` / ``observation_horizon``.
     X_t : pl.DataFrame
@@ -86,7 +86,7 @@ def _inverse_seasonal_diff(
     return X
 
 
-class BoxCoxTransformer(BaseTransformer):
+class BoxCoxTransformer(BaseActualTransformer):
     r"""Box-Cox power transformation time series transformer.
 
     The Box-Cox transformation is a parametric transformation that stabilizes
@@ -339,7 +339,7 @@ class LogTransformer(BoxCoxTransformer):
         return feature_names
 
 
-class SeasonalDifferencing(BaseTransformer):
+class SeasonalDifferencing(BaseActualTransformer):
     r"""Seasonal differencing time series transformer.
 
     Computes the difference between each value and its value at a seasonal
@@ -599,7 +599,7 @@ class SeasonalLogDifferencing(SeasonalDifferencing, LogTransformer):
         return feature_names
 
 
-class SeasonalReturn(BaseTransformer):
+class SeasonalReturn(BaseActualTransformer):
     r"""Seasonal percentage return time series transformer.
 
     Computes the percentage return relative to the value from ``seasonality``
@@ -858,7 +858,7 @@ class AbsoluteSeasonalReturn(SeasonalDifferencing):
         return feature_names
 
 
-class ASinhTransformer(BaseTransformer):
+class ASinhTransformer(BaseActualTransformer):
     r"""Variance stabilization through arcsinh transform.
 
     Applies the transformation:

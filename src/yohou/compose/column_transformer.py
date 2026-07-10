@@ -23,7 +23,7 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.base.transformer import _BaseTransformer
 from yohou.utils import Tags
 from yohou.utils._compat import (
@@ -66,7 +66,7 @@ _ERR_MSG_1DCOLUMN = (
 )
 
 
-class ColumnTransformer(BaseTransformer, _BaseComposition):
+class ColumnTransformer(BaseActualTransformer, _BaseComposition):
     """Applies transformers to columns of a polars DataFrame.
 
     This estimator allows different columns or column subsets of the input
@@ -86,13 +86,13 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
             Like in FeaturePipeline and FeatureUnion, this allows the transformer and
             its parameters to be set using ``set_params`` and searched in grid
             search.
-        transformer : {'drop', 'passthrough'} or BaseTransformer
-            Estimator must be a ``BaseTransformer`` instance, so the stateful
+        transformer : {'drop', 'passthrough'} or BaseActualTransformer
+            Estimator must be a ``BaseActualTransformer`` instance, so the stateful
             ``observe_transform``/``rewind_transform`` lifecycle is available.
             Special-cased strings 'drop' and 'passthrough' are accepted as
             well, to indicate to drop the columns or to pass them through
             untransformed, respectively. A ``TypeError`` is raised at fit time
-            if the estimator is not a ``BaseTransformer`` (and not 'drop' or
+            if the estimator is not a ``BaseActualTransformer`` (and not 'drop' or
             'passthrough').
         columns :  str, array-like of str, int, array-like of int, \
                 array-like of bool, slice or callable
@@ -180,7 +180,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
     --------
     `sklearn.compose.ColumnTransformer` : Underlying scikit-learn column transformer.
     - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformation.
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base transformer interface.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base transformer interface.
     - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Common column-wise transformer.
 
     Notes

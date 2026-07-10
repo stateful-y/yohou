@@ -56,6 +56,6 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 - [Create a Point Forecaster](create-a-point-forecaster.md): Implement a custom point forecaster by subclassing [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/).
 - [Create an Interval Forecaster](create-an-interval-forecaster.md): Implement a custom interval forecaster by subclassing [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/).
 - [Create a Class-Probability Forecaster](create-a-class-proba-forecaster.md): Implement a custom categorical forecaster by subclassing [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/).
-- [Create a Transformer](create-a-transformer.md): Implement a custom time series transformer by subclassing [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/).
+- [Create a Transformer](create-a-transformer.md): Implement a custom time series transformer by subclassing [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/).
 - [Create Custom Scorers](create-a-scorer.md): Implement a custom evaluation metric by subclassing [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) or [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/).
 - [Contribute to Yohou](contributing.md): Set up a development environment, run tests, and submit changes.
