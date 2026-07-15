@@ -17,6 +17,7 @@ __all__ = [
     "check_forecasting_horizon_positive",
     "check_inputs",
     "check_interval_consistency",
+    "representative_interval",
     "check_groups",
     "check_panel_groups_match",
     "check_panel_internal_consistency",
@@ -740,6 +741,47 @@ def check_interval_consistency(df: pl.DataFrame) -> str:
         f"Found {len(unique_deltas)} different intervals: {unique_deltas}. "
         f"Cannot infer a regular frequency pattern."
     )
+
+
+def representative_interval(df: pl.DataFrame) -> str:
+    """Infer a representative time interval, tolerant of an irregular grid.
+
+    Unlike [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency],
+    this never raises on a jittered or gapped time axis: it returns the median
+    positive consecutive delta as an interval string. It backs the
+    ``accepts_irregular_grid`` transformer tag, where a single strict interval does
+    not exist but a representative one is still useful (for example a resampler's
+    ``target >= input`` guard). For a uniform grid it returns the same value the
+    strict check would.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Time series DataFrame with a "time" column containing datetime values.
+
+    Returns
+    -------
+    str
+        Interval string of the median positive consecutive delta (e.g. "5m", "1h").
+
+    Raises
+    ------
+    ValueError
+        If ``df`` has fewer than 2 rows, or every time point is identical, so no
+        positive interval can be inferred.
+
+    See Also
+    --------
+    - [`check_interval_consistency`][yohou.utils.validation.check_interval_consistency] : Strict uniform-grid check.
+
+    """
+    if df.height < 2:
+        raise ValueError("Need at least 2 time points to infer interval")
+    deltas = sorted(d for d in df["time"].diff().drop_nulls().to_list() if d.total_seconds() > 0)
+    if not deltas:
+        raise ValueError("Cannot infer interval: all time points are identical")
+    median = deltas[len(deltas) // 2]
+    return _timedelta_to_string(median)
 
 
 def check_inputs(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:

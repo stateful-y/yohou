@@ -8,7 +8,12 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
 from yohou.utils._compat import StrOptions, _check_feature_names_in
-from yohou.utils.validation import check_interval_consistency, interval_to_timedelta, parse_interval
+from yohou.utils.validation import (
+    check_interval_consistency,
+    interval_to_timedelta,
+    parse_interval,
+    representative_interval,
+)
 
 __all__ = ["Downsampler", "Upsampler"]
 
@@ -19,6 +24,12 @@ class Downsampler(BaseActualTransformer):
     Reduces the frequency of time series data by grouping consecutive time
     points into bins and applying an aggregation function. Uses polars'
     `group_by_dynamic` for efficient windowed aggregation.
+
+    Because `group_by_dynamic` bins by wall-clock windows, the input does not need a
+    uniform grid: `Downsampler` declares `accepts_irregular_grid=True`, so a jittered
+    or gapped sub-hourly feed is accepted at fit and transform (the strict
+    interval-consistency check is skipped and a representative median interval is
+    recorded for the `target >= input` guard). Behavior on a uniform grid is unchanged.
 
     Parameters
     ----------
@@ -87,7 +98,10 @@ class Downsampler(BaseActualTransformer):
         "include_boundaries": ["boolean"],
     }
 
-    _tags = {"stateful": False}
+    # Bins via group_by_dynamic, which is correct on a non-uniform grid, so it opts
+    # into the irregular-grid contract: a jittered or gapped sub-hourly feed can be
+    # downsampled without first being placed on a strict uniform grid.
+    _tags = {"stateful": False, "accepts_irregular_grid": True}
 
     def __init__(
         self,
@@ -105,8 +119,14 @@ class Downsampler(BaseActualTransformer):
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
-        # Detect input interval
-        self.input_interval_str_ = check_interval_consistency(X)
+        # Detect input interval. A uniform grid takes the strict check (unchanged);
+        # a jittered or gapped grid falls back to a representative (median) interval,
+        # used only for the target >= input guard below. group_by_dynamic bins either
+        # way, so the transform is unaffected.
+        try:
+            self.input_interval_str_ = check_interval_consistency(X)
+        except ValueError:
+            self.input_interval_str_ = representative_interval(X)
         self.input_interval_ = interval_to_timedelta(self.input_interval_str_)
         self.target_interval_ = interval_to_timedelta(self.interval)
 

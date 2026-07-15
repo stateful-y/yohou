@@ -95,6 +95,14 @@ class TransformerTags:
         carrying ``["vintage_time", "time", ...]``. Leaf transformers stamp
         this statically via their base class; composition estimators aggregate
         it from their children.
+    accepts_irregular_grid : bool, default=False
+        Whether the transformer accepts a non-uniform input time axis at fit.
+        When ``True``, the shared fit-time validation skips the strict
+        interval-consistency check and records a representative interval (the
+        median consecutive delta) instead of raising. Set by resamplers that bin
+        via ``group_by_dynamic`` and are correct on jittered or gapped input;
+        left ``False`` for order-dependent transformers (lag, difference,
+        rolling, memory-based) that require a uniform grid.
 
     """
 
@@ -102,6 +110,7 @@ class TransformerTags:
     invertible: bool = False
     preserves_dtype: bool = False
     kind: Literal["actual", "forecast"] = "actual"
+    accepts_irregular_grid: bool = False
 
 
 @dataclass

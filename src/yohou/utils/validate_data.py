@@ -23,6 +23,8 @@ from yohou.utils.validation import (
     check_time_column,
     interval_to_timedelta,
     parse_interval,
+    representative_interval,
+    validate_column_names,
 )
 
 __all__ = [
@@ -1119,7 +1121,20 @@ def validate_transformer_data(
         # Fit context
         if X is None:
             raise ValueError("`X` cannot be None in fit context.")
-        interval = check_inputs(X, None)
+        transformer_tags = getattr(transformer.__sklearn_tags__(), "transformer_tags", None)
+        if getattr(transformer_tags, "accepts_irregular_grid", False):
+            # The transformer declares it tolerates a non-uniform grid at fit (e.g. a
+            # resampler that bins via group_by_dynamic). Validate the columns as usual,
+            # but fall back to a representative interval when the strict
+            # interval-consistency check rejects a jittered or gapped axis. A uniform
+            # grid still takes the strict path, so its recorded interval is unchanged.
+            validate_column_names(X)
+            try:
+                interval = check_interval_consistency(X)
+            except ValueError:
+                interval = representative_interval(X)
+        else:
+            interval = check_inputs(X, None)
         transformer.interval_ = interval
         transformer.feature_names_in_ = X.select(~cs.by_name("time")).columns
         transformer.n_features_in_ = len(transformer.feature_names_in_)
@@ -1177,11 +1192,18 @@ def validate_transformer_data(
     check_time_column(X)
     X = check_schema(X, transformer.X_schema_)
 
-    if check_params.get("check_intervals", True) and len(X) >= 2:
+    # A transformer that accepts an irregular grid (e.g. a resampler binning via
+    # group_by_dynamic) skips the strict interval-consistency check at transform, the
+    # same relaxation applied at fit above.
+    transformer_tags = getattr(transformer.__sklearn_tags__(), "transformer_tags", None)
+    accepts_irregular = getattr(transformer_tags, "accepts_irregular_grid", False)
+
+    if not accepts_irregular and check_params.get("check_intervals", True) and len(X) >= 2:
         check_interval_consistency(X)
 
     if (
-        check_params.get("check_continuity", True)
+        not accepts_irregular
+        and check_params.get("check_continuity", True)
         and hasattr(transformer, "_X_observed")
         and len(transformer._X_observed) > 0
     ):

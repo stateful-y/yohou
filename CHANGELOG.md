@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frames (two time axes: `vintage_time` and `time`), and `PerVintageActualTransformer`,
   which lifts any stateless `BaseActualTransformer` onto the vintage axis by applying
   it independently to each vintage.
+- Add an `accepts_irregular_grid` tag to `TransformerTags`: a transformer that declares
+  it (default off) is accepted at fit and transform on a non-uniform time axis, the
+  shared validation skipping the strict interval-consistency check and recording a
+  representative (median) interval via `representative_interval` instead of raising.
+  `Downsampler` opts in, so a jittered or gapped sub-hourly feed can be reduced to a
+  coarser uniform grid without first being placed on a strict uniform grid; behavior on
+  a uniform grid is unchanged, and transformers that do not opt in still require one.
 - Add a `kind` tag (`"actual"` | `"forecast"`) to `TransformerTags`. The composition
   estimators (`FeatureUnion`, `FeaturePipeline`, `ColumnTransformer`) now operate on
   either kind, derive their kind from their children, and reject mixed-kind
