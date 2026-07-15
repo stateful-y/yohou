@@ -7,11 +7,11 @@ This guide shows you how to apply transformers to an `X_forecast` frame, using [
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of forecast vintages ([How to Work with Forecast Vintages](forecast-vintages.md))
 
-## Why a Forecast Transformer
+!!! tip "Try it interactively"
+    <!-- COMPANION_NOTEBOOKS -->
 
-A regular transformer (a [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)) operates on a single-axis frame with one `"time"` column. An `X_forecast` frame carries **two** time axes, `vintage_time` (when the forecast was issued) and `time` (what it forecasts), so it is a stack of short per-vintage series that a single-axis transformer cannot consume.
 
-[`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) bridges the gap: it wraps a **stateless** actual transformer and applies it to each vintage independently, so order-dependent operations never bleed across vintage boundaries.
+An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) wraps a stateless actual transformer and applies it to each vintage independently. For why the two kinds exist and why the wrapper takes stateless transformers only, see [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ## Derive a Feature per Vintage
 
@@ -36,7 +36,7 @@ X_forecast_t = net_load.fit_transform(X_forecast)
 The `vintage_time` and `time` index columns are preserved, and each vintage's `net_load` is computed from only that vintage's rows.
 
 !!! note "The wrapped transformer must be stateless"
-    `PerVintageActualTransformer` requires the wrapped transformer to measure `observation_horizon == 0` after fitting. A stateful transformer (a lag or rolling window) needs contiguous memory that the discontinuous vintage axis cannot provide, so it is rejected with a `ValueError`.
+    `PerVintageActualTransformer` requires the wrapped transformer to measure `observation_horizon == 0` after fitting. A stateful transformer (a lag or rolling window) is rejected with a `ValueError`; see [Transformer Kinds](../explanation/transformer-kinds.md) for why the vintage axis rules statefulness out.
 
 ## Compose Several Forecast Transformers
 
@@ -47,23 +47,27 @@ from yohou.compose import FeatureUnion
 
 features = FeatureUnion([
     ("net_load", net_load),
-    ("ramp", PerVintageActualTransformer(
+    ("wind_share", PerVintageActualTransformer(
         FunctionTransformer(
-            func=lambda df: df.select(pl.col("load").diff().alias("ramp")),
-            feature_names_out=lambda self, names: ["ramp"],
+            func=lambda df: df.select(
+                (pl.col("wind") / pl.col("load")).alias("wind_share")
+            ),
+            feature_names_out=lambda self, names: ["wind_share"],
         )
     )),
 ])
 ```
 
+Each branch must itself be stateless, because each is lifted independently. A branch computing something like a ramp (`pl.col("load").diff()`) is rejected: `FunctionTransformer` measures the `.diff()` as an `observation_horizon` of 1, and a stateful transformer cannot be lifted onto the vintage axis.
+
 A composition must be **homogeneous in kind**: mixing actual and forecast transformers in one `FeatureUnion`, `FeaturePipeline`, or `ColumnTransformer` raises a `ValueError`.
 
-Equivalently, you can *compose-then-lift* — build a union of actual transformers and lift the whole thing once:
+Equivalently, you can *compose-then-lift*, building a union of actual transformers and lifting the whole thing once:
 
 ```python
 PerVintageActualTransformer(FeatureUnion([
     ("net_load", FunctionTransformer(func=..., feature_names_out=...)),
-    ("ramp", FunctionTransformer(func=..., feature_names_out=...)),
+    ("wind_share", FunctionTransformer(func=..., feature_names_out=...)),
 ]))
 ```
 

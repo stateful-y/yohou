@@ -220,6 +220,7 @@ nav:
     - Panel Data: pages/explanation/panel-data.md
     - Exogenous Features: pages/explanation/exogenous-features.md
     - Preprocessing: pages/explanation/preprocessing.md
+    - Transformer Kinds: pages/explanation/transformer-kinds.md
     - Stationarity: pages/explanation/stationarity.md
     - Feature Pipelines: pages/explanation/feature-pipelines.md
     - Forecaster Composition: pages/explanation/forecaster-composition.md

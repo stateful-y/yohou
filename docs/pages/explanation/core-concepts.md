@@ -124,12 +124,19 @@ rather than on [`BaseForecaster`](/pages/api/generated/yohou.base.forecaster.Bas
 This keeps the base class focused on point prediction while allowing specialized
 forecasters to add their prediction types.
 
-For transformers, the pattern mirrors forecasters.
-[`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) extends
-`BaseEstimator` with `observe` and `rewind` for memory management. The composite
-`observe_transform` method transforms using pre-existing memory, then updates state.
-`rewind_transform` applies the full transformation (which internally drops the first
-`observation_horizon` rows for stateful transformers), then rewinds the state.
+For transformers, the pattern mirrors forecasters: a shared private root holds the
+scaffolding, and the capabilities that depend on the data shape live on the subclass
+that has that shape. [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/), the base for single-axis
+data, is where the memory API lives. It adds `observe` and `rewind` for memory
+management, plus the composite `observe_transform`, which transforms using pre-existing
+memory and then updates state, and `rewind_transform`, which applies the full
+transformation (internally dropping the first `observation_horizon` rows for stateful
+transformers) and then rewinds the state.
+
+[`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) is the sibling branch, for transformers over
+vintage-indexed forecast frames. It has no memory API at all, because the axis it works
+on cannot support one. See [Transformer Kinds](transformer-kinds.md) for why the split
+falls where it does.
 
 This design means Yohou components work with Scikit-Learn utilities like `clone()`,
 [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (via Yohou's time-series-aware wrapper), and [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html) composition.
@@ -148,7 +155,9 @@ classDiagram
     class BaseReductionForecaster
     class BaseSearchCV
 
+    class _BaseTransformer["_BaseTransformer (private)"]
     class BaseActualTransformer
+    class BaseForecastTransformer
     class BaseScorer
     class BasePointScorer
     class BaseIntervalScorer
@@ -157,10 +166,13 @@ classDiagram
     class BaseSimilarity
 
     BaseEstimator <|-- BaseForecaster
-    BaseEstimator <|-- BaseActualTransformer
+    BaseEstimator <|-- _BaseTransformer
     BaseEstimator <|-- BaseScorer
     BaseEstimator <|-- BaseSplitter
     BaseEstimator <|-- BaseSimilarity
+
+    _BaseTransformer <|-- BaseActualTransformer
+    _BaseTransformer <|-- BaseForecastTransformer
 
     BaseForecaster <|-- BasePointForecaster
     BaseForecaster <|-- BaseIntervalForecaster

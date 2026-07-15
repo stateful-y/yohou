@@ -31,6 +31,7 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 - [Work with Panel Data](panel-data.md): Handle multiple related time series with the `__` column naming convention.
 - [Use Exogenous Features](exogenous-features.md): Incorporate external predictors using X_actual, X_future, and X_forecast.
 - [Work with Forecast Vintages](forecast-vintages.md): Prepare, align, and predict with `X_forecast` features from upstream models stamped with an issuance time.
+- [Transform Forecast Features](transform-forecast-features.md): Derive features from an `X_forecast` frame by lifting a stateless transformer onto the vintage axis with [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/).
 - [Add Calendar and Time Features](time-features.md): Engineer temporal features like day of week, month, and holidays.
 - [Use Time Weighting](time-weighting.md): Apply non-uniform weights to emphasize recent or seasonal observations.
 

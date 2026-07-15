@@ -1,6 +1,8 @@
 # Preprocessing
 
-Preprocessing in yohou is built around a single abstraction: [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/). Every transformer, whether it computes lag features, scales values, or applies a digital filter, extends this class and follows the same contract. The contract is simple: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
+Preprocessing in yohou is built around [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/), the base for transformers over single-axis data. Whether it computes lag features, scales values, or applies a digital filter, such a transformer follows one contract: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
+
+This page is about that single-axis kind, which is what nearly every transformer in the library is. Transformers over the forecast channel carry a second time axis and a correspondingly different contract; see [Transformer Kinds](transformer-kinds.md) for the taxonomy and for why the memory API discussed below belongs to the single-axis kind alone.
 
 ## Time Series Data Quality
 

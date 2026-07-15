@@ -37,11 +37,14 @@ For step-by-step implementation guides, see [Create a Point Forecaster](../how-t
 
 ### Transformers
 
-| Base Class | Import | Abstract Methods |
-|-----------|--------|-----------------|
-| [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) | `yohou.base` | `_transform()`, `get_feature_names_out()` |
+| Base Class | Import | Frame Contract | Abstract Methods |
+|-----------|--------|----------------|-----------------|
+| [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) | `yohou.base` | Single-axis: `["time", ...]` | `_transform()`, `get_feature_names_out()` |
+| [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) | `yohou.base` | Two-axis: `["vintage_time", "time", ...]` | `_transform()`, `get_feature_names_out()` |
 
 Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required only for invertible transformers).
+
+The two bases differ in the frame they accept, not in the methods you implement. Only [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) has the `observe`/`rewind` memory API and an `observation_horizon`; forecast-kind transformers are stateless, so neither applies. Before subclassing [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/), check whether the operation can be expressed per vintage, in which case wrapping a stateless actual transformer in [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) is the normal path. Subclass only for genuinely cross-vintage work. See [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ### Splitters
 

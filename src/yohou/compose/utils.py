@@ -70,7 +70,7 @@ def _real_transformers(named_transformers: list[tuple[str, Any]]) -> list[tuple[
 def common_kind(named_transformers: list[tuple[str, Any]]) -> Kind:
     """Return the shared kind of the children, or ``"actual"`` if empty or mixed.
 
-    Non-raising; use for tag computation. Use :func:`check_homogeneous_kinds`
+    Non-raising; use for tag computation. Use `check_homogeneous_kinds`
     to enforce homogeneity with a descriptive error at fit time.
 
     Parameters

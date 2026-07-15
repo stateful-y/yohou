@@ -1,6 +1,6 @@
 """Contract checks for ``BaseForecastTransformer`` subclasses.
 
-These mirror the single-axis checks in :mod:`yohou.testing.transformer` but for
+These mirror the single-axis checks in `yohou.testing.transformer` but for
 transformers over ``X_forecast`` frames (two time axes: ``"vintage_time"`` and
 ``"time"``). Each check takes an *unfitted* forecast transformer and a sample
 ``X_forecast`` frame with at least two vintages, and asserts one clause of the
