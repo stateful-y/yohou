@@ -146,7 +146,42 @@ def _(X_forecast_t, pl):
 def _(mo):
     mo.md(
         r"""
-        ## 4. Compose Forecast Transformers
+        ## 4. Fit a Transformer per Vintage
+
+        The anomaly above computed its mean inline with a `FunctionTransformer`.
+        The wrapper's real value is lifting a transformer that *fits* from data: a
+        `SimpleImputer` fills each vintage's missing values from that vintage's own
+        mean. It is leakage-free because a vintage is fully known at its
+        `vintage_time`. (To normalize against the *training* distribution instead,
+        put the scaler in the estimator pipeline, not here.)
+        """
+    )
+
+
+@app.cell
+def _(PerVintageActualTransformer, X_forecast, pl):
+    from yohou.preprocessing import SimpleImputer
+
+    # Knock a gap into the second row of every vintage, then impute per vintage.
+    X_gappy = X_forecast.with_columns(
+        pl.when(pl.int_range(pl.len()).over("vintage_time") == 1)
+        .then(None)
+        .otherwise(pl.col("wx_temp"))
+        .alias("wx_temp")
+    )
+    imputed = PerVintageActualTransformer(SimpleImputer(strategy="mean")).fit_transform(X_gappy)
+
+    print("gaps introduced:", X_gappy["wx_temp"].null_count())
+    print("gaps remaining after per-vintage impute:", imputed["wx_temp"].null_count())
+    print(imputed.head(4))
+    return SimpleImputer, X_gappy, imputed
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(
+        r"""
+        ## 5. Compose Forecast Transformers
 
         A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
         of forecast-kind branches is itself forecast-kind, and it aligns its branches
@@ -181,7 +216,7 @@ def _(FunctionTransformer, PerVintageActualTransformer, X_forecast, anomaly, pl)
 def _(mo):
     mo.md(
         r"""
-        ## 5. Two Constraints the Framework Enforces
+        ## 6. Two Constraints the Framework Enforces
 
         Each branch must be **stateless**, since each is lifted independently, and a
         composition must be **homogeneous in kind**. Both are errors rather than
@@ -221,7 +256,7 @@ def _(FeatureUnion, FunctionTransformer, PerVintageActualTransformer, X_forecast
 def _(mo):
     mo.md(
         r"""
-        ## 6. Feed the Result to a Forecaster
+        ## 7. Feed the Result to a Forecaster
 
         Derived forecast features enter through the `X_forecast` channel. They cannot
         be passed as `feature_transformer`, which processes single-axis `X_actual` data

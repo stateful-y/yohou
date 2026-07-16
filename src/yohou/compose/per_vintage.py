@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 import polars as pl
 from sklearn.base import clone
 
@@ -12,22 +14,45 @@ __all__ = ["PerVintageActualTransformer"]
 
 _VINTAGE_COL = "vintage_time"
 
+#: A vintage needs at least this many rows to be a fittable single-axis series
+#: (two timestamps are the minimum to infer the series interval). Smaller
+#: vintages, such as the truncated tail of a forecast frame, cannot be fitted
+#: on their own and are dropped with a warning.
+_MIN_VINTAGE_ROWS = 2
+
 
 class PerVintageActualTransformer(BaseForecastTransformer):
     """Apply a stateless single-axis transformer to each vintage of an ``X_forecast`` frame.
 
     Wraps a `BaseActualTransformer` and applies it independently to every
-    vintage: the frame is grouped by ``"vintage_time"``, each group's single-axis
-    ``["time", ...]`` slice is transformed by the wrapped transformer, and the
-    results are re-stacked with ``"vintage_time"`` restored. Because each vintage
-    is transformed using only its own rows, order-dependent inner transforms
-    (lags, differences, rolling statistics within the forecast horizon) never
-    bleed across vintage boundaries.
+    vintage: the frame is grouped by ``"vintage_time"``, and each group's
+    single-axis ``["time", ...]`` slice is **fitted and transformed on its own**,
+    then re-stacked with ``"vintage_time"`` restored. Because a vintage is fitted
+    using only its own rows, a value-dependent inner self-references per vintage:
+    a scaler standardizes each vintage to that vintage's own scale, a mean
+    imputer fills each vintage's gaps from that vintage's own values. Order
+    dependent transforms (cumulative sums, differences within the horizon) also
+    stay contained.
+
+    The transform is leakage-free: a vintage's output depends only on its own
+    rows, all of which are known at that vintage's ``vintage_time``. This is
+    distinct from normalizing ``X_forecast`` by the training distribution, which
+    is done with a scaler inside the estimator pipeline instead.
+
+    ``fit`` does not fit the inner for the values it will produce. It fits a
+    single representative clone on one vintage only to expose output feature
+    names and to check statelessness, both value-independent; the per-vintage
+    fits happen in ``transform``.
 
     The wrapped transformer must be **stateless** (measured
     ``observation_horizon == 0`` after fitting). Stateful transformers need
     contiguous memory across a single series, which the discontinuous vintage
     axis cannot provide, so they are rejected.
+
+    A vintage with fewer than two rows cannot be fitted on its own and has no
+    per-vintage statistic to compute. Such vintages, typically the truncated
+    tail of a forecast frame, are dropped from the output with a warning rather
+    than transformed with borrowed parameters.
 
     Parameters
     ----------
@@ -37,7 +62,9 @@ class PerVintageActualTransformer(BaseForecastTransformer):
     Attributes
     ----------
     transformer_ : BaseActualTransformer
-        The fitted clone of ``transformer``.
+        A representative clone fitted on the first vintage, used only for
+        ``get_feature_names_out`` and the statelessness check, never to produce
+        transformed values.
     feature_names_in_ : list[str]
         Feature (non-index) column names seen during ``fit``.
 
@@ -87,22 +114,28 @@ class PerVintageActualTransformer(BaseForecastTransformer):
         self.transformer = transformer
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Fit the wrapped transformer once and enforce statelessness.
+        """Fit a representative clone for feature names and the statelessness check.
 
-        The wrapped transformer is fitted on a single representative vintage (a
-        valid single-axis frame); the ``X_forecast`` frame as a whole is not a
-        single monotonic series, so it cannot be fed to a single-axis
-        transformer directly.
+        The wrapped transformer is **not** fitted here for the values it will
+        produce; those come from a per-vintage fit in ``_transform``. This fit
+        exists only to expose ``get_feature_names_out`` and to measure
+        ``observation_horizon``, both of which are value-independent (they depend
+        on the wrapped transformer's parameters and the frame schema, not on any
+        vintage's data). Any single vintage's slice is therefore a valid
+        representative; the first is used.
         """
         if X.is_empty():
             raise ValueError("Cannot fit PerVintageActualTransformer on an empty X_forecast frame.")
 
-        # Fit the inner on the first vintage's slice (a valid single-axis series).
-        first_vintage = X[_VINTAGE_COL][0]
-        slice_0 = X.filter(pl.col(_VINTAGE_COL) == first_vintage).drop(_VINTAGE_COL)
+        representative = self._first_fittable_vintage(X)
+        if representative is None:
+            raise ValueError(
+                "PerVintageActualTransformer needs at least one vintage with "
+                f"{_MIN_VINTAGE_ROWS} or more rows to fit, but every vintage in the frame is smaller."
+            )
 
         self.transformer_ = clone(self.transformer)
-        self.transformer_.fit(slice_0)
+        self.transformer_.fit(representative)
 
         if self.transformer_.observation_horizon != 0:
             raise ValueError(
@@ -113,23 +146,62 @@ class PerVintageActualTransformer(BaseForecastTransformer):
             )
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
-        """Transform each vintage independently and re-stack with vintage_time."""
+        """Fit and transform each vintage independently, then re-stack.
+
+        Each vintage is a self-contained single-axis series, so a fresh clone is
+        fitted and applied to that vintage alone. A vintage's output depends only
+        on its own rows, which makes the transform leakage-free: every row of a
+        vintage is known at its ``vintage_time``.
+
+        A vintage with fewer than ``_MIN_VINTAGE_ROWS`` rows cannot be fitted on
+        its own (a single-axis series needs two timestamps to infer its interval)
+        and has no meaningful per-vintage statistic to compute. Such vintages,
+        typically the truncated tail of a forecast frame, are dropped from the
+        output and reported in a warning.
+        """
         vintage_dtype = X[_VINTAGE_COL].dtype
 
         if X.is_empty():
-            # Transform the empty single-axis slice to recover the output columns.
-            out = self.transformer_.transform(X.drop(_VINTAGE_COL))
-            out = out.with_columns(pl.lit(None, dtype=vintage_dtype).alias(_VINTAGE_COL))
-            return self._order_columns(out)
+            # No vintage to fit; use the representative to recover output columns.
+            return self._empty_output(X, vintage_dtype)
 
         parts: list[pl.DataFrame] = []
+        dropped = 0
         for part in X.partition_by(_VINTAGE_COL, maintain_order=True):
+            if part.height < _MIN_VINTAGE_ROWS:
+                dropped += 1
+                continue
             vintage_value = part[_VINTAGE_COL][0]
-            transformed = self.transformer_.transform(part.drop(_VINTAGE_COL))
+            transformed = clone(self.transformer).fit_transform(part.drop(_VINTAGE_COL))
             transformed = transformed.with_columns(pl.lit(vintage_value, dtype=vintage_dtype).alias(_VINTAGE_COL))
             parts.append(transformed)
 
+        if dropped:
+            warnings.warn(
+                f"PerVintageActualTransformer dropped {dropped} vintage(s) with fewer than "
+                f"{_MIN_VINTAGE_ROWS} rows, which cannot be fitted per vintage. This is expected "
+                f"for the truncated tail of a forecast frame; those vintages are absent from the output.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        if not parts:
+            return self._empty_output(X, vintage_dtype)
+
         return self._order_columns(pl.concat(parts))
+
+    def _empty_output(self, X: pl.DataFrame, vintage_dtype: pl.DataType) -> pl.DataFrame:
+        """Return a zero-row frame with the wrapped transformer's output schema."""
+        out = self.transformer_.transform(X.head(0).drop(_VINTAGE_COL))
+        out = out.with_columns(pl.lit(None, dtype=vintage_dtype).alias(_VINTAGE_COL))
+        return self._order_columns(out)
+
+    def _first_fittable_vintage(self, X: pl.DataFrame) -> pl.DataFrame | None:
+        """Return the first vintage's single-axis slice that has enough rows to fit, or None."""
+        for part in X.partition_by(_VINTAGE_COL, maintain_order=True):
+            if part.height >= _MIN_VINTAGE_ROWS:
+                return part.drop(_VINTAGE_COL)
+        return None
 
     @staticmethod
     def _order_columns(df: pl.DataFrame) -> pl.DataFrame:

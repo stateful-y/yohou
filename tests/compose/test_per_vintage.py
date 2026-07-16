@@ -7,7 +7,7 @@ import pytest
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.compose import FeatureUnion, PerVintageActualTransformer
-from yohou.preprocessing import FunctionTransformer, LagTransformer
+from yohou.preprocessing import FunctionTransformer, LagTransformer, SimpleImputer, StandardScaler
 from yohou.testing.forecast_transformer import FORECAST_TRANSFORMER_CHECKS
 
 
@@ -66,6 +66,76 @@ def test_position_dependent_transform_does_not_bleed_across_vintages():
     assert out["cum"].to_list() == [100.0, 210.0, 330.0, 200.0, 410.0, 630.0]
 
 
+def _two_scale_forecast_frame() -> pl.DataFrame:
+    """Two vintages with deliberately different scales.
+
+    Vintage 1's ``a`` spans [10, 20, 30] (mean 20); vintage 2's spans
+    [1000, 2000, 3000] (mean 2000). The scales differ so that per-vintage
+    fitting is distinguishable from a single shared fit: a global scaler would
+    center both vintages on ~1010, leaving neither vintage's output centered.
+    """
+    return pl.DataFrame({
+        "vintage_time": [datetime(2020, 1, 1)] * 3 + [datetime(2020, 1, 2)] * 3,
+        "time": [
+            datetime(2020, 1, 2),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 5),
+        ],
+        "a": [10.0, 20.0, 30.0, 1000.0, 2000.0, 3000.0],
+    })
+
+
+def test_each_vintage_is_scaled_by_its_own_statistics():
+    """A StandardScaler standardizes each vintage against that vintage alone.
+
+    Fails under a shared/global fit: with vintages at scales ~20 and ~2000,
+    global centering leaves each vintage's output far from mean 0.
+    """
+    out = PerVintageActualTransformer(StandardScaler()).fit_transform(_two_scale_forecast_frame())
+
+    for part in out.partition_by("vintage_time", maintain_order=True):
+        assert part["a"].mean() == pytest.approx(0.0, abs=1e-9)
+        # ddof=0 matches the population standard deviation the scaler divides by.
+        assert part["a"].std(ddof=0) == pytest.approx(1.0)
+
+
+def test_per_vintage_mean_imputation():
+    """Each vintage's missing value is filled from that vintage's own mean."""
+    frame = pl.DataFrame({
+        "vintage_time": [datetime(2020, 1, 1)] * 3 + [datetime(2020, 1, 2)] * 3,
+        "time": [
+            datetime(2020, 1, 2),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 5),
+        ],
+        # vintage 1 non-null mean = 20, vintage 2 non-null mean = 2000
+        "a": [10.0, None, 30.0, 1000.0, None, 3000.0],
+    })
+    out = PerVintageActualTransformer(SimpleImputer(strategy="mean")).fit_transform(frame)
+
+    filled = out.sort("vintage_time", "time")["a"].to_list()
+    assert filled == pytest.approx([10.0, 20.0, 30.0, 1000.0, 2000.0, 3000.0])
+
+
+def test_vintage_transform_is_independent_of_other_vintages():
+    """A vintage's output is identical alone or inside the full frame (leakage-free)."""
+    frame = _two_scale_forecast_frame()
+    v0_time = datetime(2020, 1, 1)
+    v0_alone = frame.filter(pl.col("vintage_time") == v0_time)
+
+    full = PerVintageActualTransformer(StandardScaler()).fit_transform(frame)
+    alone = PerVintageActualTransformer(StandardScaler()).fit_transform(v0_alone)
+
+    full_v0 = full.filter(pl.col("vintage_time") == v0_time).sort("time")["a"].to_list()
+    assert full_v0 == pytest.approx(alone.sort("time")["a"].to_list())
+
+
 def test_stateful_inner_is_rejected():
     """A stateful wrapped transformer (observation_horizon > 0) is rejected at fit."""
     tx = PerVintageActualTransformer(LagTransformer(lag=1))  # LagTransformer is stateful
@@ -85,6 +155,50 @@ def test_get_feature_names_out_delegates_to_inner():
     tx = PerVintageActualTransformer(_net_load_transformer())
     tx.fit(_sample_forecast_frame())
     assert tx.get_feature_names_out() == ["net_load"]
+
+
+def test_sub_two_row_vintages_are_dropped_with_a_warning():
+    """A vintage too small to fit per vintage is dropped, with a warning, not transformed.
+
+    The truncated tail of a real forecast frame is full of single-row vintages
+    (the horizon runs off the end of the series). Such a vintage has no
+    per-vintage statistic to compute, so it is dropped and reported rather than
+    scaled/imputed with borrowed parameters.
+    """
+    # two full vintages plus a trailing single-row vintage
+    frame = pl.DataFrame({
+        "vintage_time": [datetime(2020, 1, 1)] * 3 + [datetime(2020, 1, 2)] * 3 + [datetime(2020, 1, 3)],
+        "time": [
+            datetime(2020, 1, 2),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 3),
+            datetime(2020, 1, 4),
+            datetime(2020, 1, 5),
+            datetime(2020, 1, 4),
+        ],
+        "a": [10.0, 20.0, 30.0, 1000.0, 2000.0, 3000.0, 99.0],
+    })
+    tx = PerVintageActualTransformer(StandardScaler())
+
+    with pytest.warns(UserWarning, match="dropped 1 vintage"):
+        out = tx.fit_transform(frame)
+
+    # the two full vintages survive; the single-row vintage is gone
+    assert out["vintage_time"].unique().sort().to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 2)]
+    assert out.height == 6
+
+
+def test_all_vintages_too_small_raises_at_fit():
+    """If no vintage is large enough to fit, fit raises rather than warning."""
+    frame = pl.DataFrame({
+        "vintage_time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
+        "time": [datetime(2020, 1, 2), datetime(2020, 1, 3)],
+        "a": [10.0, 20.0],
+    })  # every vintage has a single row
+    tx = PerVintageActualTransformer(StandardScaler())
+    with pytest.raises(ValueError, match="at least one vintage"):
+        tx.fit(frame)
 
 
 def test_feature_schema_mismatch_at_transform_raises():

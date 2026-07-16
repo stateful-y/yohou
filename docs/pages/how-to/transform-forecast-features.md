@@ -35,6 +35,26 @@ X_forecast_t = net_load.fit_transform(X_forecast)
 
 The `vintage_time` and `time` index columns are preserved, and each vintage's `net_load` is computed from only that vintage's rows.
 
+## Fit a Transformer per Vintage
+
+`net_load` learns nothing, so per-vintage handling only keeps its rows aligned. The wrapper earns its keep when the inner *fits* from data: each vintage is fitted on its own rows, so a scaler standardizes each forecast trajectory to its own scale, and an imputer fills each vintage's gaps from that vintage's own values.
+
+```python
+from yohou.preprocessing import SimpleImputer
+
+# each vintage's missing values are filled with that vintage's own mean
+impute = PerVintageActualTransformer(SimpleImputer(strategy="mean"))
+X_forecast_t = impute.fit_transform(X_forecast)
+```
+
+This is leakage-free: a vintage's output depends only on its own rows, all of which are known at that vintage's `vintage_time`. It is a different operation from normalizing `X_forecast` against the *training* distribution; for that, put the scaler in the estimator pipeline (`estimator=make_pipeline(StandardScaler(), model)`) so it fits on the tabularized training matrix instead.
+
+!!! note "Per-vintage fits are small"
+    A vintage spans roughly the forecasting horizon, so a per-vintage fit sees few rows. This is fine for imputation and scaling; a transformer needing many points to fit well (a high-resolution quantile transform, say) is a poor fit for the per-vintage axis.
+
+!!! note "The tail of a forecast frame is dropped"
+    A forecast frame usually ends in vintages of one or two rows, where the horizon runs off the end of the series. A single-row vintage has no per-vintage statistic to compute, so `PerVintageActualTransformer` drops vintages with fewer than two rows and emits a `UserWarning` naming how many. The surviving vintages are unaffected.
+
 !!! note "The wrapped transformer must be stateless"
     `PerVintageActualTransformer` requires the wrapped transformer to measure `observation_horizon == 0` after fitting. A stateful transformer (a lag or rolling window) is rejected with a `ValueError`; see [Transformer Kinds](../explanation/transformer-kinds.md) for why the vintage axis rules statefulness out.
 
