@@ -96,13 +96,16 @@ class TransformerTags:
         this statically via their base class; composition estimators aggregate
         it from their children.
     accepts_irregular_grid : bool, default=False
-        Whether the transformer accepts a non-uniform input time axis at fit.
-        When ``True``, the shared fit-time validation skips the strict
+        Whether the transformer accepts a non-uniform input time axis. When
+        ``True``, the shared fit-time validation skips the strict
         interval-consistency check and records a representative interval (the
-        median consecutive delta) instead of raising. Set by resamplers that bin
-        via ``group_by_dynamic`` and are correct on jittered or gapped input;
-        left ``False`` for order-dependent transformers (lag, difference,
-        rolling, memory-based) that require a uniform grid.
+        median consecutive delta) instead of raising. At transform the same
+        relaxation applies, and the continuity check against the observed buffer
+        is skipped too, since a transformer tolerating a jittered axis cannot be
+        held to strict contiguity. Set by resamplers that bin via
+        ``group_by_dynamic`` and are correct on jittered or gapped input; left
+        ``False`` for order-dependent transformers (lag, difference, rolling,
+        memory-based) that require a uniform grid.
 
     """
 

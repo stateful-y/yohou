@@ -182,7 +182,7 @@ class PerVintageActualTransformer(BaseForecastTransformer):
                 f"{_MIN_VINTAGE_ROWS} rows, which cannot be fitted per vintage. This is expected "
                 f"for the truncated tail of a forecast frame; those vintages are absent from the output.",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
 
         if not parts:
@@ -211,6 +211,14 @@ class PerVintageActualTransformer(BaseForecastTransformer):
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Return the wrapped transformer's output feature names.
+
+        Delegates to the representative clone, which was fitted on one vintage,
+        while ``transform`` produces values from a separate clone per vintage.
+        This relies on output names being value-independent: they follow from the
+        wrapped transformer's parameters and the frame schema, which every
+        vintage shares, not from any vintage's data. A wrapped transformer whose
+        ``feature_names_out`` varied with the values would break that invariant
+        and is not supported.
 
         Parameters
         ----------

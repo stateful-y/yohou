@@ -1,13 +1,19 @@
 """Tests for PerVintageActualTransformer and the actual/forecast kind split."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.compose import FeatureUnion, PerVintageActualTransformer
-from yohou.preprocessing import FunctionTransformer, LagTransformer, SimpleImputer, StandardScaler
+from yohou.preprocessing import (
+    Downsampler,
+    FunctionTransformer,
+    LagTransformer,
+    SimpleImputer,
+    StandardScaler,
+)
 from yohou.testing.forecast_transformer import FORECAST_TRANSFORMER_CHECKS
 
 
@@ -187,6 +193,34 @@ def test_sub_two_row_vintages_are_dropped_with_a_warning():
     # the two full vintages survive; the single-row vintage is gone
     assert out["vintage_time"].unique().sort().to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 2)]
     assert out.height == 6
+
+
+def test_irregular_grid_inner_is_lifted_per_vintage():
+    """An inner tagged accepts_irregular_grid tolerates a jittered vintage.
+
+    Pins the interaction between the per-vintage fit and the
+    ``accepts_irregular_grid`` tag: each vintage is fitted on its own, so an
+    inner that opts into the tag (here a ``Downsampler``) is validated per
+    vintage and accepts a non-uniform axis within it. An inner that does not opt
+    in still requires a uniform grid per vintage.
+    """
+    t0 = datetime(2024, 1, 1)
+
+    def jittered(vintage: datetime, minutes: list[int]) -> pl.DataFrame:
+        return pl.DataFrame({
+            "vintage_time": [vintage] * len(minutes),
+            "time": [t0 + timedelta(minutes=m) for m in minutes],
+            "a": [float(i) for i in range(len(minutes))],
+        })
+
+    # each vintage is ~15m-spaced but jittered, so no strict interval exists
+    frame = pl.concat([jittered(t0, [0, 14, 31, 44]), jittered(t0 + timedelta(hours=1), [60, 76, 89, 104])])
+
+    out = PerVintageActualTransformer(Downsampler(interval="1h")).fit_transform(frame)
+
+    # one hourly bin per vintage, each aggregated from that vintage's own rows
+    assert out["vintage_time"].to_list() == [t0, t0 + timedelta(hours=1)]
+    assert out["a"].to_list() == pytest.approx([1.5, 1.5])
 
 
 def test_all_vintages_too_small_raises_at_fit():

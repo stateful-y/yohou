@@ -780,6 +780,9 @@ def representative_interval(df: pl.DataFrame) -> str:
     deltas = sorted(d for d in df["time"].diff().drop_nulls().to_list() if d.total_seconds() > 0)
     if not deltas:
         raise ValueError("Cannot infer interval: all time points are identical")
+    # Upper-middle element rather than an averaged median: the result must be an
+    # interval actually observed in the data, and averaging two deltas could
+    # invent one that never occurs (e.g. "45s" from a 30s/60s mix).
     median = deltas[len(deltas) // 2]
     return _timedelta_to_string(median)
 
