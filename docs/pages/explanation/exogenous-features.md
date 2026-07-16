@@ -31,16 +31,68 @@ automatically at predict time.
 
 ### X_future: Known-Future Features
 
-Deterministic values available for any date, past or future. Holiday
-calendars, day-of-week indicators, scheduled auction prices, planned
-maintenance windows. Looking up whether December 25th is a holiday gives the
-same answer whether you check in January or November.
+Values you can look up for a future timestamp but cannot derive from the
+observation point. Holiday calendars, scheduled auction prices, planned
+maintenance windows, announced promotions. Looking up whether December 25th is
+a holiday gives the same answer whether you check in January or November, but
+no amount of inspecting today's date tells you when Easter falls next year.
+That takes a calendar.
 
 `X_future` bypasses the `feature_transformer` entirely. Instead, the framework
 windows it forward from each observation point to produce *step-indexed*
 columns (`is_holiday_step_1`, `is_holiday_step_2`, ..., `is_holiday_step_H`).
 Each step column tells the estimator what the holiday status will be at that
 specific forecast horizon.
+
+#### What Belongs Here
+
+`feature_transformer` only ever runs on the observation frame, which stops at
+the observation point `T`. It can compute a feature for `T`, for `T-1`, for any
+timestamp already observed, and for none beyond. That single fact decides the
+channel:
+
+> Does the feature's value at `T` determine its value at `T+h`?
+
+If it does, `feature_transformer` already suffices and `X_future` is the wrong
+home. A Fourier pair is the clearest case: `sin(2*pi*(t+h)/S)` is a fixed linear
+combination of the sine and cosine at `t`, so once the estimator sees the pair
+at `T` it can express the value at every horizon. Windowing it forward across
+`H` steps adds columns without adding information, and those columns are exactly
+collinear with the pair the model already had.
+
+If it does not, nothing computed at `T` can stand in, and the forward window is
+the only way to put the value in front of the estimator. Whether next Tuesday is
+a public holiday is not a function of anything measurable today. It is a lookup.
+
+The same test, in the form you can apply while writing the `fit()` call: **can
+you compute it from the timestamp alone, or do you need an external table?** A
+timestamp alone means a *clock feature*, which belongs in `feature_transformer`
+(see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/)
+and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/)).
+An external table means an *event feature*, which belongs in `X_future`.
+
+Note that "deterministic and knowable in advance" does not separate the two. A
+day-of-week indicator and a holiday calendar are both perfectly deterministic
+and both knowable for any future date, yet they belong in different channels.
+Determinism is not the question; derivability from `T` is.
+
+#### Holidays Sit On Both Sides
+
+Holidays deserve a note, because they can legitimately appear on either channel
+and the two uses are complementary rather than competing.
+
+[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/)
+on `X_actual` gives *past* holiday effects: whether recently observed timestamps
+were holidays, which is what you want when demand rebounds the day after a
+closure. It runs on the observation frame, so it cannot say anything about a
+holiday next week.
+
+A holiday calendar passed through `X_future` gives *future* holiday effects:
+whether each forecast step lands on a holiday, which is what you want when the
+holiday itself moves demand.
+
+Reaching for one does not rule out the other. A model that needs both the
+closure and the rebound uses both.
 
 ### X_forecast: External Forecasts
 
@@ -154,6 +206,26 @@ For an electricity pricing use case, `step_feature_alignment="matched"` means
 estimator $h$ trains on `(wind_step_h, price_step_h)`: the weather forecast
 for time $T+h$ predicting the price at $T+h$. This avoids cross-horizon
 information that could confuse simpler estimators.
+
+### Why Only Direct
+
+The parameter applies to `"direct"` alone. Setting it on another strategy
+warns at fit and changes nothing, but the two exclusions are not the same kind
+of thing.
+
+`"multi-output"` *cannot* filter. One estimator predicts every horizon from a
+single feature vector, and output $h$ reads `wind_step_h` from that same
+vector, so every step column has to be present for some output. There is no
+per-estimator view to narrow, because there is only one estimator. Since
+`"multi-output"` is the default, this is the case most users are in.
+
+`"dir-rec"` *could* filter. It fits $H$ estimators, one per step, exactly as
+`"direct"` does, and a per-step column filter applied before each step's
+feature augmentation would be well defined. It does not, and that is a
+deliberate scope decision rather than a structural limit: combining a filtered
+base with the accumulating augmentation columns raises design questions that
+have not been worked through. Recording it here is what stops the exclusion
+from being read as an oversight.
 
 ## Predict-Time Override (Column Swap)
 

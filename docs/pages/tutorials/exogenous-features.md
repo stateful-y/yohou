@@ -35,7 +35,7 @@ X_future: (200, 2)
 X_forecast: (1143, 3)
 ```
 
-`X_actual` contains realized temperature (known only after it occurs), `X_future` contains a holiday indicator (deterministic, known for all dates), and `X_forecast` carries weather forecasts with a `vintage_time` column identifying when each forecast was issued. See [Exogenous Features](../explanation/exogenous-features.md) for the full conceptual model.
+`X_actual` contains realized temperature (known only after it occurs), `X_future` contains a holiday indicator (a calendar lookup, so no transformer can derive it from the observation point), and `X_forecast` carries weather forecasts with a `vintage_time` column identifying when each forecast was issued. See [Exogenous Features](../explanation/exogenous-features.md) for the full conceptual model.
 
 ## 2. Split and Fit
 
@@ -142,7 +142,7 @@ print(f"Walk-forward MAE (with weather): {score_with_wx:.4f}")
 ```
 
 ```text
-Walk-forward MAE (with weather): 2.8083
+Walk-forward MAE (with weather): 1.3165
 ```
 
 ## 5. Measure the Value of Weather Forecasts
@@ -173,10 +173,10 @@ print(f"Walk-forward MAE (no weather):   {score_no_wx:.4f}")
 ```
 
 ```text
-Walk-forward MAE (no weather):   3.7157
+Walk-forward MAE (no weather):   2.4031
 ```
 
-The weather signal reduces MAE from 3.72 to 2.81. Notice that `X_future` (holiday indicator) covers the full time range in both cases: it is deterministic and known for all dates, so no slicing is needed.
+The weather signal reduces MAE from 2.40 to 1.32. Notice that `X_future` (holiday indicator) covers the full time range in both cases: the calendar is known for every date in advance, so no slicing is needed.
 
 ## What You Built
 

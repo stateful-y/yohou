@@ -73,7 +73,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         Quality of the in-sample feature forecast the target trains on. In every
         strategy the forecast is supplied to the target through the ``X_forecast``
         channel (as ``vintage_time + time + features``), and the target decides how
-        to consume the resulting step features via its own ``step_feature_alignment``.
+        to consume the resulting step features. A reduction target consumes them via
+        its own ``step_feature_alignment`` only when it uses
+        ``reduction_strategy="direct"``; the other strategies ignore that parameter,
+        so a default ``"multi-output"`` target receives every step column.
 
         - "actual": Train the target on perfect-foresight features (actual values
           windowed forward and labelled with a vintage). Uses all data, but creates
@@ -163,8 +166,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
     - The feature_forecaster is trained with X_actual as y (forecasting the features).
     - At both fit and predict the feature forecast is passed to the target as
       ``X_forecast`` (keeping ``vintage_time``); the target builds step columns and
-      consumes them per its ``step_feature_alignment``. A target with
-      ``requires_exogenous=False`` (e.g. a naive forecaster) ignores the forecast.
+      consumes them per its ``step_feature_alignment``, which applies only when the
+      target is a reduction forecaster with ``reduction_strategy="direct"``; the
+      default ``"multi-output"`` ignores it and receives every step column. A target
+      with ``requires_exogenous=False`` (e.g. a naive forecaster) ignores the
+      forecast.
     - Use strategy="predicted" or "rewind" when feature forecasts are noisy and you
       want the target to learn from similar-quality inputs as it sees at predict time.
     - A caller-supplied ``X_forecast`` (external forecasts for other features) is
