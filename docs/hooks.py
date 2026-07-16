@@ -945,6 +945,41 @@ def _build_api_examples_html(project_root, qualified_name):
 # ---------------------------------------------------------------------------
 
 
+# Every name this file substitutes. A comment *opening* with one of these is a
+# marker; if one survives to the end of on_page_markdown, it was misspelled.
+# Matched without a word boundary so `<!-- GALLERY:quickstart -->` and
+# `<!-- SUBPAGES_FOO -->` are both caught, not just the separator-delimited ones.
+#
+# The net is deliberately the marker namespace and nothing else: it cannot catch
+# a typo that mangles the name itself (`<!-- GALLRY -->`), because widening it to
+# every upper-case comment would flag ordinary `<!-- TODO -->`s. The realistic
+# mistake is right name, wrong syntax -- which is exactly what shipped.
+_MARKER_NAMES = ("API_TABLE", "SUBPAGES", "GALLERY", "COMPANION_NOTEBOOKS", "EXAMPLES_FOR")
+_UNHANDLED_MARKER_RE = re.compile(r"<!--\s*(?:" + "|".join(_MARKER_NAMES) + r")[^>]*-->")
+
+
+def _warn_on_unhandled_markers(markdown, src_path):
+    """Warn about a marker that no substitution above recognised.
+
+    The per-marker warnings only fire for a *well-formed* marker that resolves to
+    nothing -- an unknown gallery section, an index with no children. A
+    misspelled one is worse and was completely silent: `<!-- GALLERY:quickstart
+    -->` matches neither the bare nor the sectioned pattern, so nothing claimed
+    it, nothing substituted it, and it shipped to the page as a raw comment that
+    renders as blank space. It cannot even be reported by the code that would
+    have handled it, because that code never sees it. Catching the leftovers is
+    the only place a typo in the marker namespace can be noticed at all.
+    """
+    for match in _UNHANDLED_MARKER_RE.finditer(markdown):
+        log.warning(
+            "%s: unrecognised marker %s -- it renders as blank space. "
+            "Known markers: <!-- API_TABLE -->, <!-- SUBPAGES -->, <!-- GALLERY -->, "
+            "<!-- GALLERY:section:NAME -->, <!-- COMPANION_NOTEBOOKS -->, <!-- EXAMPLES_FOR:NAME -->.",
+            src_path,
+            match.group(0),
+        )
+
+
 def _replace_marker(markdown, marker, replacement):
     """Replace ``marker`` with ``replacement``, re-indented to the marker's column.
 
@@ -1912,6 +1947,8 @@ def on_page_markdown(markdown, page, config, files):
     # Absolute doc-page links (e.g. the gallery overflow link) resolve to the
     # current page's depth, the same way [View] does.
     markdown = re.sub(r"\]\(/pages/", f"]({prefix}pages/", markdown)
+
+    _warn_on_unhandled_markers(markdown, page.file.src_path)
 
     return markdown
 
