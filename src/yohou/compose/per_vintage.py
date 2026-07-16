@@ -135,7 +135,20 @@ class PerVintageActualTransformer(BaseForecastTransformer):
             )
 
         self.transformer_ = clone(self.transformer)
-        self.transformer_.fit(representative)
+        try:
+            self.transformer_.fit(representative)
+        except Exception as err:
+            # A stateful inner often fails here rather than at the horizon check
+            # below: vintages are short, so an inner needing more history than a
+            # vintage holds raises inside its own fit first. Its message never
+            # mentions lifting, so name the constraint and keep the diagnosis.
+            raise ValueError(
+                "PerVintageActualTransformer only lifts stateless transformers onto the vintage "
+                f"axis, and fitting {type(self.transformer).__name__} on a single vintage "
+                f"({representative.height} rows) failed. A stateful transformer needs contiguous "
+                "memory that the vintage axis cannot provide; see the chained error for the "
+                "wrapped transformer's own diagnosis."
+            ) from err
 
         if self.transformer_.observation_horizon != 0:
             raise ValueError(

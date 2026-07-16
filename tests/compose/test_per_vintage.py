@@ -149,6 +149,40 @@ def test_stateful_inner_is_rejected():
         tx.fit(_sample_forecast_frame())
 
 
+def test_stateful_inner_too_large_for_the_vintage_names_the_constraint():
+    """An inner whose horizon exceeds the vintage length still names the real constraint.
+
+    Vintages are short by nature, so a stateful inner often fails *inside* the
+    inner before the composite's own observation_horizon check runs. The raw
+    inner message ("Not enough input data to set the transformer memory") never
+    mentions lifting, leaving the user no idea that stateful transformers cannot
+    be lifted at all.
+    """
+    tx = PerVintageActualTransformer(LagTransformer(lag=5))  # vintages here are 3 rows
+    with pytest.raises(ValueError, match="stateless") as excinfo:
+        tx.fit(_sample_forecast_frame())
+
+    # the inner's own diagnosis is preserved as the chained cause
+    assert excinfo.value.__cause__ is not None
+    assert "observation_horizon" in str(excinfo.value.__cause__)
+
+
+def test_stateless_function_transformer_is_still_accepted():
+    """A stateless FunctionTransformer is accepted, despite reporting stateful=True pre-fit.
+
+    ``FunctionTransformer`` cannot know whether its function is stateful without
+    probing it at fit, so its tag is conservatively True beforehand. Enforcing
+    statelessness by reading that tag before fitting would reject this, the
+    wrapper's primary use case, which is why the horizon is measured after fit.
+    """
+    inner = _net_load_transformer()
+    assert inner.__sklearn_tags__().transformer_tags.stateful is True  # conservative, pre-fit
+
+    tx = PerVintageActualTransformer(inner)
+    out = tx.fit_transform(_sample_forecast_frame())
+    assert out["net_load"].to_list() == [90.0, 90.0, 105.0, 170.0, 185.0, 185.0]
+
+
 def test_fit_on_empty_frame_raises():
     """Fitting on an empty X_forecast frame raises a clear error."""
     tx = PerVintageActualTransformer(_net_load_transformer())
