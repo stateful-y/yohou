@@ -1201,6 +1201,11 @@ def validate_transformer_data(
     if not accepts_irregular and check_params.get("check_intervals", True) and len(X) >= 2:
         check_interval_consistency(X)
 
+    # The accepts_irregular_grid gate below is unreachable today: the only transformer
+    # that opts in (Downsampler) is stateless, so its _X_observed is empty and this
+    # branch is skipped anyway. It is kept for a transformer that is both stateful and
+    # irregular-tolerant (a time-based rolling window, say), which would otherwise
+    # crash here, since the block resolves the interval with the strict check below.
     if (
         not accepts_irregular
         and check_params.get("check_continuity", True)
