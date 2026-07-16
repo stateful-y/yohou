@@ -170,7 +170,7 @@ class ColumnTransformer(BaseTransformer, _BaseComposition):
 
     See Also
     --------
-    `sklearn.compose.ColumnTransformer` : Underlying scikit-learn column transformer.
+    - [`sklearn.compose.ColumnTransformer`][sklearn.compose.ColumnTransformer] : Underlying scikit-learn column transformer.
     - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformation.
     - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base transformer interface.
     - [`SeasonalDifferencing`][yohou.stationarity.transformers.SeasonalDifferencing] : Common column-wise transformer.

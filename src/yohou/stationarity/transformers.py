@@ -150,7 +150,7 @@ class BoxCoxTransformer(BaseTransformer):
     --------
     - [`LogTransformer`][yohou.stationarity.transformers.LogTransformer] : Logarithmic transformation (Box-Cox with lambda=0).
     - [`ASinhTransformer`][yohou.stationarity.transformers.ASinhTransformer] : Inverse hyperbolic sine transformation for data with zeros.
-    `sklearn.preprocessing.PowerTransformer` : sklearn's power transformations.
+    - [`sklearn.preprocessing.PowerTransformer`][sklearn.preprocessing.PowerTransformer] : sklearn's power transformations.
 
     """
 
@@ -916,7 +916,7 @@ class ASinhTransformer(BaseTransformer):
     --------
     - [`BoxCoxTransformer`][yohou.stationarity.transformers.BoxCoxTransformer] : Power transform for variance stabilization.
     - [`LogTransformer`][yohou.stationarity.transformers.LogTransformer] : Simpler variance stabilization for positive data.
-    `sklearn.preprocessing.PowerTransformer` : sklearn's power transforms.
+    - [`sklearn.preprocessing.PowerTransformer`][sklearn.preprocessing.PowerTransformer] : sklearn's power transforms.
 
     """
 

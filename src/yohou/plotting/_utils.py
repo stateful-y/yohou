@@ -119,8 +119,12 @@ class RenderContext:
 
     See Also
     --------
-    `facet_figure` : Factory that creates faceted figures and passes ``RenderContext`` to callbacks.
     [`LegendTracker`][yohou.plotting._utils.LegendTracker] : De-duplicates legend entries across subplots.
+
+    Notes
+    -----
+    ``facet_figure`` is the factory that creates faceted figures and passes
+    ``RenderContext`` to callbacks.
     """
 
     fig: go.Figure
@@ -707,8 +711,11 @@ def linked_legendgroup_kwargs(
 
     See Also
     --------
-    `grouped_legend_kwargs` : Build kwargs for titled legend groups.
     [`LegendTracker`][yohou.plotting._utils.LegendTracker] : Track which legend entries have been shown.
+
+    Notes
+    -----
+    ``grouped_legend_kwargs`` builds kwargs for titled legend groups.
     """
     if is_primary:
         return {

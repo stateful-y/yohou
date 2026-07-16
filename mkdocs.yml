@@ -146,6 +146,8 @@ plugins:
             - https://docs.python.org/3/objects.inv
             - https://scikit-learn.org/stable/objects.inv
             - https://docs.pola.rs/api/python/stable/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.scipy.org/doc/scipy/objects.inv
           options:
             docstring_style: numpy
             show_source: true

@@ -218,8 +218,8 @@ def plot_splits(
     See Also
     --------
     [`plot_cv_results_scatter`][yohou.plotting.plot_cv_results_scatter] : Plot hyperparameter search results.
-    `ExpandingWindowSplitter` : Expanding window cross-validation.
-    `SlidingWindowSplitter` : Sliding window cross-validation.
+    [`ExpandingWindowSplitter`][yohou.model_selection.ExpandingWindowSplitter] : Expanding window cross-validation.
+    [`SlidingWindowSplitter`][yohou.model_selection.SlidingWindowSplitter] : Sliding window cross-validation.
     """
     # Validate inputs
     validate_plotting_data(y)
@@ -510,7 +510,7 @@ def plot_nested_splits(
     See Also
     --------
     [`plot_splits`][yohou.plotting.plot_splits] : Plot a flat (single-level) CV.
-    `ExpandingWindowSplitter` : Expanding window cross-validation.
+    [`ExpandingWindowSplitter`][yohou.model_selection.ExpandingWindowSplitter] : Expanding window cross-validation.
     """
     validate_plotting_data(y)
     validate_plotting_params(width=width, height=height)
@@ -721,8 +721,8 @@ def plot_cv_results_scatter(
     See Also
     --------
     [`plot_splits`][yohou.plotting.plot_splits] : Plot cross-validation splits.
-    `GridSearchCV` : Grid search with cross-validation.
-    `RandomizedSearchCV` : Randomized search with cross-validation.
+    [`GridSearchCV`][sklearn.model_selection.GridSearchCV] : Grid search with cross-validation.
+    [`RandomizedSearchCV`][sklearn.model_selection.RandomizedSearchCV] : Randomized search with cross-validation.
     """
     # Construct key names
     param_key = f"param_{param_name}"
