@@ -388,3 +388,57 @@ class TestDownsamplerIrregularGrid:
 
         with pytest.raises(ValueError):
             LagTransformer(lag=[1]).fit(create_irregular_subhourly_data())
+
+    def test_modest_gaps_record_the_frequency_weighted_interval(self) -> None:
+        """Outlier gaps must not skew the recorded interval.
+
+        The strict check tolerates a sub-day delta spread and returns the median
+        of the *unique* deltas, which a few gaps drag upward: for
+        ``{300, 600, 900}`` it returns 10m. The frequency-weighted median is 5m,
+        which is what the feed actually is. The strict check succeeds here, so
+        gating the robust function behind ``except ValueError`` never reaches it.
+        """
+        base = datetime(2021, 1, 1)
+        seconds: list[int] = []
+        t = 0
+        for step in [300] * 12 + [600, 900]:
+            seconds.append(t)
+            t += step
+        seconds.append(t)
+        frame = pl.DataFrame({
+            "time": [base + timedelta(seconds=s) for s in seconds],
+            "value_a": [100.0 + i for i in range(len(seconds))],
+        })
+
+        ds = Downsampler(interval="10m").fit(frame)
+        assert ds.input_interval_str_ == "5m"
+
+    def test_jittered_feed_can_be_binned_onto_its_own_cadence(self) -> None:
+        """Regularizing a jittered 5m feed onto a clean 5m grid is accepted.
+
+        This is the advertised use case. It fails when the recorded input
+        interval is skewed above the true cadence, because the target >= input
+        guard then rejects the target.
+        """
+        base = datetime(2021, 1, 1)
+        seconds: list[int] = []
+        t = 0
+        for step in [300] * 12 + [600, 900]:
+            seconds.append(t)
+            t += step
+        seconds.append(t)
+        frame = pl.DataFrame({
+            "time": [base + timedelta(seconds=s) for s in seconds],
+            "value_a": [100.0 + i for i in range(len(seconds))],
+        })
+
+        out = Downsampler(interval="5m").fit_transform(frame)
+        assert "time" in out.columns
+
+    def test_all_identical_timestamps_raise(self) -> None:
+        """A frame with no positive interval is rejected, not recorded as 0d."""
+        base = datetime(2021, 1, 1)
+        frame = pl.DataFrame({"time": [base] * 4, "value_a": [1.0, 2.0, 3.0, 4.0]})
+
+        with pytest.raises(ValueError):
+            Downsampler(interval="5m").fit(frame)

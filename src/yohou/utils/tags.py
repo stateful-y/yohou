@@ -98,14 +98,18 @@ class TransformerTags:
     accepts_irregular_grid : bool, default=False
         Whether the transformer accepts a non-uniform input time axis. When
         ``True``, the shared fit-time validation skips the strict
-        interval-consistency check and records a representative interval (the
-        median consecutive delta) instead of raising. At transform the same
-        relaxation applies, and the continuity check against the observed buffer
-        is skipped too, since a transformer tolerating a jittered axis cannot be
-        held to strict contiguity. Set by resamplers that bin via
-        ``group_by_dynamic`` and are correct on jittered or gapped input; left
-        ``False`` for order-dependent transformers (lag, difference, rolling,
-        memory-based) that require a uniform grid.
+        interval-consistency check outright and records a representative interval
+        (the frequency-weighted median consecutive delta). The strict check is not
+        attempted first: on a sub-day axis it does not reject a jittered grid, it
+        returns the median of the *unique* deltas, which a few outlier gaps skew
+        above the true cadence. On a uniform grid both measures agree, so the
+        recorded interval is unchanged there. At transform the same relaxation
+        applies, and the continuity check against the observed buffer is skipped
+        too, since a transformer tolerating a jittered axis cannot be held to
+        strict contiguity. Set by resamplers that bin via ``group_by_dynamic`` and
+        are correct on jittered or gapped input; left ``False`` for
+        order-dependent transformers (lag, difference, rolling, memory-based) that
+        require a uniform grid.
 
     """
 

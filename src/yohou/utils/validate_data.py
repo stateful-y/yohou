@@ -1124,15 +1124,16 @@ def validate_transformer_data(
         transformer_tags = getattr(transformer.__sklearn_tags__(), "transformer_tags", None)
         if getattr(transformer_tags, "accepts_irregular_grid", False):
             # The transformer declares it tolerates a non-uniform grid at fit (e.g. a
-            # resampler that bins via group_by_dynamic). Validate the columns as usual,
-            # but fall back to a representative interval when the strict
-            # interval-consistency check rejects a jittered or gapped axis. A uniform
-            # grid still takes the strict path, so its recorded interval is unchanged.
+            # resampler that bins via group_by_dynamic), so the strict check is skipped
+            # entirely rather than tried first. Trying it first would be unsound: on a
+            # sub-day axis within its jitter tolerance the strict check does not raise,
+            # it returns the median of the *unique* deltas, which a few outlier gaps
+            # skew upward. Falling back only on ValueError would therefore use the
+            # frequency-weighted (correct) median only when the skewed one failed
+            # outright. On a uniform grid both agree, so the recorded interval is
+            # unchanged there.
             validate_column_names(X)
-            try:
-                interval = check_interval_consistency(X)
-            except ValueError:
-                interval = representative_interval(X)
+            interval = representative_interval(X)
         else:
             interval = check_inputs(X, None)
         transformer.interval_ = interval

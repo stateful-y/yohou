@@ -31,6 +31,15 @@ class Downsampler(BaseActualTransformer):
     interval-consistency check is skipped and a representative median interval is
     recorded for the `target >= input` guard). Behavior on a uniform grid is unchanged.
 
+    Accepting a gapped input axis means the output can carry gaps too: a window with
+    no rows produces no bin, so a gap in the input becomes a gap in the output. A
+    downstream transformer that requires a uniform grid may not notice, because the
+    strict interval check tolerates a sub-day delta spread and will infer an interval
+    from a gapped axis rather than reject it. A lag or rolling transformer placed after
+    a `Downsampler` on gapped input therefore computes over rows that are not the
+    real-time distance apart that its parameters imply. Fill or validate the gaps
+    (see `SimpleTimeImputer`, `Upsampler`) before an order-dependent step.
+
     Parameters
     ----------
     interval : str, default='1h'
@@ -119,14 +128,14 @@ class Downsampler(BaseActualTransformer):
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
-        # Detect input interval. A uniform grid takes the strict check (unchanged);
-        # a jittered or gapped grid falls back to a representative (median) interval,
-        # used only for the target >= input guard below. group_by_dynamic bins either
-        # way, so the transform is unaffected.
-        try:
-            self.input_interval_str_ = check_interval_consistency(X)
-        except ValueError:
-            self.input_interval_str_ = representative_interval(X)
+        # Detect the input interval with the representative (frequency-weighted median)
+        # measure, which tolerates a jittered or gapped grid and agrees with the strict
+        # check on a uniform one. The strict check is not tried first: on a sub-day axis
+        # it medians the *unique* deltas, so a few gaps skew it above the true cadence
+        # (a 5m feed with two gaps reads as 10m), and it succeeds rather than raising,
+        # which would wrongly reject a target at the feed's real cadence in the guard
+        # below. group_by_dynamic bins either way, so the transform is unaffected.
+        self.input_interval_str_ = representative_interval(X)
         self.input_interval_ = interval_to_timedelta(self.input_interval_str_)
         self.target_interval_ = interval_to_timedelta(self.interval)
 
