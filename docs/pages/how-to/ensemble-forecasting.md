@@ -8,8 +8,7 @@ for more stable predictions.
 - yohou installed ([Installation](installation.md))
 - Familiarity with fitting and predicting with point or interval forecasters ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Create a Point Ensemble
 

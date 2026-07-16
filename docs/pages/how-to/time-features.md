@@ -8,8 +8,7 @@ This guide shows you how to derive calendar, holiday, Fourier, and trend feature
 - Familiarity with transformers and `feature_transformer` ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Background on time features ([Preprocessing](../explanation/preprocessing.md#time-features))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Extract Calendar Features
 

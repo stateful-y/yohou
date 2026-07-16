@@ -10,8 +10,7 @@ patterns, run temporal cross-validation, or calibrate conformal intervals.
 - Familiarity with panel data concepts ([Work with Panel Data](panel-data.md))
   if you have multiple series
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Choose a Fallback
 

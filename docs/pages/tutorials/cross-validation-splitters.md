@@ -2,8 +2,7 @@
 
 In this tutorial, we will create temporal cross-validation folds that respect time ordering, visualize them with [`plot_splits`](/pages/api/generated/yohou.plotting.plot_splits/), and compare how expanding and sliding window strategies affect fold geometry. Along the way, we will control training set growth with `max_train_size` and adjust fold overlap with `stride`.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

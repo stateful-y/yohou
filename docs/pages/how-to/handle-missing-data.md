@@ -9,8 +9,7 @@ passing data through a forecasting pipeline.
 - Familiarity with the pipeline API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of stateful transformers ([Preprocessing](../explanation/preprocessing.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Place Imputation Before Stateful Transformers
 

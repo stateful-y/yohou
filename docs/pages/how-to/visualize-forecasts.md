@@ -9,8 +9,7 @@ support panel data with automatic faceting.
 - `yohou[plotting]` installed (`pip install "yohou[plotting]"`)
 - A fitted forecaster with predictions ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Setup
 

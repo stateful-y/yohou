@@ -2,8 +2,7 @@
 
 In this tutorial, we will install Yohou, load a real time series dataset, establish a seasonal baseline, build a reduction forecasting pipeline with lag and rolling features, compare models side by side, and evaluate them with multiple metrics. Along the way, we will encounter the core Yohou workflow: load, split, fit, predict, score, and plot.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

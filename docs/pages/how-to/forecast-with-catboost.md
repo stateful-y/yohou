@@ -9,8 +9,7 @@ reduction forecasters for point, interval, and categorical predictions.
 - CatBoost installed (`pip install catboost`)
 - Understanding of reduction forecasting ([Reduction Forecasting](../explanation/reduction-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Fit a Point Forecaster
 

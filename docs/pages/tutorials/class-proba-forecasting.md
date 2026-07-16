@@ -2,8 +2,7 @@
 
 In this tutorial, we will forecast air quality categories using [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/), producing a probability distribution over four WHO air quality classes instead of a single numeric value. We will load a real dataset with hourly pollution readings, fit a classifier-backed forecaster, and evaluate the probabilistic output with the Brier score and accuracy.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

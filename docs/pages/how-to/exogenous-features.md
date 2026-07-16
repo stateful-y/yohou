@@ -10,8 +10,7 @@ scenarios.
 - Familiarity with the fit/predict lifecycle
   ([Exogenous Features Tutorial](../tutorials/exogenous-features.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Classify Your Features
 

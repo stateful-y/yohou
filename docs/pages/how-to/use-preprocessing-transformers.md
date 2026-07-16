@@ -7,8 +7,7 @@ This guide shows you how to prepare features for a forecasting model using Yohou
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of feature pipelines ([Feature Pipelines](../explanation/feature-pipelines.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Create Lag Features with LagTransformer
 

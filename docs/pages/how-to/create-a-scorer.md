@@ -10,8 +10,7 @@ cover your evaluation needs. The guide follows the most common pattern
 - yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with the fit/score API ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass the Base
 

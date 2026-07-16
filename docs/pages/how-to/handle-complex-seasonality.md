@@ -9,8 +9,7 @@ periods (e.g., weekly + annual in daily data) in yohou.
   ([Stationarity](../explanation/stationarity.md))
 - Familiarity with the pipeline API ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Choose an Approach
 

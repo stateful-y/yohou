@@ -11,8 +11,7 @@ does not cover.
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of prediction intervals ([Produce Prediction Intervals](interval-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass `BaseIntervalForecaster`
 

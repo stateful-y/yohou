@@ -10,8 +10,7 @@ match the forecast requirement.
   ([Core Concepts](../explanation/core-concepts.md))
 - Familiarity with time weighting ([Use Time Weighting](time-weighting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Limit History with observation_horizon
 

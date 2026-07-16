@@ -2,8 +2,7 @@
 
 In this tutorial, we will evaluate two forecasters using temporal cross-validation, search for the best hyperparameters, and inspect residuals to diagnose model weaknesses.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

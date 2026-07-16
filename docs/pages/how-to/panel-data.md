@@ -10,8 +10,7 @@ must share the same column suffixes.
 - Yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with the fit/predict lifecycle ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Structure Your Data as a Panel
 

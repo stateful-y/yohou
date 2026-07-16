@@ -8,8 +8,7 @@ forecaster using cross-validated search with temporal splitters.
 - yohou installed ([Installation](installation.md))
 - Familiarity with fitting and predicting ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Define a Forecaster and Parameter Grid
 

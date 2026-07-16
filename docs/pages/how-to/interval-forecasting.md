@@ -11,8 +11,7 @@ example to size safety stock or flag anomalous observations.
 - yohou installed ([Installation](installation.md))
 - A fitted or unfitted point forecaster ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Wrap a Point Forecaster
 

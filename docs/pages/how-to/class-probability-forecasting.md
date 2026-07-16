@@ -11,8 +11,7 @@ labels a point forecaster predicts for categorical targets.
 - Familiarity with the fit-predict workflow ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with train/test evaluation ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prepare Data and Train/Test Split
 

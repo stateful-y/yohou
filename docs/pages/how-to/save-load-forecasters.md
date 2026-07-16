@@ -8,8 +8,7 @@ them in a new session to produce predictions without retraining.
 - A fitted forecaster ([Getting Started](../tutorials/getting-started.md))
 - Understanding of the fit/observe/predict lifecycle ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Save a Fitted Forecaster
 

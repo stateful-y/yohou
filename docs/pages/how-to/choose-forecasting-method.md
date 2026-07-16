@@ -9,8 +9,7 @@ the relevant section for setup details.
 - Yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Training data prepared ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Quick Reference
 

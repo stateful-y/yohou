@@ -8,8 +8,7 @@ yohou's scorers, cross-validation, and baseline comparisons.
 - Yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with the fit-predict workflow ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Score a Single Forecast
 

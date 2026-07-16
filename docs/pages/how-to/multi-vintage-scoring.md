@@ -11,8 +11,7 @@ forecast horizon step.
 - Familiarity with basic scorer usage ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 - `yohou[plotting]` installed for visualization steps (`pip install "yohou[plotting]"`)
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Generate Multi-vintage Predictions
 

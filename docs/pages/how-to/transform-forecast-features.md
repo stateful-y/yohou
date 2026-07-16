@@ -7,8 +7,7 @@ This guide shows you how to apply transformers to an `X_forecast` frame, using [
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of forecast vintages ([How to Work with Forecast Vintages](forecast-vintages.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 
 An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the two kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).

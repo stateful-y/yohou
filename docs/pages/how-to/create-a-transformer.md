@@ -11,8 +11,7 @@ transformation needs.
 - Familiarity with Yohou transformers ([Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of the observation horizon concept ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass `BaseActualTransformer`
 

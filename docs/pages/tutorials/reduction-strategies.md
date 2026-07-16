@@ -2,8 +2,7 @@
 
 In this tutorial, we will compare the three reduction strategies available in [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/): multi-output (the default), direct, and dir-rec. We will fit each strategy on the same dataset, compare per-step error, and see how `target_as_feature` affects the feature matrix.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

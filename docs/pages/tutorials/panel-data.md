@@ -2,8 +2,7 @@
 
 In this tutorial, we will forecast multiple related time series simultaneously using panel data. Many real forecasting tasks involve groups of related series: regional sales, sensor networks, tourism by destination. Yohou represents these as a single DataFrame where column names encode the group with a `__` separator (e.g. `T187__tourists`, `T188__tourists`). We will load a multi-series tourism dataset, inspect its panel structure, fit independent models per group with [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/), evaluate with aggregate and per-group metrics, and visualize the results.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

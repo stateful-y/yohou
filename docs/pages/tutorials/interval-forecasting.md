@@ -2,8 +2,7 @@
 
 In this tutorial, we will wrap a point forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) to produce prediction intervals, visualize them as shaded bands, and measure how well the intervals cover the true values. Along the way, we will use `predict_interval`, [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/), and [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/).
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

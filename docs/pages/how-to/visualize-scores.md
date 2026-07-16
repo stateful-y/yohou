@@ -8,8 +8,7 @@ forecast steps, and time using yohou's evaluation plotting functions.
 - `yohou[plotting]` installed (`pip install "yohou[plotting]"`)
 - Predictions from one or more models ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Setup
 

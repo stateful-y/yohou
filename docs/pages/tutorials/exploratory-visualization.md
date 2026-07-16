@@ -2,8 +2,7 @@
 
 In this tutorial, we will explore a tourism dataset through eight diagnostic questions that guide every downstream modeling decision. Along the way, we will check for completeness, trends, variance stability, seasonality, seasonal evolution, outliers, and the right modeling frequency.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

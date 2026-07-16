@@ -2,6 +2,7 @@
 
 Learn Yohou through focused, interactive examples. Each notebook demonstrates one core concept and is runnable in the browser or editable online via the [marimo playground](https://marimo.io).
 
+- [Quickstart](quickstart.md): an end-to-end tour in minutes, from loading data to fitting a forecaster and predicting
 - [Getting Started](getting-started.md): core workflow tutorials, from a first forecast to walk-forward evaluation
 - [Forecasting Models](forecasting-models.md): point, interval, class-probability, and ensemble how-tos
 - [Data & Features](data-features.md): transformers, feature engineering, stationarity, and pipeline composition

@@ -9,8 +9,7 @@ parameters.
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of the fit/transform pattern ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Smooth High-Frequency Noise
 

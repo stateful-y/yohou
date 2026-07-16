@@ -12,8 +12,7 @@ observation point.
   ([Use Exogenous Features](exogenous-features.md))
 - A fitted forecaster using exogenous features
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Tasks Covered
 

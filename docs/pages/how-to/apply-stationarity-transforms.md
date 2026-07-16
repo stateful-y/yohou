@@ -7,8 +7,7 @@ This guide shows you how to remove trends and seasonal patterns from time series
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of stationarity concepts ([Stationarity](../explanation/stationarity.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Choose a Decomposition Strategy
 

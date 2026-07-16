@@ -7,8 +7,7 @@ This guide shows you how to build forecasters using the reduction pattern: pick 
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of reduction strategies ([Reduction Forecasting](../explanation/reduction-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Build a Basic Reduction Forecaster
 

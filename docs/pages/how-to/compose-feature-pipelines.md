@@ -7,8 +7,7 @@ This guide shows you how to combine transformers into feature engineering pipeli
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of feature pipelines ([Feature Pipelines](../explanation/feature-pipelines.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Chain Transformers Sequentially
 

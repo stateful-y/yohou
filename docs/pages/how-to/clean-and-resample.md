@@ -10,8 +10,7 @@ and
 
 - Familiarity with polars DataFrames and the `"time"` column convention ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Validate Column Types
 

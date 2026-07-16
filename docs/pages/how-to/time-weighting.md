@@ -9,8 +9,7 @@ of your history.
 - A fitted forecaster or scorer ([Getting Started](../tutorials/getting-started.md))
 - For panel-aware weights: familiarity with panel data ([Work with Panel Data](panel-data.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Choose a Weighting Strategy
 

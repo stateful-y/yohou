@@ -2,8 +2,7 @@
 
 In this tutorial, we will walk through a two-year test set in six-month batches, updating forecasts as new data arrives. Along the way, we will compare a single-shot prediction against a full walk-forward loop and score them both with [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/).
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 

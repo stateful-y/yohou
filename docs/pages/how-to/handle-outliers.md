@@ -10,8 +10,7 @@ inflating conformal prediction intervals.
 - For the conformal interval section: familiarity with interval forecasting
   ([Interval Forecasting](../explanation/interval-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Decide: Clip, Null, or Keep
 
