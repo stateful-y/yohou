@@ -74,10 +74,18 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
+      # Appended to every page so the glossary abbreviations resolve everywhere.
       auto_append:
         - includes/glossary.md
+      # Ordered: docs-relative includes win, but a page can still reach the
+      # repo root (e.g. CHANGELOG.md).  Do not narrow this to [docs] -- a
+      # project may legitimately include a file from src/ or the repo root.
       base_path:
         - docs
+        - .
+      # Without this a missing include is dropped silently, rendering a page
+      # that looks deliberate and is empty.
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - class: mermaid
@@ -108,6 +116,7 @@ exclude_docs: |
 # Generated API pages are injected into nav dynamically by hooks.py
 not_in_nav: |
   assets/README.md
+  includes/*.md
   pages/api/*.md
   pages/api/generated/*.md
 
@@ -131,6 +140,9 @@ plugins:
         python:
           paths: [src]
           inventories:
+            # Resolves standard-library types in signatures and See Also
+            # entries.  Add your dependencies' inventories here too, e.g.
+            #   - https://numpy.org/doc/stable/objects.inv
             - https://docs.python.org/3/objects.inv
             - https://scikit-learn.org/stable/objects.inv
             - https://docs.pola.rs/api/python/stable/objects.inv
@@ -263,4 +275,7 @@ extra:
 watch:
   - mkdocs.yml
   - docs
+  # The API pages are generated from the package source, so a source edit must
+  # trigger a rebuild -- otherwise adding a class shows nothing until restart.
+  - src
   - examples

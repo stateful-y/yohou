@@ -1,6 +1,6 @@
 # Interval Forecasting
 
-In this tutorial, we will wrap a point forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to produce prediction intervals, visualize them as shaded bands, and measure how well the intervals cover the true values. Along the way, we will use `predict_interval`, [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/), and [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/).
+In this tutorial, we will wrap a point forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) to produce prediction intervals, visualize them as shaded bands, and measure how well the intervals cover the true values. Along the way, we will use `predict_interval`, [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/), and [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/).
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
@@ -66,7 +66,7 @@ point_forecaster = PointReductionForecaster(
 
 ## 3. Wrap with SplitConformalForecaster
 
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) takes any point forecaster and wraps it to produce prediction intervals. It holds out `calibration_size` training observations to measure forecasting errors, then constructs intervals wide enough to cover 95% of those errors:
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) takes any point forecaster and wraps it to produce prediction intervals. It holds out `calibration_size` training observations to measure forecasting errors, then constructs intervals wide enough to cover 95% of those errors:
 
 ```python
 from yohou.interval import SplitConformalForecaster
@@ -109,7 +109,7 @@ Notice the column names: `tourists_lower_0.95` and `tourists_upper_0.95`, derive
 
 ## 5. Visualize the Intervals
 
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) detects the interval columns automatically and renders them as a shaded band:
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) detects the interval columns automatically and renders them as a shaded band:
 
 ```python
 from yohou.plotting import plot_forecast
@@ -122,7 +122,7 @@ You should see the forecast line with a shaded 95% band around it. The training 
 
 ## 6. Check Empirical Coverage
 
-How many of the 12 test points actually fall inside the predicted intervals? [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) measures this:
+How many of the 12 test points actually fall inside the predicted intervals? [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/) measures this:
 
 ```python
 from yohou.metrics import EmpiricalCoverage
@@ -145,7 +145,7 @@ The empirical coverage of 0.75 is below the 0.95 target. With only 12 test obser
 
 ## What You Built
 
-We wrapped a point forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to produce 95% prediction intervals, visualized them as shaded bands with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/), and measured the empirical coverage with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/). Any point forecaster in Yohou can be wrapped this way to produce calibrated intervals.
+We wrapped a point forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) to produce 95% prediction intervals, visualized them as shaded bands with [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/), and measured the empirical coverage with [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/). Any point forecaster in Yohou can be wrapped this way to produce calibrated intervals.
 
 ## Next Steps
 

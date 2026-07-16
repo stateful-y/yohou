@@ -3,7 +3,7 @@
 This guide shows you how to implement a forecaster that predicts per-class
 probabilities for categorical time series. Use this when you need a custom
 classification approach that the built-in
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/)
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/)
 does not cover.
 
 ## Prerequisites
@@ -16,7 +16,7 @@ does not cover.
 
 ## 1. Subclass `BaseClassProbaForecaster`
 
-Create a class that extends [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/)
+Create a class that extends [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/)
 and implement three things:
 
 - **`_observation_horizon`** (property): how many recent observations the forecaster needs.

@@ -268,10 +268,11 @@ def test_docstrings(session: nox.Session) -> None:
 @nox.session(venv_backend="uv", python=MIN_VERSION)
 def lint(session: nox.Session) -> None:
     """Run linters and type checkers."""
-    # Install dependencies
+    # Install dependencies. --locked pins the exact uv.lock versions so this matches CI.
     session.run_install(
         "uv",
         "sync",
+        "--locked",
         "--no-default-groups",
         "--extra",
         "plotting",
@@ -286,8 +287,8 @@ def lint(session: nox.Session) -> None:
     # Run PEP 723 dependency audit for notebook examples
     session.run("pytest", "tests/test_notebook_pep723.py", "-v", "--no-header", "-o", "addopts=")
 
-    # Run rumdl markdown linter
-    session.run("uvx", "rumdl", "check", ".", external=True)
+    # Run rumdl markdown linter (resolved from the lint group, not uvx-latest)
+    session.run("rumdl", "check", ".", external=True)
 
     # Run ty
     session.run("ty", "check", "src", external=True)
@@ -296,10 +297,12 @@ def lint(session: nox.Session) -> None:
 @nox.session(venv_backend="uv", python=MIN_VERSION)
 def fix(session: nox.Session) -> None:
     """Format the code base to adhere to our styles, and complain about what we cannot do automatically."""
-    # Install dependencies
+    # Install dependencies. --locked pins the exact uv.lock versions so a stale lock
+    # fails loudly here and local matches CI.
     session.run_install(
         "uv",
         "sync",
+        "--locked",
         "--no-default-groups",
         "--extra",
         "plotting",

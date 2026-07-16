@@ -46,7 +46,7 @@ y_pred = {"Naive": y_pred_naive, "Ridge": y_pred_ridge}
 
 ## 1. Compare Models with a Summary Bar Chart
 
-[`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/)
+[`plot_score_summary`](/pages/api/generated/yohou.plotting.plot_score_summary/)
 produces a grouped bar chart comparing aggregate scores across models and
 metrics:
 
@@ -61,7 +61,7 @@ descending).
 
 ## 2. Check Horizon Degradation
 
-[`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
+[`plot_score_per_step`](/pages/api/generated/yohou.plotting.plot_score_per_step/)
 shows how accuracy changes at each forecast horizon step:
 
 ```python
@@ -79,7 +79,7 @@ to overlay them on the same axes.
 
 ## 3. Track Accuracy Over Time
 
-[`plot_score_time_series`](/pages/api/generated/yohou.plotting.evaluation.plot_score_time_series/)
+[`plot_score_time_series`](/pages/api/generated/yohou.plotting.plot_score_time_series/)
 plots scorer values at each timestep:
 
 ```python
@@ -90,12 +90,12 @@ plot_score_time_series(scorer, y_test, y_pred)
 
 For panel data, set `facet_by="group"` to get one subplot per group. To
 emphasize recent errors, construct the scorer with an
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/)
 before passing it to this function. See [Time Weighting](time-weighting.md).
 
 ## 4. Score by Forecast Vintage
 
-[`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_vintage/)
+[`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.plot_score_per_vintage/)
 shows how score changes by forecast origin time. This requires multi-vintage
 predictions (see [Multi-vintage Scoring](multi-vintage-scoring.md)):
 
@@ -107,7 +107,7 @@ plot_score_per_vintage(scorer, y_test, y_pred, show_trend=True)
 
 ## 5. Examine the Error Distribution
 
-[`plot_score_distribution`](/pages/api/generated/yohou.plotting.evaluation.plot_score_distribution/)
+[`plot_score_distribution`](/pages/api/generated/yohou.plotting.plot_score_distribution/)
 shows the distribution of per-timestep scorer values:
 
 ```python
@@ -122,7 +122,7 @@ by default) adds a vertical line at the mean score.
 
 ## 6. Score Heatmap Across Two Dimensions
 
-[`plot_score_heatmap`](/pages/api/generated/yohou.plotting.evaluation.plot_score_heatmap/)
+[`plot_score_heatmap`](/pages/api/generated/yohou.plotting.plot_score_heatmap/)
 creates a 2D heatmap of scores across forecast step and vintage. Unlike the
 other functions, this takes a single scorer and a single prediction DataFrame
 (not dicts):
@@ -139,7 +139,7 @@ plot_score_heatmap(scorer["MAE"], y_test, y_pred_ridge, x_dim="vintage", y_dim="
 
 ## 7. Break Down Scores by Panel Group
 
-[`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/)
+[`plot_group_scores`](/pages/api/generated/yohou.plotting.plot_group_scores/)
 shows per-group performance for panel data:
 
 ```python

@@ -2,9 +2,9 @@
 
 This guide shows you how to prepare raw data for a forecasting pipeline:
 validating dtypes and value ranges, then changing the series frequency with
-[`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/)
+[`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/)
 and
-[`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/).
+[`Upsampler`](/pages/api/generated/yohou.preprocessing.Upsampler/).
 
 ## Prerequisites
 
@@ -53,7 +53,7 @@ df = df.with_columns(pl.col("temperature").clip(-50, 60))
 
 ## Downsample with Downsampler
 
-[`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/)
+[`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/)
 reduces frequency by aggregating within each period. Use it when the data
 arrives at a higher frequency than you need for forecasting, or when
 high-frequency noise obscures the signal:
@@ -84,7 +84,7 @@ downsampler = Downsampler(
 
 ## Upsample with Upsampler
 
-[`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/)
+[`Upsampler`](/pages/api/generated/yohou.preprocessing.Upsampler/)
 increases frequency by creating new timestamps and filling in values. Use it
 when your model needs a finer resolution than the source data provides:
 
@@ -108,7 +108,7 @@ The `interpolation` parameter controls how gaps are filled:
 
 Resampling (or cleaning out implausible values) can leave `null` gaps that a
 forecaster cannot consume. Use
-[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/)
+[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.SimpleTimeImputer/)
 to fill them with a time-aware method such as linear interpolation:
 
 ```python
@@ -120,7 +120,7 @@ df_filled = imputer.fit_transform(df_monthly)
 
 The `method` parameter accepts `"linear"`, `"forward"`, `"backward"`,
 `"nearest"`, or `"fill_both"`. When the gaps follow a repeating cycle, prefer
-[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/),
+[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.SeasonalImputer/),
 which fills each missing value from the same seasonal position. See
 [Handle Missing Data](handle-missing-data.md) for the full imputation workflow.
 

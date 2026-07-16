@@ -11,8 +11,8 @@ container classes, and extension by subclassing a base class. These are not
 alternatives competing for the same use cases; they represent different levels
 of the abstraction hierarchy.
 
-**Composition** tools ([`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/), [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/),
-[`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/)) assemble existing components into new configurations.
+**Composition** tools ([`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/), [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/),
+[`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/)) assemble existing components into new configurations.
 They delegate all framework concerns (observation tracking, panel dispatch, temporal
 structure) to the components they contain. The user provides a regressor or a list of
 forecasters; the container handles the rest. Composition works when the algorithm
@@ -20,9 +20,9 @@ can be expressed as a scikit-learn estimator applied to tabularized features, or
 combination of existing forecasters.
 
 **Subclassing** a base class inserts entirely new algorithms into the framework. A custom
-[`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/) subclass can implement a state-space model, exponential smoothing,
+[`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/) subclass can implement a state-space model, exponential smoothing,
 or any other method that cannot be expressed as regression on a feature matrix. A custom
-[`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) can implement temporal logic with a fixed lookback window that the
+[`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/) can implement temporal logic with a fixed lookback window that the
 framework tracks. A custom scorer can aggregate error in a domain-specific way. In each
 case, the subclass implements a small set of methods; the base class enforces the
 contract that makes the component interoperable with the rest of the system.
@@ -64,8 +64,8 @@ All forecasters inherit from a common `BaseForecaster` that provides:
   `set_fit_request()` following sklearn's protocol. Weighters are configured at
   construction time, not passed as metadata (see [Weighting](weighting.md)).
 
-The three forecaster base classes ([`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/),
-[`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/), [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/)) share this machinery.
+The three forecaster base classes ([`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/),
+[`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/), [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/)) share this machinery.
 They differ in prediction output format: a single-value DataFrame, a
 lower/upper bound DataFrame per coverage rate, or a probability distribution
 DataFrame per class.
@@ -78,7 +78,7 @@ transformer instances.
 
 ### Transformers
 
-[`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/) extends sklearn's transformer protocol with:
+[`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/) extends sklearn's transformer protocol with:
 
 - **Observation horizon**: stateful transformers declare how many past rows they
   need via the `observation_horizon` property. Pipelines respect this when
@@ -98,9 +98,9 @@ transformers leave it at the default of zero, which causes `observe()` and
 
 ### Scorers
 
-The scorer hierarchy ([`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/),
-[`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/),
-[`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.base.BaseClassProbaScorer/)) follows a template method pattern. The base class orchestrates a
+The scorer hierarchy ([`BasePointScorer`](/pages/api/generated/yohou.metrics.BasePointScorer/),
+[`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.BaseIntervalScorer/),
+[`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.BaseClassProbaScorer/)) follows a template method pattern. The base class orchestrates a
 multi-stage aggregation pipeline:
 
 1. Compute raw per-timestep, per-component errors via `_compute_raw_errors()`.
@@ -115,7 +115,7 @@ Everything else (weighting, aggregation, panel handling) is managed by the base 
 
 ### Splitters
 
-[`BaseSplitter`](/pages/api/generated/yohou.model_selection.split.BaseSplitter/) provides the interface for time series cross-validation strategies.
+[`BaseSplitter`](/pages/api/generated/yohou.model_selection.BaseSplitter/) provides the interface for time series cross-validation strategies.
 Built-in splitters include `ExpandingWindowSplitter` (growing train set) and
 `SlidingWindowSplitter` (fixed-size sliding window).
 

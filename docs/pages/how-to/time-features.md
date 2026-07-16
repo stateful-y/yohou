@@ -13,7 +13,7 @@ This guide shows you how to derive calendar, holiday, Fourier, and trend feature
 
 ## Extract Calendar Features
 
-[`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/) extracts integer features from timestamps. Pass a list of feature names, or leave `features=None` to auto-detect all features applicable to your data's frequency:
+[`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/) extracts integer features from timestamps. Pass a list of feature names, or leave `features=None` to auto-detect all features applicable to your data's frequency:
 
 ```python
 from yohou.preprocessing import CalendarFeatureTransformer
@@ -34,7 +34,7 @@ Available features include `"year"`, `"month"`, `"quarter"`, `"week"`, `"day_of_
 
 ## Mark Holidays
 
-[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/) creates a binary indicator column and optional proximity features showing distance to the nearest holiday:
+[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/) creates a binary indicator column and optional proximity features showing distance to the nearest holiday:
 
 ```python
 from yohou.preprocessing import HolidayFeatureTransformer
@@ -58,7 +58,7 @@ The `holidays` DataFrame needs a `"date"` column of Date or Datetime type. Set `
 
 ## Add Fourier Features
 
-[`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/) captures smooth seasonal patterns with sine/cosine pairs at specified harmonics:
+[`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/) captures smooth seasonal patterns with sine/cosine pairs at specified harmonics:
 
 ```python
 from yohou.preprocessing import FourierFeatureTransformer
@@ -72,7 +72,7 @@ Set `seasonality` to the period length in time steps (e.g., `24` for daily cycle
 
 ## Create a Trend Index
 
-[`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/) converts timestamps to a numeric index, useful for capturing linear or polynomial trends:
+[`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.TimeIndexTransformer/) converts timestamps to a numeric index, useful for capturing linear or polynomial trends:
 
 ```python
 from yohou.preprocessing import TimeIndexTransformer
@@ -86,7 +86,7 @@ With `degree=1` (the default), the transformer produces a single `time_index` co
 
 ## Combine Multiple Time Features
 
-Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to run multiple time feature transformers in parallel and concatenate their outputs, then pass the result as `feature_transformer` to any forecaster:
+Use [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) to run multiple time feature transformers in parallel and concatenate their outputs, then pass the result as `feature_transformer` to any forecaster:
 
 ```python
 from yohou.compose import FeatureUnion

@@ -30,7 +30,7 @@ y = pl.DataFrame({
 ```
 
 To verify that Yohou parses your columns correctly, use
-[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/):
+[`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/):
 
 ```python
 from yohou.utils.panel import inspect_panel
@@ -41,7 +41,7 @@ print(panel_groups)    # {'store_a': ['store_a__sales'], 'store_b': ['store_b__s
 ```
 
 If you already have per-group DataFrames,
-[`dict_to_panel`](/pages/api/generated/yohou.utils.panel.dict_to_panel/)
+[`dict_to_panel`](/pages/api/generated/yohou.utils.dict_to_panel/)
 joins them into the expected format:
 
 ```python
@@ -55,13 +55,13 @@ y = dict_to_panel({
 ```
 
 To extract a single group back out, use
-[`get_group_df`](/pages/api/generated/yohou.utils.panel.get_group_df/).
+[`get_group_df`](/pages/api/generated/yohou.utils.get_group_df/).
 
 ## 2. Fit a Forecaster
 
-Pass panel DataFrames directly to `fit`. Use [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) to create train/test sets.
+Pass panel DataFrames directly to `fit`. Use [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/) to create train/test sets.
 The default `panel_strategy="global"` gives each group independent transformers while
-sharing a single [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) model across all groups:
+sharing a single [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) model across all groups:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -106,8 +106,8 @@ The `panel_strategy` parameter controls how groups share information:
   cross-group correlations are strong.
 
 For completely independent models per group, use
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)
-instead. It clones the forecaster (for example, [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/))
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/)
+instead. It clones the forecaster (for example, [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/))
 and fits one instance per group, which is
 best when groups have genuinely different dynamics and enough history each:
 
@@ -174,9 +174,9 @@ known-future features (e.g., holidays), use `X_future`. See
 
 !!! tip
     Ensemble forecasters
-    ([`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
-    [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/),
-    [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/))
+    ([`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/),
+    [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/),
+    [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/))
     support panel data automatically, with aggregation per group. See
     [Ensemble Forecasting](ensemble-forecasting.md) for the full workflow.
 

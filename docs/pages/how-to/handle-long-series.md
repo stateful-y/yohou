@@ -19,9 +19,9 @@ When concept drift makes historical patterns less predictive, limiting history
 avoids diluting the model with stale signal. Each stateful transformer exposes
 a read-only `observation_horizon` property that reports how many past timesteps
 it retains. The value is derived from the constructor parameters: for
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
 it equals the maximum lag, and for
-[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/)
+[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/)
 it equals the seasonality period. Older observations are dropped as new ones
 arrive via `observe`.
 
@@ -39,7 +39,7 @@ lag_transformer = LagTransformer(lag=[1, 7])
 seasonal_diff = SeasonalDifferencing(seasonality=7)
 ```
 
-In a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), the pipeline's `observation_horizon` is the sum of
+In a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), the pipeline's `observation_horizon` is the sum of
 all its steps' horizons. Inspect it after fitting to verify the total
 look-back is what you expect:
 
@@ -59,9 +59,9 @@ pipeline.observation_horizon  # 14
 Limiting history is a binary cutoff. Time weighting is a softer alternative
 that keeps all data but gives more importance to recent errors during model
 selection. Construct an
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/)
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/)
 or
-[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/)
+[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.LinearDecayWeighter/)
 and pass it to the `time_weighter` slot of scorers and forecasters:
 
 ```python
@@ -79,7 +79,7 @@ When data arrives at a higher frequency than the forecast requirement,
 downsampling reduces computational cost and can improve model quality by
 removing noise that is irrelevant to the forecasting horizon.
 
-[`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/)
+[`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/)
 aggregates observations to a lower frequency. Place it at the start of the
 pipeline, before any stateful transformers:
 
@@ -106,7 +106,7 @@ downsampler = Downsampler(
 
 ## Upsampling to a Higher Frequency
 
-[`Upsampler`](/pages/api/generated/yohou.preprocessing.resampling.Upsampler/)
+[`Upsampler`](/pages/api/generated/yohou.preprocessing.Upsampler/)
 increases frequency by interpolating between existing observations. Use it
 only when obtaining higher-frequency input data is not possible, because
 interpolation creates artificial data points without genuine information

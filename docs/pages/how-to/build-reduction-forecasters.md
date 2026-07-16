@@ -12,7 +12,7 @@ This guide shows you how to build forecasters using the reduction pattern: pick 
 
 ## Build a Basic Reduction Forecaster
 
-A [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts a time series problem into a tabular regression problem. The `feature_transformer` generates the feature matrix, and the `estimator` learns the mapping from features to targets:
+A [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) converts a time series problem into a tabular regression problem. The `feature_transformer` generates the feature matrix, and the `estimator` learns the mapping from features to targets:
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -53,7 +53,7 @@ forecaster = PointReductionForecaster(
 
 ## Combine Multiple Feature Transformers
 
-Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to concatenate [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/), and [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/) into a single feature matrix:
+Use [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) to concatenate [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/), [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/), and [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/) into a single feature matrix:
 
 ```python
 from yohou.compose import FeatureUnion
@@ -78,7 +78,7 @@ forecaster = PointReductionForecaster(
 )
 ```
 
-For sequential preprocessing before feature engineering, wrap transformers in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/). See [Compose Feature Pipelines](compose-feature-pipelines.md) for details.
+For sequential preprocessing before feature engineering, wrap transformers in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/). See [Compose Feature Pipelines](compose-feature-pipelines.md) for details.
 
 ## Control Step Feature Alignment
 
@@ -99,7 +99,7 @@ forecaster = PointReductionForecaster(
 
 ## Produce Prediction Intervals
 
-[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses the same reduction pattern but produces prediction intervals. It accepts the same `feature_transformer`, `reduction_strategy`, and `step_feature_alignment` parameters:
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/) uses the same reduction pattern but produces prediction intervals. It accepts the same `feature_transformer`, `reduction_strategy`, and `step_feature_alignment` parameters:
 
 ```python
 from yohou.interval import IntervalReductionForecaster
@@ -117,5 +117,5 @@ For conformal calibration on top of a point reduction forecaster, see [Produce P
 ## See Also
 
 - [Reduction Forecasting](../explanation/reduction-forecasting.md) for conceptual background on reduction strategies
-- [Use Exogenous Features](exogenous-features.md) for passing `X_actual`, `X_future`, and `X_forecast` to reduction forecasters, including chaining with [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
+- [Use Exogenous Features](exogenous-features.md) for passing `X_actual`, `X_future`, and `X_forecast` to reduction forecasters, including chaining with [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/)
 - [Compose Feature Pipelines](compose-feature-pipelines.md) for building multi-step feature engineering chains

@@ -1,6 +1,6 @@
 # Decomposition
 
-In this tutorial, we will build a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) that separates a time series into trend, seasonality, and residual components. Along the way, we will fit a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) and two seasonality forecasters ([`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/)), combine them with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) for residuals, and visualize each component.
+In this tutorial, we will build a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) that separates a time series into trend, seasonality, and residual components. Along the way, we will fit a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) and two seasonality forecasters ([`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/)), combine them with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) for residuals, and visualize each component.
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
@@ -11,7 +11,7 @@ In this tutorial, we will build a [`DecompositionPipeline`](/pages/api/generated
 
 ## 1. Prepare Data
 
-Load the Australian tourism dataset, a monthly series tracking tourist arrivals, with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/):
+Load the Australian tourism dataset, a monthly series tracking tourist arrivals, with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/):
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -37,7 +37,7 @@ shape: (5, 2)
 └─────────────────────┴───────────┘
 ```
 
-Now split the data, holding out the last 12 months as the test set using [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/):
+Now split the data, holding out the last 12 months as the test set using [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/):
 
 ```python
 forecasting_horizon = 12
@@ -51,7 +51,7 @@ Train: 175 months, Test: 12 months
 
 ## 2. Model the Trend
 
-[`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) fits a polynomial to the time index. A degree-1 polynomial captures a linear trend:
+[`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) fits a polynomial to the time index. A degree-1 polynomial captures a linear trend:
 
 ```python
 from yohou.stationarity import PolynomialTrendForecaster
@@ -79,7 +79,7 @@ Notice that the `tourists` values increase slowly from month to month, reflectin
 
 ## 3. Model the Seasonality
 
-[`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) averages historical values at each position in the seasonal cycle and repeats the pattern forward. We set `seasonality=12` for monthly data:
+[`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) averages historical values at each position in the seasonal cycle and repeats the pattern forward. We set `seasonality=12` for monthly data:
 
 ```python
 from yohou.stationarity import PatternSeasonalityForecaster
@@ -105,7 +105,7 @@ shape: (3, 3)
 
 Notice the large swing between months: August (peak summer tourism) is much higher than October. That is the seasonal pattern at work.
 
-[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) is an alternative that models seasonality with Fourier basis functions, producing smooth curves instead of repeating raw averages. The `harmonics` parameter controls how many sine/cosine pairs to include:
+[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/) is an alternative that models seasonality with Fourier basis functions, producing smooth curves instead of repeating raw averages. The `harmonics` parameter controls how many sine/cosine pairs to include:
 
 ```python
 from yohou.stationarity import FourierSeasonalityForecaster
@@ -133,9 +133,9 @@ Notice that the values are close to `PatternSeasonalityForecaster` but smoother.
 
 ## 4. Build a DecompositionPipeline
 
-Now that we have seen trend and seasonality individually, let's combine them. [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) chains forecasters in sequence: each one models the residuals left by all previous forecasters, and the final prediction is the sum of all components.
+Now that we have seen trend and seasonality individually, let's combine them. [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) chains forecasters in sequence: each one models the residuals left by all previous forecasters, and the final prediction is the sum of all components.
 
-We add a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) as the third stage, wrapping a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), to capture any structure remaining in the residuals after removing trend and seasonality:
+We add a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) as the third stage, wrapping a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), to capture any structure remaining in the residuals after removing trend and seasonality:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -178,7 +178,7 @@ Notice that these combined predictions are higher than either the trend or seaso
 
 ## 5. Visualize Components
 
-Each fitted forecaster inside the pipeline can produce its own predictions. We collect them into a dict and pass it to [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/), which displays each component as a separate subplot:
+Each fitted forecaster inside the pipeline can produce its own predictions. We collect them into a dict and pass it to [`plot_decomposition`](/pages/api/generated/yohou.plotting.plot_decomposition/), which displays each component as a separate subplot:
 
 ```python
 from yohou.plotting import plot_decomposition
@@ -195,7 +195,7 @@ The plot shows the trend, seasonality, and residual contributions separately. Ch
 
 ## 6. Score the Pipeline
 
-Score the full pipeline against the test set with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
+Score the full pipeline against the test set with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/):
 
 ```python
 from yohou.metrics import MeanAbsoluteError
@@ -212,7 +212,7 @@ DecompositionPipeline MAE: 950.31
 
 ## What You Built
 
-We constructed a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) that separates a time series into trend, seasonality, and residual components. Each component is modeled by a specialized forecaster, and the final prediction is their sum. We visualized the decomposition to verify that each stage captured the right structure.
+We constructed a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) that separates a time series into trend, seasonality, and residual components. Each component is modeled by a specialized forecaster, and the final prediction is their sum. We visualized the decomposition to verify that each stage captured the right structure.
 
 ## Next Steps
 

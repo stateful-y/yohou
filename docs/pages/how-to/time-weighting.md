@@ -21,7 +21,7 @@ parameters are introspectable, clonable, and tunable by search (covered in
 [§6](#6-tune-your-weighting)).
 
 If you want to down-weight old observations smoothly, use
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/).
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/).
 It halves the weight every `half_life`, keeping the most recent observation at
 1.0:
 
@@ -46,7 +46,7 @@ forecasting steps. A `timedelta` `half_life` with `scale="position"` raises
 `ValueError`.
 
 If you prefer a simple ramp from 0 (oldest) to 1 (newest), use
-[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/):
+[`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.LinearDecayWeighter/):
 
 ```python
 from yohou.weighting import LinearDecayWeighter
@@ -61,7 +61,7 @@ weighter = LinearDecayWeighter(max_steps=100)
 ```
 
 If seasonality matters more than recency, use
-[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/)
+[`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.SeasonalEmphasisWeighter/)
 to boost observations at the same seasonal position as the most recent one:
 
 ```python
@@ -83,7 +83,7 @@ weighter = SeasonalEmphasisWeighter(seasonality=[7, 365], emphasis=1.5)
 When you want weights assigned by key rather than by a decay rule, use the
 lookup and table weighters.
 
-[`LookupWeighter`](/pages/api/generated/yohou.weighting.weighters.LookupWeighter/)
+[`LookupWeighter`](/pages/api/generated/yohou.weighting.LookupWeighter/)
 maps keys to weights via a `dict`. Keys absent from the mapping receive the
 tunable `default` weight (this replaces the old `"*"` wildcard):
 
@@ -97,7 +97,7 @@ weighter = LookupWeighter(
 )
 ```
 
-[`TableWeighter`](/pages/api/generated/yohou.weighting.weighters.TableWeighter/)
+[`TableWeighter`](/pages/api/generated/yohou.weighting.TableWeighter/)
 resolves weights by joining the key series to a `pl.DataFrame` on a key column:
 
 ```python
@@ -118,7 +118,7 @@ with no matching row raises `ValueError`.
 ## 3. Compose Multiple Weights
 
 To combine recency and seasonal effects, use
-[`CompositeWeighter`](/pages/api/generated/yohou.weighting.weighters.CompositeWeighter/).
+[`CompositeWeighter`](/pages/api/generated/yohou.weighting.CompositeWeighter/).
 Its components are **named `(name, weighter)` tuples** (the same convention as
 `FeaturePipeline` and the voting ensembles), which keeps every sub-weighter's
 parameters addressable for tuning. By default it multiplies the component
@@ -200,7 +200,7 @@ weighter is rejected at construction rather than at `score` time. See
 [Multi-vintage Scoring](multi-vintage-scoring.md) for details.
 
 Because the weighting lives on the scorer instance, a weighted scorer is a valid
-[`cross_validate`](/pages/api/generated/yohou.model_selection.validation.cross_validate/)
+[`cross_validate`](/pages/api/generated/yohou.model_selection.cross_validate/)
 objective with no per-call weight argument:
 
 ```python
@@ -283,7 +283,7 @@ For global (non-panel) data, `group_name` is `None`.
 
 ## 8. Visualize the Weight Profile
 
-[`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/)
+[`plot_time_weight`](/pages/api/generated/yohou.plotting.plot_time_weight/)
 shows weights over time. Call the weighter's `compute_weights` on the key series
 to build the expected DataFrame:
 

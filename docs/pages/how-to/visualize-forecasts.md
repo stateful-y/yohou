@@ -34,7 +34,7 @@ y_pred = forecaster.predict()
 ## 1. Plot a Point Forecast
 
 Pass actuals and predictions to
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/).
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/).
 Include `y_train` to show historical context before the forecast window:
 
 ```python
@@ -107,9 +107,9 @@ fig = plot_forecast(
 By default, faceting is by individual series (`facet_by="member"`). Set
 `facet_by="group"` to facet by panel group instead. The `facet_by`,
 `facet_n_cols`, and `groups` parameters work identically on
-[`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+[`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/)
 and
-[`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/).
+[`plot_calibration`](/pages/api/generated/yohou.plotting.plot_calibration/).
 
 ## 5. Inspect Residuals
 
@@ -170,7 +170,7 @@ fig = plot_forecast(
 
 Set `show_transition=False` to hide the dashed connector between training
 history and the forecast window. Refer to the
-[`plot_forecast` API reference](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+[`plot_forecast` API reference](/pages/api/generated/yohou.plotting.plot_forecast/)
 for the full parameter listing.
 
 ## 8. Handle Large Plots

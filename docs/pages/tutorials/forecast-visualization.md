@@ -12,7 +12,7 @@ In this tutorial, we will compare two models' forecasts visually, add prediction
 
 ## 1. Prepare Data and Models
 
-We set up two forecasters: a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) baseline and a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with Ridge regression and a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) containing [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) features.
+We set up two forecasters: a [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) baseline and a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) with Ridge regression and a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) containing [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) features.
 
 ```python
 from sklearn.linear_model import Ridge
@@ -45,7 +45,7 @@ y_pred_ridge = ridge.predict(forecasting_horizon=forecasting_horizon)
 
 ## 2. Single Forecast Plot
 
-Start by plotting one model in isolation with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) to see how its predictions align with the test data:
+Start by plotting one model in isolation with [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) to see how its predictions align with the test data:
 
 ```python
 fig = plot_forecast(y_test, y_pred_baseline, y_train=y_train[-24:])
@@ -71,7 +71,7 @@ Each model gets a distinct color. The legend lets you toggle individual models o
 
 ## 4. Prediction Intervals
 
-Now that we can see which model tracks the test data better, let's quantify how uncertain those predictions are. Wrap the Ridge forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to add prediction intervals:
+Now that we can see which model tracks the test data better, let's quantify how uncertain those predictions are. Wrap the Ridge forecaster with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) to add prediction intervals:
 
 ```python
 from yohou.interval import SplitConformalForecaster
@@ -95,7 +95,7 @@ The prediction interval appears as a shaded band around the forecast line. Narro
 
 ## 5. Calibration Diagram
 
-The prediction intervals look reasonable visually, but do they actually achieve their claimed 90% coverage? [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) checks this:
+The prediction intervals look reasonable visually, but do they actually achieve their claimed 90% coverage? [`plot_calibration`](/pages/api/generated/yohou.plotting.plot_calibration/) checks this:
 
 ```python
 from yohou.plotting import plot_calibration
@@ -108,7 +108,7 @@ Points close to the diagonal indicate well-calibrated intervals. If points fall 
 
 ## 6. Decomposition Visualization
 
-With the forecast comparison and calibration settled, let's look inside a structured model by building a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) with a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) and a [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/), then visualizing it with [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) to understand what each component contributes:
+With the forecast comparison and calibration settled, let's look inside a structured model by building a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) with a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) and a [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/), then visualizing it with [`plot_decomposition`](/pages/api/generated/yohou.plotting.plot_decomposition/) to understand what each component contributes:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -136,7 +136,7 @@ Each component appears as a separate subplot showing its contribution. Check tha
 
 ## 7. Time Weight Visualization
 
-Finally, let's examine how the training data is weighted with [`plot_time_weight`](/pages/api/generated/yohou.plotting.forecasting.plot_time_weight/) by computing [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) weights and attaching them as a column, since this affects which historical periods influence the model most:
+Finally, let's examine how the training data is weighted with [`plot_time_weight`](/pages/api/generated/yohou.plotting.plot_time_weight/) by computing [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/) weights and attaching them as a column, since this affects which historical periods influence the model most:
 
 ```python
 from yohou.plotting import plot_time_weight
@@ -154,7 +154,7 @@ The plot shows the weight assigned to each training observation. Exponential dec
 
 ## 8. Categorical Forecast Visualization
 
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) also handles categorical time series. When predictions contain `String` or `Categorical` columns, the plot renders step traces instead of continuous lines. Wrap a classifier with [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) and plot both hard predictions and probability distributions:
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) also handles categorical time series. When predictions contain `String` or `Categorical` columns, the plot renders step traces instead of continuous lines. Wrap a classifier with [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) and plot both hard predictions and probability distributions:
 
 ```python
 import polars as pl

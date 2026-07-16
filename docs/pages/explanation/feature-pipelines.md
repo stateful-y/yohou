@@ -2,7 +2,7 @@
 
 Scikit-Learn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html) and [`FeatureUnion`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.FeatureUnion.html) are the standard tools for transformer
 composition in the Python ML ecosystem. Yohou provides its own counterparts
-([`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/)) because time series
+([`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/)) because time series
 transformers carry obligations that Scikit-Learn's containers do not enforce.
 The most important is the `observation_horizon`: a stateful transformer needs a
 certain number of past observations to produce valid output. When transformers are
@@ -16,8 +16,8 @@ statefulness: each transformer may maintain an internal memory buffer through
 component. Yohou's composition classes handle all three automatically.
 
 Three patterns cover the common cases. Sequential composition
-([`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/)) chains steps in order. Parallel composition
-([`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/)) runs steps independently on the same
+([`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/)) chains steps in order. Parallel composition
+([`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/)) runs steps independently on the same
 data and concatenates the results.
 
 For composing forecasters rather than transformers, see
@@ -25,11 +25,11 @@ For composing forecasters rather than transformers, see
 
 ## FeaturePipeline
 
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains transformers sequentially: each transformer's output feeds
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) chains transformers sequentially: each transformer's output feeds
 into the next. This is the time series equivalent of sklearn's
 [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html), but it respects the temporal contract.
 
-Use [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) when preprocessing steps must execute in order, such as
+Use [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) when preprocessing steps must execute in order, such as
 imputation followed by scaling followed by lag feature extraction.
 
 ```python
@@ -45,10 +45,10 @@ transformer = FeaturePipeline(steps=[
 
 Order matters here. Imputing after scaling would leave NaN gaps in the scaled
 data; computing lag features before scaling would mix raw and scaled values.
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) enforces this ordering while propagating `observation_horizon`
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) enforces this ordering while propagating `observation_horizon`
 and state requirements from each step.
 
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) also supports `inverse_transform`: it applies each step's
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) also supports `inverse_transform`: it applies each step's
 inverse in reverse order, which is needed when a forecaster must map predictions
 back through a `target_transformer`. This requires every step in the pipeline to
 be invertible.
@@ -59,7 +59,7 @@ hyperparameter search.
 
 ## FeatureUnion
 
-[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) runs multiple transformers in parallel and concatenates their outputs
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) runs multiple transformers in parallel and concatenates their outputs
 column-wise. This is useful when you want features from different sources: lag
 features alongside rolling statistics alongside calendar features.
 
@@ -85,7 +85,7 @@ This preserves the panel column convention.
 
 ## ColumnTransformer
 
-[`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) applies different transformers to different column subsets. This
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) applies different transformers to different column subsets. This
 is the time series analogue of sklearn's
 [`ColumnTransformer`](https://scikit-learn.org/stable/modules/generated/sklearn.compose.ColumnTransformer.html),
 adapted for polars DataFrames with a time column. It is useful when different
@@ -106,11 +106,11 @@ Columns not matched by any transformer are handled by the `remainder` parameter:
 `"drop"` (the default) discards them, `"passthrough"` keeps them unchanged, or
 a transformer instance applies a default transformation.
 
-Like [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) supports `n_jobs` for parallel
+Like [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) supports `n_jobs` for parallel
 execution, `transformer_weights` for scaling outputs, and
 `verbose_feature_names_out` for panel-aware column prefixing.
 
-Internally, [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) strips the `"time"` column before routing data
+Internally, [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) strips the `"time"` column before routing data
 to individual transformers, then reattaches it in the final output. This prevents
 column index mismatches that would occur if sklearn's internal bookkeeping tried
 to track the time column.
@@ -125,22 +125,22 @@ A `RollingStatisticsTransformer(window_size=7)` has `observation_horizon == 7`.
 When you compose transformers, the combined `observation_horizon` depends on the
 composition pattern:
 
-**[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/)**: the combined `observation_horizon` is the **sum** across
+**[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/)**: the combined `observation_horizon` is the **sum** across
 all steps. Each step's `transform` drops its first `observation_horizon` rows
 from the output, so the next step receives fewer rows. The pipeline must receive
 enough input for every step to produce at least one valid row after all the
-dropoffs accumulate. A pipeline of [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/) (0) followed by
+dropoffs accumulate. A pipeline of [`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/) (0) followed by
 `LagTransformer(lag=[1, 2])` (2) has a combined `observation_horizon` of 2.
 A pipeline of `LagTransformer(lag=[1, 2])` (2) followed by
 `RollingStatisticsTransformer(window_size=3)` (3) has a combined horizon of 5.
 
-**[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)**: the combined `observation_horizon` is the **maximum** across
+**[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)**: the combined `observation_horizon` is the **maximum** across
 all transformers. Each branch receives the same input, so the bottleneck is the
 branch that needs the most history.
 
-**[`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/)**: the combined `observation_horizon` is the **maximum**
+**[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/)**: the combined `observation_horizon` is the **maximum**
 across all transformers applied to their respective columns, following the same
-logic as [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/).
+logic as [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/).
 
 Forecasters read `observation_horizon` from their `feature_transformer` and
 `target_transformer` to determine how much history to retain in `_y_observed`
@@ -159,13 +159,13 @@ observe-then-transform, and `rewind_transform` rolls the buffer back to an earli
 time and retransforms from there. The composition classes propagate `observe`,
 `rewind`, `observe_transform`, and `rewind_transform` calls to every component:
 
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) forwards these calls **sequentially** through each step. When
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) forwards these calls **sequentially** through each step. When
 `observe_transform` is called, the first step observes and transforms the new
 data, then its output is passed to the next step, and so on. `rewind_transform`
 replays the full input from scratch, discards the warmup rows, and resets each
 step's buffer.
 
-[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) and [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) forward these calls **in parallel** to
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) and [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) forward these calls **in parallel** to
 all child transformers. Each transformer manages its own buffer independently.
 The results are aligned by the `"time"` column before horizontal concatenation,
 so transformers with different `observation_horizon` values still produce a
@@ -177,8 +177,8 @@ stateful features.
 
 ## Composability
 
-Sequential and parallel patterns compose freely. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) can be a step
-inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), and the combined transformer can serve as the
+Sequential and parallel patterns compose freely. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) can be a step
+inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), and the combined transformer can serve as the
 `feature_transformer` or `target_transformer` for any forecaster:
 
 ```python
@@ -195,12 +195,12 @@ transformer = FeaturePipeline(steps=[
 ```
 
 The observation horizon of this nested structure is the sum of the pipeline's
-steps: 0 ([`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/)) + max(7, 7) ([`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)) = 7. State propagation,
+steps: 0 ([`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/)) + max(7, 7) ([`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)) = 7. State propagation,
 feature naming, and panel-aware prefixing all carry through the nesting without
 any additional configuration.
 
 ## Connections
 
-[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) are described in [Stationarity](stationarity.md).
+[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) are described in [Stationarity](stationarity.md).
 
 For practical recipes, see [How to Compose Feature Pipelines](../how-to/compose-feature-pipelines.md). The compose API is documented in the [yohou.compose reference](/pages/api/compose/).

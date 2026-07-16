@@ -1,6 +1,6 @@
 # How to Compose Feature Pipelines
 
-This guide shows you how to combine transformers into feature engineering pipelines using [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/). Use this when a single transformer is not enough and you need sequential processing, parallel feature branches, or both.
+This guide shows you how to combine transformers into feature engineering pipelines using [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/). Use this when a single transformer is not enough and you need sequential processing, parallel feature branches, or both.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ This guide shows you how to combine transformers into feature engineering pipeli
 
 ## Chain Transformers Sequentially
 
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains transformers so that the output of each step feeds into the next. Pass a list of `(name, transformer)` tuples:
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) chains transformers so that the output of each step feeds into the next. Pass a list of `(name, transformer)` tuples:
 
 ```python
 from yohou.compose import FeaturePipeline
@@ -28,7 +28,7 @@ pipeline.fit(y_train)
 y_transformed = pipeline.transform(y_train)
 ```
 
-Steps execute in order: [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) removes the seasonal component, then [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) creates autoregressive features from the differenced series.
+Steps execute in order: [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) removes the seasonal component, then [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) creates autoregressive features from the differenced series.
 
 The pipeline's `observation_horizon` is the cumulative sum across all steps, since each step's output feeds into the next:
 
@@ -38,7 +38,7 @@ print(pipeline.observation_horizon)  # 12 + 3 = 15
 
 ## Run Transformers in Parallel
 
-[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) runs multiple transformers on the same input and concatenates their outputs column-wise:
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) runs multiple transformers on the same input and concatenates their outputs column-wise:
 
 ```python
 from yohou.compose import FeatureUnion
@@ -61,7 +61,7 @@ print(features.observation_horizon)  # max(12, 12) = 12
 
 ## Apply Different Transformers to Different Columns
 
-[`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) routes each column subset to a dedicated transformer, then concatenates the results. Use this instead of `FeatureUnion` when different columns need different treatment:
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) routes each column subset to a dedicated transformer, then concatenates the results. Use this instead of `FeatureUnion` when different columns need different treatment:
 
 ```python
 from yohou.compose import ColumnTransformer
@@ -127,7 +127,7 @@ feature_transformer = FeaturePipeline([
 ])
 ```
 
-Pass the composed transformer to a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/):
+Pass the composed transformer to a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/):
 
 ```python
 from yohou.point import PointReductionForecaster

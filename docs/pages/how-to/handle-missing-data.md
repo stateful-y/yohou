@@ -15,8 +15,8 @@ passing data through a forecasting pipeline.
 ## Place Imputation Before Stateful Transformers
 
 Imputation belongs **before** stateful transformers such as
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) or
-[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/).
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) or
+[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/).
 Stateful transformers maintain look-back windows, so if a gap reaches them they
 propagate `null` values through the window and the regressor receives incomplete
 feature rows. Place imputation first in the pipeline to ensure every downstream
@@ -37,7 +37,7 @@ pipeline = FeaturePipeline([
 
 ## Interpolate or Fill with SimpleTimeImputer
 
-[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleTimeImputer/)
+[`SimpleTimeImputer`](/pages/api/generated/yohou.preprocessing.SimpleTimeImputer/)
 offers time-aware gap-filling methods.
 
 If your series is smooth and continuously varying (temperature, price), use
@@ -76,7 +76,7 @@ imputer = SimpleTimeImputer(method="forward", limit=3)
 ## Fill with a Global Statistic
 
 When temporal order does not matter and you just need a fast baseline, use
-[`SimpleImputer`](/pages/api/generated/yohou.preprocessing.imputation.SimpleImputer/),
+[`SimpleImputer`](/pages/api/generated/yohou.preprocessing.SimpleImputer/),
 a wrapper around sklearn's imputer. It replaces gaps with a column-wide
 statistic (mean, median, most frequent, or a constant) and ignores the time
 axis entirely:
@@ -92,7 +92,7 @@ otherwise the time-aware methods above produce more faithful fills.
 
 ## Fill from Seasonal Patterns with SeasonalImputer
 
-[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/)
+[`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.SeasonalImputer/)
 borrows from the same position in adjacent cycles rather than drawing a line
 between neighbouring observations. This is appropriate when the series has a
 pronounced seasonal shape and the gaps fall at a predictable point in the cycle
@@ -110,7 +110,7 @@ imputer = SeasonalImputer(period=7, fill_method="seasonal_median")
 
 ## Use KNN Imputation for Complex Patterns
 
-[`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.imputation.TransformedSpaceKNNImputer/)
+[`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.TransformedSpaceKNNImputer/)
 performs nearest-neighbour imputation and is appropriate when the series has
 complex structure that neither interpolation nor seasonal borrowing captures
 well. It is also the most computationally expensive, so prefer the simpler
@@ -134,7 +134,7 @@ imputer = TransformedSpaceKNNImputer(
 ## Apply Custom Imputation Logic
 
 For domain-specific rules, wrap any callable in
-[`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/)
+[`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.FunctionTransformer/)
 and place it at the same position in the pipeline:
 
 `FunctionTransformer` strips the `time` column before calling the function

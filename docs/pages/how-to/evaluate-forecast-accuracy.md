@@ -39,14 +39,14 @@ mae = scorer.score(y_test, y_pred)
 ```
 
 If you need to compare across series with different scales, use
-[`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/)
+[`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/)
 instead. See [Forecast Accuracy](../explanation/forecast-accuracy.md) for
 guidance on choosing the right metric, and the
 [metrics API reference](../api/metrics.md) for the complete list.
 
 ## 2. Evaluate with Cross-Validation
 
-Use [`cross_validate`](/pages/api/generated/yohou.model_selection.validation.cross_validate/)
+Use [`cross_validate`](/pages/api/generated/yohou.model_selection.cross_validate/)
 with a temporal splitter to get robust estimates across multiple
 train-test folds:
 
@@ -73,7 +73,7 @@ To collect predictions per forecast origin rather than aggregate scores, see
 
 ## 3. Compare Against a Naive Baseline
 
-Evaluate a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/)
+Evaluate a [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/)
 forecaster on the same splits to confirm your model outperforms simple
 benchmarks:
 
@@ -106,7 +106,7 @@ print(f"Baseline MAE: {baseline_scores['score'].mean():.2f}")
 
 ## 4. Obtain Out-of-Fold Predictions
 
-Use [`cross_val_predict`](/pages/api/generated/yohou.model_selection.validation.cross_val_predict/)
+Use [`cross_val_predict`](/pages/api/generated/yohou.model_selection.cross_val_predict/)
 to collect predictions from each fold rather than scores. The returned
 DataFrame contains a `split` column identifying which fold produced each
 prediction, which is useful for diagnostics and visualization:
@@ -166,9 +166,9 @@ configuration. All metrics appear in `cv_results_`.
 
 ## 6. Evaluate Interval Forecasts
 
-Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/)
+Use [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/)
 to check whether intervals contain the true values at the claimed rate,
-and [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/)
+and [`IntervalScore`](/pages/api/generated/yohou.metrics.IntervalScore/)
 to penalize both under-coverage and unnecessarily wide intervals:
 
 ```python
@@ -198,7 +198,7 @@ interval forecasting workflow.
 ## 7. Apply Time Weighting
 
 Weight recent errors more heavily by constructing the scorer with an
-[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/).
+[`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/).
 Weighting is a constructor parameter, so it is part of the scorer's
 configuration rather than a per-call argument:
 
@@ -219,8 +219,8 @@ for the full guide.
 ## 8. Evaluate Classification Forecasts
 
 For class-probability forecasts, use proper scoring rules such as
-[`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) and
-[`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/).
+[`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/) and
+[`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/).
 See [Forecast with Class Probabilities](class-probability-forecasting.md) for
 the full classification workflow and scoring examples.
 

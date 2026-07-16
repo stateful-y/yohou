@@ -29,7 +29,7 @@ y = pl.DataFrame({
 This represents two groups (`store_1`, `store_2`), each with two variables (`sales`,
 `returns`). Columns without a `__` (other than `"time"`) are *global* columns that
 belong to the dataset as a whole rather than to any specific group. The
-[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) utility
+[`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/) utility
 parses this structure, returning a list of global column names and a dictionary
 mapping each group prefix to its full column names.
 
@@ -52,11 +52,11 @@ Yohou enforces two constraints on panel structure at fit time:
 The [`yohou.utils.panel`](/pages/api/utils/#panel) module provides helper functions
 for working with panel DataFrames:
 
-- [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) parses a DataFrame into global columns and a group dictionary.
-- [`get_group_df`](/pages/api/generated/yohou.utils.panel.get_group_df/) extracts the columns for a single group with prefixes removed, plus any global columns.
-- [`select_panel_columns`](/pages/api/generated/yohou.utils.panel.select_panel_columns/) filters a DataFrame to keep only columns belonging to specified groups.
-- [`dict_to_panel`](/pages/api/generated/yohou.utils.panel.dict_to_panel/) converts a dictionary of per-group DataFrames back into a single panel DataFrame with prefixed columns.
-- [`panel_aware_rename`](/pages/api/generated/yohou.utils.panel.panel_aware_rename/), [`panel_aware_prefix`](/pages/api/generated/yohou.utils.panel.panel_aware_prefix/), and [`panel_aware_suffix`](/pages/api/generated/yohou.utils.panel.panel_aware_suffix/) apply renaming operations while preserving the group prefix structure.
+- [`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/) parses a DataFrame into global columns and a group dictionary.
+- [`get_group_df`](/pages/api/generated/yohou.utils.get_group_df/) extracts the columns for a single group with prefixes removed, plus any global columns.
+- [`select_panel_columns`](/pages/api/generated/yohou.utils.select_panel_columns/) filters a DataFrame to keep only columns belonging to specified groups.
+- [`dict_to_panel`](/pages/api/generated/yohou.utils.dict_to_panel/) converts a dictionary of per-group DataFrames back into a single panel DataFrame with prefixed columns.
+- [`panel_aware_rename`](/pages/api/generated/yohou.utils.panel_aware_rename/), [`panel_aware_prefix`](/pages/api/generated/yohou.utils.panel_aware_prefix/), and [`panel_aware_suffix`](/pages/api/generated/yohou.utils.panel_aware_suffix/) apply renaming operations while preserving the group prefix structure.
 
 These utilities are mostly used internally by forecasters and transformers, but they
 are also available for custom preprocessing or analysis pipelines.
@@ -74,7 +74,7 @@ The global strategy treats panel groups as separate entities that share a single
 model. Each group gets its own transformer state and observation buffers, so lag
 features and rolling statistics are computed independently per group. The forecaster
 strips the group prefix before passing data to transformers, so a
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
 operating on `store_1` sees a plain `sales` column, not `store_1__sales`. After
 transformation, rows from all groups are stacked into a single training dataset with
 a consistent feature schema, and one estimator (for example, one gradient boosting
@@ -112,11 +112,11 @@ Multivariate is most compelling for small panels (fewer than ~20 groups) where
 cross-series correlations are known to be strong, such as closely related product
 families or geographically adjacent weather stations.
 
-### Local (via [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/))
+### Local (via [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/))
 
 The local approach is not a value of `panel_strategy`. Instead, it is achieved by
 wrapping any forecaster in
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/),
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/),
 which fits a separate, independent forecaster instance for each group.
 Group A's model is trained only on group A's data; group B's model only on group B's.
 The groups never interact.
@@ -133,7 +133,7 @@ carries strong business meaning (for example, fundamentally different product
 categories that should never share model parameters).
 
 For the implementation perspective on
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/),
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/),
 see [Forecaster Composition](forecaster-composition.md).
 
 ### Choosing a strategy
@@ -152,7 +152,7 @@ correlations are known to be informative.
 
 Forecasters detect panel structure automatically at fit time. When `panel_strategy`
 is `"global"`, the forecaster calls
-[`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) on the
+[`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/) on the
 input, validates that all groups have the same variable suffixes, creates per-group
 transformer instances, and builds a combined training dataset by stacking the
 per-group tabularized rows. The fitted model then sees rows from all groups with a
@@ -167,7 +167,7 @@ receive daily sales for most stores but weekly reconciled data for a handful, an
 yohou can update and predict each subset on its own schedule without touching the
 others. When `groups` is `None` (the default), all groups are included. The same
 parameter is available on
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/),
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/),
 including on `observe_predict` and `observe_predict_interval`.
 
 ### How transformers interact with panel data
@@ -176,7 +176,7 @@ Transformers do not need explicit panel-awareness code. When `panel_strategy="gl
 the forecaster handles the panel layer: it strips the group prefix, passes
 unprefixed data to the transformer, collects the output, and re-adds the prefix.
 Each group gets its own transformer clone with independent state. A
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
 applied to panel data computes lags within each group, never bleeding one group's
 history into another's lag features. Observation horizons and memory buffers are
 also tracked per group.
@@ -212,7 +212,7 @@ collapses both time axes but preserves the component and group structure.
 ### Filtering and weighting groups
 
 Scorers such as
-[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/)
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/)
 accept a `groups` parameter that can be a list of group names to include or a
 dictionary mapping group names to weights:
 
@@ -232,8 +232,8 @@ modes and their relationship to model selection.
 ## Cross-Validation with Panel Data
 
 All built-in splitters
-([`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/),
-[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/))
+([`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/),
+[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/))
 support panel data natively. They operate on row indices of the full DataFrame,
 keeping all groups together in each train/test split. This means a given time step
 is either in the training set or the test set for all groups simultaneously, which
@@ -245,7 +245,7 @@ information from one group into the training window of another).
 Panel data builds on the time column contract and the three data shapes (univariate,
 multivariate, panel) described in [Core Concepts](core-concepts.md). Composite
 forecasters such as
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/)
 are covered in [Forecaster Composition](forecaster-composition.md), which explains
 how `observe` and `rewind` propagate through nested components.
 [Forecast Accuracy](forecast-accuracy.md) covers the full set of aggregation modes

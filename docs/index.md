@@ -61,11 +61,11 @@ Yohou is a time series forecasting framework built on top of Scikit-Learn's ecos
 - **Sklearn-compatible**: Standard `fit`/`predict` API with a consistent interface across all forecaster types.
 - **Reduction forecasting**: Wrap any sklearn regressor or classifier and Yohou handles windowing, tabularization, and recursive prediction automatically.
 - **Point, interval, and class-probability forecasting**: From naive baselines to conformal prediction intervals and calibrated class-probability distributions.
-- **Panel data**: First-class support for multiple related time series via the `__` column naming convention, with per-group models via [`LocalPanelForecaster`](pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster.md).
+- **Panel data**: First-class support for multiple related time series via the `__` column naming convention, with per-group models via [`LocalPanelForecaster`](pages/api/generated/yohou.compose.LocalPanelForecaster.md).
 - **Incremental observation**: Call `observe()` to feed new data, `rewind()` to roll back state, and `observe_predict()` to fast-forward and forecast in one step without retraining.
 - **Stateful transformers**: All transformers are stateful and fitted separately from the forecaster, supporting incremental observation and rewind in full preprocessing pipelines.
 - **Composable pipelines**: Decomposition pipelines, feature pipelines, feature unions, and column transformers that compose like sklearn.
-- **Cross-validation and model selection**: Temporal splitters ([`ExpandingWindowSplitter`](pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter.md), [`SlidingWindowSplitter`](pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter.md)) and [`GridSearchCV`](pages/api/generated/yohou.model_selection.search.GridSearchCV.md)/[`RandomizedSearchCV`](pages/api/generated/yohou.model_selection.search.RandomizedSearchCV.md) with no data leakage.
+- **Cross-validation and model selection**: Temporal splitters ([`ExpandingWindowSplitter`](pages/api/generated/yohou.model_selection.ExpandingWindowSplitter.md), [`SlidingWindowSplitter`](pages/api/generated/yohou.model_selection.SlidingWindowSplitter.md)) and [`GridSearchCV`](pages/api/generated/yohou.model_selection.GridSearchCV.md)/[`RandomizedSearchCV`](pages/api/generated/yohou.model_selection.RandomizedSearchCV.md) with no data leakage.
 - **Metrics**: Point, interval, and class-probability scorers with stepwise, vintagewise, componentwise, and groupwise aggregation modes.
 
 ## What's New

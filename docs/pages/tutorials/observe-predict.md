@@ -1,6 +1,6 @@
 # Observe/Predict Workflow
 
-In this tutorial, we will walk through a two-year test set in six-month batches, updating forecasts as new data arrives. Along the way, we will compare a single-shot prediction against a full walk-forward loop and score them both with [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/).
+In this tutorial, we will walk through a two-year test set in six-month batches, updating forecasts as new data arrives. Along the way, we will compare a single-shot prediction against a full walk-forward loop and score them both with [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/).
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
@@ -38,7 +38,7 @@ Train: 163 months, Test: 24 months
 
 ## 2. Fit the Forecaster
 
-Now build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with seasonal differencing and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
+Now build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) with seasonal differencing and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
 
 ```python
 from yohou.compose import FeaturePipeline
@@ -86,7 +86,7 @@ Notice that all six rows share the same `vintage_time` (July 1992). This tells y
 
 ## 4. Walk-Forward with observe_predict
 
-Now that we have a baseline prediction, let's see how the forecaster performs when it can update itself with actual observations. [`observe_predict`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) steps through `y_test` in batches of size `stride`, observing actual values and issuing a fresh forecast after each batch. Setting `stride=forecasting_horizon` tiles the test set with no gaps or overlaps:
+Now that we have a baseline prediction, let's see how the forecaster performs when it can update itself with actual observations. [`observe_predict`](/pages/api/generated/yohou.point.PointReductionForecaster/) steps through `y_test` in batches of size `stride`, observing actual values and issuing a fresh forecast after each batch. Setting `stride=forecasting_horizon` tiles the test set with no gaps or overlaps:
 
 ```python
 y_pred_loop = forecaster.observe_predict(y=y_test, stride=forecasting_horizon)
@@ -172,10 +172,10 @@ You should see each vintage as a separate colored segment overlaid on the actual
 
 We used `observe_predict` to walk through a two-year test set in six-month batches, updating the forecaster's observation window at each stride:
 
-- Produced a single-shot forecast with [`predict`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) and observed that all predictions share one `vintage_time`
-- Ran [`observe_predict`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) to step through the test set, issuing fresh forecasts after each observed batch
-- Scored both approaches with [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) and saw that walk-forward evaluation gives a fuller picture than a single holdout
-- Visualized all prediction vintages against actuals with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/)
+- Produced a single-shot forecast with [`predict`](/pages/api/generated/yohou.point.PointReductionForecaster/) and observed that all predictions share one `vintage_time`
+- Ran [`observe_predict`](/pages/api/generated/yohou.point.PointReductionForecaster/) to step through the test set, issuing fresh forecasts after each observed batch
+- Scored both approaches with [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/) and saw that walk-forward evaluation gives a fuller picture than a single holdout
+- Visualized all prediction vintages against actuals with [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/)
 
 ## Next Steps
 

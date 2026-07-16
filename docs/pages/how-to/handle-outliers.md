@@ -27,7 +27,7 @@ Before choosing a handler, decide what the outlier represents:
 ## 2. Clip to Known Bounds
 
 When you know the plausible range for your data, use
-[`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/)
+[`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.OutlierThresholdHandler/)
 with fixed thresholds. Pass `None` to leave one side unbounded:
 
 ```python
@@ -48,7 +48,7 @@ handler = OutlierThresholdHandler(low=0.0, high=1000.0, strategy="nan")
 ## 3. Clip to Data-Driven Bounds
 
 When you do not have domain knowledge for fixed thresholds, use
-[`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/)
+[`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.OutlierPercentileHandler/)
 to learn bounds from training data. During `fit`, the handler records the
 requested percentiles; during `transform`, it clips (or nullifies) values
 outside those bounds:
@@ -67,7 +67,7 @@ with null instead of clipping.
 ## 4. Place in a Pipeline
 
 Both handlers should appear early in a
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/),
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/),
 before lag features and stateful stationarity transforms (which would otherwise
 propagate extreme values into derived columns):
 
@@ -91,7 +91,7 @@ every interval produced by the forecaster. Two complementary strategies help:
 period so extreme values do not enter the conformity score distribution.
 
 **2. Use a normalised conformity score.**
-[`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/)
+[`GammaResidual`](/pages/api/generated/yohou.metrics.GammaResidual/)
 divides each residual by the magnitude of the prediction, preventing
 large magnitude outliers from dominating the calibration quantile:
 

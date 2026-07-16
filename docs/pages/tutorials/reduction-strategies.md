@@ -1,6 +1,6 @@
 # Reduction Strategies
 
-In this tutorial, we will compare the three reduction strategies available in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/): multi-output (the default), direct, and dir-rec. We will fit each strategy on the same dataset, compare per-step error, and see how `target_as_feature` affects the feature matrix.
+In this tutorial, we will compare the three reduction strategies available in [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/): multi-output (the default), direct, and dir-rec. We will fit each strategy on the same dataset, compare per-step error, and see how `target_as_feature` affects the feature matrix.
 
 !!! tip "Try it interactively"
     <!-- COMPANION_NOTEBOOKS -->
@@ -11,7 +11,7 @@ In this tutorial, we will compare the three reduction strategies available in [`
 
 ## 1. Load and Prepare Data
 
-We resample the daily sunspot series to monthly frequency using [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/), then split it into train and test sets:
+We resample the daily sunspot series to monthly frequency using [`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/), then split it into train and test sets:
 
 ```python
 from yohou.datasets import fetch_sunspot
@@ -27,7 +27,7 @@ y_train, y_test = train_test_split(y, test_size=forecasting_horizon)
 
 ## 2. Multi-Output Strategy (Default)
 
-The multi-output strategy trains a single model that predicts all `H` steps at once. This is the fastest approach and works well with sklearn's `MultiOutputRegressor` wrapper. We wrap a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) to build the lag features each strategy shares:
+The multi-output strategy trains a single model that predicts all `H` steps at once. This is the fastest approach and works well with sklearn's `MultiOutputRegressor` wrapper. We wrap a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) to build the lag features each strategy shares:
 
 ```python
 from sklearn.ensemble import RandomForestRegressor
@@ -80,7 +80,7 @@ y_pred_dirrec = fc_dirrec.predict(forecasting_horizon=forecasting_horizon)
 
 ## 5. Compare Per-Step Error
 
-Score each strategy with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and look at how error varies across the forecast horizon:
+Score each strategy with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) and look at how error varies across the forecast horizon:
 
 ```python
 from yohou.metrics import MeanAbsoluteError
@@ -107,7 +107,7 @@ Dir-rec         MAE=3.39
 
 The dir-rec MAE is dramatically lower on this single split. In practice, always cross-validate to confirm that this advantage generalises across folds.
 
-Visualize per-step error with [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/) to see where each strategy excels:
+Visualize per-step error with [`plot_score_per_step`](/pages/api/generated/yohou.plotting.plot_score_per_step/) to see where each strategy excels:
 
 ```python
 from yohou.plotting import plot_score_per_step
@@ -152,7 +152,7 @@ This MAE matches the Direct strategy in section 3 exactly, because `target_as_fe
 
 ## What You Built
 
-We compared three reduction strategies on the same dataset, visualized per-step error with [`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/) to understand their tradeoffs, and explored how `target_as_feature` adds lagged target information to the feature matrix.
+We compared three reduction strategies on the same dataset, visualized per-step error with [`plot_score_per_step`](/pages/api/generated/yohou.plotting.plot_score_per_step/) to understand their tradeoffs, and explored how `target_as_feature` adds lagged target information to the feature matrix.
 
 ## Next Steps
 

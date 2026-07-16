@@ -16,7 +16,7 @@ transformation needs.
 
 ## 1. Subclass `BaseTransformer`
 
-Create a class that extends [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+Create a class that extends [`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/)
 and implement three methods:
 
 - **`_fit(X, y=None)`**: store any state computed from the training data.

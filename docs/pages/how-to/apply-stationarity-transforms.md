@@ -14,14 +14,14 @@ This guide shows you how to remove trends and seasonal patterns from time series
 
 | Situation | Recommended approach |
 |---|---|
-| Simple seasonal pattern, fixed period | [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) as `target_transformer` |
-| Trend + seasonality, or component inspection | [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) with `store_residuals=True` |
-| Multiple seasonal periods or non-integer periods | [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) with multiple harmonics |
-| Multiplicative seasonality | `DecompositionPipeline` with [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) as `target_transformer` |
+| Simple seasonal pattern, fixed period | [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) as `target_transformer` |
+| Trend + seasonality, or component inspection | [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) with `store_residuals=True` |
+| Multiple seasonal periods or non-integer periods | [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/) with multiple harmonics |
+| Multiplicative seasonality | `DecompositionPipeline` with [`LogTransformer`](/pages/api/generated/yohou.stationarity.LogTransformer/) as `target_transformer` |
 
 ## Remove a Seasonal Pattern with Differencing
 
-If the series has a single, fixed-period seasonal pattern, use [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) as a `target_transformer`. It subtracts each value from its value one full cycle ago and automatically inverts the transform during prediction:
+If the series has a single, fixed-period seasonal pattern, use [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) as a `target_transformer`. It subtracts each value from its value one full cycle ago and automatically inverts the transform during prediction:
 
 ```python
 from yohou.point import PointReductionForecaster
@@ -40,7 +40,7 @@ Set `seasonality` to the number of observations per period (12 for monthly data 
 
 ## Decompose Trend and Seasonality
 
-If the series has both a trend and a seasonal component, use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) to model each explicitly. Each forecaster in the list, [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) for a linear baseline and [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) for the periodic component, fits the residuals left by the previous ones:
+If the series has both a trend and a seasonal component, use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) to model each explicitly. Each forecaster in the list, [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) for a linear baseline and [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) for the periodic component, fits the residuals left by the previous ones:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -61,7 +61,7 @@ With `store_residuals=True`, inspect the residuals after each component via `pip
 
 ## Handle Multiplicative Seasonality
 
-If the seasonal amplitude grows proportionally with the level of the series, apply a [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/) to convert multiplicative patterns into additive ones:
+If the seasonal amplitude grows proportionally with the level of the series, apply a [`LogTransformer`](/pages/api/generated/yohou.stationarity.LogTransformer/) to convert multiplicative patterns into additive ones:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -84,7 +84,7 @@ The log transform is applied before fitting and automatically inverted during pr
 
 ## Apply to Panel Data
 
-Stationarity transforms work automatically with panel data. Wrap the forecaster in [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) so each group receives the transform independently:
+Stationarity transforms work automatically with panel data. Wrap the forecaster in [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/) so each group receives the transform independently:
 
 ```python
 from yohou.compose import LocalPanelForecaster

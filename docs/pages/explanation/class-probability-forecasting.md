@@ -30,7 +30,7 @@ lifetime of the forecaster.
 
 ## The Reduction Approach
 
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) applies the same reduction pattern described in
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) applies the same reduction pattern described in
 [Reduction Forecasting](reduction-forecasting.md): it tabularizes a time series into
 feature rows and trains a scikit-learn estimator on the result. The difference is that
 the estimator is a *classifier* (any scikit-learn classifier implementing
@@ -42,7 +42,7 @@ The pipeline at fit time prepends two steps to the standard tabularization:
 2. **Label encoding**: categorical targets are converted to integer codes (e.g., `{"cloudy": 0, "rainy": 1, "sunny": 2}`).
 
 The encoded series is then tabularized and the classifier is trained, following the
-same mechanics as [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+same mechanics as [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/).
 
 At prediction time, the classifier's `predict_proba()` output is mapped back to
 columns named after the original class labels.
@@ -54,7 +54,7 @@ treatment.
 
 ### Multi-step strategies
 
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) supports the `"multi-output"` and `"direct"`
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) supports the `"multi-output"` and `"direct"`
 reduction strategies. The `"dir-rec"` strategy available for point and interval
 forecasters is not supported. Recursive probability chaining requires feeding
 predicted class labels back as features, and errors in early steps compound
@@ -130,31 +130,31 @@ the next step with the updated history.
 Yohou provides three families of scorers for class-probability forecasts:
 
 **Proper scoring rules** operate directly on predicted probability distributions.
-[`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/),
-[`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), and
-[`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.class_proba.RankedProbabilityScore/)
+[`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/),
+[`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/), and
+[`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.RankedProbabilityScore/)
 are all uniquely minimized when the predicted probabilities match the true class
 frequencies. This property makes them the most reliable choice for model
 selection. Among these:
 
-- [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) penalizes confident wrong predictions most harshly (predicting 0.01 for the true class is catastrophic).
-- [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) measures the mean squared difference between predicted probabilities and one-hot encoded true labels, making it more forgiving of near-misses.
-- [`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.class_proba.RankedProbabilityScore/) compares cumulative distributions and respects ordinal class ordering. An optional `class_order` parameter specifies the ordering explicitly.
+- [`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/) penalizes confident wrong predictions most harshly (predicting 0.01 for the true class is catastrophic).
+- [`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/) measures the mean squared difference between predicted probabilities and one-hot encoded true labels, making it more forgiving of near-misses.
+- [`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.RankedProbabilityScore/) compares cumulative distributions and respects ordinal class ordering. An optional `class_order` parameter specifies the ordering explicitly.
 
 **Hard-label scorers** convert probabilities to class labels via argmax, then
 compute standard classification metrics.
-[`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/),
-[`Precision`](/pages/api/generated/yohou.metrics.classification.Precision/),
-[`Recall`](/pages/api/generated/yohou.metrics.classification.Recall/), and
-[`FBetaScore`](/pages/api/generated/yohou.metrics.classification.FBetaScore/)
+[`Accuracy`](/pages/api/generated/yohou.metrics.Accuracy/),
+[`Precision`](/pages/api/generated/yohou.metrics.Precision/),
+[`Recall`](/pages/api/generated/yohou.metrics.Recall/), and
+[`FBetaScore`](/pages/api/generated/yohou.metrics.FBetaScore/)
 all discard confidence information. `Precision`, `Recall`, and `FBetaScore`
 support `average` modes (`"macro"`, `"micro"`, `"weighted"`) for multiclass
 targets.
 
 **Ranking scorers** evaluate how well predicted probabilities separate classes
 across decision thresholds.
-[`ROCAuC`](/pages/api/generated/yohou.metrics.classification.ROCAuC/) and
-[`PRAuC`](/pages/api/generated/yohou.metrics.classification.PRAuC/) measure
+[`ROCAuC`](/pages/api/generated/yohou.metrics.ROCAuC/) and
+[`PRAuC`](/pages/api/generated/yohou.metrics.PRAuC/) measure
 discrimination ability (whether the model assigns higher probabilities to
 correct classes) without requiring well-calibrated probability values. Both use
 a one-vs-rest strategy for multiclass problems.
@@ -178,7 +178,7 @@ at face value. A logistics planner who sees 80% probability of high demand
 allocates resources accordingly. If the model is overconfident and the true rate
 is closer to 50%, those resource decisions are systematically wrong.
 
-[`plot_calibration()`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) produces reliability diagrams that plot predicted
+[`plot_calibration()`](/pages/api/generated/yohou.plotting.plot_calibration/) produces reliability diagrams that plot predicted
 probabilities against observed frequencies. A perfectly calibrated model follows
 the diagonal. Deviations above the diagonal indicate underconfidence (predicted
 60%, observed 80%); deviations below indicate overconfidence.
@@ -200,7 +200,7 @@ the `groups` parameter and `"groupwise"` aggregation.
 
 ## Ensembles
 
-[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/) combines multiple class-probability forecasters using
+[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/) combines multiple class-probability forecasters using
 two methods. **Soft voting** (the default) averages class probabilities across
 base forecasters, optionally with custom `weights`. It preserves calibration
 better than hard voting because it operates on the full probability simplex.
@@ -211,8 +211,8 @@ theory.
 
 ## Connections
 
-- **Preprocessing**: transformers such as [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/), [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/), and [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/) supply exogenous features derived from the time column.
-- **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) accept class-proba scorers such as [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the `scoring` parameter.
+- **Preprocessing**: transformers such as [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/), [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/), and [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/) supply exogenous features derived from the time column.
+- **Hyperparameter search**: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) accept class-proba scorers such as [`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/) as the `scoring` parameter.
 - **Theory**: [Forecast Accuracy](forecast-accuracy.md) covers metric theory including proper scoring rules.
 - **Tutorial**: [Class-Probability Forecasting](../tutorials/class-proba-forecasting.md) walks through a complete classification workflow.
 - **Practice**: [How to Forecast with Class Probabilities](../how-to/class-probability-forecasting.md) provides step-by-step recipes.

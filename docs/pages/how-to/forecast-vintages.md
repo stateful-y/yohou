@@ -117,7 +117,7 @@ pred = forecaster.predict(
 The `observe_predict` loop accepts all three exogenous parameters. Pass
 `X_forecast` covering the test range with one vintage per observation point,
 then score the rolling predictions with
-[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/):
 
 ```python
 from copy import deepcopy

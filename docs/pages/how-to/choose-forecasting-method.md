@@ -16,19 +16,19 @@ the relevant section for setup details.
 
 | Scenario | Recommended starting point |
 |---|---|
-| Quick benchmark, any series | [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) |
-| Few features, short horizon | [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) + [`Ridge`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html) |
-| Strong trend or seasonality | [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) |
-| Many features, nonlinear patterns | [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) + [`GradientBoostingRegressor`](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html) |
+| Quick benchmark, any series | [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) |
+| Few features, short horizon | [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) + [`Ridge`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html) |
+| Strong trend or seasonality | [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) |
+| Many features, nonlinear patterns | [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) + [`GradientBoostingRegressor`](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html) |
 | Multiple related series | Panel forecasting with `panel_strategy="global"` (default) |
-| Uncertainty quantification needed | [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) wrapping the chosen point forecaster |
-| Only probabilistic forecasts needed | [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) with a quantile or interval regressor directly |
-| Categorical targets | [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) with an sklearn classifier |
-| Combining multiple forecasters | [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/) or [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/) |
+| Uncertainty quantification needed | [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) wrapping the chosen point forecaster |
+| Only probabilistic forecasts needed | [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/) with a quantile or interval regressor directly |
+| Categorical targets | [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) with an sklearn classifier |
+| Combining multiple forecasters | [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/) or [`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/) |
 
 ## 1. Establish a Naive Baseline
 
-Always start here. [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) gives you a score to beat with zero tuning. Set the seasonality to match the dominant cycle in your data (7 for daily with weekly pattern, 12 for monthly with yearly pattern, 1 for non-seasonal):
+Always start here. [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) gives you a score to beat with zero tuning. Set the seasonality to match the dominant cycle in your data (7 for daily with weekly pattern, 12 for monthly with yearly pattern, 1 for non-seasonal):
 
 ```python
 from yohou.point import SeasonalNaive
@@ -42,7 +42,7 @@ Evaluate with cross-validation to establish the score to beat. See [Evaluate For
 
 ## 2. Try a Linear Reduction Model
 
-If the baseline is not accurate enough, fit a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with a linear estimator:
+If the baseline is not accurate enough, fit a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) with a linear estimator:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -56,7 +56,7 @@ If this does not improve on the baseline, the data likely has nonlinear patterns
 
 ## 3. Handle Non-stationarity with Target Transformers
 
-If the series has trend or changing variance, add a target transformer such as [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) or [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/):
+If the series has trend or changing variance, add a target transformer such as [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) or [`LogTransformer`](/pages/api/generated/yohou.stationarity.LogTransformer/):
 
 ```python
 from yohou.stationarity import SeasonalDifferencing, LogTransformer
@@ -78,7 +78,7 @@ See [Apply Stationarity Transforms](apply-stationarity-transforms.md) for the fu
 
 ## 4. Enrich the Feature Set
 
-Add feature transformers one group at a time. Combine [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/), and other transformers using [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/). Check whether cross-validation scores improve after each addition:
+Add feature transformers one group at a time. Combine [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/), [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/), and other transformers using [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/). Check whether cross-validation scores improve after each addition:
 
 ```python
 from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
@@ -114,7 +114,7 @@ forecaster = PointReductionForecaster(
 )
 ```
 
-Use [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) to explore the hyperparameter space efficiently. See [Tune Hyperparameters](tune-hyperparameters.md) for the full procedure.
+Use [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) to explore the hyperparameter space efficiently. See [Tune Hyperparameters](tune-hyperparameters.md) for the full procedure.
 
 ## 6. Choose the Reduction Strategy
 
@@ -139,7 +139,7 @@ See [Reduction Forecasting](../explanation/reduction-forecasting.md) for backgro
 
 ## 7. Use Decomposition for Complex Seasonality
 
-If the series has multiple seasonal components or strong trend, a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) separates the problem into simpler parts. Use [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.trend.PolynomialTrendForecaster/) for trend and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/) for cyclical patterns:
+If the series has multiple seasonal components or strong trend, a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) separates the problem into simpler parts. Use [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) for trend and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/) for cyclical patterns:
 
 ```python
 from yohou.compose import DecompositionPipeline
@@ -158,7 +158,7 @@ forecaster = DecompositionPipeline(
 
 ## 8. Add Prediction Intervals
 
-Once you have a satisfactory point forecaster, wrap it with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) to apply conformal prediction and quantify uncertainty:
+Once you have a satisfactory point forecaster, wrap it with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) to apply conformal prediction and quantify uncertainty:
 
 ```python
 from yohou.interval import SplitConformalForecaster
@@ -171,7 +171,7 @@ interval_forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=14, cover
 intervals = interval_forecaster.predict_interval(coverage_rates=[0.9])
 ```
 
-If you need quantile or interval regression directly (without a point forecaster), use [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) instead. See [Produce Prediction Intervals](interval-forecasting.md) for the full procedure.
+If you need quantile or interval regression directly (without a point forecaster), use [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/) instead. See [Produce Prediction Intervals](interval-forecasting.md) for the full procedure.
 
 ## See Also
 

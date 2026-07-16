@@ -15,7 +15,7 @@ logic.
 
 ## 1. Subclass `BasePointForecaster`
 
-Create a class that extends [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/) and implement
+Create a class that extends [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/) and implement
 two things:
 
 - **`_observation_horizon`** (property): how many recent observations the forecaster needs.

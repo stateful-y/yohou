@@ -12,7 +12,7 @@ The standard term for this procedure is **rolling origin evaluation** (also call
 
 ## Expanding Window Splitting
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) implements the most common temporal cross-validation strategy. The first fold trains on the earliest portion of the series and tests on the window that follows. Each subsequent fold keeps all the previous training data and appends the next slice, so the training set grows monotonically:
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) implements the most common temporal cross-validation strategy. The first fold trains on the earliest portion of the series and tests on the window that follows. Each subsequent fold keeps all the previous training data and appends the next slice, so the training set grows monotonically:
 
 ```text
 Fold 1:  [=== train ===][test]..............
@@ -30,7 +30,7 @@ Three parameters control the geometry of the folds:
 
 ## Sliding Window Splitting
 
-[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) takes a different stance: the training window has a fixed size and slides forward with each fold. As new data enters the training set, equally old data drops off:
+[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/) takes a different stance: the training window has a fixed size and slides forward with each fold. As new data enters the training set, equally old data drops off:
 
 ```text
 Fold 1:  [=== train ===][test]..............
@@ -44,7 +44,7 @@ The `stride` parameter controls how far the window advances between folds. By de
 
 ## Train/Test Split
 
-For a simple one-time partition without cross-validation, [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) splits one or more polars DataFrames chronologically. It accepts either an integer (`test_size=30` for 30 rows) or a float (`test_size=0.2` for 20% of the data) and returns alternating train/test pairs:
+For a simple one-time partition without cross-validation, [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/) splits one or more polars DataFrames chronologically. It accepts either an integer (`test_size=30` for 30 rows) or a float (`test_size=0.2` for 20% of the data) and returns alternating train/test pairs:
 
 ```python
 from yohou.model_selection import train_test_split
@@ -62,7 +62,7 @@ The search classes inherit panel support from the underlying forecaster. After f
 
 ## Checking Splitter Alignment
 
-When `test_size` is not an exact multiple of `stride`, some forecast steps may be evaluated on more vintages than others, producing unbalanced scores. [`check_cv_alignment`](/pages/api/generated/yohou.model_selection.split.check_cv_alignment/) inspects this relationship before you run a full search:
+When `test_size` is not an exact multiple of `stride`, some forecast steps may be evaluated on more vintages than others, producing unbalanced scores. [`check_cv_alignment`](/pages/api/generated/yohou.model_selection.check_cv_alignment/) inspects this relationship before you run a full search:
 
 ```python
 from yohou.model_selection import SlidingWindowSplitter, check_cv_alignment
@@ -81,7 +81,7 @@ The returned dictionary includes:
 
 Call this early to avoid surprises in evaluation results.
 
-The helper [`check_cv`](/pages/api/generated/yohou.model_selection.split.check_cv/) normalizes various CV specifications into a splitter instance. Passing `None` produces a default `ExpandingWindowSplitter` with 5 folds; passing an integer produces an expanding window with that many folds. This is the same normalization that the search classes apply internally.
+The helper [`check_cv`](/pages/api/generated/yohou.model_selection.check_cv/) normalizes various CV specifications into a splitter instance. Passing `None` produces a default `ExpandingWindowSplitter` with 5 folds; passing an integer produces an expanding window with that many folds. This is the same normalization that the search classes apply internally.
 
 ## Time-Weighted Scoring
 
@@ -89,9 +89,9 @@ Not all test errors deserve equal attention. A forecast that performed well last
 
 The most commonly used weighters for scoring map a key `pl.Series` to a weight `pl.Series`:
 
-- [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
-- [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.weighters.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
-- [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
+- [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/) generates weights that decrease geometrically into the past, controlled by a `half_life` parameter. Recent performance receives the greatest influence on the final score.
+- [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.SeasonalEmphasisWeighter/) upweights time steps that fall on specific seasonal boundaries (year-end, quarter-end, peak season) where accurate forecasts matter most.
+- [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.LinearDecayWeighter/) offers a simpler ramp that transitions smoothly from low weight on the oldest test step to full weight on the most recent.
 
 For the full set, including `LookupWeighter`, `TableWeighter`, and `CompositeWeighter`, see [Weighting](weighting.md).
 
@@ -135,11 +135,11 @@ See [How to Use Time Weighting](../how-to/time-weighting.md) for the full set of
 
 ## Cross-Validation
 
-The simplest way to compute a cross-validated score is [`cross_val_score`](/pages/api/generated/yohou.model_selection.validation.cross_val_score/). It takes a forecaster, target data, a scorer, and an optional splitter, then returns a `pl.DataFrame` with `split` (0-indexed fold identifier) and `score` columns. The mean of the `score` column summarizes overall skill, and its standard deviation reflects how stable that skill is across folds: a low spread suggests the model generalizes consistently through time, while a high spread warns that performance depends heavily on which window the forecaster trains on.
+The simplest way to compute a cross-validated score is [`cross_val_score`](/pages/api/generated/yohou.model_selection.cross_val_score/). It takes a forecaster, target data, a scorer, and an optional splitter, then returns a `pl.DataFrame` with `split` (0-indexed fold identifier) and `score` columns. The mean of the `score` column summarizes overall skill, and its standard deviation reflects how stable that skill is across folds: a low spread suggests the model generalizes consistently through time, while a high spread warns that performance depends heavily on which window the forecaster trains on.
 
 ### The `cross_validate` Function
 
-For richer output, [`cross_validate`](/pages/api/generated/yohou.model_selection.validation.cross_validate/) returns a `pl.DataFrame` with a `split` column, timing columns (`fit_time`, `score_time`), and score columns. In single-scorer mode the score column is `test_score`. When `return_train_score=True` is set, a `train_score` column is added. Two additional optional flags change the return type to a dictionary: `return_forecaster` stores the fitted forecaster from each fold, and `return_indices` stores the train/test index arrays. When either flag is set, the result is a dictionary with a `"results"` key containing the DataFrame, plus `"forecaster"` and/or `"indices"` keys.
+For richer output, [`cross_validate`](/pages/api/generated/yohou.model_selection.cross_validate/) returns a `pl.DataFrame` with a `split` column, timing columns (`fit_time`, `score_time`), and score columns. In single-scorer mode the score column is `test_score`. When `return_train_score=True` is set, a `train_score` column is added. Two additional optional flags change the return type to a dictionary: `return_forecaster` stores the fitted forecaster from each fold, and `return_indices` stores the train/test index arrays. When either flag is set, the result is a dictionary with a `"results"` key containing the DataFrame, plus `"forecaster"` and/or `"indices"` keys.
 
 When a dictionary of scorers is passed, the score columns follow the pattern `test_{name}` and (if requested) `train_{name}` for each scorer name, so a `{"mae": ..., "rmse": ...}` mapping yields `test_mae` and `test_rmse` columns alongside the timing columns. This makes it possible to confirm that a model's ranking is robust across metric families rather than an artifact of one summary statistic.
 
@@ -147,13 +147,13 @@ When a dictionary of scorers is passed, the score columns follow the pattern `te
 
 ### Obtaining Predictions by Cross-Validation
 
-[`cross_val_predict`](/pages/api/generated/yohou.model_selection.validation.cross_val_predict/) generates out-of-fold predictions rather than scores. For each fold the forecaster is fitted on the training data and predictions are produced on the test data. The function concatenates all fold predictions into a single `pl.DataFrame` with a `split` column identifying the originating fold (alongside the usual `time` and prediction columns).
+[`cross_val_predict`](/pages/api/generated/yohou.model_selection.cross_val_predict/) generates out-of-fold predictions rather than scores. For each fold the forecaster is fitted on the training data and predictions are produced on the test data. The function concatenates all fold predictions into a single `pl.DataFrame` with a `split` column identifying the originating fold (alongside the usual `time` and prediction columns).
 
 These predictions are useful for visualizing how the forecaster performs across different folds and for model blending (stacking), where out-of-fold predictions serve as features for a second-level model. Note that scoring the concatenated predictions is not equivalent to the per-fold averaged scores from `cross_val_score`, because each prediction comes from a model trained on a different subset of the data.
 
 ## Hyperparameter Search
 
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) combine time series splitters with parameter search to find the best forecaster configuration. They follow the same interface as their sklearn counterparts but operate on yohou forecasters and scorers:
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) combine time series splitters with parameter search to find the best forecaster configuration. They follow the same interface as their sklearn counterparts but operate on yohou forecasters and scorers:
 
 ```python
 from yohou.model_selection import GridSearchCV, ExpandingWindowSplitter
@@ -184,7 +184,7 @@ Passing a dictionary of scorers (for example `{"mae": MeanAbsoluteError(), "rmse
 
 ### Randomized Search
 
-[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) samples a fixed number of parameter combinations (`n_iter`, default 10) from specified distributions rather than exhaustively evaluating every point on the grid. This is more practical when the parameter space is large or continuous. A `random_state` parameter ensures reproducibility.
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) samples a fixed number of parameter combinations (`n_iter`, default 10) from specified distributions rather than exhaustively evaluating every point on the grid. This is more practical when the parameter space is large or continuous. A `random_state` parameter ensures reproducibility.
 
 ### Parallelization and Error Handling
 
@@ -214,7 +214,7 @@ Evaluating candidates on multiple metrics (scale-dependent and scaled) confirms 
 
 The splitters and search utilities tie together several other parts of yohou. Scorers from [Forecast Accuracy](forecast-accuracy.md) define the objective. Weighting functions shape how errors are aggregated across time. Forecasters from the [Reduction Forecasting](reduction-forecasting.md) and [Interval Forecasting](interval-forecasting.md) modules provide the candidates.
 
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) work with all forecaster types: point, interval, and class-probability. For classification forecasters, pass a class-proba scorer such as [`LogLoss()`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) as the `scoring` parameter.
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) work with all forecaster types: point, interval, and class-probability. For classification forecasters, pass a class-proba scorer such as [`LogLoss()`](/pages/api/generated/yohou.metrics.LogLoss/) as the `scoring` parameter.
 
 For practical recipes, see [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md).
 For a hands-on tour of the temporal splitters, see the

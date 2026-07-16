@@ -29,7 +29,7 @@ forecasting_horizon = 12
 y_train, y_test = train_test_split(y, test_size=forecasting_horizon)
 ```
 
-Next, fit a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) baseline:
+Next, fit a [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) baseline:
 
 ```python
 from yohou.point import SeasonalNaive
@@ -39,7 +39,7 @@ baseline.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
 ```
 
-Now build a Ridge pipeline with [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
+Now build a Ridge pipeline with [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) and lag features. If the pipeline looks unfamiliar, see [Getting Started](getting-started.md) for a step-by-step walkthrough:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -61,7 +61,7 @@ y_pred_ridge = forecaster.predict(forecasting_horizon=forecasting_horizon)
 
 ## 2. Score with Multiple Metrics
 
-Now score both models on the single train/test split. Scorers in Yohou are stateful: call `fit(y_train)` first so that scale-dependent metrics like [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) can normalise correctly:
+Now score both models on the single train/test split. Scorers in Yohou are stateful: call `fit(y_train)` first so that scale-dependent metrics like [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/) can normalise correctly:
 
 ```python
 from yohou.metrics import MeanAbsoluteError, MeanAbsoluteScaledError
@@ -84,7 +84,7 @@ Notice that both MASE values are above 1.0, meaning neither model outperforms th
 
 ## 3. Evaluate with Cross-Validation and Hyperparameter Search
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) evaluates each parameter combination across all folds and selects the best. We pass the full `y` so the cross-validation splitter can build multiple train/test folds from the complete history; passing only `y_train` would shrink each fold unnecessarily:
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) creates multiple temporal train/test folds by growing the training window. [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) evaluates each parameter combination across all folds and selects the best. We pass the full `y` so the cross-validation splitter can build multiple train/test folds from the complete history; passing only `y_train` would shrink each fold unnecessarily:
 
 ```python
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
@@ -114,7 +114,7 @@ The CV MASE of 0.87 is below 1.0, confirming that Ridge consistently outperforms
 
 ## 4. Inspect Residuals
 
-Let's refit the best forecaster from the search on the training data and inspect what the model gets wrong with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/):
+Let's refit the best forecaster from the search on the training data and inspect what the model gets wrong with [`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/):
 
 ```python
 from yohou.plotting import plot_residuals
@@ -158,10 +158,10 @@ Notice how `plot_forecast` overlays predicted and actual values so you can spot 
 
 We completed the full evaluation workflow:
 
-- Scored models with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) on a single train/test split
-- Used [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) and [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) to evaluate across temporal folds and tune hyperparameters
-- Refitted the best forecaster and inspected residuals with [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
-- Compared forecasts visually with [`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) and [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/)
+- Scored models with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) and [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/) on a single train/test split
+- Used [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) and [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) to evaluate across temporal folds and tune hyperparameters
+- Refitted the best forecaster and inspected residuals with [`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/)
+- Compared forecasts visually with [`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) and [`plot_score_summary`](/pages/api/generated/yohou.plotting.plot_score_summary/)
 
 ## Next Steps
 
@@ -169,4 +169,4 @@ We completed the full evaluation workflow:
 - [Model Selection](../explanation/model-selection.md): Expanding vs. sliding windows, fold design, and when CV estimates are trustworthy
 - [Forecast Accuracy](../explanation/forecast-accuracy.md): When to use MAE, MASE, or percentage metrics
 - [Choose a Forecasting Method](../how-to/choose-forecasting-method.md): Try nonlinear regressors and compare estimator families
-- [Interval Forecasting](../explanation/interval-forecasting.md): Add prediction intervals with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+- [Interval Forecasting](../explanation/interval-forecasting.md): Add prediction intervals with [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
