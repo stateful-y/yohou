@@ -50,7 +50,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         How to handle panel data. See `BaseForecaster` for details.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
         Controls which step-indexed feature columns each direct estimator
-        sees. Only affects the ``"direct"`` strategy.
+        sees. Only the ``"direct"`` strategy applies this parameter; setting it
+        to a non-default value on any other strategy emits a ``UserWarning`` at
+        fit and changes nothing.
 
         - ``"all"``: every estimator receives all step columns
           (``*_step_1..H``). Backward compatible, maximum information.
@@ -58,6 +60,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
           columns. Cleanest signal, no cross-horizon leakage.
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
+
+        The other strategies are excluded for different reasons.
+        ``"multi-output"`` *cannot* filter: one estimator predicts every
+        horizon from a single feature vector, reading a different step column
+        per output, so it needs them all. ``"dir-rec"`` *could* filter (before
+        each step's feature augmentation) but does not; that is a deliberate
+        scope decision rather than a structural limit.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -198,6 +207,45 @@ default="first_step"
         tags.forecaster_tags.supports_vintage_weight = True
 
         return tags
+
+    def _warn_inapplicable_step_alignment(self) -> None:
+        """Warn when the chosen strategy will not apply ``step_feature_alignment``.
+
+        Only ``"direct"`` filters step columns per estimator, so a non-default
+        value on any other strategy is inert. Silently accepting it reads as
+        configured behaviour that never happens.
+
+        Warns rather than raises: an inapplicable value is a no-op, not an
+        error, so a search over ``reduction_strategy`` crossed with
+        ``step_feature_alignment`` explores a smaller effective grid instead of
+        failing on every non-direct cell.
+
+        Call once per ``fit``, after parameter validation.
+        """
+        if self.step_feature_alignment == "all" or self.reduction_strategy == "direct":
+            return
+
+        if self.reduction_strategy == "multi-output":
+            reason = (
+                "a single estimator predicts every horizon from one feature vector, "
+                "so it reads a different step column per output and needs them all"
+            )
+        else:
+            reason = (
+                "dir-rec augments its feature matrix with earlier steps' predictions "
+                "and is excluded from step filtering by design, not by structure"
+            )
+
+        warnings.warn(
+            f"step_feature_alignment={self.step_feature_alignment!r} has no effect with "
+            f"reduction_strategy={self.reduction_strategy!r}, because {reason}. Only "
+            f'reduction_strategy="direct" applies step_feature_alignment; this fit '
+            f'proceeds as though it were "all".',
+            UserWarning,
+            # warn <- _warn_inapplicable_step_alignment <- fit <- sklearn's
+            # _fit_context wrapper <- user.
+            stacklevel=4,
+        )
 
     def _process_fit_weights(
         self,

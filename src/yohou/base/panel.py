@@ -11,6 +11,7 @@ from yohou.base.utils import (
     _fit_transform_transformers_one,
     _observe_transformers_one,
     _rewind_transformers_one,
+    _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval, get_group_df, inspect_panel
 
@@ -324,6 +325,7 @@ class BasePanelForecaster:
             interval=self.interval_,
             existing_columns=existing_columns,
         )
+        _warn_rank_deficient_step_columns(X_step, X_future, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future

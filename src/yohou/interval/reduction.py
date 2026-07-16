@@ -58,7 +58,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         ``"dir-rec"`` strategies.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
         Controls which step-indexed feature columns each direct estimator
-        sees. Only affects the ``"direct"`` strategy.
+        sees. Only the ``"direct"`` strategy applies this parameter; a
+        non-default value on any other strategy warns at fit and changes
+        nothing. ``"multi-output"`` cannot filter, since one estimator reads a
+        different step column per output and needs them all; ``"dir-rec"``
+        could, but is excluded by a deliberate scope decision.
 
         - ``"all"``: every estimator receives all step columns.
         - ``"matched"``: estimator for step h receives only ``*_step_h``.
@@ -311,6 +315,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
             forecasting_horizon, coverage_rates
         )
+        self._warn_inapplicable_step_alignment()
 
         y_t, X_t = self._pre_fit(
             y=y,

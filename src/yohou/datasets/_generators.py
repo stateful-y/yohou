@@ -13,6 +13,52 @@ import numpy as np
 import polars as pl
 from sklearn.utils import Bunch
 
+_HOLIDAY_MONTH_DAYS: tuple[tuple[int, int], ...] = (
+    (1, 1),
+    (1, 6),
+    (1, 8),
+    (1, 15),
+    (2, 19),
+    (3, 29),
+    (4, 1),
+    (5, 1),
+    (5, 27),
+    (7, 4),
+    (9, 2),
+    (11, 28),
+    (12, 25),
+    (12, 26),
+)
+"""Fixed civil holiday calendar as ``(month, day)`` pairs.
+
+The dates are deliberately irregular with respect to weekday, so the resulting
+indicator cannot be reconstructed from any cyclical encoding of the clock. That
+is what makes it a genuine ``X_future`` feature: a forecaster must be told the
+holiday status of each future step, because no transformer can derive it from
+the observation point. A weekday predicate would instead be a clock feature and
+would belong in a ``feature_transformer``.
+
+The early-January entries are load-bearing. The default series is 200 hourly
+rows, spanning only 2024-01-01 to 2024-01-09, so a calendar carrying nothing but
+widely spaced real holidays would leave the tail of that window (the usual test
+split) with no holiday at all, and the feature would never move an evaluated
+prediction.
+"""
+
+
+def _holiday_indicator(times: pl.Series) -> np.ndarray:
+    """Mark timestamps whose date appears in the fixed holiday calendar.
+
+    Depends only on the calendar, never on ``random_state``, so the holidays are
+    a property of the dataset rather than of the seed.
+    """
+    # dt.month() and dt.day() are Int8, so the 100 * month term overflows for
+    # every month past January unless the operands are widened first.
+    month = times.dt.month().cast(pl.Int32)
+    day = times.dt.day().cast(pl.Int32)
+    keys = [100 * m + d for m, d in _HOLIDAY_MONTH_DAYS]
+    return (100 * month + day).is_in(keys).cast(pl.Float64).to_numpy()
+
 
 def _forecast_index_grid(n_samples: int, forecasting_horizon: int) -> tuple[np.ndarray, np.ndarray]:
     """Build vintage and target index arrays for X_forecast construction.
@@ -49,8 +95,11 @@ def make_exogenous_regression(
 
     - **X_actual** (observation features): realized temperature readings
       with a 24 hour sinusoidal cycle plus measurement noise (std=0.5).
-    - **X_future** (known future): a deterministic ``is_holiday`` indicator
-      (Sundays = 1.0) covering the full time range.
+    - **X_future** (known future): an ``is_holiday`` indicator drawn from a
+      fixed civil holiday calendar, covering the full time range. The dates
+      are irregular with respect to weekday, so the indicator cannot be
+      derived from the timestamp and genuinely requires the ``X_future``
+      channel.
     - **X_forecast** (external forecasts): weather temperature forecasts
       with one vintage per observation from index ``forecasting_horizon``
       up to (but not including) the last observation, each covering the
@@ -127,8 +176,7 @@ def make_exogenous_regression(
     t = np.arange(n_samples, dtype=float)
 
     actual_temp = 15.0 + 5.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 0.5, n_samples)
-    # Sundays = 1.0 (polars weekday(): Monday=1 .. Sunday=7).
-    holidays = (times.dt.weekday() == 7).cast(pl.Float64).to_numpy()
+    holidays = _holiday_indicator(times)
     price = 50.0 + 2.0 * actual_temp + 10.0 * holidays + rng.normal(0, noise, n_samples)
 
     y = pl.DataFrame({"time": times, "price": price})
@@ -161,7 +209,8 @@ def make_exogenous_regression(
             "Synthetic hourly electricity prices with exogenous features.\n"
             "Target: price = 50 + 2 * temperature + 10 * is_holiday + noise.\n"
             "X_actual: realized temperature (sinusoidal 24h cycle + noise).\n"
-            "X_future: is_holiday indicator (Sundays = 1.0).\n"
+            "X_future: is_holiday indicator from a fixed civil holiday calendar\n"
+            "  (irregular dates, not derivable from the timestamp).\n"
             "X_forecast: weather temperature forecasts with systematic bias."
         ),
     )
@@ -184,8 +233,11 @@ def make_exogenous_classification(
 
     - **X_actual** (observation features): realized pollutant readings
       with a 24 hour sinusoidal cycle.
-    - **X_future** (known future): a deterministic ``is_weekend``
-      indicator covering the full time range.
+    - **X_future** (known future): an ``is_holiday`` indicator drawn from a
+      fixed civil holiday calendar, covering the full time range. Holidays
+      reduce traffic and therefore pollutant levels. The dates are irregular
+      with respect to weekday, so the indicator cannot be derived from the
+      timestamp and genuinely requires the ``X_future`` channel.
     - **X_forecast** (external forecasts): pollutant concentration
       forecasts with one vintage per observation from index
       ``forecasting_horizon`` up to (but not including) the last
@@ -232,14 +284,14 @@ def make_exogenous_classification(
         X_actual : pl.DataFrame
             Observation features with columns ``["time", "pollutant"]``.
         X_future : pl.DataFrame
-            Known future features with columns ``["time", "is_weekend"]``.
+            Known future features with columns ``["time", "is_holiday"]``.
         X_forecast : pl.DataFrame
             External forecasts with columns
             ``["vintage_time", "time", "pollutant_forecast"]``.
         frame : pl.DataFrame
             ``y``, ``X_actual``, and ``X_future`` joined on ``"time"``.
         feature_names : list of str
-            ``["pollutant", "is_weekend", "pollutant_forecast"]``.
+            ``["pollutant", "is_holiday", "pollutant_forecast"]``.
         target_names : list of str
             ``["air_quality"]``.
         classes : list of str
@@ -276,11 +328,10 @@ def make_exogenous_classification(
     # Pollutant with 24h cycle centered at 50, amplitude 20
     pollutant = 50.0 + 20.0 * np.sin(2 * np.pi * t / 24) + rng.normal(0, 5.0, n_samples)
 
-    # Saturday/Sunday = 1.0 (polars weekday(): Monday=1 .. Sunday=7).
-    is_weekend = (times.dt.weekday() >= 6).cast(pl.Float64).to_numpy()
+    is_holiday = _holiday_indicator(times)
 
-    # Weekend effect: lower pollutant readings
-    effective_pollutant = pollutant - 5.0 * is_weekend + rng.normal(0, noise, n_samples)
+    # Holiday effect: less traffic, lower pollutant readings
+    effective_pollutant = pollutant - 5.0 * is_holiday + rng.normal(0, noise, n_samples)
 
     # Classify
     classes = ["good", "moderate", "poor"]
@@ -292,7 +343,7 @@ def make_exogenous_classification(
 
     y = pl.DataFrame({"time": times, "air_quality": labels})
     X_actual = pl.DataFrame({"time": times, "pollutant": pollutant})
-    X_future = pl.DataFrame({"time": times, "is_weekend": is_weekend})
+    X_future = pl.DataFrame({"time": times, "is_holiday": is_holiday})
 
     vintage_idx, target_idx = _forecast_index_grid(n_samples, forecasting_horizon)
     pollutant_noise = rng.normal(0, 2.0, vintage_idx.shape[0])
@@ -313,7 +364,7 @@ def make_exogenous_classification(
         X_future=X_future,
         X_forecast=X_forecast,
         frame=frame,
-        feature_names=["pollutant", "is_weekend", "pollutant_forecast"],
+        feature_names=["pollutant", "is_holiday", "pollutant_forecast"],
         target_names=["air_quality"],
         classes=classes,
         frequency="1h",
@@ -321,7 +372,8 @@ def make_exogenous_classification(
             "Synthetic hourly air quality classification with exogenous features.\n"
             "Target: air_quality in {good, moderate, poor} based on pollutant thresholds.\n"
             "X_actual: realized pollutant readings (sinusoidal 24h cycle + noise).\n"
-            "X_future: is_weekend indicator.\n"
+            "X_future: is_holiday indicator from a fixed civil holiday calendar\n"
+            "  (irregular dates, not derivable from the timestamp).\n"
             "X_forecast: pollutant concentration forecasts with systematic bias."
         ),
     )

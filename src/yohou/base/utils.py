@@ -2,17 +2,49 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import warnings
 from datetime import timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
+import sklearn
 from sklearn.base import clone
 
 if TYPE_CHECKING:
     from yohou.base import BaseActualTransformer
+
+_YOHOU_ROOT = str(Path(__file__).resolve().parents[1])
+_SKLEARN_ROOT = str(Path(sklearn.__file__).resolve().parent)
+
+
+def _caller_stacklevel() -> int:
+    """Return the ``stacklevel`` that points at the nearest frame outside the library.
+
+    Step columns are derived from ``fit``, ``observe``, and ``predict``, whose
+    call chains reach this module at different depths, and ``fit`` adds another
+    frame for scikit-learn's ``_fit_context`` decorator. No constant
+    ``stacklevel`` points at the caller for all three, so it is measured instead
+    of assumed: walk outward from the warn site and stop at the first frame that
+    belongs to neither yohou nor scikit-learn.
+
+    Call from the frame that calls :func:`warnings.warn`.
+    """
+    frame = inspect.currentframe()
+    if frame is not None:
+        frame = frame.f_back  # the warn site itself
+    level = 1
+    while frame is not None:
+        filename = frame.f_code.co_filename
+        if not filename.startswith(_YOHOU_ROOT) and not filename.startswith(_SKLEARN_ROOT):
+            return level
+        frame = frame.f_back
+        level += 1
+    return 1
 
 
 def _is_forecast_kind(obj: object) -> bool:
@@ -415,6 +447,117 @@ def _rewind_transformers_one(
     return X_t
 
 
+def _rank_deficient_step_columns(
+    X_step: pl.DataFrame,
+    value_columns: list[str],
+    forecasting_horizon: int,
+) -> list[tuple[str, int, int]]:
+    """Find X_future value columns whose step expansion is rank deficient.
+
+    A column whose value at ``T`` already determines its value at ``T+h`` (a
+    Fourier term, a calendar cycle) expands into ``H`` step columns that span
+    fewer than ``H`` dimensions, because each step column is a fixed function of
+    the value at ``T``. A genuine event calendar spans the full ``H``.
+
+    Rank rather than pairwise similarity is the right test: Fourier step columns
+    are rotations of the base pair, not copies, so they are neither duplicated
+    nor strongly pairwise correlated while still spanning only two dimensions.
+
+    Parameters
+    ----------
+    X_step : pl.DataFrame
+        The derived step frame, as returned by :func:`_derive_step_columns`.
+    value_columns : list of str
+        Base column names from ``X_future``, excluding ``"time"``.
+    forecasting_horizon : int
+        Number of forward steps (H) per observation time.
+
+    Returns
+    -------
+    list of (str, int, int)
+        One ``(column, n_step_columns, rank)`` triple per rank-deficient column.
+        Empty when nothing is deficient or nothing can be checked.
+
+    Notes
+    -----
+    The check is deliberately incomplete. It reports only what it can prove from
+    the step block alone, and stays silent whenever the measurement would not
+    support a conclusion:
+
+    - Rows carrying nulls are dropped first. Null step columns are a supported
+      state (an ``X_future`` that does not cover every observation time), and
+      ranking them would report an under-covering event calendar as a clock
+      feature, which is the opposite of the truth.
+    - A column is skipped when fewer than ``2 * H`` usable rows remain, since
+      rank is bounded by row count and a short frame would otherwise look
+      deficient for a reason unrelated to the feature.
+    - Non-numeric columns are skipped; rank is not defined for them.
+
+    """
+    findings: list[tuple[str, int, int]] = []
+    for col in value_columns:
+        step_names = [f"{col}_step_{h}" for h in range(1, forecasting_horizon + 1)]
+        if any(name not in X_step.columns for name in step_names):
+            continue
+
+        block = X_step.select(step_names)
+        if block.select(cs.numeric()).width != len(step_names):
+            continue
+
+        block = block.drop_nulls()
+        if len(block) < 2 * forecasting_horizon:
+            continue
+
+        array = block.to_numpy().astype(float)
+        array = array[np.isfinite(array).all(axis=1)]
+        if len(array) < 2 * forecasting_horizon:
+            continue
+
+        rank = int(np.linalg.matrix_rank(array))
+        if rank < forecasting_horizon:
+            findings.append((col, len(step_names), rank))
+
+    return findings
+
+
+def _warn_rank_deficient_step_columns(
+    X_step: pl.DataFrame | None,
+    X_future: pl.DataFrame | None,
+    forecasting_horizon: int,
+) -> None:
+    """Warn when an X_future column's step expansion carries no extra information.
+
+    Call from the fit path only. ``_derive_step_columns`` also serves observe and
+    predict, so a warning raised there would repeat once per stride of a
+    walk-forward loop, and the condition being reported is a property of the
+    caller's feature routing that cannot change between strides.
+
+    The message reports the measurement rather than asserting a diagnosis: a
+    constant column is rank deficient too, and this check cannot tell it apart
+    from a clock feature.
+    """
+    if X_step is None or X_future is None:
+        return
+
+    value_columns = [c for c in X_future.columns if c != "time"]
+    for col, n_steps, rank in _rank_deficient_step_columns(X_step, value_columns, forecasting_horizon):
+        warnings.warn(
+            f"X_future column '{col}' expands to {n_steps} step columns spanning "
+            f"a rank of only {rank}, so {n_steps - rank} of them add no information "
+            f"the others do not already carry. This is what a deterministic clock "
+            f"feature looks like (a Fourier term, or a calendar cycle): its value "
+            f"at the observation point already determines its value at every "
+            f"forecast step, so the forward window buys nothing and the collinear "
+            f"copies dilute any regularisation applied to them. If '{col}' is "
+            f"computable from the timestamp alone, generate it with a "
+            f"feature_transformer instead of passing it through X_future. If it is "
+            f"constant, or genuinely needs an external table, this warning does not "
+            f"apply and can be silenced.",
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+
+
 def _derive_step_columns(
     X_future: pl.DataFrame | None,
     X_forecast: pl.DataFrame | None,
@@ -526,9 +669,7 @@ def _derive_step_columns(
                     f"timestamps. Tree-based estimators (e.g. XGBoost, LightGBM, "
                     f"HistGradientBoosting) handle null features natively.",
                     UserWarning,
-                    # user -> fit/observe -> _pre_fit(_standard) -> _derive_step_columns
-                    # -> warn; point at the user's fit()/observe() call.
-                    stacklevel=5,
+                    stacklevel=_caller_stacklevel(),
                 )
 
         # Pad missing step columns to H (partial coverage → null columns)

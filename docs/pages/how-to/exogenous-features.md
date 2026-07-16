@@ -22,12 +22,51 @@ the full conceptual model.
 | Question | Yes | No |
 |---|---|---|
 | Is it a measurement that can only be known after it happens? | `X_actual` | Continue |
-| Is it deterministic and known for any future date? | `X_future` | Continue |
-| Does it come from an external model with an issuance time? | `X_forecast` | N/A |
+| Can you compute it from the timestamp alone, with no external table? | `feature_transformer` | Continue |
+| Does it come from an external model with an issuance time? | `X_forecast` | `X_future` |
+
+The second question is the one that catches people. Day-of-week, hour of day,
+and Fourier terms are all deterministic and all knowable for any future date,
+which makes `X_future` look like the answer. It is not. Their value at the
+observation point already determines their value at every horizon, so
+`feature_transformer` hands the estimator the same information in a fraction of
+the columns. Ask whether you need a *lookup table*, not whether the value is
+*knowable*: a holiday calendar needs one, a day-of-week indicator does not.
 
 If a feature is uncertain but has no vintage (a single "best guess"),
 treat it as `X_future`. If you need multiple versions of that guess at
 predict time, wrap it with a `vintage_time` column and use `X_forecast`.
+
+### Clock Features Versus Event Features
+
+Both of these are calendar-related. Only one of them needs `X_future`.
+
+```python
+from yohou.compose import FeatureUnion
+from yohou.point import PointReductionForecaster
+from yohou.preprocessing import FourierFeatureTransformer, LagTransformer
+
+forecaster = PointReductionForecaster(
+    # Clock feature: weekly seasonality on hourly data. Computable from the
+    # timestamp, so it belongs here and never touches X_future.
+    feature_transformer=FeatureUnion([
+        ("lags", LagTransformer([1, 2, 3])),
+        ("weekly", FourierFeatureTransformer(seasonality=168.0, harmonics=[1, 2])),
+    ]),
+)
+
+forecaster.fit(
+    y=y_train,
+    forecasting_horizon=24,
+    # Event feature: not derivable from the timestamp, so it is windowed
+    # forward into is_holiday_step_1 .. is_holiday_step_24.
+    X_future=holiday_calendar,
+)
+```
+
+Routing that Fourier block through `X_future` instead would window its four
+columns into 96 step columns spanning the same four dimensions, and leave the
+model's predictions unchanged.
 
 ## Pass Exogenous Features to a Forecaster
 
@@ -52,7 +91,7 @@ forecaster.fit(
     y=y_train,
     X_actual=temperature,       # observation features (lagged internally)
     forecasting_horizon=24,
-    X_future=holidays,          # deterministic, known ahead
+    X_future=holidays,          # event calendar, needs a lookup table
     X_forecast=weather_forecast, # vintage-indexed external predictions
 )
 
