@@ -5,12 +5,13 @@ forecast-kind children, propagate ``kind``, reject mixed-kind compositions, and
 that ColumnTransformer protects the ``vintage_time`` index column.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
 from sklearn.linear_model import Ridge
 
+from yohou.base import BaseForecastTransformer
 from yohou.compose import ColumnTransformer, FeaturePipeline, FeatureUnion, PerVintageActualTransformer
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import FunctionTransformer
@@ -136,21 +137,21 @@ def test_forecast_kind_composer_rejected_from_feature_transformer():
 # --- the memory API is actual-kind only ----------------------------------------
 
 
-@pytest.mark.parametrize("method", ["observe", "rewind"])
+@pytest.mark.parametrize("method", ["observe", "rewind", "observe_transform", "rewind_transform"])
 @pytest.mark.parametrize(
     "make_composer",
     [_forecast_union, _forecast_pipeline, _forecast_column_transformer],
     ids=["union", "pipeline", "column_transformer"],
 )
 def test_memory_api_rejected_on_forecast_kind_composition(make_composer, method):
-    """observe/rewind mean nothing on the vintage axis and must not be accepted.
+    """The memory API means nothing on the vintage axis and must not be accepted.
 
     A forecast-kind composition is structurally a ``BaseActualTransformer``, so it
     inherits the memory API. The buffer it would maintain needs contiguous recent
-    rows, which the discontinuous vintage axis cannot supply. Covers all three
-    composers because they do not share one implementation: ``FeatureUnion`` and
-    ``FeaturePipeline`` override both methods, while ``ColumnTransformer``
-    inherits them.
+    rows, which the discontinuous vintage axis cannot supply. Covers every method
+    across every composer because they share no single implementation: the
+    composite ``observe_transform``/``rewind_transform`` are separate overrides
+    from ``observe``/``rewind``, so guarding one pair does not cover the other.
     """
     frame = _forecast_frame()
     composer = make_composer()
@@ -167,3 +168,85 @@ def test_memory_api_still_works_on_actual_kind_composition():
 
     assert union.observe(_target_series()) is union
     assert union.rewind(_target_series()) is union
+
+
+def test_weighted_actual_union_observe_transforms():
+    """Weight scaling excludes the index columns and leaves their dtype intact.
+
+    The weight sites live only in ``_observe_transform_one`` /
+    ``_rewind_transform_one``, which the memory guard now closes to forecast-kind
+    compositions, so an actual-kind composition is the reachable path. The sites
+    exclude every index column rather than just ``"time"``, which is
+    behaviour-identical here (a single-axis frame's only index column is
+    ``"time"``) and correct if a forecast frame ever reaches them.
+    """
+    time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 6), interval="1d", eager=True)
+    frame = pl.DataFrame({"time": time, "v": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]})
+
+    union = FeatureUnion(
+        [
+            (
+                "a",
+                FunctionTransformer(
+                    func=lambda df: df.select(pl.col("v").alias("x")),
+                    feature_names_out=lambda self, names: ["x"],
+                ),
+            )
+        ],
+        transformer_weights={"a": 2.0},
+    )
+    union.fit(frame)
+    out = union.observe_transform(frame)
+
+    assert out["a_x"].to_list() == pytest.approx([2.0, 4.0, 6.0, 8.0, 10.0, 12.0])
+    assert out["time"].dtype == frame["time"].dtype
+
+
+class _OrderPreservingForecastTransformer(BaseForecastTransformer):
+    """A forecast transformer that emits rows in input order, without re-grouping.
+
+    ``PerVintageActualTransformer`` re-groups rows by ``vintage_time``; this does
+    not. A union of the two therefore has children that disagree on row order,
+    which is the shape that exposes positional (rather than index-based)
+    alignment.
+    """
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        return X.select("vintage_time", "time", (pl.col("load") * 100).alias("scaled"))
+
+    def get_feature_names_out(self, input_features=None):
+        return ["scaled"]
+
+
+def test_union_aligns_children_that_disagree_on_row_order():
+    """A re-grouping child beside an order-preserving one still aligns by index.
+
+    The frame is sorted by ``time`` with vintages interleaved, so the
+    per-vintage child emits rows grouped by vintage while the sibling keeps the
+    input order. Values must attach to their own (vintage_time, time) row.
+    """
+    t = datetime(2020, 1, 1)
+    v1, v2 = t, t + timedelta(days=1)
+    # interleaved by time, so the two children's row orders genuinely differ
+    frame = pl.DataFrame({
+        "vintage_time": [v1, v2, v1, v2],
+        "time": [t + timedelta(days=2), t + timedelta(days=2), t + timedelta(days=3), t + timedelta(days=3)],
+        "load": [10.0, 20.0, 30.0, 40.0],
+    })
+
+    union = FeatureUnion([
+        (
+            "pv",
+            PerVintageActualTransformer(
+                FunctionTransformer(
+                    func=lambda df: df.select(pl.col("load").alias("passthrough")),
+                    feature_names_out=lambda self, names: ["passthrough"],
+                )
+            ),
+        ),
+        ("plain", _OrderPreservingForecastTransformer()),
+    ])
+    out = union.fit_transform(frame).sort("vintage_time", "time")
+
+    # scaled must be exactly 100x passthrough on every row, whatever order each child emitted
+    assert out["plain_scaled"].to_list() == pytest.approx([v * 100 for v in out["pv_passthrough"].to_list()])

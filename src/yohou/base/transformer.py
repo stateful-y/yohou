@@ -492,6 +492,7 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             If ``X`` has invalid structure or non-contiguous time index.
 
         """
+        _require_actual_memory_api(self, "observe_transform")
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (includes continuity check)
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
@@ -539,6 +540,7 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             If the transformer has not been fitted yet.
 
         """
+        _require_actual_memory_api(self, "rewind_transform")
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (no continuity check - rewind sets new window)
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)

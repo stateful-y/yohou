@@ -819,6 +819,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             Transformed data corresponding to the new input rows.
 
         """
+        _require_actual_memory_api(self, "observe_transform")
         _raise_for_params(params, self, "observe_transform")
 
         routed_params = process_routing(self, "observe_transform", **params)
@@ -855,6 +856,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             Transformed data with warmup rows discarded.
 
         """
+        _require_actual_memory_api(self, "rewind_transform")
         _raise_for_params(params, self, "rewind_transform")
 
         routed_params = process_routing(self, "rewind_transform", **params)

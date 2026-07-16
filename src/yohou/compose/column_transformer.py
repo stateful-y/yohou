@@ -25,6 +25,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseActualTransformer
 from yohou.base.transformer import _BaseTransformer
+from yohou.base.utils import _require_actual_memory_api
 from yohou.utils import Tags
 from yohou.utils._compat import (
     FORCE_INT_REMAINDER_COLS,
@@ -1101,6 +1102,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
             If the transformer has not been fitted yet.
 
         """
+        _require_actual_memory_api(self, "observe_transform")
         _raise_for_params(params, self, "observe_transform")
         check_is_fitted(self)
         X = _check_X(X)
@@ -1157,6 +1159,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
             If the transformer has not been fitted yet.
 
         """
+        _require_actual_memory_api(self, "rewind_transform")
         _raise_for_params(params, self, "rewind_transform")
         check_is_fitted(self)
         time_column = X.select(cs.by_name(*self._index_columns_))
