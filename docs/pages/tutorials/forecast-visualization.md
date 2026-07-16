@@ -2,12 +2,12 @@
 
 In this tutorial, we will compare two models' forecasts visually, add prediction intervals to quantify uncertainty, check whether those intervals are well-calibrated, inspect a decomposition to understand what each model component contributes, and plot time weights to see how the training emphasis is distributed.
 
-<!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Getting Started](getting-started.md)
 - Completed [Exploratory Visualization](exploratory-visualization.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Prepare Data and Models
 

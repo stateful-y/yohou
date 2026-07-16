@@ -2,11 +2,11 @@
 
 In this tutorial, we will confirm a seasonal pattern in the tourism dataset, measure its strength, and understand its shape using five diagnostic views: seasonal overlays, subseasonal boxplots, autocorrelation analysis, STL decomposition, and a seasonal heatmap.
 
-<!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Exploratory Visualization](exploratory-visualization.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Load the Data
 

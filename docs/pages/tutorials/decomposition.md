@@ -2,11 +2,11 @@
 
 In this tutorial, we will build a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) that separates a time series into trend, seasonality, and residual components. Along the way, we will fit a [`PolynomialTrendForecaster`](/pages/api/generated/yohou.stationarity.PolynomialTrendForecaster/) and two seasonality forecasters ([`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) and [`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/)), combine them with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) for residuals, and visualize each component.
 
-<!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Getting Started](getting-started.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Prepare Data
 

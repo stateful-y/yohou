@@ -2,11 +2,11 @@
 
 In this tutorial, we will build a forecasting model that uses all three types of exogenous features: actual observations (`X_actual`), known future indicators (`X_future`), and external forecast vintages (`X_forecast`). We will fit the model on synthetic electricity price data, show that different weather forecast vintages produce different predictions, and run a walk-forward evaluation to measure the improvement from including weather forecasts.
 
-<!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Forecasting Workflow](forecasting-workflow.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Load the Data
 
