@@ -52,6 +52,9 @@ This is leakage-free: a vintage's output depends only on its own rows, all of wh
 !!! note "Per-vintage fits are small"
     A vintage spans roughly the forecasting horizon, so a per-vintage fit sees few rows. This is fine for imputation and scaling; a transformer needing many points to fit well (a high-resolution quantile transform, say) is a poor fit for the per-vintage axis.
 
+!!! warning "Per-vintage fitting is slow on large frames"
+    Fitting once per vintage costs far more than a single shared fit: roughly 640 times slower on a 500-vintage, 12000-row frame (0.76s against 0.001s). The cost is the per-vintage revalidation, not the arithmetic. Transform an `X_forecast` frame once and reuse the result rather than calling this inside a backtest loop.
+
 !!! note "The tail of a forecast frame is dropped"
     A forecast frame usually ends in vintages of one or two rows, where the horizon runs off the end of the series. A single-row vintage has no per-vintage statistic to compute, so `PerVintageActualTransformer` drops vintages with fewer than two rows and emits a `UserWarning` naming how many. The surviving vintages are unaffected.
 
