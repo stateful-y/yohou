@@ -464,7 +464,21 @@ def _generate_api_pages(project_root):
         print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
 
 
-def _build_api_table_html(project_root):
+def _site_root_prefix(page):
+    """Relative path from `page`'s rendered URL back to the site root.
+
+    Every link this file injects is relative, because the site may be served
+    under a subpath and `use_directory_urls` makes each page its own directory.
+    A hardcoded `../../` only works if the page never moves: a project is free
+    to put its API index at `pages/api/index.md` rather than the template's
+    `pages/reference/api.md`, and a fixed prefix silently 404s every link on it.
+    """
+    parts = page.file.src_path.split("/")
+    depth = len(parts) if parts[-1] != "index.md" else len(parts) - 1
+    return "../" * depth
+
+
+def _build_api_table_html(project_root, prefix):
     """Build an HTML <table> for the API index with DataTables init.
 
     Lists every public class and function across all submodules with
@@ -484,7 +498,7 @@ def _build_api_table_html(project_root):
 
         members = _get_public_members(mod_file, pkg_dir)
         module_label = f"yohou.{mod['module_name']}"
-        module_href = f"../../api/{mod['module_name']}/"
+        module_href = f"{prefix}pages/api/{mod['module_name']}/"
 
         for cls in members["classes"]:
             qualified = f"yohou.{mod['module_name']}.{cls['name']}"
@@ -503,7 +517,7 @@ def _build_api_table_html(project_root):
 
     tbody_lines = []
     for name, kind, module_label, module_href, desc, qualified in rows:
-        href = f"../../api/generated/{qualified}/"
+        href = f"{prefix}pages/api/generated/{qualified}/"
         badge_cls = _type_badge_cls.get(kind, "")
         tbody_lines.append(
             f"      <tr>"
@@ -886,7 +900,7 @@ def _build_api_examples_html(project_root, qualified_name):
 # ---------------------------------------------------------------------------
 
 
-def _build_module_toc(config, current_src_path=None):
+def _build_module_toc(config, current_src_path=None, prefix=None):
     """Build the module TOC list used by the api-submodule sidebar template.
 
     Parameters
@@ -907,8 +921,6 @@ def _build_module_toc(config, current_src_path=None):
     api_dir = docs_dir / "pages" / "api"
     project_root = docs_dir.parent
 
-    is_index = current_src_path is None or current_src_path == "pages/reference/api.md"
-
     modules = _get_submodules(project_root)
     module_toc = []
 
@@ -918,12 +930,11 @@ def _build_module_toc(config, current_src_path=None):
         if not md_path.exists():
             continue
 
-        # Compute relative URL
-        if is_index:
-            # reference/api.md is at pages/reference/api/, submodule pages at pages/api/
-            page_url = f"../../api/{md_filename.replace('.md', '/')}"
-        else:
-            page_url = f"../{md_filename.replace('.md', '/')}".replace("//", "/")
+        # Site-root relative, so the TOC is correct on any page that renders it.
+        # The old form branched on whether the current page was the API index and
+        # hardcoded that index's depth -- which silently 404s for a project that
+        # keeps its index somewhere else.
+        page_url = f"{prefix}pages/api/{md_filename.replace('.md', '/')}"
 
         active = current_src_path == f"pages/api/{md_filename}" if current_src_path else False
 
@@ -1595,16 +1606,12 @@ def on_page_content(html, page, config, files):
         html = _linkify_see_also(html)
         html = _process_api_page_content(html, page, config)
 
-    if src == "pages/reference/api.md":
-        # API index: flat module list (api-index.html template)
-        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
-    elif (
-        src.startswith("pages/api/")
-        and not src.startswith("pages/api/generated/")
-        and page.meta.get("template") == "api-submodule.html"
-    ):
-        # Submodule page: module list with active/children expansion
-        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
+    # Keyed on the template a page declares, not on where the page happens to
+    # live: the index is wherever a project put it. Matching a hardcoded
+    # `pages/reference/api.md` leaves a relocated index with no module_toc at
+    # all -- its sidebar renders empty, and nothing errors.
+    if page.meta.get("template") in ("api-index.html", "api-submodule.html"):
+        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src, prefix=_site_root_prefix(page))
 
     # Last: the API restructuring above rewrites whole regions, so linking
     # before it would have its links discarded with the markup they sat in.
@@ -1622,10 +1629,11 @@ def on_page_markdown(markdown, page, config, files):
     ``<!-- GALLERY -->``           → flat card grid of example notebooks
     """
     project_root = Path(__file__).parent.parent
+    prefix = _site_root_prefix(page)
 
     # API_TABLE placeholder
     if "<!-- API_TABLE -->" in markdown:
-        table = _build_api_table_html(project_root)
+        table = _build_api_table_html(project_root, prefix)
         markdown = markdown.replace("<!-- API_TABLE -->", table)
 
     # EXAMPLES_FOR placeholders on generated API pages
@@ -1633,10 +1641,6 @@ def on_page_markdown(markdown, page, config, files):
         qualified = match.group(1)
         examples_html = _build_api_examples_html(project_root, qualified)
         markdown = markdown.replace(match.group(0), examples_html)
-
-    src_parts = page.file.src_path.split("/")
-    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
-    prefix = "../" * depth
 
     repo_url = config.get("repo_url", "").rstrip("/")
     github_path = repo_url.removeprefix("https://")
