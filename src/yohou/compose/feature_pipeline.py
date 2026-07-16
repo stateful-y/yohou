@@ -22,6 +22,7 @@ from sklearn.utils.validation import (
 
 from yohou.base import BaseActualTransformer
 from yohou.base.transformer import _BaseTransformer
+from yohou.base.utils import _require_actual_memory_api
 from yohou.compose.column_transformer import ColumnTransformer
 from yohou.compose.feature_union import FeatureUnion
 from yohou.compose.utils import check_homogeneous_kinds, common_kind, index_columns
@@ -568,6 +569,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             If the pipeline has not been fitted yet.
 
         """
+        _require_actual_memory_api(self, "rewind")
         check_is_fitted(self)
 
         # Propagate rewind_transform through each step:
@@ -607,6 +609,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             observations.
 
         """
+        _require_actual_memory_api(self, "observe")
         check_is_fitted(self)
         # Schema + continuity validation at pipeline level
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)

@@ -21,6 +21,7 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.base.utils import _require_actual_memory_api
 from yohou.utils import (
     Tags,
     validate_transformer_data,
@@ -347,8 +348,11 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         ------
         sklearn.exceptions.NotFittedError
             If the transformer has not been fitted yet.
+        ValueError
+            If the transformer reports ``kind == "forecast"``.
 
         """
+        _require_actual_memory_api(self, "rewind")
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (no continuity check - rewind sets new window)
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=False)
@@ -381,9 +385,11 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         sklearn.exceptions.NotFittedError
             If the transformer has not been fitted.
         ValueError
-            If ``X`` contains overlapping data with existing observations.
+            If ``X`` contains overlapping data with existing observations, or if
+            the transformer reports ``kind == "forecast"``.
 
         """
+        _require_actual_memory_api(self, "observe")
         check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
         # Validate against fitted state (includes continuity check)
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)

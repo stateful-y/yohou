@@ -24,6 +24,7 @@ from sklearn.utils.validation import (
 )
 
 from yohou.base import BaseActualTransformer
+from yohou.base.utils import _require_actual_memory_api
 from yohou.utils import Tags
 from yohou.utils._compat import (
     _BaseComposition,
@@ -800,6 +801,7 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
             The union with each child transformer's memory advanced.
 
         """
+        _require_actual_memory_api(self, "observe")
         check_is_fitted(self)
         for _, transformer, _ in self._iter():
             if hasattr(transformer, "observe"):
@@ -825,6 +827,7 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
             The union with each child transformer's memory rewound.
 
         """
+        _require_actual_memory_api(self, "rewind")
         check_is_fitted(self)
         for _, transformer, _ in self._iter():
             if hasattr(transformer, "rewind"):

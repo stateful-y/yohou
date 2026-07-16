@@ -131,3 +131,39 @@ def test_forecast_kind_composer_rejected_from_feature_transformer():
     forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=_forecast_union())
     with pytest.raises(ValueError, match="actual-kind transformer"):
         forecaster.fit(_target_series(), forecasting_horizon=3)
+
+
+# --- the memory API is actual-kind only ----------------------------------------
+
+
+@pytest.mark.parametrize("method", ["observe", "rewind"])
+@pytest.mark.parametrize(
+    "make_composer",
+    [_forecast_union, _forecast_pipeline, _forecast_column_transformer],
+    ids=["union", "pipeline", "column_transformer"],
+)
+def test_memory_api_rejected_on_forecast_kind_composition(make_composer, method):
+    """observe/rewind mean nothing on the vintage axis and must not be accepted.
+
+    A forecast-kind composition is structurally a ``BaseActualTransformer``, so it
+    inherits the memory API. The buffer it would maintain needs contiguous recent
+    rows, which the discontinuous vintage axis cannot supply. Covers all three
+    composers because they do not share one implementation: ``FeatureUnion`` and
+    ``FeaturePipeline`` override both methods, while ``ColumnTransformer``
+    inherits them.
+    """
+    frame = _forecast_frame()
+    composer = make_composer()
+    composer.fit(frame)
+
+    with pytest.raises(ValueError, match="actual-kind transformer"):
+        getattr(composer, method)(frame)
+
+
+def test_memory_api_still_works_on_actual_kind_composition():
+    """The guard is a no-op for actual-kind compositions."""
+    union = FeatureUnion([("id", FunctionTransformer())])
+    union.fit(_target_series())
+
+    assert union.observe(_target_series()) is union
+    assert union.rewind(_target_series()) is union

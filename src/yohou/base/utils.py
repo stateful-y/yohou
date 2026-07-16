@@ -15,6 +15,64 @@ if TYPE_CHECKING:
     from yohou.base import BaseActualTransformer
 
 
+def _is_forecast_kind(obj: object) -> bool:
+    """Return whether ``obj`` reports ``kind == "forecast"``.
+
+    Reads the tag rather than testing the base class. An ``isinstance`` check
+    cannot express this: the composition estimators stay ``BaseActualTransformer``
+    subclasses and discriminate their kind by tag, so a ``FeatureUnion`` of
+    forecast transformers is an instance of the actual base while reporting
+    ``kind="forecast"``. Anything without readable transformer tags counts as
+    actual, so a real validation error surfaces instead of this one.
+
+    Parameters
+    ----------
+    obj : object
+        A transformer instance (or anything, including ``None``).
+
+    Returns
+    -------
+    bool
+        ``True`` only if the object explicitly reports the forecast kind.
+
+    """
+    get_tags = getattr(obj, "__sklearn_tags__", None)
+    if get_tags is None:
+        return False
+    transformer_tags = getattr(get_tags(), "transformer_tags", None)
+    return transformer_tags is not None and getattr(transformer_tags, "kind", "actual") == "forecast"
+
+
+def _require_actual_memory_api(transformer: object, method: str) -> None:
+    """Raise if the ``observe``/``rewind`` memory API is used on a forecast-kind transformer.
+
+    The memory API maintains a buffer of the most recent contiguous rows. The
+    vintage axis is discontinuous, so no such buffer exists and the call has no
+    meaning rather than merely being unsupported.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer the method was called on.
+    method : str
+        Method name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` reports ``kind == "forecast"``.
+
+    """
+    if _is_forecast_kind(transformer):
+        raise ValueError(
+            f"{type(transformer).__name__}.{method}() is unavailable on a forecast-kind "
+            f"transformer, which must be an actual-kind transformer to maintain memory. "
+            f"The observe/rewind buffer holds contiguous recent rows, which the vintage "
+            f"axis of an X_forecast frame cannot provide. Forecast transformers are "
+            f"stateless, so there is no memory to update or rewind."
+        )
+
+
 def _require_actual_transformer(transformer: object, slot: str) -> None:
     """Raise if ``transformer`` is a forecast-kind transformer in an actual slot.
 
@@ -38,13 +96,7 @@ def _require_actual_transformer(transformer: object, slot: str) -> None:
         If ``transformer`` reports ``kind == "forecast"``.
 
     """
-    if transformer is None:
-        return
-    get_tags = getattr(transformer, "__sklearn_tags__", None)
-    if get_tags is None:
-        return
-    transformer_tags = getattr(get_tags(), "transformer_tags", None)
-    if transformer_tags is not None and getattr(transformer_tags, "kind", "actual") == "forecast":
+    if _is_forecast_kind(transformer):
         raise ValueError(
             f"{slot} must be an actual-kind transformer (operating on the single-axis "
             f"target/X_actual frame), but got a forecast-kind transformer. Forecast "
