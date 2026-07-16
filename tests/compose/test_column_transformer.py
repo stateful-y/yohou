@@ -526,13 +526,13 @@ class TestColumnTransformerCoveragePaths:
         assert len(sliced.transformers) == 1
 
     def test_validate_transformers_non_base_raises(self):
-        """Non-BaseTransformer estimator in transformers raises TypeError."""
+        """Non-BaseActualTransformer estimator in transformers raises TypeError."""
         from sklearn.preprocessing import StandardScaler
 
         ct = ColumnTransformer(
             transformers=[("bad", StandardScaler(), ["a"])],
         )
-        with pytest.raises(TypeError, match="BaseTransformer"):
+        with pytest.raises(TypeError, match="BaseActualTransformer"):
             ct._validate_transformers()
 
     def test_remainder_passthrough(self, time_series_3col):

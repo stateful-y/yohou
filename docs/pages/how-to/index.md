@@ -31,6 +31,7 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 - [Work with Panel Data](panel-data.md): Handle multiple related time series with the `__` column naming convention.
 - [Use Exogenous Features](exogenous-features.md): Incorporate external predictors using X_actual, X_future, and X_forecast.
 - [Work with Forecast Vintages](forecast-vintages.md): Prepare, align, and predict with `X_forecast` features from upstream models stamped with an issuance time.
+- [Transform Forecast Features](transform-forecast-features.md): Derive features from an `X_forecast` frame by lifting a stateless transformer onto the vintage axis with [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/).
 - [Add Calendar and Time Features](time-features.md): Engineer temporal features like day of week, month, and holidays.
 - [Use Time Weighting](time-weighting.md): Apply non-uniform weights to emphasize recent or seasonal observations.
 
@@ -56,6 +57,6 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 - [Create a Point Forecaster](create-a-point-forecaster.md): Implement a custom point forecaster by subclassing [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/).
 - [Create an Interval Forecaster](create-an-interval-forecaster.md): Implement a custom interval forecaster by subclassing [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/).
 - [Create a Class-Probability Forecaster](create-a-class-proba-forecaster.md): Implement a custom categorical forecaster by subclassing [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/).
-- [Create a Transformer](create-a-transformer.md): Implement a custom time series transformer by subclassing [`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/).
+- [Create a Transformer](create-a-transformer.md): Implement a custom time series transformer by subclassing [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/).
 - [Create Custom Scorers](create-a-scorer.md): Implement a custom evaluation metric by subclassing [`BasePointScorer`](/pages/api/generated/yohou.metrics.BasePointScorer/) or [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.BaseIntervalScorer/).
 - [Contribute to Yohou](contributing.md): Set up a development environment, run tests, and submit changes.

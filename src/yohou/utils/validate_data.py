@@ -23,6 +23,8 @@ from yohou.utils.validation import (
     check_time_column,
     interval_to_timedelta,
     parse_interval,
+    representative_interval,
+    validate_column_names,
 )
 
 __all__ = [
@@ -229,7 +231,7 @@ def validate_plotting_params(
 
 
 if TYPE_CHECKING:
-    from yohou.base import BaseForecaster, BaseTransformer
+    from yohou.base import BaseActualTransformer, BaseForecaster
     from yohou.metrics.base import BaseScorer
     from yohou.model_selection import BaseSplitter
     from yohou.utils._context import ScoringContext
@@ -994,7 +996,7 @@ def validate_forecaster_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[True],
@@ -1009,7 +1011,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1024,7 +1026,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1039,7 +1041,7 @@ def validate_transformer_data(
 
 @overload
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: Literal[False],
@@ -1053,7 +1055,7 @@ def validate_transformer_data(
 
 
 def validate_transformer_data(
-    transformer: BaseTransformer,
+    transformer: BaseActualTransformer,
     X: pl.DataFrame | None = None,
     *,
     reset: bool = True,
@@ -1068,7 +1070,7 @@ def validate_transformer_data(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         The transformer instance.
     X : pl.DataFrame or None, default=None
         Input data.
@@ -1111,7 +1113,7 @@ def validate_transformer_data(
 
     See Also
     --------
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for all transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for all transformers.
     - [`check_inputs`][yohou.utils.validation.check_inputs] : Low-level input validation helper.
 
     """
@@ -1119,7 +1121,21 @@ def validate_transformer_data(
         # Fit context
         if X is None:
             raise ValueError("`X` cannot be None in fit context.")
-        interval = check_inputs(X, None)
+        transformer_tags = getattr(transformer.__sklearn_tags__(), "transformer_tags", None)
+        if getattr(transformer_tags, "accepts_irregular_grid", False):
+            # The transformer declares it tolerates a non-uniform grid at fit (e.g. a
+            # resampler that bins via group_by_dynamic), so the strict check is skipped
+            # entirely rather than tried first. Trying it first would be unsound: on a
+            # sub-day axis within its jitter tolerance the strict check does not raise,
+            # it returns the median of the *unique* deltas, which a few outlier gaps
+            # skew upward. Falling back only on ValueError would therefore use the
+            # frequency-weighted (correct) median only when the skewed one failed
+            # outright. On a uniform grid both agree, so the recorded interval is
+            # unchanged there.
+            validate_column_names(X)
+            interval = representative_interval(X)
+        else:
+            interval = check_inputs(X, None)
         transformer.interval_ = interval
         transformer.feature_names_in_ = X.select(~cs.by_name("time")).columns
         transformer.n_features_in_ = len(transformer.feature_names_in_)
@@ -1177,11 +1193,23 @@ def validate_transformer_data(
     check_time_column(X)
     X = check_schema(X, transformer.X_schema_)
 
-    if check_params.get("check_intervals", True) and len(X) >= 2:
+    # A transformer that accepts an irregular grid (e.g. a resampler binning via
+    # group_by_dynamic) skips the strict interval-consistency check at transform, the
+    # same relaxation applied at fit above.
+    transformer_tags = getattr(transformer.__sklearn_tags__(), "transformer_tags", None)
+    accepts_irregular = getattr(transformer_tags, "accepts_irregular_grid", False)
+
+    if not accepts_irregular and check_params.get("check_intervals", True) and len(X) >= 2:
         check_interval_consistency(X)
 
+    # The accepts_irregular_grid gate below is unreachable today: the only transformer
+    # that opts in (Downsampler) is stateless, so its _X_observed is empty and this
+    # branch is skipped anyway. It is kept for a transformer that is both stateful and
+    # irregular-tolerant (a time-based rolling window, say), which would otherwise
+    # crash here, since the block resolves the interval with the strict check below.
     if (
-        check_params.get("check_continuity", True)
+        not accepts_irregular
+        and check_params.get("check_continuity", True)
         and hasattr(transformer, "_X_observed")
         and len(transformer._X_observed) > 0
     ):

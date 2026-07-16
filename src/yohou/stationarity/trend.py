@@ -30,7 +30,7 @@ class PolynomialTrendForecaster(_BaseTrendForecaster):
         Higher degrees can overfit - typically use degree <= 3.
     estimator : RegressorMixin or None, default=None
         Regression model used to fit polynomial coefficients.
-    target_transformer : BaseTransformer, optional
+    target_transformer : BaseActualTransformer, optional
         Transformer for target variable (e.g., LogTransformer).
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data.  See `BaseForecaster` for details.

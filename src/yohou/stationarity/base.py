@@ -11,7 +11,7 @@ from pydantic import StrictInt
 from sklearn.base import RegressorMixin, clone
 from sklearn.pipeline import Pipeline
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils._compat import StrOptions
 from yohou.utils.panel import get_group_df
@@ -28,7 +28,7 @@ class _BaseTrendForecaster(BasePointForecaster):
 
     Parameters
     ----------
-    target_transformer : BaseTransformer, optional
+    target_transformer : BaseActualTransformer, optional
         Transformer applied to target before forecasting.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data.  See `BaseForecaster` for details.
@@ -41,14 +41,14 @@ class _BaseTrendForecaster(BasePointForecaster):
 
     def __init__(
         self,
-        target_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         """Initialize _BaseTrendForecaster.
 
         Parameters
         ----------
-        target_transformer : BaseTransformer, optional
+        target_transformer : BaseActualTransformer, optional
             Transformer for target variable.
         panel_strategy : {"global", "multivariate"}, default="global"
             How to handle panel data.  See `BaseForecaster` for details.
@@ -202,7 +202,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         if isinstance(self.target_transformer_, dict):
             # The dict form only exists in panel mode, where group is a real name.
             assert group is not None
-            transformer_dict = typing_cast("dict[str, BaseTransformer | None]", self.target_transformer_)
+            transformer_dict = typing_cast("dict[str, BaseActualTransformer | None]", self.target_transformer_)
             transformer = transformer_dict[group]
             if transformer is None:
                 return 0
@@ -425,7 +425,7 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
         Length of seasonal cycle (number of time steps).
         ``PatternSeasonalityForecaster`` requires an integer period, while
         ``FourierSeasonalityForecaster`` accepts a float (e.g. ``365.25``).
-    target_transformer : BaseTransformer, optional
+    target_transformer : BaseActualTransformer, optional
         Transformer applied to target before forecasting.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data.  See `BaseForecaster` for details.
@@ -434,14 +434,14 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
 
     _parameter_constraints: dict = {
         "seasonality": [numbers.Real],
-        "target_transformer": [BaseTransformer, None],
+        "target_transformer": [BaseActualTransformer, None],
         "panel_strategy": [StrOptions({"global", "multivariate"})],
     }
 
     def __init__(
         self,
         seasonality: float,
-        target_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         """Initialize _BaseSeasonalityForecaster.
@@ -450,7 +450,7 @@ class _BaseSeasonalityForecaster(_BaseTrendForecaster):
         ----------
         seasonality : int or float
             Length of seasonal cycle.
-        target_transformer : BaseTransformer, optional
+        target_transformer : BaseActualTransformer, optional
             Transformer for target variable.
         panel_strategy : {"global", "multivariate"}, default="global"
             How to handle panel data.  See `BaseForecaster` for details.

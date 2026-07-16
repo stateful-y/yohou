@@ -313,3 +313,132 @@ class TestDownsamplerBoundaries:
         assert "_lower_boundary" not in result.columns
         assert "_upper_boundary" not in result.columns
         assert result.columns == ["time", "value_a", "value_b"]
+
+
+def create_irregular_subhourly_data() -> pl.DataFrame:
+    """Create a jittered, gapped sub-hourly frame that fails the strict interval check.
+
+    Roughly a 5-minute cadence with second-level jitter and one multi-hour gap, so
+    ``check_interval_consistency`` rejects it (the gap widens the delta spread past
+    the sub-day tolerance) while ``group_by_dynamic`` can still bin it. Deterministic.
+
+    Returns
+    -------
+    pl.DataFrame
+        DataFrame with an irregular "time" column and one "value_a" column.
+
+    """
+    steps = [300, 297, 305, 300, 301, 299, 300, 303, 300, 298, 302, 300]
+    seconds: list[int] = []
+    t = 0
+    for step in steps:
+        seconds.append(t)
+        t += step
+    t += 5400  # a ~90 minute gap widens the delta spread past the 1 hour tolerance
+    for step in [300, 302, 298, 300, 301, 300, 299, 300, 304, 300, 296, 300]:
+        seconds.append(t)
+        t += step
+    seconds.append(t)
+    base = datetime(2021, 1, 1)
+    time = [base + timedelta(seconds=s) for s in seconds]
+    return pl.DataFrame({"time": time, "value_a": [100.0 + i for i in range(len(time))]})
+
+
+class TestDownsamplerIrregularGrid:
+    """Downsampler accepts a non-uniform (jittered/gapped) input grid at fit and transform."""
+
+    def test_tag_declared(self) -> None:
+        """Downsampler opts into the irregular-grid contract; a resampler that does not is False."""
+        assert Downsampler().__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+        assert Upsampler().__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+    def test_fixture_is_irregular(self) -> None:
+        """Guard the fixture: it really is rejected by the strict interval check."""
+        from yohou.utils.validation import check_interval_consistency
+
+        with pytest.raises(ValueError):
+            check_interval_consistency(create_irregular_subhourly_data())
+
+    def test_fits_and_bins_irregular_to_hourly(self) -> None:
+        """An irregular sub-hourly frame downsamples to the same hourly means as a manual group_by."""
+        X = create_irregular_subhourly_data()
+        out = Downsampler(interval="1h", aggregation="mean").fit_transform(X).sort("time")
+        expected = (
+            X
+            .group_by(pl.col("time").dt.truncate("1h").alias("time"))
+            .agg(value_a=pl.col("value_a").mean())
+            .sort("time")
+        )
+        assert out.height == expected.height
+        assert out["value_a"].to_list() == pytest.approx(expected["value_a"].to_list())
+
+    def test_records_representative_interval(self) -> None:
+        """On irregular input, the recorded interval is a representative (median) one, not a raise."""
+        ds = Downsampler(interval="1h").fit(create_irregular_subhourly_data())
+        assert ds.input_interval_str_ == "5m"
+
+    def test_regular_grid_interval_unchanged(self) -> None:
+        """On a uniform grid the strict interval is recorded, exactly as before the opt-in."""
+        ds = Downsampler(interval="1d").fit(create_hourly_data(length=48))
+        assert ds.input_interval_str_ == "1h"
+
+    def test_non_optin_transformer_still_rejects_irregular(self) -> None:
+        """A transformer that does not opt in still rejects the same irregular frame at fit."""
+        from yohou.preprocessing import LagTransformer
+
+        with pytest.raises(ValueError):
+            LagTransformer(lag=[1]).fit(create_irregular_subhourly_data())
+
+    def test_modest_gaps_record_the_frequency_weighted_interval(self) -> None:
+        """Outlier gaps must not skew the recorded interval.
+
+        The strict check tolerates a sub-day delta spread and returns the median
+        of the *unique* deltas, which a few gaps drag upward: for
+        ``{300, 600, 900}`` it returns 10m. The frequency-weighted median is 5m,
+        which is what the feed actually is. The strict check succeeds here, so
+        gating the robust function behind ``except ValueError`` never reaches it.
+        """
+        base = datetime(2021, 1, 1)
+        seconds: list[int] = []
+        t = 0
+        for step in [300] * 12 + [600, 900]:
+            seconds.append(t)
+            t += step
+        seconds.append(t)
+        frame = pl.DataFrame({
+            "time": [base + timedelta(seconds=s) for s in seconds],
+            "value_a": [100.0 + i for i in range(len(seconds))],
+        })
+
+        ds = Downsampler(interval="10m").fit(frame)
+        assert ds.input_interval_str_ == "5m"
+
+    def test_jittered_feed_can_be_binned_onto_its_own_cadence(self) -> None:
+        """Regularizing a jittered 5m feed onto a clean 5m grid is accepted.
+
+        This is the advertised use case. It fails when the recorded input
+        interval is skewed above the true cadence, because the target >= input
+        guard then rejects the target.
+        """
+        base = datetime(2021, 1, 1)
+        seconds: list[int] = []
+        t = 0
+        for step in [300] * 12 + [600, 900]:
+            seconds.append(t)
+            t += step
+        seconds.append(t)
+        frame = pl.DataFrame({
+            "time": [base + timedelta(seconds=s) for s in seconds],
+            "value_a": [100.0 + i for i in range(len(seconds))],
+        })
+
+        out = Downsampler(interval="5m").fit_transform(frame)
+        assert "time" in out.columns
+
+    def test_all_identical_timestamps_raise(self) -> None:
+        """A frame with no positive interval is rejected, not recorded as 0d."""
+        base = datetime(2021, 1, 1)
+        frame = pl.DataFrame({"time": [base] * 4, "value_a": [1.0, 2.0, 3.0, 4.0]})
+
+        with pytest.raises(ValueError):
+            Downsampler(interval="5m").fit(frame)

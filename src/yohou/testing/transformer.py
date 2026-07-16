@@ -1,6 +1,6 @@
 """Check functions for yohou transformers.
 
-This module provides systematic validation functions for testing BaseTransformer
+This module provides systematic validation functions for testing BaseActualTransformer
 implementations. All check functions raise AssertionError on failure.
 
 Organized into three categories:
@@ -22,7 +22,7 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.model_selection import train_test_split
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import inspect_panel
 
 __all__ = [
@@ -66,7 +66,7 @@ def _build_X_p(transformer, X: pl.DataFrame, X_trans: pl.DataFrame) -> pl.DataFr
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Fitted transformer.
     X : pl.DataFrame
         Original (untransformed) data.
@@ -94,7 +94,7 @@ def check_fit_sets_attributes(transformer, X: pl.DataFrame, y: pl.DataFrame | No
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer instance
     X : pl.DataFrame
         Training data with "time" column
@@ -138,7 +138,7 @@ def check_observation_horizon_not_fitted(transformer, X: pl.DataFrame) -> None:
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer instance
     X : pl.DataFrame
         Test data
@@ -173,7 +173,7 @@ def check_observation_horizon_after_fit(transformer, X: pl.DataFrame, y: pl.Data
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -205,7 +205,7 @@ def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFr
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data (must have enough rows)
@@ -246,7 +246,7 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data (should have at least observation_horizon rows)
@@ -296,7 +296,7 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Initial training data
@@ -351,7 +351,7 @@ def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.Data
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -395,7 +395,7 @@ def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame,
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data (will be split into fit, A, B portions)
@@ -473,7 +473,7 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data (needs to be long enough)
@@ -541,7 +541,7 @@ def check_insufficient_data_raises(transformer, X: pl.DataFrame, y: pl.DataFrame
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Test data (will be truncated)
@@ -589,7 +589,7 @@ def check_transform_output_structure(transformer, X: pl.DataFrame, y: pl.DataFra
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -631,7 +631,7 @@ def check_feature_names_out_match(transformer, X: pl.DataFrame, y: pl.DataFrame 
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -671,7 +671,7 @@ def check_inverse_transform_identity(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -733,7 +733,7 @@ def check_inverse_observe_transform_identity(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data (will be split for fit and observe_transform)
@@ -806,7 +806,7 @@ def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X_panel : pl.DataFrame
         Panel data with panel columns
@@ -851,7 +851,7 @@ def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.Dat
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer.
     X_panel : pl.DataFrame
         Panel data with panel columns.
@@ -899,7 +899,7 @@ def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.Dat
 def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
     """Check stateless transformers transform deterministically across fits.
 
-    Every transformer requires ``fit()`` before ``transform()`` (BaseTransformer
+    Every transformer requires ``fit()`` before ``transform()`` (BaseActualTransformer
     always calls ``check_is_fitted``). For a stateless transformer
     (``observation_horizon == 0``) fitting carries no information beyond the
     schema, so two independent fits on the same data must yield identical
@@ -907,7 +907,7 @@ def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer expected to be stateless.
     X : pl.DataFrame
         Test data
@@ -942,7 +942,7 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Test data with known dtypes
@@ -1005,7 +1005,7 @@ def check_fit_idempotent(transformer, X: pl.DataFrame, y: pl.DataFrame | None = 
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -1062,7 +1062,7 @@ def check_inverse_transform_round_trip(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted invertible transformer
     X : pl.DataFrame
         Test data
@@ -1126,7 +1126,7 @@ def check_fit_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFram
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X : pl.DataFrame
         Training data
@@ -1145,7 +1145,7 @@ def check_fit_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFram
     # Separate fit and transform
     X_trans1 = transformer1.fit(X, y).transform(X)
 
-    # Combined fit_transform (BaseTransformer always defines fit_transform())
+    # Combined fit_transform (BaseActualTransformer always defines fit_transform())
     X_trans2 = transformer2.fit_transform(X, y)
 
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-7, abs_tol=1e-10)
@@ -1165,7 +1165,7 @@ def check_memory_bounded(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer
     X_train : pl.DataFrame
         Training data (used for fit)
@@ -1221,7 +1221,7 @@ def check_tags_accessible_before_fit(transformer, X: pl.DataFrame | None = None)
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer instance
     X : pl.DataFrame, optional
         Not used, included for signature consistency
@@ -1258,7 +1258,7 @@ def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | 
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer instance
     X : pl.DataFrame
         Training data
@@ -1307,7 +1307,7 @@ def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame 
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Transformer instance (may be unfitted; tags must be accessible before
         fit per sklearn convention). Used as-is without cloning or fitting.
     X : pl.DataFrame
@@ -1342,8 +1342,8 @@ def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame 
         # or inverse_transform (Tier 2 classes like SklearnTransformer override
         # inverse_transform directly instead of using the _inverse_transform hook).
         has_inverse_impl = (
-            type(transformer)._inverse_transform is not BaseTransformer._inverse_transform
-            or type(transformer).inverse_transform is not BaseTransformer.inverse_transform
+            type(transformer)._inverse_transform is not BaseActualTransformer._inverse_transform
+            or type(transformer).inverse_transform is not BaseActualTransformer.inverse_transform
         )
         is_invertible = tags.transformer_tags.invertible
 
@@ -1363,7 +1363,7 @@ def check_transformer_methods_call_check_is_fitted(transformer, X: pl.DataFrame,
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Unfitted transformer instance
     X : pl.DataFrame
         Training/test data with "time" column (should have at least 100 rows for slicing)

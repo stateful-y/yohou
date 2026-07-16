@@ -10,7 +10,7 @@ from sklearn.impute import KNNImputer as sklearn_KNNImputer
 from sklearn.impute import SimpleImputer as sklearn_SimpleImputer
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.preprocessing.sklearn_base import SklearnTransformer
 from yohou.utils import Tags, validate_transformer_data
 from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
@@ -97,7 +97,7 @@ class SimpleImputer(SklearnTransformer):
         return self.instance_.statistics_
 
 
-class TransformedSpaceKNNImputer(BaseTransformer):
+class TransformedSpaceKNNImputer(BaseActualTransformer):
     """K-nearest neighbors imputation in a transformed feature space.
 
     Projects the data through an optional transformer before performing KNN
@@ -125,7 +125,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     metric : {"nan_euclidean"}, default="nan_euclidean"
         Distance metric for searching neighbors.  Only ``nan_euclidean`` is
         supported as it handles missing values.
-    transformer : BaseTransformer or None, default=None
+    transformer : BaseActualTransformer or None, default=None
         An optional yohou transformer used to project the data before KNN
         imputation.  Must implement ``fit`` / ``transform``.  If ``None``,
         imputation is performed directly on the raw features.
@@ -134,7 +134,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
     ----------
     imputer_ : sklearn KNNImputer
         The fitted sklearn KNNImputer instance (fitted in transformed space).
-    transformer_ : BaseTransformer or None
+    transformer_ : BaseActualTransformer or None
         A deep-copied and fitted instance of the transformer (or ``None``).
 
     Examples
@@ -189,7 +189,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
         "n_neighbors": [Interval(numbers.Integral, 1, None, closed="left")],
         "weights": [StrOptions({"uniform", "distance"})],
         "metric": [StrOptions({"nan_euclidean"})],
-        "transformer": [None, BaseTransformer],
+        "transformer": [None, BaseActualTransformer],
     }
 
     def __init__(
@@ -197,7 +197,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
         n_neighbors: int = 5,
         weights: str = "uniform",
         metric: str = "nan_euclidean",
-        transformer: BaseTransformer | None = None,
+        transformer: BaseActualTransformer | None = None,
     ):
         self.n_neighbors = n_neighbors
         self.weights = weights
@@ -258,10 +258,10 @@ class TransformedSpaceKNNImputer(BaseTransformer):
             self.transformer_ = None
             X_projected = X
 
-        BaseTransformer.fit(self, X, y, **params)
+        BaseActualTransformer.fit(self, X, y, **params)
 
         # Inherit observation_horizon from the inner transformer after the base
-        # fit, so it is not overwritten by BaseTransformer.fit's own sync step.
+        # fit, so it is not overwritten by BaseActualTransformer.fit's own sync step.
         if self.transformer_ is not None:
             self._observation_horizon = self.transformer_.observation_horizon
 
@@ -328,7 +328,7 @@ class TransformedSpaceKNNImputer(BaseTransformer):
         return list(input_features)
 
 
-class SimpleTimeImputer(BaseTransformer):
+class SimpleTimeImputer(BaseActualTransformer):
     """Time series imputation using interpolation or filling methods.
 
     Imputes missing values using time series-aware methods like linear
@@ -423,7 +423,7 @@ class SimpleTimeImputer(BaseTransformer):
 
         """
         X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
+        BaseActualTransformer.fit(self, X, y, **params)
 
         return self
 
@@ -508,7 +508,7 @@ class SimpleTimeImputer(BaseTransformer):
         return list(input_features)
 
 
-class SeasonalImputer(BaseTransformer):
+class SeasonalImputer(BaseActualTransformer):
     """Seasonal decomposition-based imputation for missing values.
 
     Imputes missing values by leveraging seasonal patterns in the data.
@@ -610,7 +610,7 @@ class SeasonalImputer(BaseTransformer):
 
         """
         X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
+        BaseActualTransformer.fit(self, X, y, **params)
 
         # Anchor the season index to the first observed timestamp so that
         # transform on any sub-range of the series uses the same seasonal

@@ -11,7 +11,7 @@ import scipy.signal
 from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import validate_transformer_data
 from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in
 from yohou.utils.validation import check_interval_consistency, interval_to_timedelta
@@ -19,7 +19,7 @@ from yohou.utils.validation import check_interval_consistency, interval_to_timed
 __all__ = ["NumericalDifferentiator", "NumericalFilter", "NumericalIntegrator"]
 
 
-class NumericalFilter(BaseTransformer):
+class NumericalFilter(BaseActualTransformer):
     """Apply digital IIR or FIR filters to time series data.
 
     Applies standard digital filters (Butterworth, Chebyshev, Bessel, etc.)
@@ -183,7 +183,7 @@ class NumericalFilter(BaseTransformer):
         # Rewind filter delay state
         self.zi_ = {}
         # Call parent rewind
-        BaseTransformer.rewind(self, X)
+        BaseActualTransformer.rewind(self, X)
         return self
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
@@ -276,7 +276,7 @@ class NumericalFilter(BaseTransformer):
         return list(input_features)
 
 
-class NumericalIntegrator(BaseTransformer):
+class NumericalIntegrator(BaseActualTransformer):
     """Numerical integration transformer for time series signals.
 
     Integrates each feature column using scipy's cumulative integration methods.
@@ -387,7 +387,7 @@ class NumericalIntegrator(BaseTransformer):
         self._last_X_value_ = {}
         self._X_t_observed_ = {}
         # Call parent rewind
-        BaseTransformer.rewind(self, X)
+        BaseActualTransformer.rewind(self, X)
         return self
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
@@ -534,7 +534,7 @@ class NumericalIntegrator(BaseTransformer):
         return [f"{col}_integrated" for col in input_features]
 
 
-class NumericalDifferentiator(BaseTransformer):
+class NumericalDifferentiator(BaseActualTransformer):
     """Numerical differentiation transformer for time series signals.
 
     Differentiates each feature column using np.gradient, which computes

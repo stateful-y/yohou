@@ -22,7 +22,7 @@ combination of existing forecasters.
 **Subclassing** a base class inserts entirely new algorithms into the framework. A custom
 [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/) subclass can implement a state-space model, exponential smoothing,
 or any other method that cannot be expressed as regression on a feature matrix. A custom
-[`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/) can implement temporal logic with a fixed lookback window that the
+[`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) can implement temporal logic with a fixed lookback window that the
 framework tracks. A custom scorer can aggregate error in a domain-specific way. In each
 case, the subclass implements a small set of methods; the base class enforces the
 contract that makes the component interoperable with the rest of the system.
@@ -78,7 +78,7 @@ transformer instances.
 
 ### Transformers
 
-[`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/) extends sklearn's transformer protocol with:
+[`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) extends sklearn's transformer protocol with:
 
 - **Observation horizon**: stateful transformers declare how many past rows they
   need via the `observation_horizon` property. Pipelines respect this when

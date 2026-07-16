@@ -108,10 +108,8 @@ def check_clone_preserves_params(estimator) -> None:
                     )
         elif isinstance(orig_val, BaseEstimator):
             assert type(orig_val) is type(cloned_val), f"{name}: parameter {key!r} changed type under clone()"
-        else:
-            assert _safe_equal(orig_val, cloned_val), (
-                f"{name}: parameter {key!r} expected {orig_val!r}, got {cloned_val!r}"
-            )
+        elif not _safe_equal(orig_val, cloned_val):
+            raise AssertionError(f"{name}: parameter {key!r} expected {orig_val!r}, got {cloned_val!r}")
 
 
 def check_get_set_params_round_trip(estimator) -> None:

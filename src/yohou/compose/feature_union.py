@@ -23,7 +23,8 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
+from yohou.base.utils import _require_actual_memory_api
 from yohou.utils import Tags
 from yohou.utils._compat import (
     _BaseComposition,
@@ -34,12 +35,19 @@ from yohou.utils._compat import (
 )
 from yohou.utils.panel import panel_aware_prefix
 
-from .utils import _hstack, _observe_transform_one, _rewind_transform_one
+from .utils import (
+    _hstack,
+    _observe_transform_one,
+    _rewind_transform_one,
+    check_homogeneous_kinds,
+    common_kind,
+    index_columns,
+)
 
 __all__ = ["FeatureUnion"]
 
 
-class FeatureUnion(BaseTransformer, _BaseComposition):
+class FeatureUnion(BaseActualTransformer, _BaseComposition):
     """Concatenates results of multiple transformer objects.
 
     This estimator applies a list of transformer objects in parallel to the
@@ -105,7 +113,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
     --------
     - [`sklearn.pipeline.FeatureUnion`][sklearn.pipeline.FeatureUnion] : Underlying scikit-learn feature union class.
     - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformer chaining.
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for transformers.
     - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Common transformer for lag features.
 
     Notes
@@ -409,6 +417,9 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
                 non_none_min_values = [v for v in min_values if v is not None]
                 tags.input_tags.min_value = max(non_none_min_values) if non_none_min_values else None
 
+                # A union inherits its kind from its (homogeneous) children.
+                tags.transformer_tags.kind = common_kind(list(self.transformer_list))
+
         return tags
 
     def __sklearn_is_fitted__(self) -> bool:
@@ -471,7 +482,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         """
         transformer_names = [name for name, _, _ in self._iter()]
-        raw_column_names = [[col for col in X_t.columns if col != "time"] for X_t in Xs]
+        raw_column_names = [[col for col in X_t.columns if col not in index_columns(X_t)] for X_t in Xs]
 
         if self.verbose_feature_names_out:
             return [
@@ -536,7 +547,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         self.verbose_feature_names_out = verbose_feature_names_out
 
     def _validate_transformers(self) -> None:
-        """Validate all transformers are BaseTransformer instances.
+        """Validate all transformers are BaseActualTransformer instances.
 
         Raises
         ------
@@ -598,6 +609,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             FeatureUnion class instance.
         """
         _raise_for_params(fit_params, self, "fit")
+        check_homogeneous_kinds(list(self.transformer_list), "FeatureUnion")
         routed_params = process_routing(self, "fit", **fit_params)
         transformers = self._parallel_func(X, y, _fit_one, routed_params)
 
@@ -631,6 +643,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             concatenated feature columns from all transformers, aligned to the
             intersection of their time grids.
         """
+        check_homogeneous_kinds(list(self.transformer_list), "FeatureUnion")
         routed_params = process_routing(self, "fit_transform", **params)
         results = self._parallel_func(X, y, _fit_transform_one, routed_params)
         if not results:
@@ -705,6 +718,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             Horizontally stacked results of transformers, aligned by observation horizons.
 
         """
+        _require_actual_memory_api(self, "observe_transform")
         _raise_for_params(params, self, "observe_transform")
         routed_params = process_routing(self, "observe_transform", **params)
 
@@ -748,6 +762,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             with warmup rows discarded.
 
         """
+        _require_actual_memory_api(self, "rewind_transform")
         _raise_for_params(params, self, "rewind_transform")
         routed_params = process_routing(self, "rewind_transform", **params)
 
@@ -774,7 +789,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
         FeatureUnion holds no buffer of its own; the union's stateful memory is
         the union of its children's buffers. This override fans ``observe`` out
         to each child so their memory advances. The inherited
-        ``BaseTransformer.observe`` cannot be used because it guards on
+        ``BaseActualTransformer.observe`` cannot be used because it guards on
         ``X_schema_``, which FeatureUnion never sets.
 
         Parameters
@@ -788,6 +803,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             The union with each child transformer's memory advanced.
 
         """
+        _require_actual_memory_api(self, "observe")
         check_is_fitted(self)
         for _, transformer, _ in self._iter():
             if hasattr(transformer, "observe"):
@@ -799,7 +815,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
 
         Mirrors :meth:`observe` by delegating to each child's ``rewind`` so the
         union's per-child buffers are rolled back to the provided window. The
-        inherited ``BaseTransformer.rewind`` cannot be used because it guards on
+        inherited ``BaseActualTransformer.rewind`` cannot be used because it guards on
         ``X_schema_``, which FeatureUnion never sets.
 
         Parameters
@@ -813,6 +829,7 @@ class FeatureUnion(BaseTransformer, _BaseComposition):
             The union with each child transformer's memory rewound.
 
         """
+        _require_actual_memory_api(self, "rewind")
         check_is_fitted(self)
         for _, transformer, _ in self._iter():
             if hasattr(transformer, "rewind"):

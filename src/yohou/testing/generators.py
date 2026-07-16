@@ -186,7 +186,7 @@ def _yield_yohou_transformer_checks(
 
     Parameters
     ----------
-    transformer : BaseTransformer
+    transformer : BaseActualTransformer
         Transformer instance (fitted or unfitted; individual checks clone as
         needed)
     X_train : pl.DataFrame

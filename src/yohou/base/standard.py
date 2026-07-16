@@ -15,7 +15,7 @@ from yohou.base.utils import (
 from yohou.utils import add_interval
 
 if TYPE_CHECKING:
-    from yohou.base.transformer import BaseTransformer
+    from yohou.base.transformer import BaseActualTransformer
 
 __all__ = ["BaseStandardForecaster"]
 
@@ -36,8 +36,8 @@ class BaseStandardForecaster:
     """
 
     # Type hints for attributes set by BaseForecaster
-    target_transformer: "BaseTransformer | None"
-    feature_transformer: "BaseTransformer | None"
+    target_transformer: "BaseActualTransformer | None"
+    feature_transformer: "BaseActualTransformer | None"
     target_as_feature: str | None
     groups_: None
     local_y_schema_: dict[str, pl.DataType]

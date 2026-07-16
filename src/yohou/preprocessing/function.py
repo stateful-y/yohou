@@ -11,14 +11,14 @@ import polars as pl
 import polars.selectors as cs
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import validate_transformer_data
 from yohou.utils._compat import StrOptions, _check_feature_names_in, _fit_context
 
 __all__ = ["FunctionTransformer"]
 
 
-class FunctionTransformer(BaseTransformer):
+class FunctionTransformer(BaseActualTransformer):
     """Constructs a transformer from an arbitrary callable.
 
     A FunctionTransformer forwards its X arguments to a user-defined function
@@ -266,9 +266,9 @@ class FunctionTransformer(BaseTransformer):
 
         """
         X = validate_transformer_data(self, X=X, reset=True)
-        BaseTransformer.fit(self, X, y, **params)
+        BaseActualTransformer.fit(self, X, y, **params)
 
-        # Auto-detect warmup from NaN rows. BaseTransformer.fit ran
+        # Auto-detect warmup from NaN rows. BaseActualTransformer.fit ran
         # _update_X_observed while _observation_horizon was still 0, so the
         # buffer is empty; re-sync it now that the real horizon is known,
         # otherwise observe_transform would have no warmup history to prepend.

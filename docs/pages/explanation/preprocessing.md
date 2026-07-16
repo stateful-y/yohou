@@ -1,6 +1,8 @@
 # Preprocessing
 
-Preprocessing in yohou is built around a single abstraction: [`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/). Every transformer, whether it computes lag features, scales values, or applies a digital filter, extends this class and follows the same contract. The contract is simple: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
+Preprocessing in yohou is built around [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/), the base for transformers over single-axis data. Whether it computes lag features, scales values, or applies a digital filter, such a transformer follows one contract: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
+
+This page is about that single-axis kind, which is what nearly every transformer in the library is. Transformers over the forecast channel carry a second time axis and a correspondingly different contract; see [Transformer Kinds](transformer-kinds.md) for the taxonomy and for why the memory API discussed below belongs to the single-axis kind alone.
 
 ## Time Series Data Quality
 
@@ -257,7 +259,7 @@ Preprocessing sits between raw data and the forecasting models. Transformers are
 passed to forecasters as `target_transformer` or `feature_transformer` parameters,
 where they are applied automatically during fit and predict. The
 [Stationarity](stationarity.md) transforms (differencing, decomposition) follow the
-same [`BaseTransformer`](/pages/api/generated/yohou.base.BaseTransformer/) contract but focus specifically on making time series
+same [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) contract but focus specifically on making time series
 stationary. For how transformers compose inside forecasters and pipelines, see
 [Feature Pipelines](feature-pipelines.md).
 

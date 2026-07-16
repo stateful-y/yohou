@@ -17,3 +17,4 @@ Composition utilities for transformers and forecasters.
 | [`FeatureUnion`](generated/yohou.compose.FeatureUnion.md) | Concatenates results of multiple transformer objects. |
 | [`ForecastedFeatureForecaster`](generated/yohou.compose.ForecastedFeatureForecaster.md) | Meta-forecaster that chains feature forecasting into target forecasting. |
 | [`LocalPanelForecaster`](generated/yohou.compose.LocalPanelForecaster.md) | Fits independent forecaster clones per panel group. |
+| [`PerVintageActualTransformer`](generated/yohou.compose.PerVintageActualTransformer.md) | Apply a single-axis transformer to each vintage of an ``X_forecast`` frame. |

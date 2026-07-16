@@ -197,11 +197,13 @@ that `X_actual` is provided when a feature transformer is set.
 
 ## Window Length and Observation Horizon
 
-Every transformer has an `observation_horizon` that declares how many past time
-steps it needs (see [Core Concepts](core-concepts.md#observation-horizon) for the
-full mechanism). The forecaster computes an effective observation horizon as the
-maximum across all attached transformers and uses it to maintain a fixed-size
-sliding window of recent data.
+Every transformer attached to a forecaster has an `observation_horizon` that
+declares how many past time steps it needs (see
+[Core Concepts](core-concepts.md#observation-horizon) for the full mechanism).
+Those slots take actual-kind transformers, which are the kind that carries the
+memory API; see [Transformer Kinds](transformer-kinds.md). The forecaster computes
+an effective observation horizon as the maximum across all attached transformers
+and uses it to maintain a fixed-size sliding window of recent data.
 
 The practical question for reduction forecasting is: how much history should the
 regressor see? The transformers you choose set a hard minimum. A

@@ -9,7 +9,7 @@ from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
 
-from yohou.base import BaseReductionForecaster, BaseTransformer
+from yohou.base import BaseActualTransformer, BaseReductionForecaster
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -41,9 +41,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         See [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for full per-option semantics.
-    target_transformer : BaseTransformer or None, default=None
+    target_transformer : BaseActualTransformer or None, default=None
         Transformer for target preprocessing.
-    feature_transformer : BaseTransformer or None, default=None
+    feature_transformer : BaseActualTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Whether to include the target variable as a feature for reduction.
@@ -146,8 +146,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         self,
         estimator: BaseEstimator = LogisticRegression(),
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
-        target_transformer: BaseTransformer | None = None,
-        feature_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",

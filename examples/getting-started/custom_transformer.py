@@ -14,7 +14,7 @@ __gallery__ = {
     "category": "how-to",
     "companion": "/pages/how-to/create-a-transformer/",
     "section": "getting-started",
-    "api_references": ["BaseTransformer", "PointReductionForecaster"],
+    "api_references": ["BaseActualTransformer", "PointReductionForecaster"],
 }
 app = marimo.App(width="medium")
 
@@ -54,9 +54,9 @@ def _():
     import polars as pl
     import polars.selectors as cs
 
-    from yohou.base import BaseTransformer
+    from yohou.base import BaseActualTransformer
 
-    class ScaleTransformer(BaseTransformer):
+    class ScaleTransformer(BaseActualTransformer):
         """Multiplies all numeric columns by a constant factor."""
 
         _tags = {"invertible": True}
@@ -80,7 +80,7 @@ def _():
         def get_feature_names_out(self, input_features=None):
             return self.columns_ if input_features is None else input_features
 
-    return BaseTransformer, ScaleTransformer, cs, pl
+    return BaseActualTransformer, ScaleTransformer, cs, pl
 
 
 @app.cell(hide_code=True)

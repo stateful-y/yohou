@@ -18,7 +18,7 @@ from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecaster import BaseForecaster
-from yohou.base.transformer import BaseTransformer
+from yohou.base.transformer import BaseActualTransformer
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
 from yohou.weighting import BaseWeighter
@@ -42,9 +42,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
         includes the raw target, and ``None`` uses only exogenous features.
-    target_transformer : instance of `BaseTransformer` or None, default=None
+    target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
-    feature_transformer : instance of `BaseTransformer` or None, default=None
+    feature_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
@@ -149,8 +149,8 @@ default="first_step"
         estimator: BaseEstimator = LinearRegression(),
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
-        target_transformer: BaseTransformer | None = None,
-        feature_transformer: BaseTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
