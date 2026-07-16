@@ -25,7 +25,7 @@ def check_metadata_routing_default_request(estimator_fitted) -> None:
 
     Parameters
     ----------
-    estimator_fitted : BaseForecaster | BaseTransformer
+    estimator_fitted : BaseForecaster | BaseActualTransformer
         A fitted estimator instance
 
     Raises
@@ -55,7 +55,7 @@ def check_metadata_routing_get_metadata_routing(estimator_fitted) -> None:
 
     Parameters
     ----------
-    estimator_fitted : BaseForecaster | BaseTransformer
+    estimator_fitted : BaseForecaster | BaseActualTransformer
         A fitted estimator instance
 
     Raises

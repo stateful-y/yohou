@@ -56,6 +56,14 @@ produces step-indexed columns. Unlike `X_future`, different vintages produce
 different step values, enabling multi-vintage prediction from a single
 observation state.
 
+Bypassing `feature_transformer` is a statement about that slot, not about the
+frame. `feature_transformer` operates on single-axis `X_actual` data, and an
+`X_forecast` frame carries a second time axis it cannot read. The frame can still
+be transformed, just earlier and by a transformer built for its shape: derive the
+features first, then pass the result in through `X_forecast`. See
+[Transformer Kinds](transformer-kinds.md) for the two transformer kinds and why
+the vintage axis needs its own.
+
 ## Benefits of the Three-Parameter API
 
 Separating exogenous data into three parameters provides four capabilities:

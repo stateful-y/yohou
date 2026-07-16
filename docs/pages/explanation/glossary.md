@@ -173,28 +173,41 @@ Pipeline { #pipeline }
     accumulate observation horizons. See [Feature Pipelines](feature-pipelines.md).
 
 Target transformer { #target-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     applied to the target series `y` before tabularization. Used for operations like
     differencing or scaling that should be inverted after prediction.
 
 Feature transformer { #feature-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     applied to the feature matrix `X` before tabularization. Used for creating
     lag features, rolling statistics, or other derived inputs.
 
+Transformer kind { #transformer-kind }
+:   Which frame shape a transformer consumes and produces, carried as a `kind` tag
+    valued `"actual"` or `"forecast"`. An actual-kind transformer
+    ([`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/))
+    works on a single-axis frame with one `"time"` column; a forecast-kind transformer
+    ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/))
+    works on an `X_forecast` frame carrying `vintage_time` and `time`. Leaf transformers
+    stamp the tag through their base class, and composition estimators derive theirs from
+    their children, which must agree. See [Transformer Kinds](transformer-kinds.md).
+
 Stateful transformer { #stateful-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
+:   An actual-kind [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
     that maintains an internal observation window of recent values and updates
     it during `observe()`. Stateful transformers have a non-zero `observation_horizon`
     because they need to remember past values (e.g., lag features, rolling statistics)
-    to transform new data. See [Preprocessing](preprocessing.md) for details on
-    how observation horizons propagate through pipelines.
+    to transform new data. Only actual-kind transformers can be stateful, since the
+    memory API exists on that base alone. See [Preprocessing](preprocessing.md) for
+    details on how observation horizons propagate through pipelines.
 
 Stateless transformer { #stateless-transformer }
-:   A [`BaseTransformer`](/pages/api/generated/yohou.base.transformer.BaseTransformer/)
-    whose output depends only on its fitted parameters and the current input, with no
-    dependence on prior observations. Has an `observation_horizon` of 0. Examples
-    include scaling, log transforms, and calendar feature extraction.
+:   A transformer whose output depends only on its fitted parameters and the current
+    input, with no dependence on prior observations. An actual-kind
+    [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
+    is stateless when its `observation_horizon` is 0; forecast-kind transformers are
+    stateless as a class. Examples include scaling, log transforms, and calendar feature
+    extraction.
 
 Ensemble { #ensemble }
 :   Combining predictions from multiple forecasters to reduce variance. Implemented

@@ -8,7 +8,7 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils import tabularize, validate_transformer_data
 from yohou.utils._compat import Interval, _check_feature_names_in
 
@@ -21,7 +21,7 @@ __all__ = [
 ]
 
 
-class LagTransformer(BaseTransformer):
+class LagTransformer(BaseActualTransformer):
     """Create lagged features from time series data.
 
     Creates lagged versions of each feature column, where each lag shifts the
@@ -141,7 +141,7 @@ class LagTransformer(BaseTransformer):
         return arr
 
 
-class MeanLagTransformer(BaseTransformer):
+class MeanLagTransformer(BaseActualTransformer):
     """Create mean-lagged features by averaging across lag multiples.
 
     For each input column and each base lag ``k``, this transformer computes
@@ -211,7 +211,7 @@ class MeanLagTransformer(BaseTransformer):
     """
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
+        **BaseActualTransformer._parameter_constraints,
         "lag": [Interval(numbers.Integral, 1, None, closed="left"), list],
         "n_lags": [Interval(numbers.Integral, 1, None, closed="left")],
     }
@@ -291,7 +291,7 @@ class MeanLagTransformer(BaseTransformer):
         return arr
 
 
-class SlidingWindowFunctionTransformer(BaseTransformer):
+class SlidingWindowFunctionTransformer(BaseActualTransformer):
     """Transform time series by applying a function over sliding windows.
 
     This transformer applies a user-defined function to sliding windows of the
@@ -442,7 +442,7 @@ class SlidingWindowFunctionTransformer(BaseTransformer):
         return arr
 
 
-class RollingStatisticsTransformer(BaseTransformer):
+class RollingStatisticsTransformer(BaseActualTransformer):
     """Compute rolling window statistics for time series.
 
     This transformer computes one or more rolling statistics (mean, std, min,
@@ -652,7 +652,7 @@ class RollingStatisticsTransformer(BaseTransformer):
         return arr
 
 
-class ExponentialMovingAverage(BaseTransformer):
+class ExponentialMovingAverage(BaseActualTransformer):
     """Exponentially Weighted Moving Average (EWMA) transformer.
 
     Computes the exponentially weighted moving average for time series data.

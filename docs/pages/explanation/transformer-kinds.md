@@ -1,0 +1,52 @@
+# Transformer Kinds
+
+Yohou transformers come in two kinds, and the kind is a property of the frame shape a transformer consumes and produces rather than of what it computes. An actual-kind transformer ([`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)) operates on a single-axis frame: one `"time"` column and one row per timestamp, a single series marching forward. A forecast-kind transformer ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/)) operates on an `X_forecast` frame, which carries two time axes, `vintage_time` (when a forecast was issued) and `time` (what it forecasts).
+
+Every transformer declares its kind through a `kind` tag whose value is `"actual"` or `"forecast"`. Leaf transformers stamp the tag statically through their base class; the composition classes derive theirs from their children. Almost everything in Yohou is actual-kind, and that is the default a transformer gets if it says nothing.
+
+## Why Two Kinds
+
+The two axes make an `X_forecast` frame a different object, not merely a wider one. A single-axis frame is one series. An `X_forecast` frame is a stack of short series, one per vintage, each covering its own forecast horizon and each overlapping the others in `time`. The 6:00 AM weather forecast and the 9:30 AM forecast both say something about noon, so `time` alone does not identify a row.
+
+That difference is why a single-axis transformer cannot simply be pointed at an `X_forecast` frame. Consider a transformer that computes a first difference. On one series, "the previous row" is unambiguous and means one timestep back. On a vintage stack, the row above may belong to a different vintage entirely, so the difference would silently subtract one forecast from a neighbouring one and produce a number that corresponds to nothing. The frame would be accepted and the output would be wrong, which is the worst available outcome. The kind tag exists so that the mismatch is caught rather than computed.
+
+## Kind and Statefulness Are Orthogonal
+
+Statefulness is Yohou's other transformer axis: a stateful transformer keeps a bounded buffer of recent rows and declares how many it needs through its `observation_horizon`, while a stateless transformer's output depends only on its fitted parameters and the current input. That axis is independent of kind, and all four combinations exist:
+
+|              | Stateless                          | Stateful                                    |
+| ------------ | ---------------------------------- | ------------------------------------------- |
+| **Actual**   | scaling, log transforms, calendar features | lags, rolling statistics, filters   |
+| **Forecast** | lifted stateless transformers      | lifted lags and differences, within a vintage |
+
+The forecast-and-stateful cell rewards a moment's care, because it is easy to talk yourself out of it. State means memory: a buffer of the rows immediately preceding the current one, which is meaningful only where "preceding" is well defined and the history is contiguous. It is tempting to conclude that the vintage axis offers neither, since vintages are separate short series and the rows before a given vintage's first row belong to a different vintage.
+
+That is true of *cross-vintage* memory and false of everything else. A vintage is internally contiguous: its rows are the forecast steps at the series interval, one after another. Within a vintage, "the previous row" is exactly as well defined as it is in any single series. So a lag or a difference computed inside one vintage is ordinary, and only a lag that reaches *across* a boundary is meaningless.
+
+[`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) therefore accepts stateful inner transformers. It fits a fresh clone on each vintage's own rows, so a wrapped lag can only ever see that vintage's history, and the cross-vintage reach that would be meaningless is structurally impossible rather than merely discouraged.
+
+The distinction to hold onto is between two senses of "stateful". A stateful *inner* keeps a buffer while computing one vintage. A stateful *estimator*, in the sense the `observe`/`rewind` API means, carries a buffer **between calls**. Forecast-kind transformers are stateless in the second sense and therefore have no `observe`/`rewind`: `PerVintageActualTransformer` refits every vintage on every `transform`, so nothing survives the call, whatever the inner does inside it. Serving a single fresh vintage is just a one-group input, no different in kind from a frame holding a year of them.
+
+The cost of a stateful inner is rows: it consumes its `observation_horizon` from the **start** of every vintage, which are the nearest-term forecast steps. That is the same trade a lag makes on any series, and [How to Transform Features on the Forecast Channel](../how-to/transform-forecast-features.md) covers what it means in practice.
+
+## Lifting Rather Than Reimplementing
+
+Yohou ships one concrete forecast-kind transformer, [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/), against a couple of dozen actual-kind ones. That ratio is a design position rather than a gap in coverage.
+
+The alternative would have been a parallel catalog: a vintage-aware scaler, a vintage-aware function transformer, a vintage-aware imputer, each duplicating the logic of its single-axis twin and each able to drift from it. Instead, `PerVintageActualTransformer` wraps an actual transformer and applies it to each vintage independently, grouping by `vintage_time`, fitting a fresh clone on each group's single-axis slice, transforming it, and restacking the results. Because every vintage is transformed using only its own rows, the order-dependent operations that would otherwise bleed across vintage boundaries stay contained. One wrapper lifts the whole catalog, and the wrapped transformers remain the same objects that run on `X_actual`.
+
+Lifting is therefore the normal way to transform an `X_forecast` frame, not a stopgap. `BaseForecastTransformer` is the extension point beneath it: subclass it when an operation is genuinely about the vintage structure itself and so cannot be expressed as a per-vintage application of a single-axis transformer. Comparing each vintage against the one before it, for example, is inherently cross-vintage and has no single-axis equivalent to lift. Everything expressible per vintage should be lifted instead.
+
+## Kind in Composition
+
+The composition classes are polymorphic in kind rather than fixed to one. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) of forecast-kind branches is itself forecast-kind, and one of actual-kind branches is actual-kind. A composition must be homogeneous: mixing the two in a single container is rejected, because the container would have to align a one-axis frame against a two-axis one and there is no sensible answer. [Feature Pipelines](feature-pipelines.md) covers how composition derives its kind, aligns its branches, and reports the mismatch.
+
+Kind also determines where a transformer may be attached. A forecaster's `feature_transformer` and `target_transformer` slots process single-axis data, so they accept actual-kind transformers only. Frames on the forecast channel are transformed before they are handed to the forecaster.
+
+## Connections
+
+- [Preprocessing](preprocessing.md) covers actual-kind transformers in depth, including the observation horizon and the stateful lifecycle that only that kind has.
+- [Feature Pipelines](feature-pipelines.md) covers composition, including how a container derives its kind from its children and why homogeneity is required.
+- [Exogenous Features](exogenous-features.md) explains the three exogenous channels and what makes `X_forecast` vintage-indexed in the first place.
+- [Core Concepts](core-concepts.md) places both transformer bases in the wider estimator hierarchy.
+- [Extending Yohou](extending-yohou.md) discusses when subclassing a base is warranted over composing what exists.

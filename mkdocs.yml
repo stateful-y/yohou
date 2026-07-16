@@ -177,6 +177,7 @@ nav:
     - Use Preprocessing Transformers: pages/how-to/use-preprocessing-transformers.md
     - Clean and Resample Time Series: pages/how-to/clean-and-resample.md
     - Compose Feature Pipelines: pages/how-to/compose-feature-pipelines.md
+    - Transform Forecast Features: pages/how-to/transform-forecast-features.md
     - Apply Stationarity Transforms: pages/how-to/apply-stationarity-transforms.md
     - Apply Signal Processing: pages/how-to/apply-signal-processing.md
     - Combine Forecasters with Ensembles: pages/how-to/ensemble-forecasting.md
@@ -219,6 +220,7 @@ nav:
     - Panel Data: pages/explanation/panel-data.md
     - Exogenous Features: pages/explanation/exogenous-features.md
     - Preprocessing: pages/explanation/preprocessing.md
+    - Transformer Kinds: pages/explanation/transformer-kinds.md
     - Stationarity: pages/explanation/stationarity.md
     - Feature Pipelines: pages/explanation/feature-pipelines.md
     - Forecaster Composition: pages/explanation/forecaster-composition.md

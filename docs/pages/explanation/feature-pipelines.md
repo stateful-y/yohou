@@ -113,7 +113,32 @@ execution, `transformer_weights` for scaling outputs, and
 Internally, [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) strips the `"time"` column before routing data
 to individual transformers, then reattaches it in the final output. This prevents
 column index mismatches that would occur if sklearn's internal bookkeeping tried
-to track the time column.
+to track the time column. On a forecast-kind composition it protects `vintage_time`
+the same way, since that column is part of the index rather than a feature to route.
+
+## Kind Homogeneity
+
+All three containers are polymorphic in transformer kind: each works on single-axis
+actual data or on vintage-indexed forecast data, and none is fixed to one. A container
+does not declare its kind. It derives it from its children, so a
+[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) of forecast-kind branches is itself forecast-kind and can nest
+inside another forecast-kind container. See [Transformer Kinds](transformer-kinds.md)
+for what the two kinds are and why the distinction exists.
+
+Deriving a kind from the children only works if the children agree, which is why a
+composition must be homogeneous. Mixing actual-kind and forecast-kind transformers in
+one container raises a `ValueError` naming the offenders on each side. The restriction
+is not bookkeeping: the container would have to concatenate a frame indexed by `"time"`
+with one indexed by `vintage_time` and `time`, and there is no correct way to line those
+up. One row per timestamp cannot be matched against a stack of vintages that each say
+something different about that timestamp.
+
+Kind also decides how a container combines its branches, because it decides what
+identifies a row. An actual-kind container aligns its branches on `"time"`. A
+forecast-kind container aligns on `vintage_time` and `time` together, since `"time"`
+alone does not identify a row once several vintages are in play. Composition is
+otherwise index-agnostic: the same container code runs for both, reading the join keys
+from the kind it derived.
 
 ## Observation Horizon Propagation
 
@@ -177,9 +202,10 @@ stateful features.
 
 ## Composability
 
-Sequential and parallel patterns compose freely. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) can be a step
-inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), and the combined transformer can serve as the
-`feature_transformer` or `target_transformer` for any forecaster:
+Sequential and parallel patterns compose freely within a kind. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) can
+be a step inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), nested to any depth, so long as every
+transformer in the structure shares one kind. An actual-kind combination can then serve
+as the `feature_transformer` or `target_transformer` for a forecaster:
 
 ```python
 from yohou.compose import FeaturePipeline, FeatureUnion
@@ -194,13 +220,21 @@ transformer = FeaturePipeline(steps=[
 ])
 ```
 
-The observation horizon of this nested structure is the sum of the pipeline's
-steps: 0 ([`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/)) + max(7, 7) ([`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)) = 7. State propagation,
-feature naming, and panel-aware prefixing all carry through the nesting without
-any additional configuration.
+Every step here is actual-kind, so the structure is homogeneous and the whole is
+actual-kind too. The observation horizon of this nested structure is the sum of the
+pipeline's steps: 0 ([`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/)) + max(7, 7) ([`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)) = 7. State
+propagation, feature naming, and panel-aware prefixing all carry through the nesting
+without any additional configuration.
+
+Those two forecaster slots are the limit of where a composition can go. Both process
+single-axis data, so both accept actual-kind transformers only, and passing a
+forecast-kind composition to either is an error rather than a no-op. Forecast frames are
+transformed before they reach the forecaster and enter through the `X_forecast` channel
+instead, which is the subject of
+[How to Transform Features on the Forecast Channel](../how-to/transform-forecast-features.md).
 
 ## Connections
 
-[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) are described in [Stationarity](stationarity.md).
+[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Transformer Kinds](transformer-kinds.md) explains the actual and forecast kinds that composition requires to be homogeneous. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) are described in [Stationarity](stationarity.md).
 
 For practical recipes, see [How to Compose Feature Pipelines](../how-to/compose-feature-pipelines.md). The compose API is documented in the [yohou.compose reference](/pages/api/compose/).

@@ -290,15 +290,21 @@ def select_panel_columns(
     if groups is None:
         return df
 
-    # Columns belonging to a panel group start with "<group>__"; the regex stays
-    # in the polars engine and preserves the original column order on select.
+    # Index columns ("time" and, when present, "vintage_time") are always kept.
+    index_selector = cs.by_name("time", "vintage_time", require_all=False)
+
+    # Columns belonging to a requested panel group start with "<group>__"; the
+    # regex stays in the polars engine and preserves original column order.
     panel_regex = "^(?:" + "|".join(re.escape(g) for g in groups) + ")__"
     panel_selector = cs.matches(panel_regex)
 
-    selector = cs.by_name("time") | panel_selector
+    selector = index_selector | panel_selector
     if include_global:
-        # Global columns are the non-time columns that match no group prefix.
-        selector = selector | (cs.all() - cs.by_name("time") - panel_selector)
+        # Global columns carry no "<group>__" panel prefix at all. Detecting them
+        # by the absence of a "__" separator (rather than "does not match a
+        # requested group") ensures columns of a *non-requested* group are dropped
+        # instead of being mistaken for globals.
+        selector = selector | (cs.all() - index_selector - cs.contains("__"))
 
     return df.select(selector)
 

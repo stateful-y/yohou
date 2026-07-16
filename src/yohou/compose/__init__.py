@@ -7,6 +7,7 @@ from .feature_pipeline import FeaturePipeline
 from .feature_union import FeatureUnion
 from .forecasted_feature_forecaster import ForecastedFeatureForecaster
 from .local_panel_forecaster import LocalPanelForecaster
+from .per_vintage import PerVintageActualTransformer
 
 __all__ = [
     "ColumnForecaster",
@@ -16,4 +17,5 @@ __all__ = [
     "FeatureUnion",
     "ForecastedFeatureForecaster",
     "LocalPanelForecaster",
+    "PerVintageActualTransformer",
 ]

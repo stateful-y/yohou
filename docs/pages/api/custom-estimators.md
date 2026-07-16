@@ -10,7 +10,7 @@ type has a base class, methods to implement, and systematic checks.
 | Point forecaster | `BasePointForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Single-value continuous or categorical predictions |
 | Interval forecaster | `BaseIntervalForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Prediction intervals with coverage rates |
 | Class-probability forecaster | `BaseClassProbaForecaster` | `_predict_one`, (`_fit`, `_observation_horizon`) | Categorical outcome probabilities |
-| Transformer | `BaseTransformer` | `_fit`, `_transform`, `get_feature_names_out`, (`_inverse_transform`) | Feature engineering, preprocessing |
+| Transformer | `BaseActualTransformer` | `_fit`, `_transform`, `get_feature_names_out`, (`_inverse_transform`) | Feature engineering, preprocessing |
 | Scorer | `BasePointScorer` / `BaseIntervalScorer` | `_compute_raw_errors` | Evaluation metrics |
 
 ## Point Forecaster
@@ -88,10 +88,10 @@ class MyClassProbaForecaster(BaseClassProbaForecaster):
 ```python
 import polars as pl
 import polars.selectors as cs
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 
 
-class ScaleTransformer(BaseTransformer):
+class ScaleTransformer(BaseActualTransformer):
     """Multiplies all numeric values by a constant."""
 
     _tags = {"stateful": False, "invertible": True}
@@ -128,7 +128,7 @@ class ScaleTransformer(BaseTransformer):
 For stateful transformers that need a lookback window:
 
 ```python
-class MyWindowTransformer(BaseTransformer):
+class MyWindowTransformer(BaseActualTransformer):
     _tags = {"stateful": True}
 
     _parameter_constraints: dict = {

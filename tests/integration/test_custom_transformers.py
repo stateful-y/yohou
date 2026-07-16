@@ -17,18 +17,18 @@ from sklearn.utils._param_validation import Interval
 from sklearn.utils.validation import check_is_fitted
 
 from conftest import run_checks
-from yohou.base.transformer import BaseTransformer
+from yohou.base.transformer import BaseActualTransformer
 from yohou.compose import FeaturePipeline
 from yohou.testing import _yield_yohou_transformer_checks
 
 
-class _ScaleTransformer(BaseTransformer):
+class _ScaleTransformer(BaseActualTransformer):
     """Multiplies all numeric columns by a constant factor (stateless, invertible)."""
 
     _tags = {"invertible": True}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
+        **BaseActualTransformer._parameter_constraints,
         "factor": [Interval(numbers.Real, 0, None, closed="neither")],
     }
 
@@ -57,13 +57,13 @@ class _ScaleTransformer(BaseTransformer):
         return list(input_features)
 
 
-class _WindowStatsTransformer(BaseTransformer):
+class _WindowStatsTransformer(BaseActualTransformer):
     """Computes rolling mean over the last ``window_size`` rows (stateful, non-invertible)."""
 
     _tags = {"stateful": True}
 
     _parameter_constraints: dict = {
-        **BaseTransformer._parameter_constraints,
+        **BaseActualTransformer._parameter_constraints,
         "window_size": [Interval(numbers.Integral, 2, None, closed="left")],
     }
 

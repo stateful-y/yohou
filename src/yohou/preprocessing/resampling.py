@@ -6,19 +6,39 @@ from typing import Literal, cast
 import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
 from yohou.utils._compat import StrOptions, _check_feature_names_in
-from yohou.utils.validation import check_interval_consistency, interval_to_timedelta, parse_interval
+from yohou.utils.validation import (
+    check_interval_consistency,
+    interval_to_timedelta,
+    parse_interval,
+    representative_interval,
+)
 
 __all__ = ["Downsampler", "Upsampler"]
 
 
-class Downsampler(BaseTransformer):
+class Downsampler(BaseActualTransformer):
     """Downsample time series to a lower frequency using aggregation.
 
     Reduces the frequency of time series data by grouping consecutive time
     points into bins and applying an aggregation function. Uses polars'
     `group_by_dynamic` for efficient windowed aggregation.
+
+    Because `group_by_dynamic` bins by wall-clock windows, the input does not need a
+    uniform grid: `Downsampler` declares `accepts_irregular_grid=True`, so a jittered
+    or gapped sub-hourly feed is accepted at fit and transform (the strict
+    interval-consistency check is skipped and a representative median interval is
+    recorded for the `target >= input` guard). Behavior on a uniform grid is unchanged.
+
+    Accepting a gapped input axis means the output can carry gaps too: a window with
+    no rows produces no bin, so a gap in the input becomes a gap in the output. A
+    downstream transformer that requires a uniform grid may not notice, because the
+    strict interval check tolerates a sub-day delta spread and will infer an interval
+    from a gapped axis rather than reject it. A lag or rolling transformer placed after
+    a `Downsampler` on gapped input therefore computes over rows that are not the
+    real-time distance apart that its parameters imply. Fill or validate the gaps
+    (see `SimpleTimeImputer`, `Upsampler`) before an order-dependent step.
 
     Parameters
     ----------
@@ -87,7 +107,10 @@ class Downsampler(BaseTransformer):
         "include_boundaries": ["boolean"],
     }
 
-    _tags = {"stateful": False}
+    # Bins via group_by_dynamic, which is correct on a non-uniform grid, so it opts
+    # into the irregular-grid contract: a jittered or gapped sub-hourly feed can be
+    # downsampled without first being placed on a strict uniform grid.
+    _tags = {"stateful": False, "accepts_irregular_grid": True}
 
     def __init__(
         self,
@@ -105,8 +128,14 @@ class Downsampler(BaseTransformer):
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
-        # Detect input interval
-        self.input_interval_str_ = check_interval_consistency(X)
+        # Detect the input interval with the representative (frequency-weighted median)
+        # measure, which tolerates a jittered or gapped grid and agrees with the strict
+        # check on a uniform one. The strict check is not tried first: on a sub-day axis
+        # it medians the *unique* deltas, so a few gaps skew it above the true cadence
+        # (a 5m feed with two gaps reads as 10m), and it succeeds rather than raising,
+        # which would wrongly reject a target at the feed's real cadence in the guard
+        # below. group_by_dynamic bins either way, so the transform is unaffected.
+        self.input_interval_str_ = representative_interval(X)
         self.input_interval_ = interval_to_timedelta(self.input_interval_str_)
         self.target_interval_ = interval_to_timedelta(self.interval)
 
@@ -203,7 +232,7 @@ class Downsampler(BaseTransformer):
         return list(input_features)
 
 
-class Upsampler(BaseTransformer):
+class Upsampler(BaseActualTransformer):
     """Upsample time series to a higher frequency using interpolation.
 
     Increases the frequency of time series data by creating new time points

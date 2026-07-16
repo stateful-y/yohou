@@ -5,7 +5,6 @@ from copy import deepcopy
 from typing import Any, cast
 
 import polars as pl
-import polars.selectors as cs
 from joblib import Memory
 from sklearn.pipeline import Pipeline as sklearn_Pipeline
 from sklearn.utils import (
@@ -21,9 +20,12 @@ from sklearn.utils.validation import (
     check_is_fitted,
 )
 
-from yohou.base import BaseTransformer
+from yohou.base import BaseActualTransformer
+from yohou.base.transformer import _BaseTransformer
+from yohou.base.utils import _require_actual_memory_api
 from yohou.compose.column_transformer import ColumnTransformer
 from yohou.compose.feature_union import FeatureUnion
+from yohou.compose.utils import check_homogeneous_kinds, common_kind, index_columns
 from yohou.utils import Tags
 from yohou.utils._compat import (
     HasMethods,
@@ -47,14 +49,14 @@ __all__ = [
 # TODO: Could transform_input (sklearn's Pipeline feature for routing metadata
 # through pipeline steps) make sense for forecasting? E.g., routing y vs X to
 # different steps, or passing validation sets through the pipeline.
-class FeaturePipeline(BaseTransformer, _BaseComposition):
+class FeaturePipeline(BaseActualTransformer, _BaseComposition):
     """
     A sequence of time series transformers.
 
     `FeaturePipeline` allows you to sequentially apply a list of time series
     transformers to preprocess the data.
 
-    Steps of the pipeline must be instances of `BaseTransformer`. Non-last
+    Steps of the pipeline must be instances of `BaseActualTransformer`. Non-last
     steps must also implement `transform`. The pipeline dispatches
     `observe_transform()` internally; steps do not need to expose a bare
     `observe` method.
@@ -108,7 +110,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
     See Also
     --------
     `sklearn.pipeline.Pipeline` : Underlying scikit-learn pipeline class.
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for time series transformers.
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for time series transformers.
     - [`FeatureUnion`][yohou.compose.feature_union.FeatureUnion] : Parallel transformer combination.
     - [`ColumnTransformer`][yohou.compose.column_transformer.ColumnTransformer] : Apply transformers to specific columns.
 
@@ -496,6 +498,9 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
                 # min_value is the one of the first transformer
                 tags.input_tags.min_value = transformers[0].__sklearn_tags__().input_tags.min_value
 
+                # A pipeline inherits its kind from its (homogeneous) steps.
+                tags.transformer_tags.kind = common_kind([(name, t) for name, t in self.steps])
+
         return tags
 
     @property
@@ -564,6 +569,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             If the pipeline has not been fitted yet.
 
         """
+        _require_actual_memory_api(self, "rewind")
         check_is_fitted(self)
 
         # Propagate rewind_transform through each step:
@@ -603,6 +609,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             observations.
 
         """
+        _require_actual_memory_api(self, "observe")
         check_is_fitted(self)
         # Schema + continuity validation at pipeline level
         X = validate_transformer_data(self, X=X, reset=False, check_continuity=True)
@@ -619,12 +626,12 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         return self
 
     def _validate_steps(self) -> None:
-        """Validate that all steps are BaseTransformer instances.
+        """Validate that all steps are BaseActualTransformer instances.
 
         Raises
         ------
         TypeError
-            If any step is not a BaseTransformer or 'passthrough'.
+            If any step is not a BaseActualTransformer or 'passthrough'.
 
         """
         names, transformers = zip(*self.steps, strict=False)
@@ -635,12 +642,15 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
         for t in transformers:
             if t is None or t == "passthrough":
                 continue
-            if not isinstance(t, BaseTransformer):
+            if not isinstance(t, _BaseTransformer):
                 raise TypeError(
-                    "All steps should be instances of `BaseTransformer` "
-                    "or be the string 'passthrough' "
+                    "All steps should be instances of `BaseActualTransformer` or "
+                    "`BaseForecastTransformer` or be the string 'passthrough' "
                     f"'{t}' (type {type(t)}) doesn't"
                 )
+
+        # A pipeline must be homogeneous in kind (all actual or all forecast).
+        check_homogeneous_kinds([(name, t) for name, t in self.steps], "FeaturePipeline")
 
     @_fit_context(
         # estimators in FeaturePipeline.steps are not validated yet
@@ -689,7 +699,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
 
         # Set pipeline-level attributes for rewind/observe validation.
         # Individual steps are already fitted with their own attributes.
-        self.X_schema_ = dict(X.select(~cs.by_name("time")).schema)
+        self.X_schema_ = dict(X.select(pl.exclude(index_columns(X))).schema)
         self._update_X_observed(X)
 
         return self
@@ -809,6 +819,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Transformed data corresponding to the new input rows.
 
         """
+        _require_actual_memory_api(self, "observe_transform")
         _raise_for_params(params, self, "observe_transform")
 
         routed_params = process_routing(self, "observe_transform", **params)
@@ -845,6 +856,7 @@ class FeaturePipeline(BaseTransformer, _BaseComposition):
             Transformed data with warmup rows discarded.
 
         """
+        _require_actual_memory_api(self, "rewind_transform")
         _raise_for_params(params, self, "rewind_transform")
 
         routed_params = process_routing(self, "rewind_transform", **params)

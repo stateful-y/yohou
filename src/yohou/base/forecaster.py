@@ -16,7 +16,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
-from yohou.base.transformer import BaseTransformer
+from yohou.base.transformer import BaseActualTransformer
 from yohou.base.utils import _derive_step_columns
 from yohou.utils import (
     Tags,
@@ -45,9 +45,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseTransformer` or None, default=None
+    feature_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
-    target_transformer : instance of `BaseTransformer` or None, default=None
+    target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
@@ -93,8 +93,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     """
 
     _parameter_constraints: dict = {
-        "target_transformer": [BaseTransformer, None],
-        "feature_transformer": [BaseTransformer, None],
+        "target_transformer": [BaseActualTransformer, None],
+        "feature_transformer": [BaseActualTransformer, None],
         "target_as_feature": [StrOptions({"transformed", "raw"}), None],
         "panel_strategy": [StrOptions({"global", "multivariate"})],
     }
@@ -104,8 +104,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     def __init__(
         self,
-        feature_transformer: BaseTransformer | None = None,
-        target_transformer: BaseTransformer | None = None,
+        feature_transformer: BaseActualTransformer | None = None,
+        target_transformer: BaseActualTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
@@ -230,8 +230,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 # In panel data, all local transformers share the same horizon
                 first_transformer = next(iter(self.target_transformer_.values()))
                 if first_transformer is not None:
-                    target_observation_horizon = typing_cast(BaseTransformer, first_transformer).observation_horizon
-            elif isinstance(self.target_transformer_, BaseTransformer):
+                    target_observation_horizon = typing_cast(
+                        BaseActualTransformer, first_transformer
+                    ).observation_horizon
+            elif isinstance(self.target_transformer_, BaseActualTransformer):
                 target_observation_horizon = self.target_transformer_.observation_horizon
 
         # Compute feature transformer observation horizon
@@ -240,8 +242,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             if isinstance(self.feature_transformer_, dict):
                 first_transformer = next(iter(self.feature_transformer_.values()))
                 if first_transformer is not None:
-                    feature_observation_horizon = typing_cast(BaseTransformer, first_transformer).observation_horizon
-            elif isinstance(self.feature_transformer_, BaseTransformer):
+                    feature_observation_horizon = typing_cast(
+                        BaseActualTransformer, first_transformer
+                    ).observation_horizon
+            elif isinstance(self.feature_transformer_, BaseActualTransformer):
                 feature_observation_horizon = self.feature_transformer_.observation_horizon
 
         self_observation_horizon = self._observation_horizon
@@ -1183,7 +1187,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             assert isinstance(self.target_transformer_, dict)
             assert self._y_observed is not None
             assert isinstance(self._y_observed, dict)
-            target_transformers = typing_cast(dict[str, BaseTransformer | None], self.target_transformer_)
+            target_transformers = typing_cast(dict[str, BaseActualTransformer | None], self.target_transformer_)
             y_observed_dict = typing_cast(dict[str, pl.DataFrame | None], self._y_observed)
 
             for panel_group_name in groups:

@@ -18,9 +18,9 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseTransformer` or None, default=None
+    feature_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series (``X_actual``) into features.
-    target_transformer : instance of `BaseTransformer` or None, default=None
+    target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.

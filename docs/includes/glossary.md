@@ -22,6 +22,7 @@
 *[feature transformer]: A transformer applied to the feature matrix before tabularization.
 *[stateful transformer]: A transformer that maintains an internal observation window and updates it during observe().
 *[stateless transformer]: A transformer whose output depends only on its fitted parameters and the current input.
+*[transformer kind]: Which frame shape a transformer consumes: "actual" (single-axis) or "forecast" (vintage-indexed).
 *[forecaster composition]: Building complex forecasting workflows by combining simpler components.
 *[variance stabilization]: Transforming a time series so that its error variance is approximately constant over time.
 *[conformal prediction]: A distribution-free method for constructing prediction intervals with finite-sample coverage guarantees.

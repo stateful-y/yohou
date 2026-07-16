@@ -335,7 +335,7 @@ class TestFeatureUnionObserveRewind:
     def test_observe_after_fit_does_not_raise(self, time_series_factory):
         """observe must operate on the fitted union without raising.
 
-        Regression test: FeatureUnion inherited BaseTransformer.observe, which
+        Regression test: FeatureUnion inherited BaseActualTransformer.observe, which
         guards on ``X_schema_``/``feature_names_in_``/``n_features_in_`` via
         check_is_fitted. FeatureUnion never sets ``X_schema_``, so the inherited
         method raised NotFittedError on every fitted union.

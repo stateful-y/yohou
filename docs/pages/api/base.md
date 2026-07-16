@@ -12,7 +12,8 @@ Abstract base classes used internally by all Yohou estimators. See the concrete 
 
 | Name | Description |
 | --- | --- |
-| [`BaseTransformer`](generated/yohou.base.transformer.BaseTransformer.md) | Base class for time series transformers. |
+| [`BaseActualTransformer`](generated/yohou.base.transformer.BaseActualTransformer.md) | Base class for single-axis (`"actual"`-kind) time series transformers. |
+| [`BaseForecastTransformer`](generated/yohou.base.forecast_transformer.BaseForecastTransformer.md) | Base class for `"forecast"`-kind transformers over `X_forecast` frames (two time axes: `vintage_time`, `time`). |
 
 ### Forecasters
 

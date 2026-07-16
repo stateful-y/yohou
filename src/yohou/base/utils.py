@@ -12,16 +12,105 @@ import polars.selectors as cs
 from sklearn.base import clone
 
 if TYPE_CHECKING:
-    from yohou.base import BaseTransformer
+    from yohou.base import BaseActualTransformer
+
+
+def _is_forecast_kind(obj: object) -> bool:
+    """Return whether ``obj`` reports ``kind == "forecast"``.
+
+    Reads the tag rather than testing the base class. An ``isinstance`` check
+    cannot express this: the composition estimators stay ``BaseActualTransformer``
+    subclasses and discriminate their kind by tag, so a ``FeatureUnion`` of
+    forecast transformers is an instance of the actual base while reporting
+    ``kind="forecast"``. Anything without readable transformer tags counts as
+    actual, so a real validation error surfaces instead of this one.
+
+    Parameters
+    ----------
+    obj : object
+        A transformer instance (or anything, including ``None``).
+
+    Returns
+    -------
+    bool
+        ``True`` only if the object explicitly reports the forecast kind.
+
+    """
+    get_tags = getattr(obj, "__sklearn_tags__", None)
+    if get_tags is None:
+        return False
+    transformer_tags = getattr(get_tags(), "transformer_tags", None)
+    return transformer_tags is not None and getattr(transformer_tags, "kind", "actual") == "forecast"
+
+
+def _require_actual_memory_api(transformer: object, method: str) -> None:
+    """Raise if the ``observe``/``rewind`` memory API is used on a forecast-kind transformer.
+
+    The memory API maintains a buffer of the most recent contiguous rows. The
+    vintage axis is discontinuous, so no such buffer exists and the call has no
+    meaning rather than merely being unsupported.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer the method was called on.
+    method : str
+        Method name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` reports ``kind == "forecast"``.
+
+    """
+    if _is_forecast_kind(transformer):
+        raise ValueError(
+            f"{type(transformer).__name__}.{method}() is unavailable on a forecast-kind "
+            f"transformer, which must be an actual-kind transformer to maintain memory. "
+            f"The observe/rewind buffer holds contiguous recent rows, which the vintage "
+            f"axis of an X_forecast frame cannot provide. Forecast transformers are "
+            f"stateless, so there is no memory to update or rewind."
+        )
+
+
+def _require_actual_transformer(transformer: object, slot: str) -> None:
+    """Raise if ``transformer`` is a forecast-kind transformer in an actual slot.
+
+    A forecaster's ``target_transformer`` / ``feature_transformer`` operate on
+    the single-axis target / ``X_actual`` frames, so they must be actual-kind.
+    Leaf forecast transformers are already rejected by the parameter constraint
+    (they are not ``BaseActualTransformer`` instances); this catches a
+    forecast-kind composition (e.g. a ``FeatureUnion`` of forecast transformers),
+    which is structurally an actual transformer but reports ``kind="forecast"``.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer assigned to the slot (or ``None``).
+    slot : str
+        Slot name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` reports ``kind == "forecast"``.
+
+    """
+    if _is_forecast_kind(transformer):
+        raise ValueError(
+            f"{slot} must be an actual-kind transformer (operating on the single-axis "
+            f"target/X_actual frame), but got a forecast-kind transformer. Forecast "
+            f"transformers belong on the X_forecast channel, not in {slot}."
+        )
 
 
 def _fit_transform_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
-    target_transformer: BaseTransformer | None,
-    feature_transformer: BaseTransformer | None,
+    target_transformer: BaseActualTransformer | None,
+    feature_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
-) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseTransformer | None, BaseTransformer | None]:
+) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseActualTransformer | None, BaseActualTransformer | None]:
     """Fit and apply target and feature transformers to a single time series.
 
     Orchestrates the transformation pipeline: target transformer first (if any),
@@ -34,9 +123,9 @@ def _fit_transform_transformers_one(
         Target time series with "time" column.
     X_actual : pl.DataFrame or None
         Feature time series with "time" column.
-    target_transformer : BaseTransformer or None
+    target_transformer : BaseActualTransformer or None
         Target transformer to apply.
-    feature_transformer : BaseTransformer or None
+    feature_transformer : BaseActualTransformer or None
         Feature transformer to apply.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
@@ -50,9 +139,9 @@ def _fit_transform_transformers_one(
         Transformed target time series.
     X_t : pl.DataFrame or None
         Transformed feature matrix (includes transformed y if no separate X_actual provided).
-    target_transformer : BaseTransformer or None
+    target_transformer : BaseActualTransformer or None
         Fitted target transformer.
-    feature_transformer : BaseTransformer or None
+    feature_transformer : BaseActualTransformer or None
         Fitted feature transformer.
 
     Notes
@@ -67,9 +156,12 @@ def _fit_transform_transformers_one(
 
     See Also
     --------
-    - [`BaseTransformer`][yohou.base.transformer.BaseTransformer] : Base class for transformers
+    - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for transformers
 
     """
+    _require_actual_transformer(target_transformer, "target_transformer")
+    _require_actual_transformer(feature_transformer, "feature_transformer")
+
     y_t = y
     target_transformer_fitted = None
     if target_transformer is not None:
@@ -101,7 +193,7 @@ def _build_feature_input(
     y_t: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_as_feature: str | None,
-    feature_transformer: BaseTransformer | None,
+    feature_transformer: BaseActualTransformer | None,
 ) -> pl.DataFrame | None:
     """Build feature input based on target_as_feature parameter.
 
@@ -122,7 +214,7 @@ def _build_feature_input(
         ``"transformed"`` includes the target after ``target_transformer``,
         ``"raw"`` includes the original target, and ``None`` uses only
         exogenous features.
-    feature_transformer : BaseTransformer or None
+    feature_transformer : BaseActualTransformer or None
         Feature transformer (used for validation when
         ``target_as_feature=None``).
 
@@ -191,8 +283,8 @@ def _build_feature_input(
 def _observe_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
-    target_transformer: BaseTransformer | None,
-    feature_transformer: BaseTransformer | None,
+    target_transformer: BaseActualTransformer | None,
+    feature_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
 ) -> pl.DataFrame | None:
     """Observe new data through transformers.
@@ -203,9 +295,9 @@ def _observe_transformers_one(
         New target observations.
     X_actual : pl.DataFrame or None
         New features.
-    target_transformer : BaseTransformer or None
+    target_transformer : BaseActualTransformer or None
         Target transformer to observe.
-    feature_transformer : BaseTransformer or None
+    feature_transformer : BaseActualTransformer or None
         Feature transformer to observe.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
@@ -232,8 +324,8 @@ def _observe_transformers_one(
 def _rewind_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
-    target_transformer: BaseTransformer | None,
-    feature_transformer: BaseTransformer | None,
+    target_transformer: BaseActualTransformer | None,
+    feature_transformer: BaseActualTransformer | None,
     observation_horizon: int,
     target_as_feature: str | None,
 ) -> pl.DataFrame | None:
@@ -245,9 +337,9 @@ def _rewind_transformers_one(
         Historical target time series to rewind state from.
     X_actual : pl.DataFrame or None
         Historical feature observations to rewind state from.
-    target_transformer : BaseTransformer or None
+    target_transformer : BaseActualTransformer or None
         Target transformer to rewind.
-    feature_transformer : BaseTransformer or None
+    feature_transformer : BaseActualTransformer or None
         Feature transformer to rewind.
     observation_horizon : int
         Number of time steps to retain in observation horizon.

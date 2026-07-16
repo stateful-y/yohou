@@ -1348,6 +1348,7 @@ _GLOSSARY_TERMS = {
     "feature transformer": "feature-transformer",
     "stateful transformer": "stateful-transformer",
     "stateless transformer": "stateless-transformer",
+    "transformer kind": "transformer-kind",
     "forecaster composition": "forecaster-composition",
     "variance stabilization": "variance-stabilization",
     "stationarity": "stationarity",
