@@ -358,10 +358,10 @@ Returns a `Bunch` with:
 |---|---|
 | `y` | `pl.DataFrame` with `time` and `air_quality` (Utf8: `"good"`, `"moderate"`, `"poor"`) |
 | `X_actual` | `pl.DataFrame` with `time` and `pollutant` (Float64) |
-| `X_future` | `pl.DataFrame` with `time` and `is_weekend` (Float64) |
+| `X_future` | `pl.DataFrame` with `time` and `is_holiday` (Float64) |
 | `X_forecast` | `pl.DataFrame` with `vintage_time`, `time`, and `pollutant_forecast` (Float64) |
 | `frame` | `pl.DataFrame` joining `y`, `X_actual`, and `X_future` on `time` |
-| `feature_names` | `["pollutant", "is_weekend", "pollutant_forecast"]` |
+| `feature_names` | `["pollutant", "is_holiday", "pollutant_forecast"]` |
 | `target_names` | `["air_quality"]` |
 | `classes` | `["good", "moderate", "poor"]` |
 | `frequency` | `"1h"` |

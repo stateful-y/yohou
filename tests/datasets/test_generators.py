@@ -5,6 +5,7 @@ from __future__ import annotations
 import polars as pl
 
 from yohou.datasets._generators import (
+    _HOLIDAY_MONTH_DAYS,
     make_exogenous_classification,
     make_exogenous_regression,
 )
@@ -123,6 +124,63 @@ class TestMakeExogenousRegression:
             assert len(subset) <= 3
 
 
+class TestHolidayCalendarIsAnEventFeature:
+    """The generators' is_holiday must be a genuine X_future feature.
+
+    A weekday predicate would be a clock feature: derivable from the timestamp,
+    and therefore something a feature_transformer should produce rather than
+    something the X_future channel must carry. These tests pin the property the
+    channel's semantics depend on.
+    """
+
+    def test_is_holiday_is_not_a_weekday_predicate(self):
+        """is_holiday matches no single-weekday indicator."""
+        X_future = make_exogenous_regression(n_samples=24 * 60).X_future
+        weekday = X_future["time"].dt.weekday()
+        for day in range(1, 8):
+            indicator = (weekday == day).cast(pl.Float64)
+            assert not (indicator == X_future["is_holiday"]).all(), f"is_holiday is just weekday == {day}"
+
+    def test_holidays_span_at_least_three_weekdays(self):
+        """Over a year the holiday dates fall on at least three weekdays.
+
+        Regression guard: the month/day lookup key is built with arithmetic on
+        Int8 columns, which silently overflowed past January and collapsed the
+        calendar onto the wrong dates. A January-only window cannot catch that.
+        """
+        X_future = make_exogenous_regression(n_samples=24 * 366).X_future
+        holidays = X_future.filter(pl.col("is_holiday") == 1.0)
+        weekdays = {t.strftime("%a") for t in holidays["time"]}
+        assert len(weekdays) >= 3, f"holidays only fall on {sorted(weekdays)}"
+
+    def test_every_calendar_entry_lands_within_a_year(self):
+        """A full year marks exactly one date per calendar entry."""
+        X_future = make_exogenous_regression(n_samples=24 * 366).X_future
+        holidays = X_future.filter(pl.col("is_holiday") == 1.0)
+        dates = {t.date() for t in holidays["time"]}
+        assert len(dates) == len(_HOLIDAY_MONTH_DAYS)
+
+    def test_default_window_has_distributed_holidays(self):
+        """The default window carries at least two dates, not all at the start."""
+        X_future = make_exogenous_regression().X_future
+        holidays = X_future.filter(pl.col("is_holiday") == 1.0)
+        dates = sorted({t.date() for t in holidays["time"]})
+        assert len(dates) >= 2
+        assert any(d > X_future["time"][0].date() for d in dates)
+
+    def test_calendar_is_seed_independent(self):
+        """The holiday calendar is a property of the dataset, not the seed."""
+        a = make_exogenous_regression(random_state=0).X_future
+        b = make_exogenous_regression(random_state=99).X_future
+        assert a["is_holiday"].equals(b["is_holiday"])
+
+    def test_classification_holiday_is_also_an_event_feature(self):
+        """The classification generator's X_future is not a weekend predicate."""
+        X_future = make_exogenous_classification(n_samples=24 * 60).X_future
+        weekend = (X_future["time"].dt.weekday() >= 6).cast(pl.Float64)
+        assert not (weekend == X_future["is_holiday"]).all()
+
+
 class TestMakeExogenousClassification:
     """Tests for make_exogenous_classification."""
 
@@ -154,9 +212,9 @@ class TestMakeExogenousClassification:
         assert data.X_actual.columns == ["time", "pollutant"]
 
     def test_x_future_schema(self):
-        """X_future has [time, is_weekend] columns."""
+        """X_future has [time, is_holiday] columns."""
         data = make_exogenous_classification()
-        assert data.X_future.columns == ["time", "is_weekend"]
+        assert data.X_future.columns == ["time", "is_holiday"]
 
     def test_x_forecast_schema(self):
         """X_forecast has [vintage_time, time, pollutant_forecast] columns."""
@@ -206,7 +264,7 @@ class TestMakeExogenousClassification:
     def test_feature_names(self):
         """feature_names lists all three feature columns."""
         data = make_exogenous_classification()
-        assert data.feature_names == ["pollutant", "is_weekend", "pollutant_forecast"]
+        assert data.feature_names == ["pollutant", "is_holiday", "pollutant_forecast"]
 
     def test_target_names(self):
         """target_names is ['air_quality']."""

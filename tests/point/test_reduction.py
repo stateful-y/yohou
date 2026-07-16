@@ -1,3 +1,4 @@
+import warnings
 from datetime import datetime
 
 import numpy as np
@@ -1327,28 +1328,72 @@ class TestStepFeatureAlignment:
             assert preds["all"][target_col].to_list() == preds[mode][target_col].to_list()
 
     def test_multi_output_ignores_alignment(self, step_alignment_data):
-        """multi-output strategy ignores step_feature_alignment (single model)."""
+        """multi-output feeds its estimator every step column regardless.
+
+        Asserts the feature count, not the prediction length: a length check
+        holds whether or not the parameter is honored, so it cannot detect the
+        behaviour it names.
+        """
         y, X_future = step_alignment_data
         fh = 3
-        f = PointReductionForecaster(
-            reduction_strategy="multi-output",
-            step_feature_alignment="matched",
-        )
-        f.fit(y[:25], forecasting_horizon=fh, X_future=X_future)
-        y_pred = f.predict(forecasting_horizon=fh)
-        assert len(y_pred) == fh
+
+        def n_features(alignment):
+            f = PointReductionForecaster(
+                reduction_strategy="multi-output",
+                step_feature_alignment=alignment,
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                f.fit(y[:25], forecasting_horizon=fh, X_future=X_future)
+            assert len(f.predict(forecasting_horizon=fh)) == fh
+            return f.estimator_.n_features_in_
+
+        assert n_features("matched") == n_features("all")
 
     def test_dir_rec_ignores_alignment(self, step_alignment_data):
-        """dir-rec strategy ignores step_feature_alignment (own augmentation)."""
+        """dir-rec feeds every estimator every step column regardless."""
         y, X_future = step_alignment_data
         fh = 3
-        f = PointReductionForecaster(
-            reduction_strategy="dir-rec",
-            step_feature_alignment="matched",
-        )
-        f.fit(y[:25], forecasting_horizon=fh, X_future=X_future)
-        y_pred = f.predict(forecasting_horizon=fh)
-        assert len(y_pred) == fh
+
+        def n_features(alignment):
+            f = PointReductionForecaster(
+                reduction_strategy="dir-rec",
+                step_feature_alignment=alignment,
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                f.fit(y[:25], forecasting_horizon=fh, X_future=X_future)
+            assert len(f.predict(forecasting_horizon=fh)) == fh
+            return [est.n_features_in_ for est in f.estimator_]
+
+        assert n_features("matched") == n_features("all")
+
+    def test_inapplicable_alignment_warns(self, step_alignment_data):
+        """A non-default alignment on a strategy that ignores it says so."""
+        y, X_future = step_alignment_data
+        for strategy in ("multi-output", "dir-rec"):
+            f = PointReductionForecaster(
+                reduction_strategy=strategy,
+                step_feature_alignment="matched",
+            )
+            with pytest.warns(UserWarning, match="has no effect"):
+                f.fit(y[:25], forecasting_horizon=3, X_future=X_future)
+
+    def test_applicable_or_default_alignment_is_silent(self, step_alignment_data):
+        """direct applies the parameter, and "all" is what everyone already does."""
+        y, X_future = step_alignment_data
+        cases = [("direct", "matched"), ("multi-output", "all"), ("dir-rec", "all")]
+        for strategy, alignment in cases:
+            f = PointReductionForecaster(
+                reduction_strategy=strategy,
+                step_feature_alignment=alignment,
+            )
+            with warnings.catch_warnings(record=True) as record:
+                warnings.simplefilter("always")
+                f.fit(y[:25], forecasting_horizon=3, X_future=X_future)
+            assert [w for w in record if "has no effect" in str(w.message)] == [], (
+                f"{strategy} + {alignment} should not warn"
+            )
 
 
 class TestPipelineSampleWeightRouting:

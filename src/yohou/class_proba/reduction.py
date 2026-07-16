@@ -52,7 +52,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         a feature.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
         Controls which step-indexed feature columns each direct estimator
-        sees. Only affects the ``"direct"`` strategy.
+        sees. Only the ``"direct"`` strategy applies this parameter; a
+        non-default value on any other strategy warns at fit and changes
+        nothing. ``"multi-output"`` cannot filter, since one estimator reads a
+        different step column per output and needs them all; ``"dir-rec"``
+        could, but is excluded by a deliberate scope decision.
 
         - ``"all"``: every estimator receives all step columns.
         - ``"matched"``: estimator for step h receives only ``*_step_h``.
@@ -217,6 +221,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
+        self._warn_inapplicable_step_alignment()
 
         # Discover classes from y before _pre_fit (which may transform y)
         # Use unprefixed (base) column names so panel groups share class labels.

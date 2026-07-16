@@ -41,9 +41,11 @@ leakage by separating features according to their temporal availability:
 - **`X_actual`**: observation features that are only available for past timestamps (e.g.
   sensor readings, realized demand). These flow through the `feature_transformer` pipeline
   and are never available at `predict` time because the future has not happened yet.
-- **`X_future`**: known-future features whose values are deterministic for any date, past
-  or future (e.g. holiday calendars, day-of-week indicators). These bypass the
-  `feature_transformer` and are converted to step-indexed columns.
+- **`X_future`**: known-future features whose value at a future timestamp cannot be
+  derived from the observation point and so needs an external table (e.g. holiday
+  calendars, promotion schedules). These bypass the `feature_transformer` and are
+  converted to step-indexed columns. Features computable from the timestamp alone
+  (Fourier terms, day-of-week) belong in a `feature_transformer` instead.
 - **`X_forecast`**: predictions from external models, each issued at a specific vintage
   time (e.g. weather forecasts, demand projections). These also bypass the
   `feature_transformer` and require a `"vintage_time"` column.
