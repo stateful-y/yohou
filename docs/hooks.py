@@ -787,6 +787,12 @@ def _get_gallery_page_url(project_root):
     placeholder -- found by looking, because that page is local-owned and a
     project is free to move it.  A hardcoded path is wrong the moment someone
     reorganises their docs, and produces a 404 with no build error.
+
+    ``index.md`` is dropped from the URL: under ``use_directory_urls`` (mkdocs'
+    default) ``pages/examples/index.md`` serves at ``/pages/examples/``, not at
+    ``/pages/examples/index/``.  This link is emitted as raw HTML, so mkdocs
+    never validates it and even --strict cannot see it break -- only RTD's
+    post-build linkchecker catches it.
     """
     global _GALLERY_PAGE_CACHE  # noqa: PLW0603
     if _GALLERY_PAGE_CACHE is not None:
@@ -794,15 +800,37 @@ def _get_gallery_page_url(project_root):
 
     docs_dir = project_root / "docs"
     _GALLERY_PAGE_CACHE = ""
-    if docs_dir.exists():
-        for md in sorted(docs_dir.rglob("*.md")):
-            try:
-                if "<!-- GALLERY -->" in md.read_text(encoding="utf-8"):
-                    rel = md.relative_to(docs_dir).with_suffix("")
-                    _GALLERY_PAGE_CACHE = "/" + "/".join(rel.parts) + "/"
-                    break
-            except (OSError, UnicodeDecodeError):
-                continue
+    if not docs_dir.exists():
+        return None
+
+    def _url_of(md):
+        rel = md.relative_to(docs_dir).with_suffix("")
+        parts = rel.parts[:-1] if rel.name == "index" else rel.parts
+        return "/" + "".join(f"{part}/" for part in parts)
+
+    sectioned = []
+    for md in sorted(docs_dir.rglob("*.md")):
+        try:
+            text = md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "<!-- GALLERY -->" in text:
+            _GALLERY_PAGE_CACHE = _url_of(md)
+            return _GALLERY_PAGE_CACHE
+        if _SECTION_GALLERY_RE.search(text):
+            sectioned.append(md)
+
+    # A gallery too big for one page has no bare <!-- GALLERY --> at all: it is a
+    # directory of <!-- GALLERY:section:… --> pages behind an index. Looking only
+    # for the bare marker returns None for those projects, and the caller drops
+    # the "see all N examples" link on an `and gallery_url` -- so the API pages
+    # for the most-used symbols, which are the ones that overflow the cap, link to
+    # nothing at all. Silently: no marker is involved, so nothing warns.
+    if sectioned:
+        directory = sectioned[0].parent
+        if all(md.parent == directory for md in sectioned) and (directory / "index.md").is_file():
+            _GALLERY_PAGE_CACHE = _url_of(directory / "index.md")
+
     return _GALLERY_PAGE_CACHE or None
 
 
@@ -935,8 +963,23 @@ def _build_api_examples_html(project_root, qualified_name):
 
     html = "## Examples\n\nThe following example notebooks use this component:\n\n" + _build_gallery_cards(shown)
     gallery_url = _get_gallery_page_url(project_root)
-    if total > _API_EXAMPLES_CAP and gallery_url:
-        html += f"\n[See all {total} examples in the gallery]({gallery_url})\n"
+    if total > _API_EXAMPLES_CAP:
+        if gallery_url:
+            html += f"\n[See all {total} examples in the gallery]({gallery_url})\n"
+        else:
+            # The symbols that overflow the cap are the most-used ones, so this
+            # drops the link exactly where the remaining examples matter most --
+            # and does it on an `if`, with no marker involved for the catch-all
+            # to notice. yohou renders 6 of PointReductionForecaster's 45 and
+            # links to none of the other 39.
+            log.warning(
+                "%s has %d examples but no gallery page to link the other %d to. Give the "
+                "gallery index a <!-- GALLERY --> marker, or put its "
+                "<!-- GALLERY:section:… --> pages behind an index.md.",
+                qualified_name,
+                total,
+                total - _API_EXAMPLES_CAP,
+            )
     return html
 
 
@@ -1930,6 +1973,19 @@ def on_page_markdown(markdown, page, config, files):
     # sufficient on its own, and the marker purely a placement override.
     companion_html = _build_companion_cards_html(project_root, page.file.src_path)
     if "<!-- COMPANION_NOTEBOOKS -->" in markdown:
+        if not companion_html:
+            # The marker is well-formed, so the catch-all below never sees it:
+            # it is consumed and replaced with nothing, leaving a blank where the
+            # page asked for cards. This is the one marker the template seeds by
+            # default -- it points at hello.py, so replacing hello.py without
+            # re-pointing its `companion` empties the page and says nothing.
+            log.warning(
+                "%s carries <!-- COMPANION_NOTEBOOKS --> but no notebook names it as their "
+                'companion, so it renders blank. Add `"companion": "%s"` to a notebook\'s '
+                "__gallery__, or drop the marker.",
+                page.file.src_path,
+                page.file.src_path,
+            )
         markdown = _replace_marker(markdown, "<!-- COMPANION_NOTEBOOKS -->", companion_html)
     elif companion_html:
         markdown = markdown.rstrip("\n") + "\n\n" + companion_html
