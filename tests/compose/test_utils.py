@@ -49,6 +49,42 @@ class TestHstack:
         assert result.columns == ["time", "a", "b"]
         assert result.shape[0] == 10
 
+    def test_children_disagreeing_on_row_order_still_align(self, time_df):
+        """A child that emits the shared rows in a different order still aligns by index.
+
+        Row order is not part of the contract: a child may re-group its rows (as
+        PerVintageActualTransformer does via partition_by). Features must attach
+        to the row bearing their own index, not to whatever row shares their
+        position.
+        """
+        from yohou.compose.utils import _hstack
+
+        reversed_df = time_df.rename({"a": "b"}).reverse()
+        result = _hstack(
+            Xs=[time_df, reversed_df],
+            column_names=[["a"], ["b"]],
+        )
+
+        # b carries the same values as a, so on every row a == b once aligned by time.
+        assert result["a"].to_list() == result["b"].to_list()
+
+    def test_forecast_kind_children_disagreeing_on_row_order_still_align(self):
+        """The same guarantee holds for a two-axis (vintage_time, time) index."""
+        from yohou.compose.utils import _hstack
+
+        t = datetime(2020, 1, 1)
+        index = {
+            "vintage_time": [t, t],
+            "time": [t + timedelta(days=2), t + timedelta(days=3)],
+        }
+        a = pl.DataFrame({**index, "a": [10.0, 20.0]})
+        b = pl.DataFrame({**index, "b": [30.0, 40.0]}).reverse()
+
+        result = _hstack(Xs=[a, b], column_names=[["a"], ["b"]]).sort("time")
+
+        assert result["a"].to_list() == [10.0, 20.0]
+        assert result["b"].to_list() == [30.0, 40.0]
+
     def test_different_lengths_align_to_time_intersection(self, time_df):
         """DataFrames with different row counts align on their shared timestamps.
 

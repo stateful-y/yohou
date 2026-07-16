@@ -153,19 +153,26 @@ def _hstack(Xs: list[pl.DataFrame], column_names: list[list[str]]) -> pl.DataFra
     for X in Xs[1:]:
         common = common.join(X.select(index), on=index, how="inner")
 
-    # Align each output to the common index, then rename its feature columns.
-    index_frame = Xs[0].join(common, on=index, how="semi").select(index)
-
-    Xs_renamed = []
+    # Rename each output's feature columns, then join it onto the common index.
+    # Joining rather than concatenating horizontally is what makes alignment
+    # correct: a child may emit the shared rows in any order (a per-vintage
+    # transformer re-groups them), and a positional concat would then attach
+    # features to the wrong index row with no error.
+    result = common
     for X, cols in zip(Xs, column_names, strict=False):
-        X_aligned = X.join(common, on=index, how="semi")
-        X_no_index = X_aligned.select(pl.exclude(index))
-        rename_map = dict(zip(X_no_index.columns, cols, strict=False))
-        X_renamed = X_no_index.rename(rename_map)
-        Xs_renamed.append(X_renamed)
+        feature_cols = [c for c in X.columns if c not in index]
+        rename_map = dict(zip(feature_cols, cols, strict=False))
+        X_renamed = X.select(*index, *feature_cols).rename(rename_map)
+        result = result.join(X_renamed, on=index, how="left")
 
-    Xs_concat = pl.concat(Xs_renamed, how="horizontal")
-    result = pl.concat([index_frame, Xs_concat], how="horizontal")
+        # A child emitting duplicate index rows would fan the join out. Catch it
+        # here rather than returning a silently longer frame.
+        if result.height != common.height:
+            raise ValueError(
+                f"Transformer output for columns {cols} has duplicate index rows on {index}, "
+                f"which expanded the combined frame from {common.height} to {result.height} rows. "
+                f"Each transformer must emit at most one row per index value."
+            )
 
     return result
 
@@ -184,9 +191,9 @@ def _observe_transform_one(
     y : None
         Not used, present for API consistency.
     weight : float | None
-        Weight to apply to the feature (non-``"time"``) columns of the
-        transformed output; the ``"time"`` column is never scaled so its
-        datetime dtype is preserved.
+        Weight to apply to the feature (non-index) columns of the transformed
+        output; index columns (``"time"``, and ``"vintage_time"`` on a forecast
+        frame) are never scaled so their datetime dtype is preserved.
     params : Any
         Routed parameters for the transformer.
 
@@ -219,9 +226,10 @@ def _observe_transform_one(
 
     if weight is None:
         return X_transformed
-    # Scale only feature columns: multiplying the whole DataFrame would cast the
-    # mandatory datetime "time" column to f64, violating the data contract.
-    return X_transformed.with_columns(cs.exclude("time") * weight)
+    # Scale only feature columns: multiplying an index column would cast its
+    # datetime to f64, violating the data contract. Exclude every index column,
+    # not just "time": a forecast frame also carries "vintage_time".
+    return X_transformed.with_columns(cs.exclude(index_columns(X_transformed)) * weight)
 
 
 def _rewind_transform_one(
@@ -243,9 +251,9 @@ def _rewind_transform_one(
     y : None
         Not used, present for API consistency.
     weight : float | None
-        Weight to apply to the feature (non-``"time"``) columns of the
-        transformed output; the ``"time"`` column is never scaled so its
-        datetime dtype is preserved.
+        Weight to apply to the feature (non-index) columns of the transformed
+        output; index columns (``"time"``, and ``"vintage_time"`` on a forecast
+        frame) are never scaled so their datetime dtype is preserved.
     params : Any
         Routed parameters for the transformer.
 
@@ -278,6 +286,7 @@ def _rewind_transform_one(
 
     if weight is None:
         return X_transformed
-    # Scale only feature columns: multiplying the whole DataFrame would cast the
-    # mandatory datetime "time" column to f64, violating the data contract.
-    return X_transformed.with_columns(cs.exclude("time") * weight)
+    # Scale only feature columns: multiplying an index column would cast its
+    # datetime to f64, violating the data contract. Exclude every index column,
+    # not just "time": a forecast frame also carries "vintage_time".
+    return X_transformed.with_columns(cs.exclude(index_columns(X_transformed)) * weight)
