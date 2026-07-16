@@ -67,8 +67,8 @@ a public holiday is not a function of anything measurable today. It is a lookup.
 The same test, in the form you can apply while writing the `fit()` call: **can
 you compute it from the timestamp alone, or do you need an external table?** A
 timestamp alone means a *clock feature*, which belongs in `feature_transformer`
-(see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/)
-and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/)).
+(see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/)
+and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/)).
 An external table means an *event feature*, which belongs in `X_future`.
 
 Note that "deterministic and knowable in advance" does not separate the two. A
@@ -81,7 +81,7 @@ Determinism is not the question; derivability from `T` is.
 Holidays deserve a note, because they can legitimately appear on either channel
 and the two uses are complementary rather than competing.
 
-[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/)
+[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/)
 on `X_actual` gives *past* holiday effects: whether recently observed timestamps
 were holidays, which is what you want when demand rebounds the day after a
 closure. It runs on the observation frame, so it cannot say anything about a
