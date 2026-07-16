@@ -14,6 +14,7 @@ from yohou.preprocessing import (
     SimpleImputer,
     StandardScaler,
 )
+from yohou.stationarity import SeasonalDifferencing
 from yohou.testing.forecast_transformer import FORECAST_TRANSFORMER_CHECKS
 
 
@@ -142,29 +143,104 @@ def test_vintage_transform_is_independent_of_other_vintages():
     assert full_v0 == pytest.approx(alone.sort("time")["a"].to_list())
 
 
-def test_stateful_inner_is_rejected():
-    """A stateful wrapped transformer (observation_horizon > 0) is rejected at fit."""
-    tx = PerVintageActualTransformer(LagTransformer(lag=1))  # LagTransformer is stateful
-    with pytest.raises(ValueError, match="stateless"):
-        tx.fit(_sample_forecast_frame())
+def _stepped_forecast_frame(steps: int = 6) -> pl.DataFrame:
+    """Two vintages of ``steps`` contiguous hourly forecast steps each.
 
-
-def test_stateful_inner_too_large_for_the_vintage_names_the_constraint():
-    """An inner whose horizon exceeds the vintage length still names the real constraint.
-
-    Vintages are short by nature, so a stateful inner often fails *inside* the
-    inner before the composite's own observation_horizon check runs. The raw
-    inner message ("Not enough input data to set the transformer memory") never
-    mentions lifting, leaving the user no idea that stateful transformers cannot
-    be lifted at all.
+    Vintage 1's values start at 10 and rise by 10; vintage 2's start at 110. The
+    offset makes cross-vintage bleed visible: a lag that reached across the
+    boundary would give vintage 2 a first value of 60, not 110.
     """
-    tx = PerVintageActualTransformer(LagTransformer(lag=5))  # vintages here are 3 rows
-    with pytest.raises(ValueError, match="stateless") as excinfo:
-        tx.fit(_sample_forecast_frame())
+    t0 = datetime(2024, 1, 1)
+    rows = []
+    for v in range(2):
+        vintage = t0 + timedelta(hours=v)
+        for h in range(1, steps + 1):
+            rows.append((vintage, vintage + timedelta(hours=h), float(v * 100 + h * 10)))
+    return pl.DataFrame(rows, schema=["vintage_time", "time", "load"], orient="row")
 
-    # the inner's own diagnosis is preserved as the chained cause
-    assert excinfo.value.__cause__ is not None
-    assert "observation_horizon" in str(excinfo.value.__cause__)
+
+def test_stateful_inner_lags_within_each_vintage():
+    """A lifted lag uses each vintage's own history, never the preceding vintage's.
+
+    A vintage is internally contiguous (its forecast steps at the series
+    interval), so within-vintage history is well defined. Only cross-vintage
+    memory is impossible, and a fresh clone per vintage rules it out.
+    """
+    frame = _stepped_forecast_frame(steps=6)
+    out = PerVintageActualTransformer(LagTransformer(lag=1)).fit_transform(frame)
+
+    v1, v2 = out.partition_by("vintage_time", maintain_order=True)
+    assert v1["load_lag_1"].to_list() == [10.0, 20.0, 30.0, 40.0, 50.0]
+    # 110 is vintage 2's own first value; 60 would mean the lag bled across the boundary
+    assert v2["load_lag_1"].to_list() == [110.0, 120.0, 130.0, 140.0, 150.0]
+
+
+def test_stateful_inner_differences_within_each_vintage():
+    """Differencing is computed against each vintage's own rows."""
+    frame = _stepped_forecast_frame(steps=6)
+    out = PerVintageActualTransformer(SeasonalDifferencing(seasonality=1)).fit_transform(frame)
+
+    feature = [c for c in out.columns if c not in ("vintage_time", "time")][0]
+    for part in out.partition_by("vintage_time", maintain_order=True):
+        # values rise by 10 within every vintage, so every difference is 10
+        assert part[feature].to_list() == pytest.approx([10.0] * 5)
+
+
+def test_composite_stays_stateless_with_a_stateful_inner():
+    """Inner statefulness is a within-vintage property; the composite's is a lifecycle one.
+
+    The composite refits every vintage on every transform, so it carries no
+    buffer across calls whatever the inner does inside one vintage.
+    """
+    tx = PerVintageActualTransformer(LagTransformer(lag=1))
+    tx.fit(_stepped_forecast_frame(steps=6))
+
+    tags = tx.__sklearn_tags__().transformer_tags
+    assert tags.kind == "forecast"
+    assert tags.stateful is False
+    assert not hasattr(tx, "observe")
+    assert not hasattr(tx, "rewind")
+
+
+def test_inner_consuming_the_whole_vintage_raises():
+    """An inner whose horizon eats every row must not yield an empty frame silently.
+
+    lag=6 over 6-step vintages sits between two well-behaved cases: lag=5 leaves
+    one row, lag=8 raises inside the inner. This middle case returned zero rows
+    per vintage with no error, which the removed statelessness rejection masked.
+    """
+    frame = _stepped_forecast_frame(steps=6)
+    tx = PerVintageActualTransformer(LagTransformer(lag=6))
+
+    with pytest.raises(ValueError, match="observation_horizon"):
+        tx.fit_transform(frame)
+
+
+def test_inner_leaving_one_row_per_vintage_succeeds():
+    """The boundary case below the empty-output check still works."""
+    frame = _stepped_forecast_frame(steps=6)
+    out = PerVintageActualTransformer(LagTransformer(lag=5)).fit_transform(frame)
+
+    assert out.height == 2  # one surviving row per vintage
+    assert out["vintage_time"].n_unique() == 2
+
+
+def test_inner_needing_more_history_than_the_vintage_holds_names_the_constraint():
+    """An inner too large to fit a vintage names the sizing constraint, not statelessness.
+
+    Stateful inners are supported, so the failure is that this one needs more
+    rows than a vintage holds, which the message must say.
+    """
+    frame = _stepped_forecast_frame(steps=6)
+    tx = PerVintageActualTransformer(LagTransformer(lag=8))
+
+    with pytest.raises(ValueError) as excinfo:
+        tx.fit(frame)
+
+    message = str(excinfo.value)
+    assert "stateless" not in message  # the old claim is no longer true
+    assert "6" in message  # the vintage length
+    assert excinfo.value.__cause__ is not None  # the inner's own diagnosis survives
 
 
 def test_stateless_function_transformer_is_still_accepted():

@@ -12,24 +12,28 @@ That difference is why a single-axis transformer cannot simply be pointed at an 
 
 ## Kind and Statefulness Are Orthogonal
 
-Statefulness is Yohou's other transformer axis: a stateful transformer keeps a bounded buffer of recent rows and declares how many it needs through its `observation_horizon`, while a stateless transformer's output depends only on its fitted parameters and the current input. That axis is independent of kind, which gives four combinations, of which three are populated:
+Statefulness is Yohou's other transformer axis: a stateful transformer keeps a bounded buffer of recent rows and declares how many it needs through its `observation_horizon`, while a stateless transformer's output depends only on its fitted parameters and the current input. That axis is independent of kind, and all four combinations exist:
 
-|              | Stateless                          | Stateful                          |
-| ------------ | ---------------------------------- | --------------------------------- |
-| **Actual**   | scaling, log transforms, calendar features | lags, rolling statistics, filters |
-| **Forecast** | lifted stateless transformers      | structurally impossible           |
+|              | Stateless                          | Stateful                                    |
+| ------------ | ---------------------------------- | ------------------------------------------- |
+| **Actual**   | scaling, log transforms, calendar features | lags, rolling statistics, filters   |
+| **Forecast** | lifted stateless transformers      | lifted lags and differences, within a vintage |
 
-The empty cell is the interesting one, and it is empty for a reason rather than for want of implementation. State on the time axis means memory: a buffer of the rows immediately preceding the current one, which is only meaningful if "preceding" is well defined and the history is contiguous. The vintage axis offers neither. Vintages are separate short series, and the rows before a given vintage's first row belong to a different vintage. There is no contiguous history for a buffer to hold, so there is nothing for an `observation_horizon` to count.
+The forecast-and-stateful cell rewards a moment's care, because it is easy to talk yourself out of it. State means memory: a buffer of the rows immediately preceding the current one, which is meaningful only where "preceding" is well defined and the history is contiguous. It is tempting to conclude that the vintage axis offers neither, since vintages are separate short series and the rows before a given vintage's first row belong to a different vintage.
 
-This is why [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) accepts only stateless inner transformers, rejecting anything that measures a non-zero `observation_horizon` after fitting. The rejection is not a conservative guard around an unfinished feature. A stateful transformer on the vintage axis is asking for memory that the data shape cannot supply.
+That is true of *cross-vintage* memory and false of everything else. A vintage is internally contiguous: its rows are the forecast steps at the series interval, one after another. Within a vintage, "the previous row" is exactly as well defined as it is in any single series. So a lag or a difference computed inside one vintage is ordinary, and only a lag that reaches *across* a boundary is meaningless.
 
-Forecast-kind transformers are therefore stateless as a class, which is also why they have no `observe` and `rewind` methods. Those exist to manage a memory buffer, and there is none to manage. Serving a single fresh vintage is just a one-group input, no different in kind from a frame holding a year of them.
+[`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) therefore accepts stateful inner transformers. It fits a fresh clone on each vintage's own rows, so a wrapped lag can only ever see that vintage's history, and the cross-vintage reach that would be meaningless is structurally impossible rather than merely discouraged.
+
+The distinction to hold onto is between two senses of "stateful". A stateful *inner* keeps a buffer while computing one vintage. A stateful *estimator*, in the sense the `observe`/`rewind` API means, carries a buffer **between calls**. Forecast-kind transformers are stateless in the second sense and therefore have no `observe`/`rewind`: `PerVintageActualTransformer` refits every vintage on every `transform`, so nothing survives the call, whatever the inner does inside it. Serving a single fresh vintage is just a one-group input, no different in kind from a frame holding a year of them.
+
+The cost of a stateful inner is rows: it consumes its `observation_horizon` from the **start** of every vintage, which are the nearest-term forecast steps. That is the same trade a lag makes on any series, and [How to Transform Features on the Forecast Channel](../how-to/transform-forecast-features.md) covers what it means in practice.
 
 ## Lifting Rather Than Reimplementing
 
 Yohou ships one concrete forecast-kind transformer, [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/), against a couple of dozen actual-kind ones. That ratio is a design position rather than a gap in coverage.
 
-The alternative would have been a parallel catalog: a vintage-aware scaler, a vintage-aware function transformer, a vintage-aware imputer, each duplicating the logic of its single-axis twin and each able to drift from it. Instead, `PerVintageActualTransformer` wraps a stateless actual transformer and applies it to each vintage independently, grouping by `vintage_time`, handing each group's single-axis slice to the wrapped transformer, and restacking the results. Because every vintage is transformed using only its own rows, the order-dependent operations that would otherwise bleed across vintage boundaries stay contained. One wrapper lifts the whole catalog, and the wrapped transformers remain the same objects that run on `X_actual`.
+The alternative would have been a parallel catalog: a vintage-aware scaler, a vintage-aware function transformer, a vintage-aware imputer, each duplicating the logic of its single-axis twin and each able to drift from it. Instead, `PerVintageActualTransformer` wraps an actual transformer and applies it to each vintage independently, grouping by `vintage_time`, fitting a fresh clone on each group's single-axis slice, transforming it, and restacking the results. Because every vintage is transformed using only its own rows, the order-dependent operations that would otherwise bleed across vintage boundaries stay contained. One wrapper lifts the whole catalog, and the wrapped transformers remain the same objects that run on `X_actual`.
 
 Lifting is therefore the normal way to transform an `X_forecast` frame, not a stopgap. `BaseForecastTransformer` is the extension point beneath it: subclass it when an operation is genuinely about the vintage structure itself and so cannot be expressed as a per-vintage application of a single-axis transformer. Comparing each vintage against the one before it, for example, is inherently cross-vintage and has no single-axis equivalent to lift. Everything expressible per vintage should be lifted instead.
 

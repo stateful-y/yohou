@@ -15,7 +15,7 @@ Composition classes for combining forecasters and transformers into complex work
 | [`ColumnTransformer`](generated/yohou.compose.column_transformer.ColumnTransformer.md) | Applies transformers to columns of a polars DataFrame. |
 | [`FeaturePipeline`](generated/yohou.compose.feature_pipeline.FeaturePipeline.md) | A sequence of time series transformers. |
 | [`FeatureUnion`](generated/yohou.compose.feature_union.FeatureUnion.md) | Concatenates results of multiple transformer objects. |
-| [`PerVintageActualTransformer`](generated/yohou.compose.per_vintage.PerVintageActualTransformer.md) | Applies a stateless single-axis transformer to each vintage of an `X_forecast` frame. |
+| [`PerVintageActualTransformer`](generated/yohou.compose.per_vintage.PerVintageActualTransformer.md) | Fits and applies a single-axis transformer to each vintage of an `X_forecast` frame. |
 
 ### Forecasters
 

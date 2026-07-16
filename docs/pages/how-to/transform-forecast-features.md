@@ -11,11 +11,11 @@ This guide shows you how to apply transformers to an `X_forecast` frame, using [
     <!-- COMPANION_NOTEBOOKS -->
 
 
-An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) wraps a stateless actual transformer and applies it to each vintage independently. For why the two kinds exist and why the wrapper takes stateless transformers only, see [Transformer Kinds](../explanation/transformer-kinds.md).
+An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the two kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ## Derive a Feature per Vintage
 
-Wrap any stateless transformer. Here a [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) computes net load from load and wind forecasts:
+Wrap any actual transformer. Here a [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) computes net load from load and wind forecasts:
 
 ```python
 import polars as pl
@@ -58,8 +58,13 @@ This is leakage-free: a vintage's output depends only on its own rows, all of wh
 !!! note "The tail of a forecast frame is dropped"
     A forecast frame usually ends in vintages of one or two rows, where the horizon runs off the end of the series. A single-row vintage has no per-vintage statistic to compute, so `PerVintageActualTransformer` drops vintages with fewer than two rows and emits a `UserWarning` naming how many. The surviving vintages are unaffected.
 
-!!! note "The wrapped transformer must be stateless"
-    `PerVintageActualTransformer` requires the wrapped transformer to measure `observation_horizon == 0` after fitting. A stateful transformer (a lag or rolling window) is rejected with a `ValueError`; see [Transformer Kinds](../explanation/transformer-kinds.md) for why the vintage axis rules statefulness out.
+!!! note "A stateful transformer costs you the earliest steps"
+    A stateful wrapped transformer (a lag, a difference, a rolling window) is supported: each vintage is fitted on its own rows, so its history never reaches across a vintage boundary. It does consume its `observation_horizon` from the **start** of every vintage, and those are the nearest-term forecast steps, usually the ones you care about most. If it consumes the whole vintage you get a `ValueError` rather than an empty frame.
+
+    The loss spreads. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) keeps only the index rows common to every branch, so one lag branch truncates its siblings' earliest steps too.
+
+!!! warning "A lifted lag is within a vintage, not across vintages"
+    `PerVintageActualTransformer(LagTransformer(lag=1))` gives you the forecast for step `h-1` **issued at the same `vintage_time`**: the ramp along one forecast trajectory. It does **not** give you the previous vintage's forecast for the same `time`. That is a genuinely different operation, and it needs its own [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) rather than a lifted actual transformer.
 
 ## Compose Several Forecast Transformers
 
@@ -81,7 +86,7 @@ features = FeatureUnion([
 ])
 ```
 
-Each branch must itself be stateless, because each is lifted independently. A branch computing something like a ramp (`pl.col("load").diff()`) is rejected: `FunctionTransformer` measures the `.diff()` as an `observation_horizon` of 1, and a stateful transformer cannot be lifted onto the vintage axis.
+Each branch is lifted independently, so a branch may be stateful. A branch computing a ramp (`pl.col("load").diff()`) works, but `FunctionTransformer` measures the `.diff()` as an `observation_horizon` of 1, so that branch drops each vintage's first step, and the union drops it from every other branch too.
 
 A composition must be **homogeneous in kind**: mixing actual and forecast transformers in one `FeatureUnion`, `FeaturePipeline`, or `ColumnTransformer` raises a `ValueError`.
 

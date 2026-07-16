@@ -12,7 +12,7 @@ import marimo
 __generated_with = "0.23.1"
 __gallery__ = {
     "title": "How to Transform Features on the Forecast Channel",
-    "description": "Lift stateless transformers onto the vintage axis with PerVintageActualTransformer, compose them with FeatureUnion, and feed the result to a forecaster's X_forecast channel.",
+    "description": "Lift transformers onto the vintage axis with PerVintageActualTransformer, including stateful ones such as lags, compose them with FeatureUnion, and feed the result to a forecaster's X_forecast channel.",
     "category": "how-to",
     "section": "data-features",
     "companion": "/pages/how-to/transform-forecast-features/",
@@ -216,11 +216,15 @@ def _(FunctionTransformer, PerVintageActualTransformer, X_forecast, anomaly, pl)
 def _(mo):
     mo.md(
         r"""
-        ## 6. Two Constraints the Framework Enforces
+        ## 6. Stateful Inners, and the One Rule That Is Enforced
 
-        Each branch must be **stateless**, since each is lifted independently, and a
-        composition must be **homogeneous in kind**. Both are errors rather than
-        silent wrong answers.
+        A wrapped transformer may be **stateful**. A vintage is internally
+        contiguous, so a lag or a ramp is well defined inside one, and a fresh
+        clone per vintage means its history never reaches across a boundary. The
+        cost is rows: it consumes its `observation_horizon` from each vintage's
+        earliest steps.
+
+        What *is* enforced is that a composition must be **homogeneous in kind**.
         """
     )
 
@@ -229,17 +233,16 @@ def _(mo):
 def _(FeatureUnion, FunctionTransformer, PerVintageActualTransformer, X_forecast, anomaly, pl):
     from yohou.preprocessing import LagTransformer
 
-    # A stateful inner transformer cannot be lifted: the vintage axis is
-    # discontinuous, so there is no contiguous history for its buffer to hold.
-    try:
-        PerVintageActualTransformer(
-            FunctionTransformer(
-                func=lambda df: df.select(pl.col("wx_temp").diff().alias("ramp")),
-                feature_names_out=lambda self, names: ["ramp"],
-            )
-        ).fit(X_forecast)
-    except ValueError as err:
-        print("stateless rule:", err)
+    # A stateful inner IS lifted: the ramp is computed within each vintage.
+    ramp = PerVintageActualTransformer(
+        FunctionTransformer(
+            func=lambda df: df.select(pl.col("wx_temp").diff().alias("ramp")),
+            feature_names_out=lambda self, names: ["ramp"],
+        )
+    )
+    ramped = ramp.fit_transform(X_forecast)
+    print("stateful inner lifted -> ", ramped.columns)
+    print("rows:", len(X_forecast), "->", len(ramped), "(each vintage loses its first step to the diff)")
 
     # Mixing kinds in one container has no correct alignment, so it is rejected.
     try:

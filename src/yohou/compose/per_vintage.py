@@ -1,4 +1,4 @@
-"""PerVintageActualTransformer: lift a stateless actual transformer onto the vintage axis."""
+"""PerVintageActualTransformer: lift a single-axis actual transformer onto the vintage axis."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ _MIN_VINTAGE_ROWS = 2
 
 
 class PerVintageActualTransformer(BaseForecastTransformer):
-    """Apply a stateless single-axis transformer to each vintage of an ``X_forecast`` frame.
+    """Apply a single-axis transformer to each vintage of an ``X_forecast`` frame.
 
     Wraps a `BaseActualTransformer` and applies it independently to every
     vintage: the frame is grouped by ``"vintage_time"``, and each group's
@@ -41,13 +41,23 @@ class PerVintageActualTransformer(BaseForecastTransformer):
 
     ``fit`` does not fit the inner for the values it will produce. It fits a
     single representative clone on one vintage only to expose output feature
-    names and to check statelessness, both value-independent; the per-vintage
-    fits happen in ``transform``.
+    names and to measure ``observation_horizon``, both value-independent; the
+    per-vintage fits happen in ``transform``.
 
-    The wrapped transformer must be **stateless** (measured
-    ``observation_horizon == 0`` after fitting). Stateful transformers need
-    contiguous memory across a single series, which the discontinuous vintage
-    axis cannot provide, so they are rejected.
+    The wrapped transformer **may be stateful**. A vintage is internally
+    contiguous (its forecast steps at the series interval), so a lag or a
+    difference is well defined within one, and a fresh clone per vintage means
+    its history never reaches across a vintage boundary. Only *cross-vintage*
+    memory is impossible, which is why the composite itself stays stateless and
+    exposes no ``observe``/``rewind``: it carries no buffer between calls
+    whatever the inner does inside one vintage.
+
+    A stateful inner consumes ``observation_horizon`` rows from the **start** of
+    every vintage, which are its nearest-term forecast steps. If it consumes the
+    whole vintage the composite raises, since that is a configuration error. Note
+    that a lifted lag means "the forecast for step h-1 issued at the same
+    ``vintage_time``", a trajectory ramp; it is *not* the previous vintage's
+    forecast for the same ``time``, which this wrapper does not provide.
 
     A vintage with fewer than two rows cannot be fitted on its own and has no
     per-vintage statistic to compute. Such vintages, typically the truncated
@@ -57,14 +67,15 @@ class PerVintageActualTransformer(BaseForecastTransformer):
     Parameters
     ----------
     transformer : BaseActualTransformer
-        The single-axis transformer to apply per vintage. Must be stateless.
+        The single-axis transformer to apply per vintage. May be stateful, in
+        which case it must leave at least one row per vintage.
 
     Attributes
     ----------
     transformer_ : BaseActualTransformer
         A representative clone fitted on the first vintage, used only for
-        ``get_feature_names_out`` and the statelessness check, never to produce
-        transformed values.
+        ``get_feature_names_out`` and to measure ``observation_horizon``, never
+        to produce transformed values.
     feature_names_in_ : list[str]
         Feature (non-index) column names seen during ``fit``.
 
@@ -114,7 +125,7 @@ class PerVintageActualTransformer(BaseForecastTransformer):
         self.transformer = transformer
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Fit a representative clone for feature names and the statelessness check.
+        """Fit a representative clone for feature names and the horizon.
 
         The wrapped transformer is **not** fitted here for the values it will
         produce; those come from a per-vintage fit in ``_transform``. This fit
@@ -138,25 +149,17 @@ class PerVintageActualTransformer(BaseForecastTransformer):
         try:
             self.transformer_.fit(representative)
         except Exception as err:
-            # A stateful inner often fails here rather than at the horizon check
-            # below: vintages are short, so an inner needing more history than a
-            # vintage holds raises inside its own fit first. Its message never
-            # mentions lifting, so name the constraint and keep the diagnosis.
+            # Vintages are short, so an inner needing more history than a vintage
+            # holds raises inside its own fit. Its message mentions neither
+            # vintages nor lifting, so name the sizing constraint and keep the
+            # diagnosis. This is not a statelessness problem: stateful inners are
+            # supported, this one simply does not fit in a vintage.
             raise ValueError(
-                "PerVintageActualTransformer only lifts stateless transformers onto the vintage "
-                f"axis, and fitting {type(self.transformer).__name__} on a single vintage "
-                f"({representative.height} rows) failed. A stateful transformer needs contiguous "
-                "memory that the vintage axis cannot provide; see the chained error for the "
-                "wrapped transformer's own diagnosis."
+                f"PerVintageActualTransformer fits its wrapped transformer on one vintage at a "
+                f"time, and {type(self.transformer).__name__} could not fit a vintage of "
+                f"{representative.height} rows. The wrapped transformer requires more history "
+                f"than a single vintage provides; see the chained error for its own diagnosis."
             ) from err
-
-        if self.transformer_.observation_horizon != 0:
-            raise ValueError(
-                "PerVintageActualTransformer only lifts stateless transformers onto the vintage "
-                f"axis, but {type(self.transformer).__name__} measured "
-                f"observation_horizon={self.transformer_.observation_horizon} after fitting. "
-                "A stateful transformer needs contiguous memory that the vintage axis cannot provide."
-            )
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Fit and transform each vintage independently, then re-stack.
@@ -171,6 +174,11 @@ class PerVintageActualTransformer(BaseForecastTransformer):
         and has no meaningful per-vintage statistic to compute. Such vintages,
         typically the truncated tail of a forecast frame, are dropped from the
         output and reported in a warning.
+
+        A stateful inner consumes its ``observation_horizon`` in rows from each
+        vintage's start. If that consumes the whole vintage, the composite raises
+        rather than returning the vintage's absence silently: unlike the tail
+        drop, which is a property of the data, this is a configuration error.
         """
         vintage_dtype = X[_VINTAGE_COL].dtype
 
@@ -186,6 +194,14 @@ class PerVintageActualTransformer(BaseForecastTransformer):
                 continue
             vintage_value = part[_VINTAGE_COL][0]
             transformed = clone(self.transformer).fit_transform(part.drop(_VINTAGE_COL))
+            if transformed.is_empty():
+                raise ValueError(
+                    f"{type(self.transformer).__name__} consumed an entire vintage: it left no rows "
+                    f"from a vintage of {part.height}, because its observation_horizon "
+                    f"({self.transformer_.observation_horizon}) is not smaller than the vintage "
+                    f"length. A wrapped transformer must leave at least one row per vintage; "
+                    f"reduce its horizon or use longer vintages."
+                )
             transformed = transformed.with_columns(pl.lit(vintage_value, dtype=vintage_dtype).alias(_VINTAGE_COL))
             parts.append(transformed)
 
