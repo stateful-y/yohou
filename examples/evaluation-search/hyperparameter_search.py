@@ -466,11 +466,11 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Splitters**: See [`cv_splitters.py`](/examples/getting-started/cv_splitters/) for splitter details
-    - **Scoring**: See [Metrics](/examples/#metrics) for all available scorers
+    - **Splitters**: See [`cv_splitters.py`](/examples/cv_splitters/) for splitter details
+    - **Scoring**: See [Evaluation & Search](/pages/examples/#evaluation-search) for all available scorers
     - **Interval search**: Use [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) with search for interval tuning
-    - **Classification forecaster**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for the full classification workflow
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/evaluation-search/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
+    - **Classification forecaster**: See [`class_proba_forecaster.py`](/examples/class_proba_forecaster/) for the full classification workflow
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/class_proba_metrics/) for LogLoss, BrierScore, and Accuracy evaluation
     """)
 
 

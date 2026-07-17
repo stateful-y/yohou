@@ -411,8 +411,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Point metrics**: See [`point_metrics.py`](/examples/evaluation-search/point_metrics/) for forecast accuracy metrics
-    - **Model selection**: See [Model Selection](/examples/#model-selection) for CV with scoring
+    - **Point metrics**: See [`point_metrics.py`](/examples/point_metrics/) for forecast accuracy metrics
+    - **Model selection**: See [Evaluation & Search](/pages/examples/#evaluation-search) for CV with scoring
     - **Time weighting**: See `examples/time_weighted_forecasting.py`
     """)
 

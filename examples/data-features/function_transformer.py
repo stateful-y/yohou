@@ -347,9 +347,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Sklearn wrappers**: See [`examples/preprocessing/sklearn_wrappers.py`](/examples/data-features/sklearn_wrappers/) for built-in StandardScaler, MinMaxScaler, etc.
+    - **Sklearn wrappers**: See [`examples/data-features/sklearn_wrappers.py`](/examples/sklearn_wrappers/) for built-in StandardScaler, MinMaxScaler, etc.
     - **Window transforms**: See `examples/preprocessing/window_transforms.py` for rolling and expanding windows
-    - **Signal processing**: See [`examples/preprocessing/signal_processing.py`](/examples/data-features/signal_processing/) for numerical filters and differentiators
+    - **Signal processing**: See [`examples/data-features/signal_processing.py`](/examples/signal_processing/) for numerical filters and differentiators
     """)
 
 

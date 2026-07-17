@@ -324,9 +324,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Panel pipelines**: See [`examples/compose/panel_pipelines.py`](/examples/panel-data/panel_pipelines/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/data-features/stationarity_transforms/)
-    - **Decomposition details**: See [`examples/stationarity/decomposition.py`](/examples/getting-started/decomposition/)
+    - **Panel pipelines**: See [`examples/panel-data/panel_pipelines.py`](/examples/panel_pipelines/)
+    - **Stationarity transforms**: See [`examples/data-features/stationarity_transforms.py`](/examples/stationarity_transforms/)
+    - **Decomposition details**: See [`examples/data-features/decomposition.py`](/examples/decomposition/)
     """)
 
 

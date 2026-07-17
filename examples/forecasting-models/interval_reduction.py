@@ -341,10 +341,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/getting-started/reduction_strategies/) for multi-output vs direct vs dir-rec
-    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/forecasting-models/catboost_multiquantile/) for single-model quantile prediction
+    - **Point strategy comparison**: See [`reduction_strategies.py`](/examples/reduction_strategies/) for multi-output vs direct vs dir-rec
+    - **CatBoost multi-quantile**: See [`catboost_multiquantile.py`](/examples/catboost_multiquantile/) for single-model quantile prediction
     - **Calibration plots**: Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) from `yohou.plotting`
-    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval metrics
+    - **Scoring**: See [Evaluation & Search](/pages/examples/#evaluation-search) for comprehensive interval metrics
     """)
 
 

@@ -40,7 +40,7 @@ def _(mo):
 
     **Prerequisites:** Familiarity with the direct reduction strategy and
     exogenous features
-    ([Exogenous Tutorial](/examples/compose/exogenous_features/)).
+    ([Exogenous Tutorial](/examples/exogenous_features/)).
     """)
 
 

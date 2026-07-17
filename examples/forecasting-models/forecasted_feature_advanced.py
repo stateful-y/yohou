@@ -360,8 +360,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/data-features/pipeline_composition/)
-    - **Feature union**: See [`examples/compose/feature_union.py`](/examples/data-features/feature_union/)
+    - **Pipeline composition**: See [`examples/data-features/pipeline_composition.py`](/examples/pipeline_composition/)
+    - **Feature union**: See [`examples/data-features/feature_union.py`](/examples/feature_union/)
     """)
 
 

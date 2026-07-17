@@ -422,8 +422,8 @@ def _(mo):
     - Try different classifiers: [`LogisticRegression`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html), [`RandomForestClassifier`](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html), [`GradientBoostingClassifier`](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html)
     - Experiment with `reduction_strategy="direct"` for independent step classifiers
     - Add more lag features with [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
-    - Explore [Metrics](/examples/#metrics) for more evaluation options
-    - See [`reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) for the regression equivalent
+    - Explore [Evaluation & Search](/pages/examples/#evaluation-search) for more evaluation options
+    - See [`reduction_forecaster.py`](/examples/reduction_forecaster/) for the regression equivalent
     """)
 
 

@@ -382,9 +382,9 @@ def _(mo):
     ## Next Steps
 
     - **Panel strategy overview**: See `examples/panel_reduction.py`
-    - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/panel-data/panel_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
-    - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/panel-data/panel_pipelines/)
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/panel-data/panel_intervals/)
+    - **Per-group specialisation**: See [`examples/panel-data/panel_forecasting.py`](/examples/panel_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
+    - **Composition patterns**: See [`examples/panel-data/panel_pipelines.py`](/examples/panel_pipelines/)
+    - **Panel intervals**: See [`examples/panel-data/panel_intervals.py`](/examples/panel_intervals/)
     """)
 
 

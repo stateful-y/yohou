@@ -424,9 +424,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Pipeline composition**: See [`examples/compose/pipeline_composition.py`](/examples/data-features/pipeline_composition/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/data-features/stationarity_transforms/)
-    - **Panel stationarity**: See [`examples/stationarity/panel_stationarity.py`](/examples/panel-data/panel_stationarity/)
+    - **Pipeline composition**: See [`examples/data-features/pipeline_composition.py`](/examples/pipeline_composition/)
+    - **Stationarity transforms**: See [`examples/data-features/stationarity_transforms.py`](/examples/stationarity_transforms/)
+    - **Panel stationarity**: See [`examples/panel-data/panel_stationarity.py`](/examples/panel_stationarity/)
     """)
 
 

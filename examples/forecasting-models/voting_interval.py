@@ -37,7 +37,7 @@ def _(mo):
     Aggregating intervals from diverse models can produce more robust
     coverage than any single model.
 
-    **Prerequisites:** Familiarity with interval forecasting. See the [conformal forecasting example](/examples/getting-started/conformal_forecasting/) for an introduction.
+    **Prerequisites:** Familiarity with interval forecasting. See the [conformal forecasting example](/examples/conformal_forecasting/) for an introduction.
     """)
 
 

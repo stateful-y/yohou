@@ -1205,15 +1205,14 @@ def _(mo):
 
     | Topic | Notebook |
     |-------|----------|
-    | Feature engineering | [`point/feature_forecasting.py`](/examples/forecasting-models/feature_forecasting/), [`preprocessing/window_transformers.py`](/examples/data-features/window_transformers/) |
-    | Point forecasters | [`point/naive_forecasters.py`](/examples/getting-started/naive_forecasters/), [`point/reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) |
-    | Class probability | [`point/class_proba_forecaster.py`](/examples/point/class_proba_forecaster/), [`metrics/class_proba_metrics.py`](/examples/evaluation-search/class_proba_metrics/) |
-    | Interval forecasting | [`interval/interval_reduction.py`](/examples/forecasting-models/interval_reduction/), [`metrics/conformity_scorers.py`](/examples/evaluation-search/conformity_scorers/) |
-    | Decomposition deep dive | [`stationarity/decomposition.py`](/examples/getting-started/decomposition/) |
-    | Metrics guide | [`metrics/point_metrics.py`](/examples/evaluation-search/point_metrics/), [`metrics/interval_metrics.py`](/examples/evaluation-search/interval_metrics/) |
-    | Splitters & search | [`model_selection/cv_splitters.py`](/examples/getting-started/cv_splitters/), [`model_selection/hyperparameter_search.py`](/examples/evaluation-search/hyperparameter_search/) |
-    | Dataset explorers | [`datasets/tourism_monthly.py`](/examples/datasets/tourism_monthly/), [`datasets/store_sales.py`](/examples/datasets/store_sales/), … |
-    | Plotting gallery | [`plotting/exploration.py`](/examples/visualization/exploration/), [`plotting/forecasting_visualization.py`](/examples/visualization/forecasting_visualization/), … |
+    | Feature engineering | [`forecasting-models/feature_forecasting.py`](/examples/feature_forecasting/), [`data-features/window_transformers.py`](/examples/window_transformers/) |
+    | Point forecasters | [`getting-started/naive_forecasters.py`](/examples/naive_forecasters/), [`getting-started/reduction_forecaster.py`](/examples/reduction_forecaster/) |
+    | Class probability | [`forecasting-models/class_proba_forecaster.py`](/examples/class_proba_forecaster/), [`evaluation-search/class_proba_metrics.py`](/examples/class_proba_metrics/) |
+    | Interval forecasting | [`forecasting-models/interval_reduction.py`](/examples/interval_reduction/), [`evaluation-search/conformity_scorers.py`](/examples/conformity_scorers/) |
+    | Decomposition deep dive | [`data-features/decomposition.py`](/examples/decomposition/) |
+    | Metrics guide | [`evaluation-search/point_metrics.py`](/examples/point_metrics/), [`evaluation-search/interval_metrics.py`](/examples/interval_metrics/) |
+    | Splitters & search | [`getting-started/cv_splitters.py`](/examples/cv_splitters/), [`evaluation-search/hyperparameter_search.py`](/examples/hyperparameter_search/) |
+    | Plotting gallery | [`visualization/exploration.py`](/examples/exploration/), [`visualization/forecasting_visualization.py`](/examples/forecasting_visualization/), … |
     """)
 
 
