@@ -329,9 +329,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/forecasting-models/interval_reduction/) for `reduction_strategy` comparison
-    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/forecasting-models/catboost_forecasting/) for point forecasting with CatBoost
-    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/getting-started/reduction_strategies/) for multi-output vs direct vs dir-rec
+    - **Standard interval reduction**: See [`interval_reduction.py`](/examples/interval_reduction/) for `reduction_strategy` comparison
+    - **Point CatBoost**: See [`catboost_forecasting.py`](/examples/catboost_forecasting/) for point forecasting with CatBoost
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/reduction_strategies/) for multi-output vs direct vs dir-rec
     """)
 
 

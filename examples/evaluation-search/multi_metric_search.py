@@ -353,9 +353,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/evaluation-search/interval_search/)
-    - **Optuna search**: See [`examples/model_selection/optuna_search.py`](/examples/model_selection/optuna_search/)
-    - **Panel CV**: See [`examples/model_selection/panel_cross_validation.py`](/examples/panel-data/panel_cross_validation/)
+    - **Interval search**: See [`examples/evaluation-search/interval_search.py`](/examples/interval_search/)
+    - **Hyperparameter search**: See [`examples/evaluation-search/hyperparameter_search.py`](/examples/hyperparameter_search/)
+    - **Panel CV**: See [`examples/panel-data/panel_cross_validation.py`](/examples/panel_cross_validation/)
     """)
 
 

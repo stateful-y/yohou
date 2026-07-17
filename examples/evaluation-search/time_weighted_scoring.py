@@ -350,7 +350,7 @@ def _(mo):
     ## Next Steps
 
     - **Time-weighted forecasting**: See `examples/time_weighted_forecasting.py`
-    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/evaluation-search/aggregation_modes/)
+    - **Aggregation modes**: See [`examples/evaluation-search/aggregation_modes.py`](/examples/aggregation_modes/)
     - **Scoring**: See `examples/scoring.py`
     """)
 

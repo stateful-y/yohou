@@ -109,7 +109,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
 
     See Also
     --------
-    `sklearn.pipeline.Pipeline` : Underlying scikit-learn pipeline class.
+    - [`sklearn.pipeline.Pipeline`][sklearn.pipeline.Pipeline] : Underlying scikit-learn pipeline class.
     - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for time series transformers.
     - [`FeatureUnion`][yohou.compose.feature_union.FeatureUnion] : Parallel transformer combination.
     - [`ColumnTransformer`][yohou.compose.column_transformer.ColumnTransformer] : Apply transformers to specific columns.

@@ -11,8 +11,7 @@ labels a point forecaster predicts for categorical targets.
 - Familiarity with the fit-predict workflow ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with train/test evaluation ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prepare Data and Train/Test Split
 
@@ -35,7 +34,7 @@ y_train, y_test = train_test_split(y, test_size=24)
 
 ## Fit a Class-Probability Forecaster
 
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) wraps any scikit-learn classifier that supports
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) wraps any scikit-learn classifier that supports
 `predict_proba()`. The default estimator is
 [`LogisticRegression`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html);
 any classifier with `fit()`, `predict()`, and `predict_proba()` works:
@@ -69,8 +68,8 @@ y_pred = forecaster.predict()
 ## Evaluate with Classification Metrics
 
 Proper scoring rules give reliable model comparisons because they reward
-calibrated probabilities. Prefer [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) or [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) over
-[`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/) for model selection:
+calibrated probabilities. Prefer [`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/) or [`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/) over
+[`Accuracy`](/pages/api/generated/yohou.metrics.Accuracy/) for model selection:
 
 ```python
 from yohou.metrics import LogLoss, BrierScore, Accuracy
@@ -82,7 +81,7 @@ accuracy = Accuracy().fit(y_train).score(y_test, y_pred)
 
 ## Visualize Results
 
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) auto-detects categorical and probability columns:
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) auto-detects categorical and probability columns:
 
 ```python
 from yohou.plotting import plot_forecast
@@ -94,7 +93,7 @@ plot_forecast(y_test, y_pred)
 plot_forecast(y_test, y_proba)
 ```
 
-Use [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/) to assess whether predicted probabilities match observed
+Use [`plot_calibration`](/pages/api/generated/yohou.plotting.plot_calibration/) to assess whether predicted probabilities match observed
 frequencies:
 
 ```python

@@ -1,21 +1,20 @@
 # How to Transform Features on the Forecast Channel
 
-This guide shows you how to apply transformers to an `X_forecast` frame, using [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/). Use this when your exogenous features arrive as *forecasts* (carrying `vintage_time` and `time`) and you need to derive features from them, for example computing net load from load, wind, and solar forecasts before feeding them to a forecaster's `X_forecast` channel.
+This guide shows you how to apply transformers to an `X_forecast` frame, using [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/). Use this when your exogenous features arrive as *forecasts* (carrying `vintage_time` and `time`) and you need to derive features from them, for example computing net load from load, wind, and solar forecasts before feeding them to a forecaster's `X_forecast` channel.
 
 ## Prerequisites
 
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of forecast vintages ([How to Work with Forecast Vintages](forecast-vintages.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 
-An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the two kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).
+An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the two kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ## Derive a Feature per Vintage
 
-Wrap any actual transformer. Here a [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) computes net load from load and wind forecasts:
+Wrap any actual transformer. Here a [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.FunctionTransformer/) computes net load from load and wind forecasts:
 
 ```python
 import polars as pl
@@ -61,14 +60,14 @@ This is leakage-free: a vintage's output depends only on its own rows, all of wh
 !!! note "A stateful transformer costs you the earliest steps"
     A stateful wrapped transformer (a lag, a difference, a rolling window) is supported: each vintage is fitted on its own rows, so its history never reaches across a vintage boundary. It does consume its `observation_horizon` from the **start** of every vintage, and those are the nearest-term forecast steps, usually the ones you care about most. If it consumes the whole vintage you get a `ValueError` rather than an empty frame.
 
-    The loss spreads. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) keeps only the index rows common to every branch, so one lag branch truncates its siblings' earliest steps too.
+    The loss spreads. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) keeps only the index rows common to every branch, so one lag branch truncates its siblings' earliest steps too.
 
 !!! warning "A lifted lag is within a vintage, not across vintages"
-    `PerVintageActualTransformer(LagTransformer(lag=1))` gives you the forecast for step `h-1` **issued at the same `vintage_time`**: the ramp along one forecast trajectory. It does **not** give you the previous vintage's forecast for the same `time`. That is a genuinely different operation, and it needs its own [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) rather than a lifted actual transformer.
+    `PerVintageActualTransformer(LagTransformer(lag=1))` gives you the forecast for step `h-1` **issued at the same `vintage_time`**: the ramp along one forecast trajectory. It does **not** give you the previous vintage's forecast for the same `time`. That is a genuinely different operation, and it needs its own [`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/) rather than a lifted actual transformer.
 
 ## Compose Several Forecast Transformers
 
-The composition estimators accept forecast transformers too. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) of forecast transformers is itself forecast-kind and aligns its branches on `(vintage_time, time)`:
+The composition estimators accept forecast transformers too. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) of forecast transformers is itself forecast-kind and aligns its branches on `(vintage_time, time)`:
 
 ```python
 from yohou.compose import FeatureUnion

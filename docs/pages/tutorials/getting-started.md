@@ -2,8 +2,7 @@
 
 In this tutorial, we will install Yohou, load a real time series dataset, establish a seasonal baseline, build a reduction forecasting pipeline with lag and rolling features, compare models side by side, and evaluate them with multiple metrics. Along the way, we will encounter the core Yohou workflow: load, split, fit, predict, score, and plot.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Prerequisites
 
@@ -63,7 +62,7 @@ shape: (5, 2)
 └─────────────────────┴────────────────┘
 ```
 
-With 73,924 daily rows, working at monthly resolution is more practical. Yohou's [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/) handles this:
+With 73,924 daily rows, working at monthly resolution is more practical. Yohou's [`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/) handles this:
 
 ```python
 from yohou.preprocessing import Downsampler
@@ -93,7 +92,7 @@ shape: (5, 2)
 
 ## 3. Train/Test Split
 
-Solar cycle 24 (2009 to 2019) was significantly weaker than cycle 23 (1996 to 2008). We will use this as our test period: we hold out the last 125 months (roughly the full cycle 24 era) with [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/) and forecast the first 24 of those months, covering cycle 24's early rise.
+Solar cycle 24 (2009 to 2019) was significantly weaker than cycle 23 (1996 to 2008). We will use this as our test period: we hold out the last 125 months (roughly the full cycle 24 era) with [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/) and forecast the first 24 of those months, covering cycle 24's early rise.
 
 ```python
 from yohou.model_selection import train_test_split
@@ -110,7 +109,7 @@ Train: 2304 months, Test: 24 months
 
 ## 4. Seasonal Baseline
 
-A good starting point is [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/), which repeats values from one seasonal cycle ago. The sunspot cycle is roughly 11 years, or 132 months:
+A good starting point is [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/), which repeats values from one seasonal cycle ago. The sunspot cycle is roughly 11 years, or 132 months:
 
 ```python
 from yohou.point import SeasonalNaive
@@ -142,7 +141,7 @@ Also notice the predicted values: 86, 98, 103, 93, 149 monthly sunspots. These a
 
 ## 5. Reduction Forecaster with Ridge
 
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts the forecasting problem into supervised learning. It tabularizes the time series, fits an sklearn regressor, and generates multi-step predictions. When no `actual_transformer` is provided, the forecaster uses the default tabularization, which creates a single lag feature from the most recent observation:
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) converts the forecasting problem into supervised learning. It tabularizes the time series, fits an sklearn regressor, and generates multi-step predictions. When no `actual_transformer` is provided, the forecaster uses the default tabularization, which creates a single lag feature from the most recent observation:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -159,7 +158,7 @@ For targets that are categorical classes rather than continuous values, see the 
 
 ## 6. Add Lag Features
 
-A [`actual_transformer`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) engineers input features for the regressor. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) creates autoregressive features from past values, letting the regressor learn patterns across multiple time steps. Wrap it in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) (the same pattern as sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)):
+An [`actual_transformer`](/pages/api/generated/yohou.point.PointReductionForecaster/) engineers input features for the regressor. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) creates autoregressive features from past values, letting the regressor learn patterns across multiple time steps. Wrap it in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) (the same pattern as sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)):
 
 ```python
 from yohou.compose import FeaturePipeline
@@ -179,7 +178,7 @@ The lags `[1, 2, 3, 6, 12]` give the model access to the previous month, two and
 
 ## 7. Add Rolling Statistics
 
-[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) adds rolling mean and standard deviation over a window. The rolling mean provides a smooth estimate of the current solar activity level, while the standard deviation captures recent volatility. Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) to combine it with the lag features in parallel:
+[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/) adds rolling mean and standard deviation over a window. The rolling mean provides a smooth estimate of the current solar activity level, while the standard deviation captures recent volatility. Use [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) to combine it with the lag features in parallel:
 
 ```python
 from yohou.compose import FeatureUnion
@@ -212,11 +211,11 @@ shape: (3, 3)
 └─────────────────────┴─────────────────────┴────────────────┘
 ```
 
-Notice that [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) combines transformers in parallel, stacking their output columns. [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains them sequentially. Together they give you the full sklearn composition vocabulary for feature engineering.
+Notice that [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) combines transformers in parallel, stacking their output columns. [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) chains them sequentially. Together they give you the full sklearn composition vocabulary for feature engineering.
 
 ## 8. Evaluate with Multiple Metrics
 
-Now let's score all four models. Scorers in Yohou are stateful: `scorer.fit(y_train)` stores the training data so that scale-dependent metrics like [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) can normalise correctly.
+Now let's score all four models. Scorers in Yohou are stateful: `scorer.fit(y_train)` stores the training data so that scale-dependent metrics like [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) can normalise correctly.
 
 ```python
 from yohou.metrics import MeanAbsoluteError, MeanSquaredError
@@ -248,7 +247,7 @@ SeasonalNaive fails badly because solar cycle 23 (11 years back) was much strong
 
 ## 9. Visualize
 
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) accepts a dict of predictions to overlay multiple models on one chart:
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) accepts a dict of predictions to overlay multiple models on one chart:
 
 ```python
 from yohou.plotting import plot_forecast
@@ -265,7 +264,7 @@ plot_forecast(
 
 The `n_history=132` parameter shows the last 11 years of training data for context. You should see SeasonalNaive dramatically overshooting the actual test values, while the Ridge pipeline tracks the real rise of cycle 24.
 
-For a metric-level comparison, [`plot_score_summary`](/pages/api/generated/yohou.plotting.evaluation.plot_score_summary/) visualizes scores as a grouped bar chart:
+For a metric-level comparison, [`plot_score_summary`](/pages/api/generated/yohou.plotting.plot_score_summary/) visualizes scores as a grouped bar chart:
 
 ```python
 from yohou.plotting import plot_score_summary
@@ -319,10 +318,10 @@ Notice that ExtraTrees achieves similar MAE to Ridge but lower MSE, meaning fewe
 
 We installed Yohou and built a complete forecasting pipeline from scratch. Along the way, we:
 
-- Loaded and resampled a real-world dataset with [`fetch_sunspot`](/pages/api/generated/yohou.datasets._fetchers.fetch_sunspot/) and [`Downsampler`](/pages/api/generated/yohou.preprocessing.resampling.Downsampler/)
-- Established a seasonal baseline with [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) and saw where it fails (cycle amplitude mismatch)
-- Built a reduction pipeline step by step: [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for autoregressive features, [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) for trend features, combined with [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
-- Evaluated with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanSquaredError`](/pages/api/generated/yohou.metrics.point.MeanSquaredError/)
+- Loaded and resampled a real-world dataset with [`fetch_sunspot`](/pages/api/generated/yohou.datasets.fetch_sunspot/) and [`Downsampler`](/pages/api/generated/yohou.preprocessing.Downsampler/)
+- Established a seasonal baseline with [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) and saw where it fails (cycle amplitude mismatch)
+- Built a reduction pipeline step by step: [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) for autoregressive features, [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/) for trend features, combined with [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)
+- Evaluated with [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) and [`MeanSquaredError`](/pages/api/generated/yohou.metrics.MeanSquaredError/)
 - Swapped in a tree-based regressor with a single parameter change
 
 ## Next Steps

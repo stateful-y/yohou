@@ -52,7 +52,7 @@ def _(mo):
 
     This notebook shows how to use time_weight and sample_weight_alignment to emphasise recent or seasonal training samples in PointReductionForecaster, with visualisation of weight curves and alignment strategy comparison.
 
-    **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) (see [`reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/)).
+    **Prerequisites:** Familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) (see [`reduction_forecaster.py`](/examples/reduction_forecaster/)).
     """)
 
 

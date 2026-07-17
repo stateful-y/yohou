@@ -8,8 +8,7 @@ forecaster using cross-validated search with temporal splitters.
 - yohou installed ([Installation](installation.md))
 - Familiarity with fitting and predicting ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Define a Forecaster and Parameter Grid
 
@@ -35,8 +34,8 @@ param_grid = {"estimator__alpha": [0.01, 0.1, 1.0, 10.0]}
 
 ## 2. Choose a Splitter
 
-Use [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) to simulate accumulating historical data.
-Use [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) if you want a fixed training window instead:
+Use [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) to simulate accumulating historical data.
+Use [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/) if you want a fixed training window instead:
 
 ```python
 from yohou.model_selection import ExpandingWindowSplitter
@@ -50,7 +49,7 @@ how many train/test windows are evaluated per parameter combination.
 ## 3. Run Grid Search
 
 Pass the forecaster, parameter grid, scorer, and splitter to
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/):
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/):
 
 ```python
 search = GridSearchCV(
@@ -93,7 +92,7 @@ results = pl.DataFrame(search.cv_results_)
 print(results.select(["params", "mean_test_score", "rank_test_score"]))
 ```
 
-Use [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.model_selection.plot_cv_results_scatter/)
+Use [`plot_cv_results_scatter`](/pages/api/generated/yohou.plotting.plot_cv_results_scatter/)
 to visualize how score changes across parameter values:
 
 ```python
@@ -109,7 +108,7 @@ identify the best operating region.
 ## 6. Use RandomizedSearchCV for Large Spaces
 
 When the grid has many dimensions or continuous ranges, switch to
-[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/),
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/),
 which samples `n_iter` random combinations instead of evaluating every one:
 
 ```python
@@ -140,7 +139,7 @@ search.fit(y_train, forecasting_horizon=24)
 ## 7. Evaluate with Multiple Metrics
 
 Pass a dict of scorers to `scoring` and set `refit` to the scorer name used
-for selecting the best model. For example, combine [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredError/):
+for selecting the best model. For example, combine [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) and [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.RootMeanSquaredError/):
 
 ```python
 from yohou.metrics import RootMeanSquaredError

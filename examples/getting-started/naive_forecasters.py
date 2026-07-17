@@ -289,9 +289,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Reduction forecasting**: See [`reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) for ML-based approach
-    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive evaluation metrics
-    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV strategies
+    - **Reduction forecasting**: See [`reduction_forecaster.py`](/examples/reduction_forecaster/) for ML-based approach
+    - **Scoring**: See [Evaluation & Search](/pages/examples/#evaluation-search) for comprehensive evaluation metrics
+    - **Cross-validation**: See [Evaluation & Search](/pages/examples/#evaluation-search) for temporal CV strategies
     """)
 
 

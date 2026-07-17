@@ -513,7 +513,7 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
     Multiplies or averages the ``compute_weights`` outputs of its components.
     Sub-weighters are named ``(name, weighter)`` tuples, so their parameters are
     addressable as ``<name>__<param>`` (sklearn ``_BaseComposition``) and tunable
-    — e.g. ``time_weighter__decay__half_life`` through a forecaster. Mirrors
+    through a forecaster, for example ``time_weighter__decay__half_life``. Mirrors
     ``CompositeSimilarity`` and the other yohou compositors (``FeaturePipeline``,
     ``ColumnForecaster``, the voting ensembles, …).
 

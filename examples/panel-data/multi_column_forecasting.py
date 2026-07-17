@@ -317,8 +317,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Feature forecasting**: See [`feature_forecasting.py`](/examples/forecasting-models/feature_forecasting/) for [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
-    - **Decomposition**: See [Stationarity](/examples/#stationarity) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+    - **Feature forecasting**: See [`feature_forecasting.py`](/examples/feature_forecasting/) for [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
+    - **Decomposition**: See [Data & Features](/pages/examples/#data-features) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
     - **Panel data**: See `examples/panel_reduction.py` for panel forecasting
     """)
 

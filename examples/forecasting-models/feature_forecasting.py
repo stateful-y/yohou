@@ -398,9 +398,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Multi-column**: See [`multi_column_forecasting.py`](/examples/panel-data/multi_column_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
-    - **Interval forecasting**: See [Interval](/examples/#interval-forecasting) for prediction intervals
-    - **Decomposition**: See [Stationarity](/examples/#stationarity) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+    - **Multi-column**: See [`multi_column_forecasting.py`](/examples/multi_column_forecasting/) for [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
+    - **Interval forecasting**: See [Forecasting Models](/pages/examples/#forecasting-models) for prediction intervals
+    - **Decomposition**: See [Data & Features](/pages/examples/#data-features) for [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
     """)
 
 

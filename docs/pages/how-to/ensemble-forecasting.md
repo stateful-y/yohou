@@ -8,12 +8,11 @@ for more stable predictions.
 - yohou installed ([Installation](installation.md))
 - Familiarity with fitting and predicting with point or interval forecasters ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Create a Point Ensemble
 
-Pass named `(name, forecaster)` tuples to [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/):
+Pass named `(name, forecaster)` tuples to [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/):
 
 ```python
 from sklearn.linear_model import Ridge
@@ -51,8 +50,8 @@ are ignored with median aggregation).
 
 ## 2. Ensemble Interval Forecasters
 
-[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/) combines prediction intervals from
-multiple interval forecasters such as [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/):
+[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/) combines prediction intervals from
+multiple interval forecasters such as [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/):
 
 ```python
 from yohou.ensemble import VotingIntervalForecaster
@@ -77,7 +76,7 @@ Available `method` values: `"envelope"` (default, most conservative), `"mean"`, 
 
 ## 3. Ensemble Classification Forecasters
 
-[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/) combines class probability predictions:
+[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/) combines class probability predictions:
 
 ```python
 from sklearn.linear_model import LogisticRegression

@@ -10,12 +10,11 @@ logic.
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of the observation horizon concept ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass `BasePointForecaster`
 
-Create a class that extends [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/) and implement
+Create a class that extends [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/) and implement
 two things:
 
 - **`_observation_horizon`** (property): how many recent observations the forecaster needs.

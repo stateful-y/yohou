@@ -11,12 +11,11 @@ transformation needs.
 - Familiarity with Yohou transformers ([Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of the observation horizon concept ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass `BaseActualTransformer`
 
-Create a class that extends [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)
+Create a class that extends [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/)
 and implement three methods:
 
 - **`_fit(X, y=None)`**: store any state computed from the training data.

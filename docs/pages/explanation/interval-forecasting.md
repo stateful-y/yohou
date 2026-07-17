@@ -48,7 +48,7 @@ interval construction does not depend on the regressor's internal assumptions.
 
 ## Split Conformal Forecasting
 
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
 implements the split conformal approach. It divides the training data into two
 portions: a training set and a calibration set. The wrapped point forecaster trains
 on the first portion, then generates predictions on the held-out calibration portion.
@@ -107,7 +107,7 @@ interval bounds. Different scorers produce intervals with different geometric
 properties.
 
 **Signed residuals**:
-[`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/)
+[`Residual`](/pages/api/generated/yohou.metrics.Residual/)
 computes $s = y - \hat{y}$. Because positive and negative errors are preserved
 separately, the lower and upper quantiles can differ. This produces **asymmetric**
 intervals where the point prediction is not necessarily at the center. Asymmetric
@@ -116,24 +116,24 @@ demand forecasts tend to underpredict more than they overpredict). This is the d
 scorer.
 
 **Absolute residuals**:
-[`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/)
+[`AbsoluteResidual`](/pages/api/generated/yohou.metrics.AbsoluteResidual/)
 computes $s = |y - \hat{y}|$. A single quantile is added and subtracted from the
 point prediction, producing **symmetric** intervals centered on the forecast. This
 works well when errors are roughly symmetric around zero.
 
 **Gamma (relative) residuals**:
-[`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/)
+[`GammaResidual`](/pages/api/generated/yohou.metrics.GammaResidual/)
 computes $s = (y - \hat{y}) / (\hat{y} + \epsilon)$. By normalizing the error by the
 prediction magnitude, this scorer produces intervals that scale with the level of the
 series. When the target value is large, the interval is wide; when it is small, the
 interval is narrow. This is the right choice for data with multiplicative seasonality
 or heteroscedastic variance that grows proportionally with the signal.
-[`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteGammaResidual/)
+[`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.AbsoluteGammaResidual/)
 is the symmetric variant.
 
 Switching scorers requires no changes to the forecaster; pass a different
 `conformity_scorer` to the
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
 constructor.
 
 ## Adaptive Intervals
@@ -151,7 +151,7 @@ then produces intervals that adapt to local conditions.
 
 ### Distance Similarity
 
-[`DistanceSimilarity`](/pages/api/generated/yohou.interval.similarity.DistanceSimilarity/)
+[`DistanceSimilarity`](/pages/api/generated/yohou.interval.DistanceSimilarity/)
 computes distances between the current prediction context (the feature vector derived
 from the point forecaster's observation window at predict time) and each calibration
 feature vector stored during `fit()`. It then converts distances to weights using a
@@ -183,7 +183,7 @@ forecaster = SplitConformalForecaster(
 
 ### Seasonal Similarity
 
-[`SeasonalSimilarity`](/pages/api/generated/yohou.interval.similarity.SeasonalSimilarity/)
+[`SeasonalSimilarity`](/pages/api/generated/yohou.interval.SeasonalSimilarity/)
 captures seasonal patterns by extracting Fourier features (sine and cosine components)
 from timestamps at specified seasonal periods. Predictions at similar seasonal
 positions (for example, all Mondays, or all January observations) receive higher
@@ -205,7 +205,7 @@ generated per seasonality, allowing finer or coarser seasonal grouping.
 
 ### Composite Similarity
 
-[`CompositeSimilarity`](/pages/api/generated/yohou.interval.similarity.CompositeSimilarity/)
+[`CompositeSimilarity`](/pages/api/generated/yohou.interval.CompositeSimilarity/)
 combines multiple similarity measures into a single weighting scheme. This is useful
 when both feature-space proximity and temporal proximity matter.
 
@@ -243,7 +243,7 @@ in each local region.
 
 ## Quantile Reduction Intervals
 
-[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
 takes a fundamentally different approach. Instead of wrapping a point forecaster and
 calibrating intervals after the fact, it trains quantile regression models that
 directly predict the interval bounds. For a coverage rate $\alpha$, it fits two
@@ -265,7 +265,7 @@ intervals = forecaster.predict_interval(coverage_rates=[0.9])
 ### Reduction Strategies
 
 Like
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/),
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/),
 the interval variant supports three `reduction_strategy` options:
 
 - **Multi-output** (`"multi-output"`, the default): a single model predicts all
@@ -313,15 +313,15 @@ entirely on how well the model captures the conditional quantiles.
 ## Panel Data
 
 Both
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
 and
-[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
 support panel data through the `panel_strategy` parameter:
 
 - **`"global"`** (default): fits a single shared model across all groups, but
   maintains per-group transformer state and observation buffers. Groups share a
   single calibration set or quantile model. For independent per-group models, use
-  [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/).
+  [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/).
 - **`"multivariate"`**: pools data across groups, sharing calibration scores or
   quantile models. This is useful when individual groups have limited data and
   borrowing strength across entities improves interval quality.
@@ -380,7 +380,7 @@ For cross-validation with interval forecasters, the
 [Model Selection](model-selection.md) tools work with `predict_interval` in the same
 way they work with `predict`.
 
-[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/)
+[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/)
 provides an ensemble approach to combining prediction intervals from multiple models.
 It supports three aggregation methods: averaging bounds, taking medians, or taking the
 envelope (minimum of lower bounds, maximum of upper bounds for the most conservative

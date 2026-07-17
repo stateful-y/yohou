@@ -1,17 +1,16 @@
 # Cross-Validation Splitters
 
-In this tutorial, we will create temporal cross-validation folds that respect time ordering, visualize them with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/), and compare how expanding and sliding window strategies affect fold geometry. Along the way, we will control training set growth with `max_train_size` and adjust fold overlap with `stride`.
-
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+In this tutorial, we will create temporal cross-validation folds that respect time ordering, visualize them with [`plot_splits`](/pages/api/generated/yohou.plotting.plot_splits/), and compare how expanding and sliding window strategies affect fold geometry. Along the way, we will control training set growth with `max_train_size` and adjust fold overlap with `stride`.
 
 ## Prerequisites
 
 - Completed [Getting Started](getting-started.md)
 
+<!-- COMPANION_NOTEBOOKS -->
+
 ## 1. Prepare Data
 
-We use a single series loaded with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/) from the Tourism Monthly dataset: 187 months of visitor arrivals from January 1979 to July 1994.
+We use a single series loaded with [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/) from the Tourism Monthly dataset: 187 months of visitor arrivals from January 1979 to July 1994.
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -38,7 +37,7 @@ shape: (3, 2)
 
 ## 2. Expanding Window
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) grows the training set with each fold while keeping the test window fixed. Each successive training set is a superset of the previous one:
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) grows the training set with each fold while keeping the test window fixed. Each successive training set is a superset of the previous one:
 
 ```python
 from yohou.model_selection import ExpandingWindowSplitter
@@ -52,7 +51,7 @@ print(f"Number of folds: {expanding.get_n_splits()}")
 Number of folds: 4
 ```
 
-Visualize the folds with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/):
+Visualize the folds with [`plot_splits`](/pages/api/generated/yohou.plotting.plot_splits/):
 
 ```python
 fig = plot_splits(y, expanding)
@@ -63,7 +62,7 @@ Notice that each fold's training region (left bar) grows longer while the test r
 
 ## 3. Sliding Window
 
-[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) uses a fixed-size training window that slides forward. This is useful when older data may no longer be representative (concept drift):
+[`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/) uses a fixed-size training window that slides forward. This is useful when older data may no longer be representative (concept drift):
 
 !!! note "Concept drift"
     Many real-world time series change their statistical properties over time.
@@ -86,7 +85,7 @@ Notice that every fold's training region is the same width (60 rows). Both the t
 
 ## 4. Control the Training Size
 
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) can cap the maximum training size with `max_train_size`. This combines the benefits of using recent data with some expansion:
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) can cap the maximum training size with `max_train_size`. This combines the benefits of using recent data with some expansion:
 
 ```python
 expanding_capped = ExpandingWindowSplitter(
@@ -101,7 +100,7 @@ Notice that the early folds grow as before, but once the training region reaches
 
 ## 5. Sliding Window with Stride
 
-By default, [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/) moves forward by `test_size` rows between folds. The `stride` parameter lets you control the step size independently:
+By default, [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/) moves forward by `test_size` rows between folds. The `stride` parameter lets you control the step size independently:
 
 ```python
 sliding_stride = SlidingWindowSplitter(
@@ -118,13 +117,13 @@ Notice that consecutive test windows now overlap: each fold advances by only 6 r
 
 In this tutorial, we:
 
-- Created temporal cross-validation folds with [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) and [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.SlidingWindowSplitter/)
-- Visualized splits with [`plot_splits`](/pages/api/generated/yohou.plotting.model_selection.plot_splits/) to verify temporal ordering and fold geometry
+- Created temporal cross-validation folds with [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) and [`SlidingWindowSplitter`](/pages/api/generated/yohou.model_selection.SlidingWindowSplitter/)
+- Visualized splits with [`plot_splits`](/pages/api/generated/yohou.plotting.plot_splits/) to verify temporal ordering and fold geometry
 - Capped training growth with `max_train_size` to balance data volume against recency
 - Controlled fold overlap with `stride` to trade more evaluation points for correlated scores
 
 ## Next Steps
 
-- [Forecasting Workflow](forecasting-workflow.md) to use splitters inside [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+- [Forecasting Workflow](forecasting-workflow.md) to use splitters inside [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/)
 - [Model Selection](../explanation/model-selection.md) for the conceptual background on temporal CV
 - [How to Tune Hyperparameters](../how-to/tune-hyperparameters.md) for using splitters inside grid search and randomized search

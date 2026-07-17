@@ -17,7 +17,7 @@ For composing transformers (feature pipelines, scaling chains, lag features), se
 
 ## DecompositionPipeline
 
-[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) decomposes a time series into additive components by fitting forecasters in
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) decomposes a time series into additive components by fitting forecasters in
 sequence. Each forecaster models the residuals left by all previous forecasters,
 and the final prediction is the sum of all component predictions:
 
@@ -68,7 +68,7 @@ components to model.
 
 ## ColumnForecaster
 
-[`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) assigns different forecasters to different target columns, then concatenates
+[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/) assigns different forecasters to different target columns, then concatenates
 predictions horizontally. Each entry in the `forecasters` list is a
 `(name, forecaster, columns)` tuple, where `columns` is a string or list of
 strings identifying which target columns that forecaster is responsible for.
@@ -106,7 +106,7 @@ when multiple forecasters produce columns with the same name.
 
 ## ForecastedFeatureForecaster
 
-[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) is a two-stage forecaster for scenarios where exogenous features (`X_actual`)
+[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/) is a two-stage forecaster for scenarios where exogenous features (`X_actual`)
 are available during training but not at prediction time. It chains a
 `feature_forecaster` that predicts future feature values with a
 `target_forecaster` that uses those forecasts to predict `y`. The feature forecast
@@ -196,7 +196,7 @@ For the data-shaping perspective on exogenous features (the three types `X_actua
 
 ## LocalPanelForecaster
 
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) fits a separate clone of a forecaster per panel group rather than a single
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/) fits a separate clone of a forecaster per panel group rather than a single
 global model. The input must be panel data (columns with the `group__column`
 naming convention). Each clone sees unprefixed, single-series data: a group named
 `store_a` with column `store_a__sales` receives a DataFrame with a plain `sales`
@@ -233,7 +233,7 @@ to each sub-component in a pattern that mirrors `fit` and `predict`. Understandi
 this flow helps predict what will happen when new data arrives in a production
 observe/predict loop.
 
-**[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)** processes observations in the same order as training.
+**[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/)** processes observations in the same order as training.
 Each forecaster in the chain predicts its component, subtracts it from the
 incoming data, and passes the residual to the next. This preserves the additive
 decomposition: calling `observe()` then `predict()` produces the same result as
@@ -241,12 +241,12 @@ re-fitting on the extended data, as long as the components remain stable. The
 `observe_predict()` method handles this residual decomposition internally,
 ensuring rolling evaluation produces correct multi-component predictions.
 
-**[`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)** routes each target column to its assigned forecaster.
+**[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/)** routes each target column to its assigned forecaster.
 All forecasters receive the full exogenous data, but each observes only its own
 target columns. Calling `observe()` independently updates each column's model
 without cross-contamination.
 
-**[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)** chains observations in two stages. The feature
+**[`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/)** chains observations in two stages. The feature
 forecaster observes the `X_actual` columns as its target, and the target forecaster
 observes `y` (the feature forecast is regenerated through `X_forecast` at predict
 time, so the target does not observe features through its own `X_actual` channel).
@@ -255,7 +255,7 @@ Because the feature forecaster must advance in step with the target, `observe` a
 rolls over the data one `stride`-sized slice at a time, predicting at each origin, and
 regenerates the feature forecast every `feature_stride` steps.
 
-**[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/)** dispatches `observe()` to each group's clone
+**[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/)** dispatches `observe()` to each group's clone
 with only the rows belonging to that group. Each group maintains independent
 state, so observing new data for one group does not affect others.
 
@@ -269,6 +269,6 @@ through search and cross-validation objects, see [Metadata Routing](metadata-rou
 
 ## Connections
 
-[Feature Pipelines](feature-pipelines.md) covers composing transformers rather than forecasters. [Exogenous Features](exogenous-features.md) explains the three exogenous parameter types and step-indexed columns that [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) is designed around. [Ensemble Forecasting](ensemble-forecasting.md) describes combining forecasters by voting rather than by decomposition or column assignment. For how parameters like `time_weight` flow through pipelines and search objects, see [Metadata Routing](metadata-routing.md).
+[Feature Pipelines](feature-pipelines.md) covers composing transformers rather than forecasters. [Exogenous Features](exogenous-features.md) explains the three exogenous parameter types and step-indexed columns that [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/) is designed around. [Ensemble Forecasting](ensemble-forecasting.md) describes combining forecasters by voting rather than by decomposition or column assignment. For how parameters like `time_weight` flow through pipelines and search objects, see [Metadata Routing](metadata-routing.md).
 
 For practical recipes, see [How to Compose Feature Pipelines](../how-to/compose-feature-pipelines.md) and [How to Combine Forecasters with Ensembles](../how-to/ensemble-forecasting.md). For a hands-on walkthrough of decomposition, see the [Decomposition Tutorial](../tutorials/decomposition.md). The compose API is documented in the [yohou.compose reference](/pages/api/compose/).

@@ -111,7 +111,7 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
 
     See Also
     --------
-    `sklearn.pipeline.FeatureUnion` : Underlying scikit-learn feature union class.
+    - [`sklearn.pipeline.FeatureUnion`][sklearn.pipeline.FeatureUnion] : Underlying scikit-learn feature union class.
     - [`FeaturePipeline`][yohou.compose.feature_pipeline.FeaturePipeline] : Sequential transformer chaining.
     - [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer] : Base class for transformers.
     - [`LagTransformer`][yohou.preprocessing.window.LagTransformer] : Common transformer for lag features.

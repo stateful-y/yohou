@@ -7,7 +7,7 @@ default:
 # Install dependencies and pre-commit
 install:
     uv sync --group dev
-    uvx pre-commit install
+    uv run pre-commit install
 
 # Run tests and doctests with parallel execution
 test:
@@ -41,15 +41,15 @@ example file='':
 test-examples:
     uv run pytest tests -m example -n auto -v --no-cov
 
-# Run linters and type checkers
+# Run linters and type checkers (read-only; same lock-pinned tools as 'just fix')
 lint:
-    uv run ruff check src tests
-    uvx rumdl check .
-    uv run ty check src
+    uv run --locked ruff check src tests
+    uv run --locked rumdl check .
+    uv run --locked ty check src
 
 # Format and fix code (via pre-commit)
 fix:
-    uvx pre-commit run --all-files --show-diff-on-failure
+    uv run pre-commit run --all-files --show-diff-on-failure
 
 # Build documentation
 build:

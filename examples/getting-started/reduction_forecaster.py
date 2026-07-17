@@ -390,13 +390,13 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Strategy deep-dive**: See [`reduction_strategies.py`](/examples/getting-started/reduction_strategies/) to compare multi-output, direct, and dir-rec
-    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/forecasting-models/time_weighted_reduction/) for sample weight alignment strategies
-    - **Naive baselines**: See [`naive_forecasters.py`](/examples/getting-started/naive_forecasters/) to compare with simple benchmarks
-    - **Multi-column forecasting**: See [`multi_column_forecasting.py`](/examples/panel-data/multi_column_forecasting/) for multivariate data
-    - **Interval prediction**: See [Interval](/examples/#interval-forecasting) examples for uncertainty quantification
-    - **Decomposition**: See [Stationarity](/examples/#stationarity) for trend/seasonality extraction before forecasting
-    - **Classification**: See [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) for categorical forecasting via reduction
+    - **Strategy deep-dive**: See [`reduction_strategies.py`](/examples/reduction_strategies/) to compare multi-output, direct, and dir-rec
+    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/time_weighted_reduction/) for sample weight alignment strategies
+    - **Naive baselines**: See [`naive_forecasters.py`](/examples/naive_forecasters/) to compare with simple benchmarks
+    - **Multi-column forecasting**: See [`multi_column_forecasting.py`](/examples/multi_column_forecasting/) for multivariate data
+    - **Interval prediction**: See [Forecasting Models](/pages/examples/#forecasting-models) examples for uncertainty quantification
+    - **Decomposition**: See [Data & Features](/pages/examples/#data-features) for trend/seasonality extraction before forecasting
+    - **Classification**: See [`class_proba_forecaster.py`](/examples/class_proba_forecaster/) for categorical forecasting via reduction
     """)
 
 

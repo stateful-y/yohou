@@ -514,8 +514,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Distance similarity**: See [`distance_similarity.py`](/examples/forecasting-models/distance_similarity/) for full adaptive conformal intervals deep-dive
-    - **Interval metrics**: See [`interval_metrics.py`](/examples/evaluation-search/interval_metrics/) for deep-dive into interval evaluation
+    - **Distance similarity**: See [`distance_similarity.py`](/examples/distance_similarity/) for full adaptive conformal intervals deep-dive
+    - **Interval metrics**: See [`interval_metrics.py`](/examples/interval_metrics/) for deep-dive into interval evaluation
     """)
 
 

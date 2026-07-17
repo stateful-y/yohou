@@ -54,17 +54,17 @@ patterns). A value of 1 uses the simple random walk as the baseline.
 
 | Metric | What it measures | Direction |
 |---|---|---|
-| [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) | Average absolute difference. Treats all errors equally, robust to outliers. | Lower |
-| [`MeanSquaredError`](/pages/api/generated/yohou.metrics.point.MeanSquaredError/) | Average squared difference. Penalizes large errors disproportionately. | Lower |
-| [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredError/) | Square root of MSE. Penalizes large errors while maintaining original units. The gap between RMSE and MAE indicates how much error is dominated by occasional large misses. | Lower |
-| [`MedianAbsoluteError`](/pages/api/generated/yohou.metrics.point.MedianAbsoluteError/) | Median of absolute differences. A single catastrophic forecast does not affect the metric at all. | Lower |
-| [`MaxAbsoluteError`](/pages/api/generated/yohou.metrics.point.MaxAbsoluteError/) | Largest absolute error. Captures worst-case forecast deviation. | Lower |
-| [`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.MeanAbsolutePercentageError/) | Average percentage error. Scale-independent but undefined at zero and asymmetric. | Lower |
-| [`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.SymmetricMeanAbsolutePercentageError/) | Symmetric average percentage error. Addresses MAPE's asymmetry but unstable when both truth and prediction are small. | Lower |
-| [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteScaledError/) | MAE scaled by naive seasonal baseline error. Values below 1.0 indicate improvement over naive forecasting. Configurable `seasonality`. | Lower |
-| [`RootMeanSquaredScaledError`](/pages/api/generated/yohou.metrics.point.RootMeanSquaredScaledError/) | RMSE scaled by naive seasonal baseline error. Combines large-error sensitivity with scale independence. Configurable `seasonality`. | Lower |
-| [`R2Score`](/pages/api/generated/yohou.metrics.point.R2Score/) | Proportion of variance explained. 1.0 is perfect, 0.0 equals predicting the mean, negative means worse than the mean. | Higher |
-| [`MeanDirectionalAccuracy`](/pages/api/generated/yohou.metrics.point.MeanDirectionalAccuracy/) | Proportion of steps where predicted direction of change matches actual direction. Evaluates trend capture independently of magnitude. | Higher |
+| [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) | Average absolute difference. Treats all errors equally, robust to outliers. | Lower |
+| [`MeanSquaredError`](/pages/api/generated/yohou.metrics.MeanSquaredError/) | Average squared difference. Penalizes large errors disproportionately. | Lower |
+| [`RootMeanSquaredError`](/pages/api/generated/yohou.metrics.RootMeanSquaredError/) | Square root of MSE. Penalizes large errors while maintaining original units. The gap between RMSE and MAE indicates how much error is dominated by occasional large misses. | Lower |
+| [`MedianAbsoluteError`](/pages/api/generated/yohou.metrics.MedianAbsoluteError/) | Median of absolute differences. A single catastrophic forecast does not affect the metric at all. | Lower |
+| [`MaxAbsoluteError`](/pages/api/generated/yohou.metrics.MaxAbsoluteError/) | Largest absolute error. Captures worst-case forecast deviation. | Lower |
+| [`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.MeanAbsolutePercentageError/) | Average percentage error. Scale-independent but undefined at zero and asymmetric. | Lower |
+| [`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.SymmetricMeanAbsolutePercentageError/) | Symmetric average percentage error. Addresses MAPE's asymmetry but unstable when both truth and prediction are small. | Lower |
+| [`MeanAbsoluteScaledError`](/pages/api/generated/yohou.metrics.MeanAbsoluteScaledError/) | MAE scaled by naive seasonal baseline error. Values below 1.0 indicate improvement over naive forecasting. Configurable `seasonality`. | Lower |
+| [`RootMeanSquaredScaledError`](/pages/api/generated/yohou.metrics.RootMeanSquaredScaledError/) | RMSE scaled by naive seasonal baseline error. Combines large-error sensitivity with scale independence. Configurable `seasonality`. | Lower |
+| [`R2Score`](/pages/api/generated/yohou.metrics.R2Score/) | Proportion of variance explained. 1.0 is perfect, 0.0 equals predicting the mean, negative means worse than the mean. | Higher |
+| [`MeanDirectionalAccuracy`](/pages/api/generated/yohou.metrics.MeanDirectionalAccuracy/) | Proportion of steps where predicted direction of change matches actual direction. Evaluates trend capture independently of magnitude. | Higher |
 
 ## Interval Metrics
 
@@ -83,17 +83,17 @@ different aspects of this tradeoff:
 
 | Metric | What it measures | Direction |
 |---|---|---|
-| [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) | Proportion of true values inside the interval. Target equals the nominal coverage rate. | Match nominal |
-| [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/) | Average width of the prediction interval. Only meaningful when compared at equal coverage. | Lower |
-| [`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) | Interval width plus a penalty for observations outside the bounds (Winkler score). Combines sharpness and calibration in one number. | Lower |
-| [`PinballLoss`](/pages/api/generated/yohou.metrics.interval.PinballLoss/) | Asymmetric quantile loss for interval bounds. Penalizes under-prediction and over-prediction at different rates depending on the quantile. | Lower |
-| [`CalibrationError`](/pages/api/generated/yohou.metrics.interval.CalibrationError/) | Aggregate discrepancy between nominal and empirical coverage across all requested rates. Scale-independent (always 0 to 1). Requires at least two coverage rates. | Lower |
-| [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.interval.ContinuousRankedProbabilityScore/) | CRPS approximated by averaging pinball losses across coverage rates. Integrates quantile loss as a proxy for the full predictive distribution. Requires at least two rates. | Lower |
+| [`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/) | Proportion of true values inside the interval. Target equals the nominal coverage rate. | Match nominal |
+| [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.MeanIntervalWidth/) | Average width of the prediction interval. Only meaningful when compared at equal coverage. | Lower |
+| [`IntervalScore`](/pages/api/generated/yohou.metrics.IntervalScore/) | Interval width plus a penalty for observations outside the bounds (Winkler score). Combines sharpness and calibration in one number. | Lower |
+| [`PinballLoss`](/pages/api/generated/yohou.metrics.PinballLoss/) | Asymmetric quantile loss for interval bounds. Penalizes under-prediction and over-prediction at different rates depending on the quantile. | Lower |
+| [`CalibrationError`](/pages/api/generated/yohou.metrics.CalibrationError/) | Aggregate discrepancy between nominal and empirical coverage across all requested rates. Scale-independent (always 0 to 1). Requires at least two coverage rates. | Lower |
+| [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.ContinuousRankedProbabilityScore/) | CRPS approximated by averaging pinball losses across coverage rates. Integrates quantile loss as a proxy for the full predictive distribution. Requires at least two rates. | Lower |
 
-[`IntervalScore`](/pages/api/generated/yohou.metrics.interval.IntervalScore/) is the most widely used single metric for interval forecast
+[`IntervalScore`](/pages/api/generated/yohou.metrics.IntervalScore/) is the most widely used single metric for interval forecast
 evaluation (used in the M4 and M5 competitions). For richer diagnostics, combine
-[`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.interval.EmpiricalCoverage/) (is the interval well-calibrated?) with [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.interval.MeanIntervalWidth/)
-(is it sharp?). [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.interval.ContinuousRankedProbabilityScore/) is the strongest choice when
+[`EmpiricalCoverage`](/pages/api/generated/yohou.metrics.EmpiricalCoverage/) (is the interval well-calibrated?) with [`MeanIntervalWidth`](/pages/api/generated/yohou.metrics.MeanIntervalWidth/)
+(is it sharp?). [`ContinuousRankedProbabilityScore`](/pages/api/generated/yohou.metrics.ContinuousRankedProbabilityScore/) is the strongest choice when
 you evaluate across many coverage rates, because it captures the quality of the
 entire predictive distribution rather than a single interval.
 
@@ -115,9 +115,9 @@ probability." Use proper scoring rules for model selection over accuracy.
 
 | Metric | What it measures | Direction |
 |---|---|---|
-| [`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/) | Negative log-likelihood of the true class under the predicted distribution. Heavily penalizes confident wrong predictions. | Lower |
-| [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) | Mean squared difference between predicted probabilities and one-hot encoded true labels. Multi-class generalization of the original Brier score. | Lower |
-| [`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.class_proba.RankedProbabilityScore/) | Compares cumulative probability distributions for ordinal classes. Penalizes predictions far from the true class more than nearby misses. | Lower |
+| [`LogLoss`](/pages/api/generated/yohou.metrics.LogLoss/) | Negative log-likelihood of the true class under the predicted distribution. Heavily penalizes confident wrong predictions. | Lower |
+| [`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/) | Mean squared difference between predicted probabilities and one-hot encoded true labels. Multi-class generalization of the original Brier score. | Lower |
+| [`RankedProbabilityScore`](/pages/api/generated/yohou.metrics.RankedProbabilityScore/) | Compares cumulative probability distributions for ordinal classes. Penalizes predictions far from the true class more than nearby misses. | Lower |
 
 ### Hard-Label Metrics
 
@@ -129,10 +129,10 @@ discard calibration information. For multiclass problems, `Precision`, `Recall`,
 
 | Metric | What it measures | Direction |
 |---|---|---|
-| [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/) | Fraction of steps where predicted class matches true class. Misleading when classes are imbalanced. | Higher |
-| [`Precision`](/pages/api/generated/yohou.metrics.classification.Precision/) | Ratio of true positives to predicted positives. Measures how trustworthy positive predictions are. | Higher |
-| [`Recall`](/pages/api/generated/yohou.metrics.classification.Recall/) | Ratio of true positives to actual positives. Measures how many positive cases are captured. | Higher |
-| [`FBetaScore`](/pages/api/generated/yohou.metrics.classification.FBetaScore/) | Weighted harmonic mean of precision and recall. `beta=1.0` (F1) gives equal weight; `beta>1.0` emphasizes recall. | Higher |
+| [`Accuracy`](/pages/api/generated/yohou.metrics.Accuracy/) | Fraction of steps where predicted class matches true class. Misleading when classes are imbalanced. | Higher |
+| [`Precision`](/pages/api/generated/yohou.metrics.Precision/) | Ratio of true positives to predicted positives. Measures how trustworthy positive predictions are. | Higher |
+| [`Recall`](/pages/api/generated/yohou.metrics.Recall/) | Ratio of true positives to actual positives. Measures how many positive cases are captured. | Higher |
+| [`FBetaScore`](/pages/api/generated/yohou.metrics.FBetaScore/) | Weighted harmonic mean of precision and recall. `beta=1.0` (F1) gives equal weight; `beta>1.0` emphasizes recall. | Higher |
 
 ### Ranking Metrics
 
@@ -141,8 +141,8 @@ all possible decision thresholds.
 
 | Metric | What it measures | Direction |
 |---|---|---|
-| [`ROCAuC`](/pages/api/generated/yohou.metrics.classification.ROCAuC/) | Area under the ROC curve. Uses one-vs-rest strategy for multiclass problems. | Higher |
-| [`PRAuC`](/pages/api/generated/yohou.metrics.classification.PRAuC/) | Area under the precision-recall curve. More informative than ROC AuC when classes are imbalanced. Uses one-vs-rest strategy. | Higher |
+| [`ROCAuC`](/pages/api/generated/yohou.metrics.ROCAuC/) | Area under the ROC curve. Uses one-vs-rest strategy for multiclass problems. | Higher |
+| [`PRAuC`](/pages/api/generated/yohou.metrics.PRAuC/) | Area under the precision-recall curve. More informative than ROC AuC when classes are imbalanced. Uses one-vs-rest strategy. | Higher |
 
 See [Class-Probability Forecasting](class-probability-forecasting.md)
 for the full treatment of categorical prediction.
@@ -223,7 +223,7 @@ pipeline is inherited. See
 ## Weighting
 
 Most scorers (for example
-[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/))
+[`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/))
 accept optional weighter parameters that apply non-uniform emphasis before
 aggregation. Each takes a weighter estimator rather than a raw weight series:
 

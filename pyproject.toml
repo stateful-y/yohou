@@ -54,8 +54,10 @@ tests = [
     "hypothesis>=6.100",
 ]
 lint = [
+    "interrogate>=1.7.0",
     "pytest>=8.3",
     "ruff>=0.8.0",
+    "rumdl>=0.1.33",
     "ty>=0.0.29",
 ]
 docs = [
@@ -126,6 +128,7 @@ ignore = [
     "E203",   # space before : (needed for how black formats slicing)
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    "PLC0415", # import not at top-level (lazy imports are intentional, e.g. docs hooks)
     "PLR0913", # too many args in func def
     "PLR0915", # too many statements
     "PLR0912", # too many branches
@@ -137,8 +140,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415", "D"]  # Allow assert statements, prints, magic values, imports not at the top, and no docstrings
-"docs/**/*" = ["T201", "ARG001", "PLW0603", "SIM105", "SIM108", "PLC0415"]  # Allow prints, unused args, globals, simplifiable patterns, and imports not at the top
-
+# The hooks implement signatures they do not choose -- mkdocs' event hooks and
+# HTMLParser's handle_* methods -- so an unused parameter is the interface, not
+# an oversight. ARG002 is the method-level twin of ARG001.
+"docs/**/*" = ["T201", "ARG001", "ARG002", "PLW0603", "SIM105", "SIM108", "PLC0415"]  # Allow prints, unused args, globals, simplifiable patterns, and imports not at the top
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -236,17 +241,22 @@ disable = [
     "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
     "MD051",  # Link fragments (cross-doc references resolved at MkDocs build time)
 ]
-exclude = ["CHANGELOG.md", "docs/pages/reference/changelog.md", "site", "htmlcov", ".nox", ".venv"]
+exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv", "openspec"]
 
 [tool.rumdl.per-file-ignores]
-# MD057 (relative links) suppressed for pages with links to build-time generated files.
-# These links are validated post-build by linkchecker (nox -s link_docs).
+".claude/skills/**" = ["MD007"]  # Nested lists in skill files use variable indent
 "docs/pages/api/*.md" = ["MD001", "MD057"]  # mkdocstrings generates heading levels and files at build time
-"docs/pages/getting-started/installation.md" = ["MD057"]  # Links to not-yet-created extensions page
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
+".github/skills/**" = ["MD007"]  # Nested lists in skill files use variable indent
 "README.md" = ["MD041"]  # README starts with logo, not heading
-"docs/index.md" = ["MD041", "MD057"]  # Landing page starts with logo; links to generated API files resolved at build time
+# The page is a bare `--8<--` include; the included CHANGELOG.md supplies the
+# H1. Adding one here would render two H1s and, because Material's ToC takes
+# first.children when the first heading is level 1, an empty ToC on the one
+# page that most needs one.
+"docs/pages/reference/changelog.md" = ["MD041"]
+"docs/index.md" = ["MD041", "MD057"]  # Landing page starts with logo; links to generated API files
 "CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
+
 
 [tool.commitizen]
 name = "cz_conventional_commits"

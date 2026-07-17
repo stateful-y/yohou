@@ -7,12 +7,11 @@ This guide shows you how to prepare features for a forecasting model using Yohou
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of feature pipelines ([Feature Pipelines](../explanation/feature-pipelines.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Create Lag Features with LagTransformer
 
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) creates lagged copies of each value column, producing autoregressive inputs for a forecaster. Output columns follow the pattern `{col}_lag_{k}`:
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) creates lagged copies of each value column, producing autoregressive inputs for a forecaster. Output columns follow the pattern `{col}_lag_{k}`:
 
 ```python
 from yohou.preprocessing import LagTransformer
@@ -28,7 +27,7 @@ The transformer's `observation_horizon` equals the largest lag, since that many 
 print(lags.observation_horizon)  # 12
 ```
 
-If your series has a strong seasonal pattern, [`MeanLagTransformer`](/pages/api/generated/yohou.preprocessing.window.MeanLagTransformer/) averages across multiple seasonal multiples of a base lag:
+If your series has a strong seasonal pattern, [`MeanLagTransformer`](/pages/api/generated/yohou.preprocessing.MeanLagTransformer/) averages across multiple seasonal multiples of a base lag:
 
 ```python
 from yohou.preprocessing import MeanLagTransformer
@@ -39,7 +38,7 @@ mean_lags = MeanLagTransformer(lag=12, n_lags=3)
 
 ## Compute Rolling Statistics
 
-[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) computes rolling aggregates over a sliding window. Available statistics: `mean`, `std`, `min`, `max`, `median`, `sum`, `var`, `q25`, `q75`:
+[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/) computes rolling aggregates over a sliding window. Available statistics: `mean`, `std`, `min`, `max`, `median`, `sum`, `var`, `q25`, `q75`:
 
 ```python
 from yohou.preprocessing import RollingStatisticsTransformer
@@ -57,7 +56,7 @@ Output columns follow the pattern `{col}_{statistic}` (e.g., `value_mean`, `valu
 print(rolling.observation_horizon)  # 11  (window_size - 1)
 ```
 
-For custom aggregation logic, use [`SlidingWindowFunctionTransformer`](/pages/api/generated/yohou.preprocessing.window.SlidingWindowFunctionTransformer/) with any callable:
+For custom aggregation logic, use [`SlidingWindowFunctionTransformer`](/pages/api/generated/yohou.preprocessing.SlidingWindowFunctionTransformer/) with any callable:
 
 ```python
 import numpy as np
@@ -71,7 +70,7 @@ cv = SlidingWindowFunctionTransformer(
 
 ## Scale and Normalize Values
 
-Use [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/) to normalize value columns to zero mean and unit variance. Yohou's native scaler wrappers work directly with polars DataFrames, preserving the `"time"` column automatically:
+Use [`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/) to normalize value columns to zero mean and unit variance. Yohou's native scaler wrappers work directly with polars DataFrames, preserving the `"time"` column automatically:
 
 ```python
 from yohou.preprocessing import StandardScaler
@@ -81,9 +80,9 @@ scaler.fit(y_train)
 y_scaled = scaler.transform(y_train)
 ```
 
-Other built-in scalers: [`MinMaxScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.MinMaxScaler/), [`RobustScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.RobustScaler/), [`MaxAbsScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.MaxAbsScaler/). All support `inverse_transform` for reversing the scaling during prediction.
+Other built-in scalers: [`MinMaxScaler`](/pages/api/generated/yohou.preprocessing.MinMaxScaler/), [`RobustScaler`](/pages/api/generated/yohou.preprocessing.RobustScaler/), [`MaxAbsScaler`](/pages/api/generated/yohou.preprocessing.MaxAbsScaler/). All support `inverse_transform` for reversing the scaling during prediction.
 
-If you need an sklearn transformer that doesn't have a native wrapper (e.g., a custom encoder), use [`SklearnTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_base.SklearnTransformer/) to adapt it:
+If you need an sklearn transformer that doesn't have a native wrapper (e.g., a custom encoder), use [`SklearnTransformer`](/pages/api/generated/yohou.preprocessing.SklearnTransformer/) to adapt it:
 
 ```python
 from sklearn.preprocessing import KBinsDiscretizer
@@ -96,7 +95,7 @@ discretizer = SklearnTransformer(
 
 ## Wrap Custom Functions with FunctionTransformer
 
-[`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/) wraps a plain Python function into a transformer that works inside a pipeline:
+[`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.FunctionTransformer/) wraps a plain Python function into a transformer that works inside a pipeline:
 
 ```python
 import polars as pl
@@ -117,7 +116,7 @@ Providing `inverse_func` lets target transformers reverse the operation during p
 
 ## Select Columns with ColumnTransformer
 
-[`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) applies different transformers to different column subsets. Use this when a multivariate series needs distinct treatment per column:
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) applies different transformers to different column subsets. Use this when a multivariate series needs distinct treatment per column:
 
 ```python
 from yohou.compose import ColumnTransformer

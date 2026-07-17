@@ -4,14 +4,12 @@ template: api-submodule.html
 
 # yohou.ensemble
 
-Ensemble forecasters for combining predictions from multiple base forecasters.
+Ensemble forecasters for combining predictions from multiple forecasters.
 
-**User guide**: See the [Ensemble Forecasting](../explanation/ensemble-forecasting.md) section for design rationale and usage patterns.
-
-### Forecasters
+### Classes
 
 | Name | Description |
-| --- | --- |
-| [`VotingPointForecaster`](generated/yohou.ensemble.voting_point.VotingPointForecaster.md) | Combines point predictions via mean or median (optionally weighted). |
-| [`VotingIntervalForecaster`](generated/yohou.ensemble.voting_interval.VotingIntervalForecaster.md) | Combines interval predictions via mean, median, or envelope (mean optionally weighted). |
-| [`VotingClassProbaForecaster`](generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster.md) | Combines class-probability forecasters via soft or hard voting. |
+|------|-------------|
+| [`VotingClassProbaForecaster`](generated/yohou.ensemble.VotingClassProbaForecaster.md) | Combines class-probability forecasters via voting. |
+| [`VotingIntervalForecaster`](generated/yohou.ensemble.VotingIntervalForecaster.md) | Combines interval predictions from multiple forecasters. |
+| [`VotingPointForecaster`](generated/yohou.ensemble.VotingPointForecaster.md) | Combines point predictions from multiple forecasters via averaging. |

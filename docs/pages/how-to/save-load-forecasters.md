@@ -8,12 +8,11 @@ them in a new session to produce predictions without retraining.
 - A fitted forecaster ([Getting Started](../tutorials/getting-started.md))
 - Understanding of the fit/observe/predict lifecycle ([Core Concepts](../explanation/core-concepts.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Save a Fitted Forecaster
 
-The example uses [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/),
+The example uses [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/),
 but the same approach applies to any Yohou estimator. Because every Yohou
 forecaster extends sklearn's `BaseEstimator` and stores all state as Python
 attributes, standard serializers capture the complete fitted object (see
@@ -92,4 +91,4 @@ re-save the forecaster whenever you upgrade.
   training and evaluation pipeline that produces a fitted forecaster.
 - [Core Concepts](../explanation/core-concepts.md) for the fit/observe/predict
   lifecycle and what state the forecaster carries after fitting.
-- [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) API reference.
+- [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) API reference.

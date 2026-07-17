@@ -1,6 +1,6 @@
 # Transformer Kinds
 
-Yohou transformers come in two kinds, and the kind is a property of the frame shape a transformer consumes and produces rather than of what it computes. An actual-kind transformer ([`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/)) operates on a single-axis frame: one `"time"` column and one row per timestamp, a single series marching forward. A forecast-kind transformer ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/)) operates on an `X_forecast` frame, which carries two time axes, `vintage_time` (when a forecast was issued) and `time` (what it forecasts).
+Yohou transformers come in two kinds, and the kind is a property of the frame shape a transformer consumes and produces rather than of what it computes. An actual-kind transformer ([`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/)) operates on a single-axis frame: one `"time"` column and one row per timestamp, a single series marching forward. A forecast-kind transformer ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/)) operates on an `X_forecast` frame, which carries two time axes, `vintage_time` (when a forecast was issued) and `time` (what it forecasts).
 
 Every transformer declares its kind through a `kind` tag whose value is `"actual"` or `"forecast"`. Leaf transformers stamp the tag statically through their base class; the composition classes derive theirs from their children. Almost everything in Yohou is actual-kind, and that is the default a transformer gets if it says nothing.
 
@@ -23,7 +23,7 @@ The forecast-and-stateful cell rewards a moment's care, because it is easy to ta
 
 That is true of *cross-vintage* memory and false of everything else. A vintage is internally contiguous: its rows are the forecast steps at the series interval, one after another. Within a vintage, "the previous row" is exactly as well defined as it is in any single series. So a lag or a difference computed inside one vintage is ordinary, and only a lag that reaches *across* a boundary is meaningless.
 
-[`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) therefore accepts stateful inner transformers. It fits a fresh clone on each vintage's own rows, so a wrapped lag can only ever see that vintage's history, and the cross-vintage reach that would be meaningless is structurally impossible rather than merely discouraged.
+[`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) therefore accepts stateful inner transformers. It fits a fresh clone on each vintage's own rows, so a wrapped lag can only ever see that vintage's history, and the cross-vintage reach that would be meaningless is structurally impossible rather than merely discouraged.
 
 The distinction to hold onto is between two senses of "stateful". A stateful *inner* keeps a buffer while computing one vintage. A stateful *estimator*, in the sense the `observe`/`rewind` API means, carries a buffer **between calls**. Forecast-kind transformers are stateless in the second sense and therefore have no `observe`/`rewind`: `PerVintageActualTransformer` refits every vintage on every `transform`, so nothing survives the call, whatever the inner does inside it. Serving a single fresh vintage is just a one-group input, no different in kind from a frame holding a year of them.
 
@@ -31,7 +31,7 @@ The cost of a stateful inner is rows: it consumes its `observation_horizon` from
 
 ## Lifting Rather Than Reimplementing
 
-Yohou ships one concrete forecast-kind transformer, [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/), against a couple of dozen actual-kind ones. That ratio is a design position rather than a gap in coverage.
+Yohou ships one concrete forecast-kind transformer, [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/), against a couple of dozen actual-kind ones. That ratio is a design position rather than a gap in coverage.
 
 The alternative would have been a parallel catalog: a vintage-aware scaler, a vintage-aware function transformer, a vintage-aware imputer, each duplicating the logic of its single-axis twin and each able to drift from it. Instead, `PerVintageActualTransformer` wraps an actual transformer and applies it to each vintage independently, grouping by `vintage_time`, fitting a fresh clone on each group's single-axis slice, transforming it, and restacking the results. Because every vintage is transformed using only its own rows, the order-dependent operations that would otherwise bleed across vintage boundaries stay contained. One wrapper lifts the whole catalog, and the wrapped transformers remain the same objects that run on `X_actual`.
 
@@ -39,7 +39,7 @@ Lifting is therefore the normal way to transform an `X_forecast` frame, not a st
 
 ## Kind in Composition
 
-The composition classes are polymorphic in kind rather than fixed to one. A [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) of forecast-kind branches is itself forecast-kind, and one of actual-kind branches is actual-kind. A composition must be homogeneous: mixing the two in a single container is rejected, because the container would have to align a one-axis frame against a two-axis one and there is no sensible answer. [Feature Pipelines](feature-pipelines.md) covers how composition derives its kind, aligns its branches, and reports the mismatch.
+The composition classes are polymorphic in kind rather than fixed to one. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) of forecast-kind branches is itself forecast-kind, and one of actual-kind branches is actual-kind. A composition must be homogeneous: mixing the two in a single container is rejected, because the container would have to align a one-axis frame against a two-axis one and there is no sensible answer. [Feature Pipelines](feature-pipelines.md) covers how composition derives its kind, aligns its branches, and reports the mismatch.
 
 Kind also determines where a transformer may be attached, because the forecaster's slots are named for the kinds they take. `target_transformer` and `actual_transformer` process single-axis data, so they accept actual-kind transformers only. `forecast_transformer` takes the vintage-indexed `X_forecast` frame, so it accepts forecast-kind transformers only, and applies them before the step columns are derived.
 

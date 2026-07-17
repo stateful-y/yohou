@@ -315,9 +315,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Stationarity transforms**: See [`stationarity_transforms.py`](/examples/data-features/stationarity_transforms/) for differencing
-    - **Reduction forecasting**: See [`point/reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/)
-    - **Interval forecasting**: See [Interval](/examples/#interval-forecasting) for prediction intervals
+    - **Stationarity transforms**: See [`stationarity_transforms.py`](/examples/stationarity_transforms/) for differencing
+    - **Reduction forecasting**: See [`getting-started/reduction_forecaster.py`](/examples/reduction_forecaster/)
+    - **Interval forecasting**: See [Forecasting Models](/pages/examples/#forecasting-models) for prediction intervals
     """)
 
 

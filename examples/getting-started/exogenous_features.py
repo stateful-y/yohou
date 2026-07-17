@@ -331,7 +331,7 @@ def _(mo):
         ## Next Steps
 
         - [Exogenous Features tutorial](/pages/tutorials/exogenous-features/) for the companion walkthrough
-        - [Multi-Vintage Forecasting](/examples/forecasting-models/multi_vintage_forecasting/) for production multi-vintage workflows
+        - [Multi-Vintage Forecasting](/examples/multi_vintage_forecasting/) for production multi-vintage workflows
         - [About Exogenous Features](/pages/explanation/exogenous-features/) for conceptual background
         """
     )

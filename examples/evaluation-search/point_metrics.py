@@ -587,7 +587,7 @@ def _(mo):
     > **Hard vs Soft**: [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/) scores 1.0 for a correct prediction and 0.0
     > otherwise, regardless of confidence. A model that predicts the right class
     > with 51% probability gets the same Accuracy as one that predicts with 99%.
-    > For calibration-aware evaluation, see the [soft classification metrics](/examples/evaluation-search/class_proba_metrics/)
+    > For calibration-aware evaluation, see the [soft classification metrics](/examples/class_proba_metrics/)
     > ([`LogLoss`](/pages/api/generated/yohou.metrics.class_proba.LogLoss/), [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/)).
     """)
 
@@ -654,10 +654,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Interval metrics**: See [`interval_metrics.py`](/examples/evaluation-search/interval_metrics/) for interval scoring
-    - **Cross-validation**: See [Model Selection](/examples/#model-selection) for temporal CV with scoring
-    - **Time weighting**: See [`time_weighted_scoring.py`](/examples/evaluation-search/time_weighted_scoring/)
-    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/evaluation-search/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
+    - **Interval metrics**: See [`interval_metrics.py`](/examples/interval_metrics/) for interval scoring
+    - **Cross-validation**: See [Evaluation & Search](/pages/examples/#evaluation-search) for temporal CV with scoring
+    - **Time weighting**: See [`time_weighted_scoring.py`](/examples/time_weighted_scoring/)
+    - **Classification metrics**: See [`class_proba_metrics.py`](/examples/class_proba_metrics/) for soft classification metrics (LogLoss, BrierScore) and reliability diagrams
     """)
 
 

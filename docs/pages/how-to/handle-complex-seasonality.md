@@ -9,8 +9,7 @@ periods (e.g., weekly + annual in daily data) in yohou.
   ([Stationarity](../explanation/stationarity.md))
 - Familiarity with the pipeline API ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Choose an Approach
 
@@ -26,10 +25,10 @@ harmonics.
 
 ## Use Fourier Terms for Smooth Patterns
 
-[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/)
+[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/)
 represents a seasonal pattern as sine/cosine pairs at specified harmonics. Each
 instance handles one period, so wrap multiple instances in a
-[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/)
 for overlapping periodicities:
 
 ```python
@@ -51,9 +50,9 @@ Start with 2 to 4 and increase if the residuals still show seasonal structure.
 
 When the seasonal shape is irregular and you have enough data to estimate it
 directly, use
-[`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/)
+[`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/)
 inside a
-[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/).
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/).
 Each forecaster fits the residuals left by the previous one:
 
 ```python
@@ -75,11 +74,11 @@ before estimating the longer one.
 
 For tree-based regressors, encoding seasonal patterns as features often
 outperforms explicit decomposition. Use
-[`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/)
+[`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/)
 and
-[`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/)
+[`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/)
 as part of a
-[`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/):
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/):
 
 ```python
 from yohou.compose import FeatureUnion
@@ -101,7 +100,7 @@ forecaster = PointReductionForecaster(
 ```
 
 If you also need holiday indicators, add a
-[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/)
+[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/)
 step to the pipeline.
 
 ## See Also

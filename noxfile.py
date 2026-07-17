@@ -268,10 +268,11 @@ def test_docstrings(session: nox.Session) -> None:
 @nox.session(venv_backend="uv", python=MIN_VERSION)
 def lint(session: nox.Session) -> None:
     """Run linters and type checkers."""
-    # Install dependencies
+    # Install dependencies. --locked pins the exact uv.lock versions so this matches CI.
     session.run_install(
         "uv",
         "sync",
+        "--locked",
         "--no-default-groups",
         "--extra",
         "plotting",
@@ -286,8 +287,8 @@ def lint(session: nox.Session) -> None:
     # Run PEP 723 dependency audit for notebook examples
     session.run("pytest", "tests/test_notebook_pep723.py", "-v", "--no-header", "-o", "addopts=")
 
-    # Run rumdl markdown linter
-    session.run("uvx", "rumdl", "check", ".", external=True)
+    # Run rumdl markdown linter (resolved from the lint group, not uvx-latest)
+    session.run("rumdl", "check", ".", external=True)
 
     # Run ty
     session.run("ty", "check", "src", external=True)
@@ -296,10 +297,12 @@ def lint(session: nox.Session) -> None:
 @nox.session(venv_backend="uv", python=MIN_VERSION)
 def fix(session: nox.Session) -> None:
     """Format the code base to adhere to our styles, and complain about what we cannot do automatically."""
-    # Install dependencies
+    # Install dependencies. --locked pins the exact uv.lock versions so a stale lock
+    # fails loudly here and local matches CI.
     session.run_install(
         "uv",
         "sync",
+        "--locked",
         "--no-default-groups",
         "--extra",
         "plotting",
@@ -330,6 +333,51 @@ def build_docs(session: nox.Session) -> None:
 
     # Build the docs (hooks automatically export notebooks and prepare site)
     session.run("mkdocs", "build", "--clean", external=True)
+
+
+@nox.session(python=PYTHON_VERSIONS[0], venv_backend="uv")
+def check_docs(session: nox.Session) -> None:
+    """Build the docs with warnings fatal, without executing the notebooks.
+
+    Pinned to the lowest supported Python rather than whatever the caller happens
+    to have: an unpinned session takes the ambient interpreter, which can sit
+    outside requires-python and die in `uv sync` before mkdocs runs. CI only
+    passes today because the runner's default happens to be in range -- a runner
+    bumped past the ceiling would turn this red for a reason that has nothing to
+    do with the docs.
+
+    docs/hooks.py warns when a marker resolves to nothing, because a placeholder
+    that renders nothing looks exactly like a page that never had one -- the
+    warning is the only signal that a page silently lost its content. That signal
+    is worthless unless something fails on it, which is what this session is for.
+
+    A full build is too slow to run on every PR: exporting the notebooks executes
+    every one of them and dominates the time. MKDOCS_SKIP_NOTEBOOKS skips only the
+    export -- the gallery still parses every notebook's source, so sections,
+    companions and cards resolve exactly as they do in a real build, which is what
+    the markers depend on. build_docs remains the real, notebook-executing build.
+    """
+    session.run_install(
+        "uv",
+        "sync",
+        "--no-default-groups",
+        "--extra",
+        "plotting",
+        "--group",
+        "docs",
+        "--group",
+        "examples",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+
+    session.run(
+        "mkdocs",
+        "build",
+        "--clean",
+        "--strict",
+        external=True,
+        env={"MKDOCS_SKIP_NOTEBOOKS": "1"},
+    )
 
 
 @nox.session(venv_backend="uv")

@@ -2,12 +2,11 @@
 
 In this tutorial, we will confirm a seasonal pattern in the tourism dataset, measure its strength, and understand its shape using five diagnostic views: seasonal overlays, subseasonal boxplots, autocorrelation analysis, STL decomposition, and a seasonal heatmap.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Exploratory Visualization](exploratory-visualization.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Load the Data
 
@@ -22,7 +21,7 @@ y = bunch.frame
 
 ## 2. Does the Pattern Repeat Each Year?
 
-[`plot_seasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonality/) overlays each seasonal cycle on the same axis, with one line per year. This makes repeating shapes immediately visible:
+[`plot_seasonality`](/pages/api/generated/yohou.plotting.plot_seasonality/) overlays each seasonal cycle on the same axis, with one line per year. This makes repeating shapes immediately visible:
 
 ```python
 from yohou.plotting import plot_seasonality
@@ -33,13 +32,13 @@ fig.show()
 
 **What to look for:**
 
-- **Lines that cluster tightly**: the seasonal pattern is strong and stable across years. A fixed seasonal component like [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) will capture this well.
+- **Lines that cluster tightly**: the seasonal pattern is strong and stable across years. A fixed seasonal component like [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) will capture this well.
 - **Lines that diverge over time**: the pattern is evolving. Consider Fourier features or an adaptive seasonal model instead of fixed pattern extraction.
 - **No consistent shape**: seasonality is weak or absent. A non-seasonal forecaster may be sufficient.
 
 ## 3. How Much Does Each Season Vary?
 
-[`plot_subseasonality`](/pages/api/generated/yohou.plotting.diagnostics.plot_subseasonality/) breaks the series into seasonal positions and shows the distribution at each position:
+[`plot_subseasonality`](/pages/api/generated/yohou.plotting.plot_subseasonality/) breaks the series into seasonal positions and shows the distribution at each position:
 
 ```python
 from yohou.plotting import plot_subseasonality
@@ -58,7 +57,7 @@ fig.show()
 
 The overlays and boxplots confirmed the seasonal pattern visually. Now use the autocorrelation function (ACF) and partial autocorrelation function (PACF) to understand how the seasonal dependence behaves, which informs your deseasonalization strategy.
 
-[`plot_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_autocorrelation/) shows how correlated the series is with lagged versions of itself:
+[`plot_autocorrelation`](/pages/api/generated/yohou.plotting.plot_autocorrelation/) shows how correlated the series is with lagged versions of itself:
 
 ```python
 from yohou.plotting import plot_autocorrelation
@@ -67,7 +66,7 @@ fig = plot_autocorrelation(y, max_lags=36)
 fig.show()
 ```
 
-[`plot_partial_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_partial_autocorrelation/) isolates the direct correlation at each lag by removing the influence of intermediate lags:
+[`plot_partial_autocorrelation`](/pages/api/generated/yohou.plotting.plot_partial_autocorrelation/) isolates the direct correlation at each lag by removing the influence of intermediate lags:
 
 ```python
 from yohou.plotting import plot_partial_autocorrelation
@@ -78,13 +77,13 @@ fig.show()
 
 **What to look for:**
 
-- **ACF spikes at lag 12 that decay slowly**: the seasonal component is persistent and non-stationary. Apply [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/) or use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) that subtracts the seasonal component.
-- **ACF spikes at lag 12 that decay quickly**: the seasonal effect is stationary. A [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/) can extract it directly.
-- **Significant PACF at both lags 1 and 12**: short-term autocorrelation and seasonal dependence coexist. A reduction forecaster with [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) features at both lags will capture both effects.
+- **ACF spikes at lag 12 that decay slowly**: the seasonal component is persistent and non-stationary. Apply [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/) or use a [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) that subtracts the seasonal component.
+- **ACF spikes at lag 12 that decay quickly**: the seasonal effect is stationary. A [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/) can extract it directly.
+- **Significant PACF at both lags 1 and 12**: short-term autocorrelation and seasonal dependence coexist. A reduction forecaster with [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) features at both lags will capture both effects.
 
 ## 5. Can You Separate Trend, Season, and Residual?
 
-STL (Seasonal and Trend decomposition using Loess) splits the series into three components. [`plot_decomposition`](/pages/api/generated/yohou.plotting.forecasting.plot_decomposition/) shows each component in its own subplot:
+STL (Seasonal and Trend decomposition using Loess) splits the series into three components. [`plot_decomposition`](/pages/api/generated/yohou.plotting.plot_decomposition/) shows each component in its own subplot:
 
 ```python
 from yohou.plotting import plot_decomposition
@@ -96,12 +95,12 @@ fig.show()
 **What to look for:**
 
 - **Clean seasonal subplot with a repeating pattern**: the seasonal shape is well-defined. This confirms the overlay findings from step 2.
-- **Small, structureless residuals**: the decomposition captured most of the signal. A [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) that models trend and seasonality separately will work well.
+- **Small, structureless residuals**: the decomposition captured most of the signal. A [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) that models trend and seasonality separately will work well.
 - **Residuals with remaining seasonal patterns**: the decomposition missed part of the signal. The seasonal shape may be changing over time, calling for a more flexible model.
 
 ## 6. How Does the Pattern Evolve Year Over Year?
 
-[`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.diagnostics.plot_seasonal_heatmap/) arranges values on a two-dimensional calendar grid, with rows for years and columns for months. Color intensity shows the value at each position:
+[`plot_seasonal_heatmap`](/pages/api/generated/yohou.plotting.plot_seasonal_heatmap/) arranges values on a two-dimensional calendar grid, with rows for years and columns for months. Color intensity shows the value at each position:
 
 ```python
 from yohou.plotting import plot_seasonal_heatmap
@@ -126,7 +125,7 @@ We confirmed a 12-month seasonal cycle using five complementary diagnostics:
 4. **STL decomposition**: a clean separation of trend, season, and residual
 5. **Seasonal heatmap**: year-over-year evolution of the pattern
 
-These findings directly inform model selection: strong fixed seasonality points to [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.PatternSeasonalityForecaster/), while evolving patterns call for Fourier features or adaptive approaches.
+These findings directly inform model selection: strong fixed seasonality points to [`PatternSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.PatternSeasonalityForecaster/), while evolving patterns call for Fourier features or adaptive approaches.
 
 ## Next Steps
 

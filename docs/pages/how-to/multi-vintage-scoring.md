@@ -11,8 +11,7 @@ forecast horizon step.
 - Familiarity with basic scorer usage ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 - `yohou[plotting]` installed for visualization steps (`pip install "yohou[plotting]"`)
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Generate Multi-vintage Predictions
 
@@ -82,7 +81,7 @@ guidance on when to use each.
 
 ## 3. Visualize Accuracy by Horizon Step
 
-[`plot_score_per_step`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_step/)
+[`plot_score_per_step`](/pages/api/generated/yohou.plotting.plot_score_per_step/)
 reveals whether accuracy degrades at longer horizon positions. Pass a dict of
 predictions to compare multiple models:
 
@@ -101,7 +100,7 @@ bars, pass `kind="bar"`.
 
 ## 4. Track Accuracy Over Forecast Origins
 
-[`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.evaluation.plot_score_per_vintage/)
+[`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.plot_score_per_vintage/)
 shows whether accuracy is stable across successive vintages or drifting over
 time:
 
@@ -113,7 +112,7 @@ plot_score_per_vintage(mae, y_test, y_pred, show_trend=True)
 
 ## 5. Inspect the Full Step x Vintage Grid
 
-[`plot_score_heatmap`](/pages/api/generated/yohou.plotting.evaluation.plot_score_heatmap/)
+[`plot_score_heatmap`](/pages/api/generated/yohou.plotting.plot_score_heatmap/)
 plots a 2D grid where each cell is the error for one step at one vintage,
 useful for spotting localized pockets of poor accuracy:
 
@@ -169,4 +168,4 @@ for details on interpreting the output.
 
 - [Vintage-based Evaluation](../explanation/forecast-accuracy.md#vintage-based-evaluation) for the conceptual background
 - [Visualize and Compare Model Scores](visualize-scores.md) for the full plotting workflow
-- [`yohou.plotting.evaluation` API reference](/pages/api/generated/yohou.plotting.evaluation/) for all evaluation plot options
+- [`yohou.plotting` API reference](/pages/api/plotting/) for all evaluation plot options

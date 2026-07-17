@@ -8,7 +8,4 @@ Complete documentation for every public module, class, method, and function. See
 
 ## Supporting Reference
 
-- [Changelog](changelog.md): Version history and release notes.
-- [Data Catalog](data-catalog.md): Bundled datasets available through `yohou.datasets`.
-- [Extensions](extensions.md): Optional integrations and third-party compatibility.
-- [Tags](tags.md): Tag index for cross-referencing documentation pages.
+<!-- SUBPAGES -->

@@ -3,7 +3,10 @@
 import ast
 import fnmatch
 import hashlib
+import importlib.util
+import logging
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -11,199 +14,23 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-_CATEGORY_LABELS = {
-    "quickstart": "Quickstart",
-    "point": "Point Forecasting",
-    "interval": "Interval Forecasting",
-    "compose": "Composition",
-    "preprocessing": "Preprocessing",
-    "stationarity": "Stationarity",
-    "metrics": "Metrics",
-    "model_selection": "Model Selection",
-    "datasets": "Datasets",
-    "plotting": "Plotting",
-}
+# Warnings logged under the "mkdocs" logger tree are counted by mkdocs and turn
+# a --strict build red. Every marker this file understands is silently inert
+# when it does not resolve -- a placeholder that renders nothing looks exactly
+# like a page that never had one. Warning here is what makes a dead marker a
+# build failure instead of a blank space nobody notices.
+log = logging.getLogger("mkdocs.hooks")
 
-_DISCOVERY_CACHE = None
-_SEE_ALSO_LOOKUP = None
-
-_EXTERNAL_PREFIXES = ("sklearn.", "scipy.", "numpy.", "pandas.")
-
-
-def _get_see_also_lookup():
-    """Build lookup from short class/function names to qualified page paths."""
-    global _SEE_ALSO_LOOKUP
-    if _SEE_ALSO_LOOKUP is not None:
-        return _SEE_ALSO_LOOKUP
-
-    data = _get_discovery_data()
-    lookup = {}
-
-    for name, cls in data["abstract_base_classes"]:
-        qualified = f"{cls.__module__}.{name}"
-        lookup[name] = qualified
-
-    for name, cls in data["estimators"]:
-        qualified = f"{cls.__module__}.{name}"
-        lookup[name] = qualified
-
-    for name, cls in data["displays"]:
-        qualified = f"{cls.__module__}.{name}"
-        lookup[name] = qualified
-
-    for name, func in data["functions"]:
-        qualified = f"{func.__module__}.{name}"
-        lookup[name] = qualified
-
-    _SEE_ALSO_LOOKUP = lookup
-    return lookup
-
-
-def _resolve_see_also_url(name, lookup):
-    """Resolve a See Also reference name to a relative URL, or None."""
-    if any(name.startswith(prefix) for prefix in _EXTERNAL_PREFIXES):
-        return None
-    short_name = name.rsplit(".", 1)[-1] if "." in name else name
-    if short_name in lookup:
-        return f"../{lookup[short_name]}/"
-    return None
-
-
-def _linkify_see_also(html):
-    """Replace class/function names in See Also sections with links."""
-    lookup = _get_see_also_lookup()
-
-    def _process_block(block_match):
-        block = block_match.group(0)
-
-        def _process_p(p_match):
-            content = p_match.group(1)
-
-            def _linkify_entry(entry_match):
-                full = entry_match.group(0)
-                code_m = re.match(r"<code>([^<]+)</code>(\s*:)", full)
-                if code_m:
-                    name, colon = code_m.group(1), code_m.group(2)
-                    url = _resolve_see_also_url(name, lookup)
-                    if url:
-                        return f'<a href="{url}"><code>{name}</code></a>{colon}'
-                    return full
-                plain_m = re.match(r"([A-Za-z_][\w.]*?)(\s*:)", full)
-                if plain_m:
-                    name, colon = plain_m.group(1), plain_m.group(2)
-                    url = _resolve_see_also_url(name, lookup)
-                    if url:
-                        return f'<a href="{url}">{name}</a>{colon}'
-                    return full
-                return full
-
-            new_content = re.sub(
-                r"(?:<code>[^<]+</code>|[A-Za-z_][\w.]*)\s*:",
-                _linkify_entry,
-                content,
-            )
-            return f"<p>{new_content}</p>"
-
-        block = re.sub(r"<p>(.*?)</p>", _process_p, block, flags=re.DOTALL)
-        return block
-
-    return re.sub(
-        r'<details class="see-also[^"]*"[^>]*>.*?</details>',
-        _process_block,
-        html,
-        flags=re.DOTALL,
-    )
-
-
-def _discover_base_and_abstract_classes():
-    """Discover Base* classes and abstract non-Base estimators.
-
-    Returns
-    -------
-    base_classes : list of (name, class)
-        Classes whose name starts with ``Base`` (shown as "Base Class" badge).
-    abstract_estimators : list of (name, class)
-        Abstract estimators that do not follow the ``Base*`` naming convention
-        (e.g. ``QuantileResidual``).  These are included as regular "Class"
-        entries so they are not missing from the API index.
-    """
-    import inspect
-    import pkgutil
-    from importlib import import_module
-    from pathlib import Path
-
-    from sklearn.base import BaseEstimator
-
-    root = str(Path(__file__).parent.parent / "src" / "yohou")
-    base_classes = []
-    abstract_estimators = []
-    seen = set()
-    for _, module_name, _ in pkgutil.walk_packages(path=[root], prefix="yohou."):
-        parts = module_name.split(".")
-        if "tests" in parts or "testing" in parts:
-            continue
-        try:
-            module = import_module(module_name)
-        except Exception:
-            continue
-        for name, cls in inspect.getmembers(module, inspect.isclass):
-            if name.startswith("_") or cls.__module__ != module_name:
-                continue
-            if name in seen:
-                continue
-            is_estimator = issubclass(cls, BaseEstimator)
-            is_base = name.startswith("Base") and name != "BaseEstimator"
-            is_abstract = is_estimator and hasattr(cls, "__abstractmethods__") and cls.__abstractmethods__
-            if is_base and (is_estimator or module_name.startswith("yohou.base.")):
-                base_classes.append((name, cls))
-                seen.add(name)
-            elif is_abstract:
-                abstract_estimators.append((name, cls))
-                seen.add(name)
-
-    base_classes.sort(key=lambda x: (x[1].__module__, x[0]))
-    abstract_estimators.sort(key=lambda x: (x[1].__module__, x[0]))
-    return base_classes, abstract_estimators
-
-
-def _get_discovery_data():
-    """Import and cache all estimators, displays, and functions."""
-    global _DISCOVERY_CACHE
-    if _DISCOVERY_CACHE is not None:
-        return _DISCOVERY_CACHE
-
-    from yohou.utils.discovery import all_displays, all_estimators, all_functions
-
-    estimators = all_estimators()
-    base_classes, abstract_estimators = _discover_base_and_abstract_classes()
-    base_names = {name for name, _ in base_classes}
-    # Base*-prefixed classes belong in the base class section only
-    estimators = [(name, cls) for name, cls in estimators if name not in base_names]
-    # Abstract non-Base estimators are not in all_estimators(); add as regular classes
-    estimators.extend(abstract_estimators)
-
-    _DISCOVERY_CACHE = {
-        "estimators": estimators,
-        "displays": all_displays(),
-        "functions": all_functions(),
-        "abstract_base_classes": base_classes,
-    }
-    return _DISCOVERY_CACHE
-
-
-def _first_docstring_line(obj):
-    """Extract the first non-empty line of a docstring."""
-    doc = getattr(obj, "__doc__", None)
-    if not doc:
-        return ""
-    for line in doc.strip().splitlines():
-        stripped = line.strip()
-        if stripped:
-            return stripped
-    return ""
-
-
+# Module-level caches. MkDocs loads hooks as plugin instances and does not
+# reload the module between builds, so these live for the whole process --
+# under `mkdocs serve` an unreset cache serves stale content for the rest of the
+# session. Every cache is cleared per build by on_config() below.
+#
+# Naming is load-bearing: the reset and its test discover caches by the
+# `_CACHE` suffix, so a cache named otherwise escapes both, silently.
 _SUBMODULE_CACHE = None
+_API_NAME_LOOKUP_CACHE = None
+_GLOSSARY_TERMS_CACHE = None
 
 
 def _get_submodules(project_root):
@@ -244,6 +71,55 @@ def _get_submodules(project_root):
     return _SUBMODULE_CACHE
 
 
+def _qualified_name(module_name, member_name):
+    """Public dotted path of a member.
+
+    A symbol exported only from the package root has no module segment --
+    `pkg.Name`, not `pkg..Name` -- which is the whole reason code keyed on a
+    submodule silently drops it.
+    """
+    parts = ["yohou", module_name, member_name]
+    return ".".join(part for part in parts if part)
+
+
+def _module_source(pkg_dir, module_name):
+    """Return the file backing a submodule: ``name.py``, else ``name/__init__.py``."""
+    mod_file = pkg_dir / f"{module_name}.py"
+    if not mod_file.exists():
+        mod_file = pkg_dir / module_name / "__init__.py"
+    return mod_file
+
+
+def _get_root_members(project_root):
+    """Public symbols the package exports only from its own ``__init__.py``.
+
+    ``_get_submodules`` skips every ``_``-prefixed name, which is right for
+    private modules and also silently excludes ``__init__.py`` itself. A package
+    that keeps a base class in ``_base.py`` and re-exports it from the root --
+    an ordinary layout, and what sklearn does -- therefore has a public symbol
+    that belongs to no submodule, reaches no page, and never appears in the API
+    table. Nothing reports it: yohou-nixtla ships 18 names in ``__all__`` and the
+    table lists 17.
+
+    Their public path has no module segment (``pkg.Name``, not
+    ``pkg.module.Name``), which is exactly why they fall through code keyed on a
+    submodule. Names a real submodule already publishes keep their module path;
+    only the homeless ones are adopted here.
+    """
+    pkg_dir = project_root / "src" / "yohou"
+    init_file = pkg_dir / "__init__.py"
+    if not init_file.exists():
+        return {"classes": [], "functions": []}
+
+    covered = set()
+    for mod in _get_submodules(project_root):
+        members = _get_public_members(_module_source(pkg_dir, mod["module_name"]), pkg_dir)
+        covered.update(entry["name"] for entry in members["classes"] + members["functions"])
+
+    root = _get_public_members(init_file, pkg_dir)
+    return {key: [entry for entry in root[key] if entry["name"] not in covered] for key in ("classes", "functions")}
+
+
 def _extract_module_docstring(py_file):
     """Extract the module-level docstring from a Python file."""
     try:
@@ -261,120 +137,263 @@ def _extract_module_docstring(py_file):
 def _get_module_members(py_file):
     """Discover public classes and functions in a Python module via AST.
 
-    For ``__init__.py`` files that only re-export names via
-    ``from .submodule import Name``, this function follows those imports and
-    discovers the definitions in the referenced submodule files.
-
-    Returns a dict with *classes*, *functions*, and *attributes* lists.  Each
-    entry is a dict with *name*, *doc* (first line of the docstring, or empty
-    string), and *source_module* (dotted relative submodule like ``"naive"``
-    for names imported from a sibling file, or ``""`` for names defined
-    directly).  *attributes* holds re-exported module-level constants and type
-    aliases (e.g. ``PredictionType``, ``POINT``) that are part of the public
-    API but are neither classes nor functions.
+    Returns a dict with *classes* and *functions* lists.  Each entry is a dict
+    with *name* and *doc* (first line of the docstring, or empty string).
     """
     classes = []
     functions = []
-    attributes = []
     try:
         source = py_file.read_text(encoding="utf-8")
         tree = ast.parse(source)
     except (SyntaxError, UnicodeDecodeError):
-        return {"classes": classes, "functions": functions, "attributes": attributes}
+        return {"classes": classes, "functions": functions}
 
-    # Collect direct definitions
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef) and not node.name.startswith("_"):
             doc = ast.get_docstring(node) or ""
-            classes.append({"name": node.name, "doc": doc.strip().split("\n")[0], "source_module": ""})
+            classes.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not node.name.startswith("_"):
             doc = ast.get_docstring(node) or ""
-            functions.append({"name": node.name, "doc": doc.strip().split("\n")[0], "source_module": ""})
+            functions.append({"name": node.name, "doc": doc.strip().split("\n")[0]})
 
-    # For __init__.py: resolve re-exports (relative, or absolute within this
-    # package) to the sibling module files that define each name.
-    if py_file.name == "__init__.py" and not classes and not functions:
-        pkg_dir = py_file.parent
-        # Dotted name of this package (e.g. "yohou.plotting"), used to recognize
-        # absolute re-exports such as ``from yohou.plotting._utils import ...``.
-        pkg_parts: list[str] = []
-        for part in reversed(pkg_dir.parts):
-            if part == "src":
-                break
-            pkg_parts.insert(0, part)
-        pkg_dotted = ".".join(pkg_parts)
-
-        # Collect imported public names grouped by their source submodule file.
-        import_map: dict[str, list[str]] = {}
-        for node in ast.iter_child_nodes(tree):
-            if not (isinstance(node, ast.ImportFrom) and node.module):
-                continue
-            if node.level == 1:
-                rel_module = node.module
-            elif node.level == 0 and node.module.startswith(f"{pkg_dotted}."):
-                rel_module = node.module[len(pkg_dotted) + 1 :]
-            else:
-                continue
-            if "." in rel_module:
-                # Only direct sibling modules map to a single page-name segment.
-                continue
-            for alias in node.names:
-                imported = alias.asname or alias.name
-                if not imported.startswith("_"):
-                    import_map.setdefault(rel_module, []).append(imported)
-
-        # Scan the referenced files and pick out the imported definitions
-        for rel_module, names in import_map.items():
-            target = pkg_dir / f"{rel_module}.py"
-            if not target.exists():
-                continue
-            try:
-                target_source = target.read_text(encoding="utf-8")
-                target_tree = ast.parse(target_source)
-            except (SyntaxError, UnicodeDecodeError):
-                continue
-            name_set = set(names)
-            for tnode in ast.iter_child_nodes(target_tree):
-                if isinstance(tnode, ast.ClassDef) and tnode.name in name_set:
-                    doc = ast.get_docstring(tnode) or ""
-                    classes.append({
-                        "name": tnode.name,
-                        "doc": doc.strip().split("\n")[0],
-                        "source_module": rel_module,
-                    })
-                elif isinstance(tnode, ast.FunctionDef | ast.AsyncFunctionDef) and tnode.name in name_set:
-                    doc = ast.get_docstring(tnode) or ""
-                    functions.append({
-                        "name": tnode.name,
-                        "doc": doc.strip().split("\n")[0],
-                        "source_module": rel_module,
-                    })
-                else:
-                    for attr_name in _assignment_targets(tnode):
-                        if attr_name in name_set:
-                            attributes.append({
-                                "name": attr_name,
-                                "doc": "",
-                                "source_module": rel_module,
-                            })
-
-    return {"classes": classes, "functions": functions, "attributes": attributes}
+    return {"classes": classes, "functions": functions}
 
 
-def _assignment_targets(node):
-    """Yield public names bound by a module-level assignment node.
+def _get_dunder_all(tree):
+    """Return the set of names listed in ``__all__``, or None if absent."""
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                if not isinstance(node.value, ast.List | ast.Tuple):
+                    return None
+                return {e.value for e in node.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+    return None
 
-    Handles both annotated assignments (``POINT: frozenset = ...``) and plain
-    assignments (``LINE_DASH_SEQUENCE = [...]``), skipping private names.
+
+def _iter_reexport_nodes(tree):
+    """Yield ``ImportFrom`` nodes that re-export names from a package.
+
+    Covers top-level imports and imports guarded by a top-level ``try`` block,
+    which is the conventional way to expose an optional extra::
+
+        try:
+            from mypkg.neural._impl import Forecaster
+        except ImportError as err:
+            raise ImportError("install mypkg[neural]") from err
+
+    Only the ``try`` body is walked: names in an ``except`` handler are the
+    fallback path, not the package's advertised API.
     """
-    targets = []
-    if isinstance(node, ast.AnnAssign):
-        targets = [node.target]
-    elif isinstance(node, ast.Assign):
-        targets = node.targets
-    for target in targets:
-        if isinstance(target, ast.Name) and not target.id.startswith("_"):
-            yield target.id
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ImportFrom):
+            yield node
+        elif isinstance(node, ast.Try):
+            for inner in node.body:
+                if isinstance(inner, ast.ImportFrom):
+                    yield inner
+
+
+def _resolve_import_from(node, init_file, pkg_dir):
+    """Map an ``ImportFrom`` node to the file that declares its names.
+
+    Handles relative imports (``from .naive import X``) and absolute imports
+    rooted at this package (``from mypkg.stats._base import X``).  Returns
+    None for imports that leave the package, which is what keeps incidental
+    third-party imports (``from pathlib import Path``) out of the API.
+    """
+    if node.level:
+        base = init_file.parent
+        for _ in range(node.level - 1):
+            base = base.parent
+        parts = node.module.split(".") if node.module else []
+    else:
+        if not node.module:
+            return None
+        parts = node.module.split(".")
+        if parts[0] != pkg_dir.name:
+            return None
+        base = pkg_dir
+        parts = parts[1:]
+
+    target = base
+    for part in parts:
+        target = target / part
+    for candidate in (target.with_suffix(".py"), target / "__init__.py"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _resolve_external_module(module_name):
+    """Locate a module that lives outside this package.
+
+    A package may deliberately re-export a dependency's symbol -- a convenience
+    shim such as ``from otherpkg.thing import Widget`` under its own ``__all__``.
+    That name is part of *this* package's public API, but no file under
+    ``pkg_dir`` declares it, so ``_resolve_import_from`` cannot reach it and the
+    symbol would silently vanish from the index and lose its page.
+
+    ``find_spec`` locates the module's source file so the kind and docstring can
+    be read from it like any other module, rather than guessed.  It imports the
+    *parent* package to do so, which is why this is only ever consulted for a
+    name the author listed in ``__all__``: an incidental ``from pathlib import
+    Path`` must never reach here.  Anything that does not resolve to readable
+    source is skipped, not invented.
+    """
+    try:
+        spec = importlib.util.find_spec(module_name)
+    except (ImportError, AttributeError, ValueError):
+        return None
+    if spec is None or not spec.origin or not spec.origin.endswith(".py"):
+        return None
+    return Path(spec.origin)
+
+
+def _reexports_a_dunder_all_name(node, exported):
+    """Whether this ImportFrom binds any name the package advertises in ``__all__``."""
+    return any((alias.asname or alias.name) in exported for alias in node.names if alias.name != "*")
+
+
+def _get_reexported_members(init_file, pkg_dir):
+    """Discover members a module exposes by re-export rather than by declaring them.
+
+    A re-exporting ``__init__.py`` declares no classes or functions of its own,
+    so an AST scan of that file alone finds nothing.  This resolves each
+    ``ImportFrom`` binding to its declaring module and lifts the name's kind
+    and docstring from there.
+
+    ``__all__`` acts as a *filter*, not an authority: a name is exposed only if
+    it is listed there (when present) *and* resolves to a class or function in
+    its declaring module.  Constants and other exports are excluded, because
+    only classes and functions get generated pages.
+
+    A plain module can be a re-export shim too, so this is not limited to
+    ``__init__.py`` -- but for one, an import is normally a private detail
+    (``from .base import Helper`` to use it), not an advertisement.  Only an
+    explicit ``__all__`` marks a plain module's imports as its public surface;
+    without one, nothing here is re-exported.  An ``__init__.py`` re-exports by
+    convention, so it needs no such marker.
+    """
+    try:
+        tree = ast.parse(init_file.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return {"classes": [], "functions": []}
+
+    exported = _get_dunder_all(tree)
+    if exported is None and init_file.name != "__init__.py":
+        return {"classes": [], "functions": []}
+    classes = []
+    functions = []
+    seen = set()
+
+    for node in _iter_reexport_nodes(tree):
+        decl_file = _resolve_import_from(node, init_file, pkg_dir)
+        if decl_file is None:
+            # The import leaves the package. That is normally an incidental
+            # third-party import and must stay out of the API -- unless the
+            # author advertised the name in __all__, which makes it this
+            # package's public API no matter where it was declared.
+            if exported is None or node.level or not node.module or not _reexports_a_dunder_all_name(node, exported):
+                continue
+            decl_file = _resolve_external_module(node.module)
+            if decl_file is None:
+                continue
+        decl_members = None
+        for alias in node.names:
+            if alias.name == "*":
+                continue
+            exposed = alias.asname or alias.name
+            if exposed.startswith("_") or exposed in seen:
+                continue
+            if exported is not None and exposed not in exported:
+                continue
+            if decl_members is None:
+                decl_members = _get_module_members(decl_file)
+            for bucket, entries in (("classes", decl_members["classes"]), ("functions", decl_members["functions"])):
+                match = next((e for e in entries if e["name"] == alias.name), None)
+                if match is None:
+                    continue
+                (classes if bucket == "classes" else functions).append({
+                    "name": exposed,
+                    "doc": match["doc"],
+                    "origin": str(decl_file),
+                    "reexported": True,
+                })
+                seen.add(exposed)
+                break
+
+    return {"classes": classes, "functions": functions}
+
+
+def _get_public_members(mod_file, pkg_dir):
+    """Public classes and functions of a module, including re-exported ones.
+
+    Each entry carries *origin* (the file that declares the symbol) and
+    *reexported*, so the name lookup can tell one symbol reachable by two paths
+    from two different symbols that happen to share a short name.
+    """
+    if not mod_file.exists():
+        return {"classes": [], "functions": []}
+    members = _get_module_members(mod_file)
+    for key in ("classes", "functions"):
+        for entry in members[key]:
+            entry.setdefault("origin", str(mod_file))
+            entry.setdefault("reexported", False)
+    reexported = _get_reexported_members(mod_file, pkg_dir)
+    declared = {e["name"] for e in members["classes"] + members["functions"]}
+    for key in ("classes", "functions"):
+        members[key].extend(e for e in reexported[key] if e["name"] not in declared)
+    return members
+
+
+def _get_api_name_lookup(project_root):
+    """Map a symbol's short name to the qualified name of its API page (cached).
+
+    Shared by See Also resolution and example-notebook cross-referencing so the
+    two cannot disagree about what a symbol is called.  Built by static
+    analysis only; the package is never imported.
+
+    When one symbol is reachable by two paths -- declared in a module and
+    re-exported by a package -- the published path wins: that is the name users
+    write, and the one whose page they expect.
+
+    When a short name identifies two genuinely different symbols, it is omitted
+    rather than resolved arbitrarily: consumers turn this straight into a URL,
+    and a wrong link is worse than no link.
+    """
+    global _API_NAME_LOOKUP_CACHE  # noqa: PLW0603
+    if _API_NAME_LOOKUP_CACHE is not None:
+        return _API_NAME_LOOKUP_CACHE
+
+    pkg_dir = project_root / "src" / "yohou"
+    candidates = {}
+    scans = []
+    for mod in _get_submodules(project_root):
+        scans.append((mod["module_name"], _get_public_members(_module_source(pkg_dir, mod["module_name"]), pkg_dir)))
+    scans.append(("", _get_root_members(project_root)))
+    for module_name, members in scans:
+        for entry in members["classes"] + members["functions"]:
+            qualified = _qualified_name(module_name, entry["name"])
+            candidates.setdefault(entry["name"], []).append({
+                "qualified": qualified,
+                "origin": entry.get("origin"),
+                "reexported": entry.get("reexported", False),
+            })
+
+    lookup = {}
+    for name, cands in candidates.items():
+        if len({c["origin"] for c in cands}) > 1:
+            continue  # genuinely different symbols share this short name
+        published = sorted(c["qualified"] for c in cands if c["reexported"])
+        if published:
+            lookup[name] = published[0]
+        elif len(cands) == 1:
+            lookup[name] = cands[0]["qualified"]
+
+    _API_NAME_LOOKUP_CACHE = lookup
+    return _API_NAME_LOOKUP_CACHE
 
 
 def _build_members_tables(package_name, module_name, members):
@@ -386,12 +405,6 @@ def _build_members_tables(package_name, module_name, members):
     """
     sections = []
 
-    def _qualified(member):
-        src = member.get("source_module", "")
-        if src:
-            return f"{package_name}.{module_name}.{src}.{member['name']}"
-        return f"{package_name}.{module_name}.{member['name']}"
-
     if members["classes"]:
         lines = [
             "### Classes",
@@ -400,7 +413,7 @@ def _build_members_tables(package_name, module_name, members):
             "|------|-------------|",
         ]
         for cls in members["classes"]:
-            qualified = _qualified(cls)
+            qualified = f"{package_name}.{module_name}.{cls['name']}"
             link = f"[`{cls['name']}`](generated/{qualified}.md)"
             lines.append(f"| {link} | {cls['doc']} |")
         sections.append("\n".join(lines))
@@ -413,7 +426,7 @@ def _build_members_tables(package_name, module_name, members):
             "|------|-------------|",
         ]
         for func in members["functions"]:
-            qualified = _qualified(func)
+            qualified = f"{package_name}.{module_name}.{func['name']}"
             link = f"[`{func['name']}`](generated/{qualified}.md)"
             lines.append(f"| {link} | {func['doc']} |")
         sections.append("\n".join(lines))
@@ -424,17 +437,25 @@ def _build_members_tables(package_name, module_name, members):
     return "\n\n".join(sections)
 
 
+def _write_member_pages(generated_dir, page_template, module_name, members):
+    """Write one detail page per public class/function. Returns how many."""
+    written = 0
+    for kind in ("classes", "functions"):
+        for entry in members[kind]:
+            qualified = _qualified_name(module_name, entry["name"])
+            page = generated_dir / f"{qualified}.md"
+            page.write_text(page_template.format(name=entry["name"], qualified=qualified))
+            written += 1
+    return written
+
+
 def _generate_api_pages(project_root):
     """Generate per-submodule overview pages and per-class/function detail pages.
 
-    Submodule overview pages (``docs/pages/api/<module>.md``) are built from
-    AST-based member discovery via ``_get_module_members`` and laid out using
-    the ``docs/api-submodule.html`` template.
-
-    Per-member detail pages (``docs/pages/api/generated/<qualified>.md``) are
-    built from runtime discovery via ``_get_discovery_data()`` so that every
-    public estimator, display, function, and base class gets a page with the
-    correct fully-qualified name.
+    Reads ``docs/api-submodule.html`` and writes one ``.md`` overview page per
+    discovered submodule into ``docs/pages/api/``.  Each overview page uses
+    ``### Classes`` / ``### Functions`` headings with markdown tables linking
+    to dedicated per-member pages under ``docs/pages/api/generated/``.
     """
     template_file = project_root / "docs" / "api-submodule.html"
     if not template_file.exists():
@@ -447,10 +468,6 @@ def _generate_api_pages(project_root):
 
     generated_dir = api_dir / "generated"
     generated_dir.mkdir(parents=True, exist_ok=True)
-
-    gitignore = generated_dir / ".gitignore"
-    if not gitignore.exists():
-        gitignore.write_text("# Auto-generated. Do not commit\n*\n!.gitignore\n")
 
     # Clean stale generated pages
     for old in generated_dir.glob("*.md"):
@@ -473,14 +490,16 @@ def _generate_api_pages(project_root):
         "<!-- EXAMPLES_FOR:{qualified} -->\n"
     )
 
-    # Submodule overview pages (AST-based)
+    member_count = 0
     for mod in modules:
+        # Determine the source file for member discovery
         mod_file = pkg_dir / f"{mod['module_name']}.py"
         if not mod_file.exists():
             mod_file = pkg_dir / mod["module_name"] / "__init__.py"
 
-        members = _get_module_members(mod_file) if mod_file.exists() else {"classes": [], "functions": []}
+        members = _get_public_members(mod_file, pkg_dir)
 
+        # Generate submodule overview page with tables
         members_tables = _build_members_tables(
             "yohou",
             mod["module_name"],
@@ -494,147 +513,91 @@ def _generate_api_pages(project_root):
             members_tables=members_tables,
         )
         dest = api_dir / f"{mod['module_name']}.md"
-        if not dest.exists():
-            # Only generate if no hand-maintained page exists
-            dest.write_text(content, encoding="utf-8")
-            print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
+        dest.write_text(content, encoding="utf-8")
+        print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
 
-    # Per-member detail pages (runtime discovery)
-    data = _get_discovery_data()
-    member_count = 0
+        # Generate per-class/function detail pages
+        member_count += _write_member_pages(generated_dir, _page_template, mod["module_name"], members)
 
-    for name, cls in data["abstract_base_classes"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        member_count += 1
-
-    for name, cls in data["estimators"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        member_count += 1
-
-    for name, cls in data["displays"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        member_count += 1
-
-    for name, func in data["functions"]:
-        module = func.__module__
-        qualified = f"{module}.{name}"
-        page = generated_dir / f"{qualified}.md"
-        page.write_text(_page_template.format(name=name, qualified=qualified))
-        member_count += 1
+    # Symbols exported only from the package root have no submodule and so no
+    # module page; they still need a detail page for the table and See Also to
+    # link at. Without this the link resolves to nothing and, being raw HTML,
+    # nothing validates it.
+    member_count += _write_member_pages(generated_dir, _page_template, "", _get_root_members(project_root))
 
     if member_count:
         print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
 
-    # Fill gaps: AST-discovered members not covered by runtime discovery
-    # Some classes (e.g., dataclasses, non-estimator types) appear in
-    # __init__.py re-exports but are not found by all_estimators/displays/functions.
-    # Generate pages for those so submodule overview links are not broken.
-    gap_count = 0
-    for mod in modules:
-        mod_file = pkg_dir / f"{mod['module_name']}.py"
-        if not mod_file.exists():
-            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
-        if not mod_file.exists():
-            continue
 
-        members = _get_module_members(mod_file)
-        for entry in members["classes"] + members["functions"] + members["attributes"]:
-            src = entry.get("source_module", "")
-            if src:
-                qualified = f"yohou.{mod['module_name']}.{src}.{entry['name']}"
-            else:
-                qualified = f"yohou.{mod['module_name']}.{entry['name']}"
-            page = generated_dir / f"{qualified}.md"
-            if not page.exists():
-                page.write_text(_page_template.format(name=entry["name"], qualified=qualified))
-                gap_count += 1
+def _site_root_prefix(page):
+    """Relative path from `page`'s rendered URL back to the site root.
 
-    if gap_count:
-        print(f"[hooks] generated {gap_count} additional API pages from AST discovery")
+    Every link this file injects is relative, because the site may be served
+    under a subpath and `use_directory_urls` makes each page its own directory.
+    A hardcoded `../../` only works if the page never moves: a project is free
+    to put its API index at `pages/api/index.md` rather than the template's
+    `pages/reference/api.md`, and a fixed prefix silently 404s every link on it.
+    """
+    parts = page.file.src_path.split("/")
+    depth = len(parts) if parts[-1] != "index.md" else len(parts) - 1
+    return "../" * depth
 
 
-def _build_api_table_html(project_root):
+def _build_api_table_html(project_root, prefix):
     """Build an HTML <table> for the API index with DataTables init.
 
     Lists every public class and function across all submodules with
-    Name, Type, Module, and Description columns.  Uses runtime discovery
-    via ``_get_discovery_data()`` for accurate type classification and
-    qualified names.  The table is initialised with jQuery DataTables for
-    client-side filtering and sorting.
+    Name, Type, Module, and Description columns.  The table is initialised
+    with jQuery DataTables for client-side filtering and sorting.
     """
-    data = _get_discovery_data()
-
-    # Map top-level submodule to its API page slug
-    _submodule_page = {mod["module_name"]: mod["module_name"] for mod in _get_submodules(project_root)}
-
-    def _submodule_label_and_href(full_module: str):
-        """Return (display_label, relative_href) for a full module path."""
-        parts = full_module.split(".")
-        # Take first two parts: yohou.<submodule>
-        submodule_key = parts[1] if len(parts) >= 2 else full_module
-        submodule = ".".join(parts[:2]) if len(parts) >= 2 else full_module
-        page = _submodule_page.get(submodule_key)
-        if page is not None:
-            return submodule, f"{page}/"
-        return submodule, None
+    modules = _get_submodules(project_root)
+    pkg_dir = project_root / "src" / "yohou"
 
     rows = []
-    for name, cls in data["abstract_base_classes"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Base Class", module, desc, qualified))
+    scans = []
+    for mod in modules:
+        mod_file = _module_source(pkg_dir, mod["module_name"])
+        if not mod_file.exists():
+            continue
+        scans.append((mod["module_name"], _get_public_members(mod_file, pkg_dir)))
+    # Symbols exported only from the package root belong to no submodule, so a
+    # loop over submodules alone leaves them out of the table entirely.
+    scans.append(("", _get_root_members(project_root)))
 
-    for name, cls in data["estimators"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Class", module, desc, qualified))
+    for module_name, members in scans:
+        module_label = _qualified_name(module_name, "").rstrip(".") or "yohou"
+        # A root export has no module page, and there is nothing to link it to: this
+        # pointed at pages/api/, which is only a directory of generated module pages
+        # and has no index of its own, so every root export's Module cell was a 404.
+        # Nothing catches that -- the cell is raw HTML from this hook, which --strict
+        # never validates, and only a project with a root-only export renders one.
+        module_href = f"{prefix}pages/api/{module_name}/" if module_name else None
 
-    for name, cls in data["displays"]:
-        module = cls.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(cls)
-        rows.append((name, "Display", module, desc, qualified))
+        for cls in members["classes"]:
+            qualified = _qualified_name(module_name, cls["name"])
+            rows.append((cls["name"], "Class", module_label, module_href, cls["doc"], qualified))
 
-    for name, func in data["functions"]:
-        module = func.__module__
-        qualified = f"{module}.{name}"
-        desc = _first_docstring_line(func)
-        rows.append((name, "Function", module, desc, qualified))
+        for func in members["functions"]:
+            qualified = _qualified_name(module_name, func["name"])
+            rows.append((func["name"], "Function", module_label, module_href, func["doc"], qualified))
 
     rows.sort(key=lambda r: r[0].lower())
 
     _type_badge_cls = {
-        "Base Class": "api-badge--base",
         "Class": "api-badge--class",
-        "Display": "api-badge--display",
         "Function": "api-badge--function",
     }
 
     tbody_lines = []
-    for name, kind, module, desc, qualified in rows:
-        href = f"generated/{qualified}/"
-        label, mod_href = _submodule_label_and_href(module)
-        if mod_href is not None:
-            mod_cell = f'<a href="{mod_href}">{label}</a>'
-        else:
-            mod_cell = label
+    for name, kind, module_label, module_href, desc, qualified in rows:
+        href = f"{prefix}pages/api/generated/{qualified}/"
         badge_cls = _type_badge_cls.get(kind, "")
+        module_cell = f'<a href="{module_href}">{module_label}</a>' if module_href else module_label
         tbody_lines.append(
             f"      <tr>"
             f'<td><a href="{href}"><code>{name}</code></a></td>'
             f'<td><span class="api-badge {badge_cls}">{kind}</span></td>'
-            f"<td>{mod_cell}</td>"
+            f"<td>{module_cell}</td>"
             f"<td>{desc}</td>"
             f"</tr>"
         )
@@ -684,12 +647,50 @@ def _build_api_table_html(project_root):
 
 
 _GALLERY_CACHE = None
-_COMPANION_INDEX = None
+_COMPANION_INDEX_CACHE = None
+_GALLERY_PAGE_CACHE = None
+
+# Written beside an exported notebook to record the source it was built from.
+# Deliberately not a _CACHE module global: this one has to outlive the process,
+# because its whole purpose is to skip work on a *later* build.
+_SOURCE_HASH_FILE = ".source_hash"
+
+
+def _notebook_content_hash(notebook):
+    """Hash a notebook's source, to tell an unchanged one from an edited one."""
+    return hashlib.sha256(notebook.read_bytes()).hexdigest()
+
+
+def _is_cached(output_dir, expected_hash):
+    """Whether this notebook's export is present and built from this exact source.
+
+    Requires the rendered page *and* a matching hash. Checking the hash alone
+    would reuse a directory whose html failed to write; checking the page alone
+    would serve a stale render of an edited notebook forever.
+    """
+    hash_file = output_dir / _SOURCE_HASH_FILE
+    if not (output_dir / "index.html").exists() or not hash_file.exists():
+        return False
+    try:
+        return hash_file.read_text(encoding="utf-8").strip() == expected_hash
+    except OSError:
+        return False
+
+
+# Max example cards on a single API page.  Most symbols are well under this
+# (a typical notebook demonstrates a handful of things); the cap exists for the
+# widely used helpers, where an uncapped list runs to dozens of cards and stops
+# being scannable.  The overflow link keeps the rest reachable.
+#
+# The `_CACHE` suffix on cache globals above is load-bearing: the per-build
+# reset's registration test discovers caches by that suffix, so a cache named
+# otherwise escapes it silently.
+_API_EXAMPLES_CAP = 6
 
 
 def _get_gallery_items(project_root):
-    """Parse __gallery__ metadata from all example notebooks (cached)."""
-    global _GALLERY_CACHE
+    """Parse ``__gallery__`` metadata from all example notebooks (cached)."""
+    global _GALLERY_CACHE  # noqa: PLW0603
     if _GALLERY_CACHE is not None:
         return _GALLERY_CACHE
 
@@ -724,61 +725,114 @@ def _get_gallery_items(project_root):
         if not gallery or not isinstance(gallery, dict):
             continue
 
-        rel = notebook.relative_to(examples_dir)
-        parts = rel.parts
-        category = parts[0] if len(parts) > 1 else "quickstart"
         stem = notebook.stem
-
-        # view_path is always flat (notebooks are exported to docs/examples/{stem}/)
+        # The export is flat (docs/examples/<stem>/), so [View] keys on the stem.
+        # The playground is not: it reconstructs the real repo path from this URL,
+        # so it must carry the notebook's path relative to examples/. Building it
+        # from the stem assumes a flat examples/ dir and 404s for every notebook
+        # in a subdirectory -- 78 of yohou's 79. The link is generated rather than
+        # authored, so mkdocs never validates it and --strict stays green.
+        rel_parts = notebook.relative_to(examples_dir).with_suffix("").parts
         view_path = f"/examples/{stem}/"
+        open_path = "/examples/" + "/".join(rel_parts) + "/edit/"
 
-        if len(parts) > 1:
-            # open_path preserves category so the marimo-playground rewrite
-            # regex can reconstruct the real repo path (examples/{category}/{stem}.py)
-            open_path = f"/examples/{category}/{stem}/edit/"
-        else:
-            open_path = f"/examples/{stem}/edit/"
-
-        section = gallery.get("section")
-        if section is None:
-            print(f"[gallery] {notebook.relative_to(project_root)}: missing 'section' field", file=sys.stderr)
+        # api_references: absent (None) means "infer from imports"; an empty
+        # list means "this notebook belongs on no API page" -- a deliberate
+        # statement, not a default.
+        api_references = gallery.get("api_references")
+        if api_references is not None and not isinstance(api_references, list):
+            api_references = None
 
         items.append({
             "title": gallery.get("title", stem.replace("_", " ").title()),
-            "category": category,
-            "diataxis_category": gallery.get("category"),
-            "companion": gallery.get("companion"),
             "description": gallery.get("description", ""),
+            "category": gallery.get("category", ""),
+            # `category` is the Diataxis kind (tutorial / how-to); `section` is
+            # the topic grouping a gallery splits into once it outgrows one
+            # page. They are independent: a section holds both kinds.
+            "section": gallery.get("section", ""),
+            "api_references": api_references,
+            "companion": gallery.get("companion"),
             "view_path": view_path,
             "open_path": open_path,
             "stem": stem,
-            "section": section,
-            "api_references": gallery.get("api_references", []),
         })
 
     _GALLERY_CACHE = items
     return _GALLERY_CACHE
 
 
-_DIATAXIS_CATEGORIES = {"tutorial", "how-to"}
+_SECTION_GALLERY_RE = re.compile(r"<!-- GALLERY:section:([\w.-]+) -->")
 
 
-def _build_gallery_html(project_root, category=None):
-    """Build gallery card grid as Material 'grid cards' markdown."""
+def _get_gallery_sections(project_root):
+    """Every section name declared by a notebook, in first-seen order."""
+    seen = []
+    for item in _get_gallery_items(project_root):
+        section = item.get("section")
+        if section and section not in seen:
+            seen.append(section)
+    return seen
+
+
+def _build_gallery_html(project_root, section=None):
+    """Build gallery card grid as Material 'grid cards' markdown, grouped by category.
+
+    ``section`` narrows the grid to the notebooks declaring that ``section``,
+    which is how a gallery too big for one page splits across subpages. The
+    category grouping still applies inside the section: a topic holds both
+    tutorials and how-tos, and the split is by topic, not by kind.
+    """
     items = _get_gallery_items(project_root)
 
-    if category:
-        if category.startswith("section:"):
-            section_key = category.removeprefix("section:")
-            items = [i for i in items if i.get("section") == section_key]
-        elif category in _DIATAXIS_CATEGORIES:
-            items = [i for i in items if i["diataxis_category"] == category]
-        else:
-            items = [i for i in items if i["category"] == category]
+    if section is not None:
+        items = [item for item in items if item.get("section") == section]
+        if not items:
+            # An author renamed a section, or misspelled one. Either way the
+            # page silently loses its whole card grid, so refuse to be quiet.
+            known = ", ".join(_get_gallery_sections(project_root)) or "none"
+            log.warning(
+                "gallery section %r matches no notebook (declared sections: %s). "
+                "The page requesting it renders no cards.",
+                section,
+                known,
+            )
+            return f"<!-- no gallery items in section: {section} -->\n"
 
     if not items:
         return "<!-- no gallery items found -->\n"
 
+    # Group items by category, preserving order within each group
+    _CATEGORY_ORDER = ["tutorial", "how-to"]
+    _CATEGORY_HEADINGS = {
+        "tutorial": "Tutorials",
+        "how-to": "How-to Guides",
+    }
+
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        cat = item.get("category") or "other"
+        grouped.setdefault(cat, []).append(item)
+
+    sections = []
+    for cat in _CATEGORY_ORDER:
+        group = grouped.pop(cat, [])
+        if not group:
+            continue
+        heading = _CATEGORY_HEADINGS.get(cat, cat.title())
+        cards = _build_gallery_cards(group)
+        sections.append(f"## {heading}\n\n{cards}")
+
+    # Remaining uncategorized items
+    for _cat, group in grouped.items():
+        cards = _build_gallery_cards(group)
+        sections.append(cards)
+
+    return "\n\n".join(sections) + "\n"
+
+
+def _build_gallery_cards(items):
+    """Build a Material 'grid cards' block from a list of gallery items."""
     cards = []
     for item in items:
         desc = item["description"] or "No description."
@@ -799,93 +853,157 @@ def _build_gallery_html(project_root, category=None):
 _NOTEBOOK_API_USAGE_CACHE = None
 
 
-def _normalize_companion_path(path: str) -> str:
-    """Normalize a companion path for comparison.
+def _get_gallery_page_url(project_root):
+    """URL of the page hosting the gallery, or None if there is not one.
 
-    Strips leading/trailing slashes and .md suffix so that
-    ``"pages/how-to/create-a-scorer"`` in __gallery__ matches
-    ``"pages/how-to/create-a-scorer.md"`` as a src_uri.
+    The gallery page is whichever page carries the ``<!-- GALLERY -->``
+    placeholder -- found by looking, because that page is local-owned and a
+    project is free to move it.  A hardcoded path is wrong the moment someone
+    reorganises their docs, and produces a 404 with no build error.
+
+    ``index.md`` is dropped from the URL: under ``use_directory_urls`` (mkdocs'
+    default) ``pages/examples/index.md`` serves at ``/pages/examples/``, not at
+    ``/pages/examples/index/``.  This link is emitted as raw HTML, so mkdocs
+    never validates it and even --strict cannot see it break -- only RTD's
+    post-build linkchecker catches it.
     """
-    return path.strip("/").removesuffix(".md")
+    global _GALLERY_PAGE_CACHE  # noqa: PLW0603
+    if _GALLERY_PAGE_CACHE is not None:
+        return _GALLERY_PAGE_CACHE or None
+
+    docs_dir = project_root / "docs"
+    _GALLERY_PAGE_CACHE = ""
+    if not docs_dir.exists():
+        return None
+
+    def _url_of(md):
+        rel = md.relative_to(docs_dir).with_suffix("")
+        parts = rel.parts[:-1] if rel.name == "index" else rel.parts
+        return "/" + "".join(f"{part}/" for part in parts)
+
+    sectioned = []
+    for md in sorted(docs_dir.rglob("*.md")):
+        try:
+            text = md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "<!-- GALLERY -->" in text:
+            _GALLERY_PAGE_CACHE = _url_of(md)
+            return _GALLERY_PAGE_CACHE
+        if _SECTION_GALLERY_RE.search(text):
+            sectioned.append(md)
+
+    # A gallery too big for one page has no bare <!-- GALLERY --> at all: it is a
+    # directory of <!-- GALLERY:section:… --> pages behind an index. Looking only
+    # for the bare marker returns None for those projects, and the caller drops
+    # the "see all N examples" link on an `and gallery_url` -- so the API pages
+    # for the most-used symbols, which are the ones that overflow the cap, link to
+    # nothing at all. Silently: no marker is involved, so nothing warns.
+    if sectioned:
+        directory = sectioned[0].parent
+        if all(md.parent == directory for md in sectioned) and (directory / "index.md").is_file():
+            _GALLERY_PAGE_CACHE = _url_of(directory / "index.md")
+
+    return _GALLERY_PAGE_CACHE or None
+
+
+def _normalize_companion_path(path):
+    """Normalize a companion path so authored variants compare equal.
+
+    ``companion`` is hand-written, so it turns up as ``/pages/how-to/x/``,
+    ``pages/how-to/x`` and ``pages/how-to/x.md``.  All three mean the same
+    page; normalizing beats making the author guess the one true spelling.
+    """
+    return str(path).strip("/").removesuffix(".md").removesuffix("/index")
 
 
 def _get_companion_index(project_root):
-    """Build reverse map: normalized doc path -> list of gallery items (cached)."""
-    global _COMPANION_INDEX
-    if _COMPANION_INDEX is not None:
-        return _COMPANION_INDEX
+    """Reverse map: normalized doc page path -> notebooks naming it (cached)."""
+    global _COMPANION_INDEX_CACHE  # noqa: PLW0603
+    if _COMPANION_INDEX_CACHE is not None:
+        return _COMPANION_INDEX_CACHE
 
     index: dict[str, list[dict]] = {}
     for item in _get_gallery_items(project_root):
         companion = item.get("companion")
         if companion:
-            key = _normalize_companion_path(companion)
-            index.setdefault(key, []).append(item)
-    _COMPANION_INDEX = index
-    return _COMPANION_INDEX
+            index.setdefault(_normalize_companion_path(companion), []).append(item)
+    _COMPANION_INDEX_CACHE = index
+    return _COMPANION_INDEX_CACHE
 
 
-def _build_companion_cards_html(project_root, page_src_uri: str) -> str:
-    """Build HTML cards for notebooks whose companion matches this page."""
-    key = _normalize_companion_path(page_src_uri)
-    items = _get_companion_index(project_root).get(key, [])
-
+def _build_companion_cards_html(project_root, page_src_uri):
+    """Build cards for notebooks declaring this page as their companion."""
+    items = _get_companion_index(project_root).get(_normalize_companion_path(page_src_uri), [])
     if not items:
         return ""
-
-    cards = []
-    for item in items:
-        desc = item["description"] or "No description."
-        cards.append(
-            f'<div class="companion-card">'
-            f"<strong>{item['title']}</strong>"
-            f"<p>{desc}</p>"
-            f'<span class="companion-card-links">'
-            f'<a href="{item["view_path"]}">View</a>'
-            f'<a href="{item["open_path"]}">Open in marimo</a>'
-            f"</span>"
-            f"</div>"
-        )
-
-    return '<div class="companion-cards">' + "".join(cards) + "</div>\n"
-
-
-_NOTEBOOK_API_USAGE_CACHE = None
+    # The heading is emitted here rather than written into the page, so a page
+    # whose companions were removed renders nothing at all instead of a heading
+    # with an empty section under it.
+    cards = _build_gallery_cards(sorted(items, key=lambda item: item["title"]))
+    return f"## Try it interactively\n\n{cards}"
 
 
 def _get_notebook_api_usage(project_root):
     """Build reverse map: qualified API name → list of gallery items that use it.
 
-    Reads the ``api_references`` list from each gallery item's ``__gallery__``
-    metadata and resolves each short name to its fully-qualified identifier via
-    ``_get_discovery_data()``.  Only notebooks that explicitly declare
-    ``api_references`` contribute to the map.
+    Scans example notebooks for ``from yohou.* import …``
+    statements and maps each imported name back to its fully-qualified
+    API identifier.
     """
     global _NOTEBOOK_API_USAGE_CACHE  # noqa: PLW0603
     if _NOTEBOOK_API_USAGE_CACHE is not None:
         return _NOTEBOOK_API_USAGE_CACHE
 
-    data = _get_discovery_data()
+    name_to_qualified = _get_api_name_lookup(project_root)
 
-    # Build short name → qualified lookup using cls.__module__ (same path that
-    # _generate_api_pages uses for the <!-- EXAMPLES_FOR:... --> placeholder).
-    name_to_qualified: dict[str, str] = {}
-    for name, cls in data["abstract_base_classes"] + data["estimators"] + data["displays"]:
-        name_to_qualified[name] = f"{cls.__module__}.{name}"
-    for name, func in data["functions"]:
-        name_to_qualified[name] = f"{func.__module__}.{name}"
+    gallery_items = _get_gallery_items(project_root)
+    stem_to_item = {item["stem"]: item for item in gallery_items}
 
     usage: dict[str, list[dict]] = {}
-    for item in _get_gallery_items(project_root):
-        for short_name in item.get("api_references", []):
-            qualified = name_to_qualified.get(short_name)
-            if qualified is None:
-                print(
-                    f"[gallery] {item['stem']}: api_references contains unknown name {short_name!r}",
-                    file=sys.stderr,
-                )
+    examples_dir = project_root / "examples"
+    if not examples_dir.exists():
+        _NOTEBOOK_API_USAGE_CACHE = {}
+        return _NOTEBOOK_API_USAGE_CACHE
+
+    for notebook in sorted(examples_dir.rglob("*.py")):
+        if "__marimo__" in notebook.parts or "bugs" in notebook.parts:
+            continue
+        if "__init__" in notebook.name:
+            continue
+
+        stem = notebook.stem
+        item = stem_to_item.get(stem)
+        if item is None:
+            continue
+
+        # Declared api_references win; import scanning is the fallback.
+        # Import scanning cannot tell a symbol a notebook *demonstrates* from
+        # one it merely uses as scaffolding, so an author saying which is which
+        # beats inference.  But a notebook that says nothing must still work --
+        # a fresh project has no metadata, and the feature has to be visible
+        # before anyone opts in.
+        declared = item.get("api_references")
+        if declared is not None:
+            imported_names = set(declared)
+        else:
+            try:
+                source = notebook.read_text(encoding="utf-8")
+                tree = ast.parse(source)
+            except (SyntaxError, UnicodeDecodeError):
                 continue
-            usage.setdefault(qualified, []).append(item)
+
+            # Extract names imported from yohou.*
+            imported_names = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("yohou"):
+                    for alias in node.names:
+                        imported_names.add(alias.name)
+
+        for imp_name in imported_names:
+            qualified = name_to_qualified.get(imp_name)
+            if qualified is not None:
+                usage.setdefault(qualified, []).append(item)
 
     _NOTEBOOK_API_USAGE_CACHE = usage
     return _NOTEBOOK_API_USAGE_CACHE
@@ -899,39 +1017,272 @@ def _build_api_examples_html(project_root, qualified_name):
     if not items:
         return ""
 
-    # Deduplicate by stem (in case of multiple imports from same notebook)
-    seen = set()
-    unique_items = []
+    # Deduplicate by stem
+    seen: set[str] = set()
+    unique_items: list[dict] = []
     for item in items:
         if item["stem"] not in seen:
             seen.add(item["stem"])
             unique_items.append(item)
 
-    cards = []
-    for item in unique_items:
-        desc = item["description"] or "No description."
-        cat_label = _CATEGORY_LABELS.get(item["category"], item["category"].title())
-        cards.append(
-            f"-   **{item['title']}**\n"
-            f"\n"
-            f"    ---\n"
-            f"\n"
-            f"    <small>{cat_label}</small>\n"
-            f"\n"
-            f"    {desc}\n"
-            f"\n"
-            f"    [View]({item['view_path']}) \u00b7 "
-            f"[Open in marimo]({item['open_path']})"
+    # Bound the list.  A widely used helper accumulates a card per notebook,
+    # so the most-used symbols get the longest and least useful lists -- the
+    # failure is inversely proportional to usefulness.  Curation alone does not
+    # fix this: a genuinely central class really is used by dozens of
+    # notebooks.  Sort by title so the selection is stable across builds.
+    unique_items.sort(key=lambda item: item["title"])
+    total = len(unique_items)
+    shown = unique_items[:_API_EXAMPLES_CAP]
+
+    html = "## Examples\n\nThe following example notebooks use this component:\n\n" + _build_gallery_cards(shown)
+    gallery_url = _get_gallery_page_url(project_root)
+    if total > _API_EXAMPLES_CAP:
+        if gallery_url:
+            html += f"\n[See all {total} examples in the gallery]({gallery_url})\n"
+        else:
+            # The symbols that overflow the cap are the most-used ones, so this
+            # drops the link exactly where the remaining examples matter most --
+            # and does it on an `if`, with no marker involved for the catch-all
+            # to notice. yohou renders 6 of PointReductionForecaster's 45 and
+            # links to none of the other 39.
+            log.warning(
+                "%s has %d examples but no gallery page to link the other %d to. Give the "
+                "gallery index a <!-- GALLERY --> marker, or put its "
+                "<!-- GALLERY:section:… --> pages behind an index.md.",
+                qualified_name,
+                total,
+                total - _API_EXAMPLES_CAP,
+            )
+    return html
+
+
+# ---------------------------------------------------------------------------
+# Marker substitution
+# ---------------------------------------------------------------------------
+
+
+# Every name this file substitutes. A comment *opening* with one of these is a
+# marker; if one survives to the end of on_page_markdown, it was misspelled.
+# Matched without a word boundary so `<!-- GALLERY:quickstart -->` and
+# `<!-- SUBPAGES_FOO -->` are both caught, not just the separator-delimited ones.
+#
+# The net is deliberately the marker namespace and nothing else: it cannot catch
+# a typo that mangles the name itself (`<!-- GALLRY -->`), because widening it to
+# every upper-case comment would flag ordinary `<!-- TODO -->`s. The realistic
+# mistake is right name, wrong syntax -- which is exactly what shipped.
+_MARKER_NAMES = ("API_TABLE", "SUBPAGES", "GALLERY", "COMPANION_NOTEBOOKS", "EXAMPLES_FOR")
+_UNHANDLED_MARKER_RE = re.compile(r"<!--\s*(?:" + "|".join(_MARKER_NAMES) + r")[^>]*-->")
+
+
+def _warn_on_unhandled_markers(markdown, src_path):
+    """Warn about a marker that no substitution above recognised.
+
+    The per-marker warnings only fire for a *well-formed* marker that resolves to
+    nothing -- an unknown gallery section, an index with no children. A
+    misspelled one is worse and was completely silent: `<!-- GALLERY:quickstart
+    -->` matches neither the bare nor the sectioned pattern, so nothing claimed
+    it, nothing substituted it, and it shipped to the page as a raw comment that
+    renders as blank space. It cannot even be reported by the code that would
+    have handled it, because that code never sees it. Catching the leftovers is
+    the only place a typo in the marker namespace can be noticed at all.
+    """
+    for match in _UNHANDLED_MARKER_RE.finditer(markdown):
+        log.warning(
+            "%s: unrecognised marker %s -- it renders as blank space. "
+            "Known markers: <!-- API_TABLE -->, <!-- SUBPAGES -->, <!-- GALLERY -->, "
+            "<!-- GALLERY:section:NAME -->, <!-- COMPANION_NOTEBOOKS -->, <!-- EXAMPLES_FOR:NAME -->.",
+            src_path,
+            match.group(0),
         )
 
-    return (
-        "## Examples\n\n"
-        "The following example notebooks use this component:\n\n"
-        '<div class="grid cards" markdown>\n\n' + "\n\n".join(cards) + "\n\n</div>\n"
-    )
+
+def _replace_marker(markdown, marker, replacement):
+    """Replace ``marker`` with ``replacement``, re-indented to the marker's column.
+
+    A marker nested inside an indented block -- an admonition body, a list item
+    -- carries leading whitespace that its replacement has to inherit. A plain
+    ``str.replace`` indents only the first line, so every line after it lands at
+    column 0 and silently falls out of the enclosing block: the block keeps the
+    first line and the rest renders as a sibling. That failure is invisible in
+    the markdown and only shows up in the built HTML, which is why it survived
+    so long. Matching the indentation keeps the replacement inside whatever the
+    author nested it in.
+    """
+    if marker not in markdown:
+        return markdown
+
+    out = []
+    for line in markdown.split("\n"):
+        stripped = line.strip()
+        if stripped != marker:
+            # A marker sharing its line with prose is substituted in place; it
+            # was never nested, so there is no indentation to match.
+            out.append(line.replace(marker, replacement) if marker in line else line)
+            continue
+        indent = line[: len(line) - len(line.lstrip())]
+        if not replacement:
+            continue
+        if not indent:
+            out.append(replacement)
+            continue
+        # Blank lines stay blank: trailing whitespace on an "empty" line is a
+        # lint violation, and markdown does not need it to keep the block open.
+        out.extend(indent + rline if rline.strip() else "" for rline in replacement.split("\n"))
+    return "\n".join(out)
 
 
-def _build_module_toc(config, current_src_path=None):
+# ---------------------------------------------------------------------------
+# Section index (<!-- SUBPAGES -->)
+# ---------------------------------------------------------------------------
+
+
+_FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+_H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
+_DESCRIPTION_RE = re.compile(r"^description:\s*(.+?)\s*$", re.MULTILINE)
+
+
+def _nav_entries(config):
+    """Map ``src_path`` -> (position in the nav, title the nav gives it).
+
+    The nav is the order the author chose and the order the reader sees in the
+    sidebar; an index that lists its pages in a different order than the nav
+    beside it reads as a different set of pages. The title is a fallback for a
+    page that has no H1 of its own -- see _page_title_and_description.
+    """
+    entries = {}
+
+    def walk(node, title=None):
+        if isinstance(node, str):
+            entries.setdefault(node, (len(entries), title))
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, key if isinstance(value, str) else None)
+
+    walk(config.get("nav") or [])
+    return entries
+
+
+def _page_title_and_description(abs_path):
+    """Pull a page's title and one-line summary from its own source.
+
+    Title is the H1; summary is the frontmatter ``description`` when present,
+    else the first prose paragraph. Deriving both from the page keeps the index
+    honest -- there is no second copy of the title to drift out of sync.
+    """
+    try:
+        text = Path(abs_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None, ""
+
+    description = ""
+    frontmatter = _FRONTMATTER_RE.match(text)
+    if frontmatter:
+        found = _DESCRIPTION_RE.search(frontmatter.group(1))
+        if found:
+            description = found.group(1).strip().strip("\"'")
+        text = text[frontmatter.end() :]
+
+    heading = _H1_RE.search(text)
+    if not heading:
+        return None, description
+    title = heading.group(1).strip()
+
+    if not description:
+        body = text[heading.end() :]
+        for raw_block in body.split("\n\n"):
+            block = raw_block.strip()
+            # Skip anything that is not prose: nested headings, markers,
+            # admonitions, code fences, tables, images, lists.
+            if not block or block[0] in "#<!|-*>`" or block.startswith("!!!"):
+                continue
+            description = " ".join(block.split())
+            break
+
+    return title, description
+
+
+def _build_subpages_list(config, page, files):
+    """List the pages this index page introduces, as ``- [Title](slug.md): summary``.
+
+    Generated rather than hand-written: an index is the one page guaranteed to
+    fall behind, because adding a page elsewhere is what makes it stale, and
+    nothing fails when it does.
+    """
+    src = page.file.src_path
+    directory = posixpath.dirname(src)
+
+    siblings = []
+    for candidate in files:
+        candidate_src = getattr(candidate, "src_path", "")
+        if not candidate_src.endswith(".md") or candidate_src == src:
+            continue
+        # Direct children only: a nested section owns its own index.
+        if posixpath.dirname(candidate_src) != directory:
+            continue
+        if posixpath.basename(candidate_src) == "index.md":
+            continue
+        siblings.append(candidate)
+
+    if not siblings:
+        log.warning("<!-- SUBPAGES --> on %s, which has no sibling pages to list.", src)
+        return "<!-- no subpages -->\n"
+
+    entries = _nav_entries(config)
+
+    # The index enumerates sibling *files*; the sidebar comes from mkdocs.yml.
+    # When the two disagree the index quietly papers over it -- an entry dropped
+    # from the nav still appears here, so the page stays reachable by link while
+    # vanishing from navigation. mkdocs itself reports not-in-nav pages at INFO,
+    # which --strict does not fail on, so nothing else says a word. A copier
+    # update deleted a real nav entry exactly this way and every other guard
+    # passed it.
+    orphans = sorted(s.src_path for s in siblings if s.src_path not in entries)
+    if orphans:
+        log.warning(
+            "%s lists %s, which %s missing from the nav in mkdocs.yml -- the page is linked but "
+            "unreachable by navigation.",
+            src,
+            ", ".join(orphans),
+            "is" if len(orphans) == 1 else "are",
+        )
+
+    rows = []
+    for sibling in siblings:
+        title, description = _page_title_and_description(sibling.abs_src_path)
+        position, nav_title = entries.get(sibling.src_path, (len(entries) + 1, None))
+        if title is None:
+            # A page can legitimately have no H1 in its own source: a bare
+            # `--8<-- "CHANGELOG.md"` include grows one only once snippets
+            # expand, which is after this runs. The nav already names such a
+            # page, and that name is what the sidebar shows, so prefer it over
+            # dropping the page from its own index.
+            title = nav_title
+        if title is None:
+            log.warning(
+                "%s has no H1 heading and no nav title; omitted from the %s index.",
+                sibling.src_path,
+                src,
+            )
+            continue
+        rows.append((position, title, posixpath.basename(sibling.src_path), description))
+
+    if not rows:
+        return "<!-- no subpages -->\n"
+
+    rows.sort(key=lambda row: (row[0], row[1]))
+    lines = [f"- [{title}]({slug})" + (f": {desc}" if desc else "") for _, title, slug, desc in rows]
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# API sidebar module TOC
+# ---------------------------------------------------------------------------
+
+
+def _build_module_toc(config, current_src_path=None, prefix=None):
     """Build the module TOC list used by the api-submodule sidebar template.
 
     Parameters
@@ -952,8 +1303,6 @@ def _build_module_toc(config, current_src_path=None):
     api_dir = docs_dir / "pages" / "api"
     project_root = docs_dir.parent
 
-    is_index = current_src_path is None or current_src_path == "pages/api/index.md"
-
     modules = _get_submodules(project_root)
     module_toc = []
 
@@ -963,12 +1312,11 @@ def _build_module_toc(config, current_src_path=None):
         if not md_path.exists():
             continue
 
-        # Compute relative URL
-        if is_index:
-            # api/index.md is at pages/api/, submodule pages at pages/api/<module>/
-            page_url = f"{md_filename.replace('.md', '/')}"
-        else:
-            page_url = f"../{md_filename.replace('.md', '/')}".replace("//", "/")
+        # Site-root relative, so the TOC is correct on any page that renders it.
+        # The old form branched on whether the current page was the API index and
+        # hardcoded that index's depth -- which silently 404s for a project that
+        # keeps its index somewhere else.
+        page_url = f"{prefix}pages/api/{md_filename.replace('.md', '/')}"
 
         active = current_src_path == f"pages/api/{md_filename}" if current_src_path else False
 
@@ -992,7 +1340,10 @@ def _build_module_toc(config, current_src_path=None):
     return module_toc
 
 
+# ---------------------------------------------------------------------------
 # API page content post-processing
+# ---------------------------------------------------------------------------
+
 _GIT_REF_CACHE = None
 
 
@@ -1029,6 +1380,346 @@ _DETAIL_SECTION_SLUGS = {
     "see-also": ("see-also", "See Also"),
     "references": ("references", "References"),
 }
+
+
+_SEE_ALSO_BLOCK_RE = re.compile(r'<details\s+class="see-also"[^>]*>.*?</details>', re.DOTALL)
+# An entry's name sits at the START of its line -- mkdocstrings renders one entry
+# per line inside the paragraph. Anchoring here is what keeps a colon-terminated
+# word in an entry's DESCRIPTION ("Target : Note: see below") from being treated
+# as another entry and linked.
+_SEE_ALSO_ENTRY_RE = re.compile(r"^(\s*)(<code>[^<]+</code>|[A-Za-z_][\w.]*)(\s*:)")
+
+
+# A See Also entry opens a line with a name and a colon. The name may already be
+# a link (mkdocstrings resolved it) or bare (the linkifier is about to). Anything
+# else on its own line is a continuation of the previous entry's description.
+_SEE_ALSO_ENTRY_START_RE = re.compile(
+    r"""^\s*(?:
+        <a\s[^>]*>.*?</a>          # already-linked name
+      | <autoref[^>]*>.*?</autoref>
+      | <code>[^<]+</code>
+      | [A-Za-z_][\w.]*
+    )\s*:""",
+    re.VERBOSE,
+)
+
+
+def _split_see_also_entries(inner):
+    """Split a numpydoc See Also paragraph into one string per entry.
+
+    numpydoc puts one entry per source line; a long description wraps onto
+    continuation lines that carry no name of their own, and those belong to the
+    entry above rather than becoming entries in their own right.
+    """
+    entries: list[list[str]] = []
+    for line in inner.split("\n"):
+        if not line.strip():
+            continue
+        if _SEE_ALSO_ENTRY_START_RE.match(line) or not entries:
+            entries.append([line.strip()])
+        else:
+            entries[-1].append(line.strip())
+    return [" ".join(parts) for parts in entries]
+
+
+def _resolve_see_also_url(name, prefix):
+    """Resolve a See Also entry naming a project symbol to a URL, or None.
+
+    A dotted name whose leading segment is not this package is external and is
+    not resolved here -- see ``_external_autoref`` for why.
+
+    Classifying by leading segment is the only rule that works: the project
+    lookup is keyed by *short* name, so a dotted external name always misses it,
+    and stripping the qualifier first would let ``sklearn.linear_model.Ridge``
+    collide with a project symbol called ``Ridge``.
+
+    The URL is built from *prefix* rather than a bare ``../``. A See Also block
+    renders on any page carrying a docstring, not only under
+    ``pages/api/generated/``, and ``../`` is the right answer from exactly one
+    depth. Same reasoning as ``_site_root_prefix``, which says it plainly: a
+    hardcoded prefix silently 404s every link once the page moves.
+    """
+    package = "yohou"
+    if "." in name and name.split(".", 1)[0] != package:
+        return None
+
+    short_name = name.rsplit(".", 1)[-1]
+    project_root = Path(__file__).parent.parent
+    qualified = _get_api_name_lookup(project_root).get(short_name)
+    return f"{prefix}pages/api/generated/{qualified}/" if qualified is not None else None
+
+
+def _external_autoref(name, title):
+    """Defer an external name to autorefs, which resolves it later.
+
+    External names cannot be resolved here: mkdocstrings registers downloaded
+    inventories into the autorefs URL map, but autorefs applies them in its
+    ``on_env`` hook -- after ``on_page_content`` runs.  Asking for the URL now
+    raises ``KeyError`` even when the inventory is configured.
+
+    So emit autorefs' own markup and let it resolve at the right time.  The
+    ``optional`` attribute is what keeps an unresolvable name quiet: autorefs
+    logs it at debug level and renders the title as plain text, rather than
+    recording it as an unmapped reference and warning (which would fail a
+    ``--strict`` build for a docstring that names something undocumented).
+
+    Only dotted names get here.  A bare name is not offered to autorefs: it
+    could resolve to an unrelated symbol that happens to share the name in some
+    configured inventory, and a wrong link is worse than no link.
+    """
+    return f'<autoref optional identifier="{name}">{title}</autoref>'
+
+
+def _resolve_member_identifier(name):
+    """Qualify a dotted ``Class.member`` See Also entry to its autoref identifier.
+
+    A member -- a method or attribute -- has no page of its own; it is an anchor
+    on its class page, so it cannot be resolved to a URL the way a class or a
+    function can.  This qualifies the entry to a full identifier and hands it to
+    autorefs, which does know the anchor.
+
+    ``OtherClass.build`` becomes ``yohou.module.OtherClass.build``
+    via the short-name lookup; an entry already led by the package name is
+    returned unchanged (its trailing segment is a member, so
+    ``_resolve_see_also_url`` did not resolve it to a page).  Returns None when
+    the leading segment is neither this package nor a known project symbol, so a
+    genuinely external dotted name (``sklearn.linear_model.Ridge``) falls through
+    to external handling and keeps its own inventory link.
+    """
+    package = "yohou"
+    if "." not in name:
+        return None
+    head, rest = name.split(".", 1)
+    if head == package:
+        return name
+    qualified_head = _get_api_name_lookup(Path(__file__).parent.parent).get(head)
+    if qualified_head is None:
+        return None
+    return f"{qualified_head}.{rest}"
+
+
+def _link_entry(name, title, colon, entry, prefix):
+    """Render one See Also entry: project link, deferred external ref, or as-is."""
+    url = _resolve_see_also_url(name, prefix)
+    if url:
+        return f'<a href="{url}">{title}</a>{colon}'
+    member_identifier = _resolve_member_identifier(name)
+    if member_identifier is not None:
+        return _external_autoref(member_identifier, title) + colon
+    if "." in name and name.split(".", 1)[0] != "yohou":
+        return _external_autoref(name, title) + colon
+    return entry
+
+
+# The glossary lives in the explanation quadrant by Diataxis convention. A
+# project without this page simply gets no glossary linking.
+_GLOSSARY_SRC_PATH = "pages/explanation/glossary.md"
+
+# Text inside these never becomes a glossary link: code is not prose, a heading
+# linking mid-title looks broken, and nesting an <a> inside an <a> is invalid.
+_GLOSSARY_SKIP_TAGS = frozenset({"code", "pre", "a", "h1", "h2", "h3", "h4", "h5", "h6", "script", "style"})
+
+# A definition-list term carrying attributes, e.g. ``Memory buffer { #memory-buffer .autolink }``.
+_GLOSSARY_TERM_RE = re.compile(r"^(?!\s)(.+?)\s*\{:?\s*([^}]*)\}\s*$")
+
+
+def _get_glossary_terms(project_root):
+    """Map each auto-linkable glossary term to its anchor (cached).
+
+    The glossary page is the single source of truth: terms are read from it, so
+    a term and its definition cannot drift apart the way a second list in this
+    file would.
+
+    A term opts in with ``.autolink``::
+
+        Memory buffer { #memory-buffer .autolink }
+        :   The internal store of recent rows...
+
+    Opting in is deliberate rather than automatic. A glossary defines whatever
+    its authors find worth defining, including short common words -- "step",
+    "pipeline", "ensemble" -- and auto-linking those wherever they appear in
+    prose produces noise, not navigation. Defining a term and advertising it
+    everywhere are separate editorial decisions, so they get separate syntax.
+    """
+    global _GLOSSARY_TERMS_CACHE  # noqa: PLW0603
+    if _GLOSSARY_TERMS_CACHE is not None:
+        return _GLOSSARY_TERMS_CACHE
+
+    terms = {}
+    page = project_root / "docs" / _GLOSSARY_SRC_PATH
+    try:
+        lines = page.read_text(encoding="utf-8").split("\n")
+    except (OSError, UnicodeDecodeError):
+        _GLOSSARY_TERMS_CACHE = terms
+        return terms
+
+    for i, line in enumerate(lines[:-1]):
+        match = _GLOSSARY_TERM_RE.match(line)
+        # The next line starting with ':' is what makes this a definition-list
+        # term rather than ordinary prose that happens to end in braces.
+        if not match or not lines[i + 1].lstrip().startswith(":"):
+            continue
+        attrs = match.group(2).split()
+        if ".autolink" not in attrs:
+            continue
+        anchor = next((a[1:] for a in attrs if a.startswith("#")), None)
+        if anchor:
+            terms[match.group(1).strip().lower()] = anchor
+
+    _GLOSSARY_TERMS_CACHE = terms
+    return terms
+
+
+def _glossary_link_replacer(terms, rel_glossary, linked):
+    """Build the text-node rewriter that links a term's first occurrence."""
+    # Longest first, so "seasonal naive forecaster" wins over "forecaster"
+    # rather than being shadowed by the shorter term inside it.
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(t) for t in sorted(terms, key=len, reverse=True)) + r")\b",
+        re.IGNORECASE,
+    )
+
+    def _replace(text):
+        def _sub(match):
+            term = match.group(1).lower()
+            if term in linked:
+                return match.group(0)
+            linked.add(term)
+            return f'<a href="{rel_glossary}/#{terms[term]}">{match.group(0)}</a>'
+
+        return pattern.sub(_sub, text)
+
+    return _replace
+
+
+class _GlossaryLinker(HTMLParser):
+    """Rewrites text nodes into glossary links, leaving markup untouched.
+
+    Parsed rather than regexed over the whole page: a bare regex would match
+    inside tag attributes and code blocks, producing broken markup from a
+    document that was fine.
+    """
+
+    def __init__(self, replace):
+        super().__init__(convert_charrefs=False)
+        self._replace = replace
+        self.result = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() in _GLOSSARY_SKIP_TAGS:
+            self._skip_depth += 1
+        self.result.append(self.get_starttag_text())
+
+    def handle_startendtag(self, tag, attrs):
+        self.result.append(self.get_starttag_text())
+
+    def handle_endtag(self, tag):
+        if tag.lower() in _GLOSSARY_SKIP_TAGS:
+            self._skip_depth = max(0, self._skip_depth - 1)
+        self.result.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        self.result.append(data if self._skip_depth else self._replace(data))
+
+    def handle_entityref(self, name):
+        self.result.append(f"&{name};")
+
+    def handle_charref(self, name):
+        self.result.append(f"&#{name};")
+
+    def handle_comment(self, data):
+        self.result.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl):
+        self.result.append(f"<!{decl}>")
+
+    def get_html(self):
+        """Return the rewritten HTML."""
+        return "".join(self.result)
+
+
+def _linkify_glossary_terms(html, page, project_root):
+    """Link the first occurrence of each glossary term on a page.
+
+    First occurrence only: linking every "memory buffer" in a paragraph is
+    noise, and the reader only needs the definition once.
+
+    The glossary page itself is skipped -- it would link its own terms to
+    themselves.
+    """
+    src = page.file.src_path
+    if src == _GLOSSARY_SRC_PATH or not src.startswith("pages/"):
+        return html
+
+    terms = _get_glossary_terms(project_root)
+    if not terms:
+        return html
+
+    # Relative, not absolute: the site may be served under a subpath, and
+    # use_directory_urls means a page's own URL is a directory.
+    dest_dir = posixpath.dirname(page.file.dest_path)
+    rel_glossary = posixpath.relpath(posixpath.splitext(_GLOSSARY_SRC_PATH)[0], dest_dir)
+
+    linker = _GlossaryLinker(_glossary_link_replacer(terms, rel_glossary, set()))
+    linker.feed(html)
+    linker.close()
+    return linker.get_html()
+
+
+def _linkify_see_also(html, prefix):
+    """Turn the names in a rendered See Also section into links.
+
+    Must run while the ``<details class="see-also">`` container still exists --
+    see the ordering comment in ``on_page_content``.  Unresolvable names are
+    left untouched: a docstring may reference a private helper or a concept,
+    and none of those are build errors.
+    """
+
+    def _process_block(block_match):
+        def _linkify_line(line):
+            entry_match = _SEE_ALSO_ENTRY_RE.match(line)
+            if not entry_match:
+                return line
+            lead, token, colon = entry_match.groups()
+            rest = line[entry_match.end() :]
+            code_match = re.fullmatch(r"<code>([^<]+)</code>", token)
+            name = code_match.group(1) if code_match else token
+            title = f"<code>{name}</code>" if code_match else name
+            return lead + _link_entry(name, title, colon, token + colon, prefix) + rest
+
+        def _linkify_inner(inner):
+            # Leave an author's explicit [Name][target] reference alone: they have
+            # said what they mean, and autorefs resolves it later.
+            if "<a " in inner or "<autoref" in inner:
+                return inner
+            return "\n".join(_linkify_line(line) for line in inner.split("\n"))
+
+        def _process_container(container_match):
+            tag, inner = container_match.group(1), container_match.group(2)
+            if tag == "li":
+                # Already one entry per item; only the names need linking.
+                return f"<li>{_linkify_inner(inner)}</li>"
+            entries = _split_see_also_entries(_linkify_inner(inner))
+            if len(entries) < 2:
+                return f"<p>{_linkify_inner(inner)}</p>"
+            # numpydoc puts each entry on its own source line inside one
+            # paragraph, and HTML collapses those newlines to spaces -- so every
+            # entry runs together on a single line, and the more references a
+            # symbol has the worse it reads. An author can dodge it by hand-
+            # writing markdown bullets (yohou does, which is why its pages look
+            # right and nobody else's do), but plain numpydoc is what the other
+            # 145 blocks in the fleet are written in. One entry per line is what
+            # the section is for.
+            items = "".join(f"<li>{entry}</li>" for entry in entries)
+            return f"<ul>{items}</ul>"
+
+        # numpydoc renders See Also entries as a paragraph, one per line; an author
+        # may also write them as a markdown list, which renders as <li>. Both are
+        # ordinary numpydoc, so both get linked.
+        return re.sub(r"<(p|li)>(.*?)</\1>", _process_container, block_match.group(0), flags=re.DOTALL)
+
+    return _SEE_ALSO_BLOCK_RE.sub(_process_block, html)
 
 
 def _make_section_heading(slug, title, level=3):
@@ -1316,186 +2007,62 @@ def _process_api_page_content(html, page, config):
     return html
 
 
-# ---------------------------------------------------------------------------
-# Glossary auto-linking
-# ---------------------------------------------------------------------------
+def on_config(config):
+    """Clear per-build caches.
 
-# Explicit allowlist: display text (lowercase) → glossary anchor slug.
-# Only distinctive, multi-word terms are included to avoid false positives.
-_GLOSSARY_TERMS = {
-    "forecasting horizon": "forecasting-horizon",
-    "observation horizon": "observation-horizon",
-    "memory buffer": "memory-buffer",
-    "composite method": "composite-method",
-    "point forecast": "point-forecast",
-    "interval forecast": "interval-forecast",
-    "class-probability forecast": "class-probability-forecast",
-    "coverage rate": "coverage-rate",
-    "recursive prediction": "recursive-prediction",
-    "error accumulation": "error-accumulation",
-    "rolling evaluation": "rolling-evaluation",
-    "time column contract": "time-column-contract",
-    "panel data": "panel-data",
-    "group prefix": "group-prefix",
-    "panel strategy": "panel-strategy",
-    "exogenous features": "exogenous-features",
-    "known-future features": "known-future-features",
-    "step-indexed columns": "step-indexed-columns",
-    "tabularization": "tabularization",
-    "reduction strategy": "reduction-strategy",
-    "step feature alignment": "step-feature-alignment",
-    "target transformer": "target-transformer",
-    "actual transformer": "actual-transformer",
-    "forecast transformer": "forecast-transformer",
-    "stateful transformer": "stateful-transformer",
-    "stateless transformer": "stateless-transformer",
-    "transformer kind": "transformer-kind",
-    "forecaster composition": "forecaster-composition",
-    "variance stabilization": "variance-stabilization",
-    "stationarity": "stationarity",
-    "conformal prediction": "conformal-prediction",
-    "conformity score": "conformity-score",
-    "calibration set": "calibration-set",
-    "similarity measure": "similarity-measure",
-    "metadata routing": "metadata-routing",
-    "aggregation method": "aggregation-method",
-    "forecast error": "forecast-error",
-    "scale-dependent metric": "scale-dependent-metric",
-    "scale-independent metric": "scale-independent-metric",
-    "cross-validation": "cross-validation",
-    "temporal split": "temporal-split",
-    "expanding window splitter": "expanding-window-splitter",
-    "sliding window splitter": "sliding-window-splitter",
-    "concept drift": "concept-drift",
-    "time weighting": "time-weighting",
-    "proper scoring rule": "proper-scoring-rule",
-}
+    `on_config` is the first event on every build, including each rebuild in a
+    `mkdocs serve` session -- which is the lifetime these caches need.
 
-# Tags whose text content should never be matched by the glossary linker.
-_GLOSSARY_SKIP_TAGS = frozenset({"code", "pre", "a", "h1", "h2", "h3", "h4", "h5", "h6", "script", "style"})
-
-_GLOSSARY_SRC_PATH = "pages/explanation/glossary.md"
-
-
-def _linkify_glossary_terms(html, page, files):
-    """Wrap the first occurrence of each glossary term in a link.
-
-    Operates on rendered HTML.  Skips text inside code, headings, and
-    existing links.  Only processes pages under ``pages/``.
+    Deliberately not `on_startup`: that runs once per `mkdocs` invocation, so a
+    reset there fires when the caches are already empty and never again, and
+    `mkdocs serve` keeps serving the first build's content.
     """
-    src = page.file.src_path
-    if src == _GLOSSARY_SRC_PATH:
-        return html
-    if not src.startswith("pages/"):
-        return html
-
-    # Compute relative path from current page to the glossary page.
-    # Use dest_path (output path) since use_directory_urls puts pages in
-    # subdirectories: "pages/explanation/core-concepts.md" becomes
-    # "pages/explanation/core-concepts/index.html".
-    from posixpath import relpath as posix_relpath
-
-    dest_dir = "/".join(page.file.dest_path.split("/")[:-1])  # e.g. "pages/explanation/core-concepts"
-    glossary_dir = "pages/explanation/glossary"  # built output directory
-    rel_glossary = posix_relpath(glossary_dir, dest_dir)  # e.g. "../glossary"
-
-    # Build a single regex alternation sorted longest-first to prefer
-    # longer matches (e.g. "stateful transformer" before "transformer").
-    sorted_terms = sorted(_GLOSSARY_TERMS.keys(), key=len, reverse=True)
-    pattern = re.compile(
-        r"\b(" + "|".join(re.escape(t) for t in sorted_terms) + r")\b",
-        re.IGNORECASE,
-    )
-
-    linked: set[str] = set()  # terms already linked (lowercase)
-
-    class _GlossaryLinker(HTMLParser):
-        """One-pass HTML rewriter that links glossary terms in text nodes."""
-
-        def __init__(self):
-            super().__init__(convert_charrefs=False)
-            self.result: list[str] = []
-            self._skip_depth: int = 0  # >0 means inside a skip tag
-
-        def handle_starttag(self, tag, attrs):
-            tag_lower = tag.lower()
-            if tag_lower in _GLOSSARY_SKIP_TAGS:
-                self._skip_depth += 1
-            self.result.append(self.get_starttag_text())
-
-        def handle_endtag(self, tag):
-            tag_lower = tag.lower()
-            if tag_lower in _GLOSSARY_SKIP_TAGS:
-                self._skip_depth = max(0, self._skip_depth - 1)
-            self.result.append(f"</{tag}>")
-
-        def handle_data(self, data):
-            if self._skip_depth > 0:
-                self.result.append(data)
-                return
-            self.result.append(_replace_terms(data))
-
-        def handle_entityref(self, name):
-            self.result.append(f"&{name};")
-
-        def handle_charref(self, name):
-            self.result.append(f"&#{name};")
-
-        def handle_comment(self, data):
-            self.result.append(f"<!--{data}-->")
-
-        def handle_decl(self, decl):
-            self.result.append(f"<!{decl}>")
-
-        def handle_pi(self, data):
-            self.result.append(f"<?{data}>")
-
-        def unknown_decl(self, data):
-            self.result.append(f"<![{data}]>")
-
-    def _replace_terms(text):
-        """Replace first unlinked occurrence of each term in a text fragment."""
-
-        def _sub(m):
-            term_lower = m.group(0).lower()
-            if term_lower in linked:
-                return m.group(0)
-            linked.add(term_lower)
-            slug = _GLOSSARY_TERMS[term_lower]
-            href = f"{rel_glossary}/#{slug}"
-            return f'<a href="{href}" class="glossary-link">{m.group(0)}</a>'
-
-        return pattern.sub(_sub, text)
-
-    parser = _GlossaryLinker()
-    parser.feed(html)
-    return "".join(parser.result)
+    global _SUBMODULE_CACHE, _API_NAME_LOOKUP_CACHE, _GIT_REF_CACHE, _GLOSSARY_TERMS_CACHE  # noqa: PLW0603
+    _SUBMODULE_CACHE = None
+    _API_NAME_LOOKUP_CACHE = None
+    _GIT_REF_CACHE = None
+    _GLOSSARY_TERMS_CACHE = None
+    global _GALLERY_CACHE, _COMPANION_INDEX_CACHE, _NOTEBOOK_API_USAGE_CACHE, _GALLERY_PAGE_CACHE  # noqa: PLW0603
+    _GALLERY_CACHE = None
+    _COMPANION_INDEX_CACHE = None
+    _NOTEBOOK_API_USAGE_CACHE = None
+    _GALLERY_PAGE_CACHE = None
+    return config
 
 
 def on_page_content(html, page, config, files):
     """Post-process HTML: API page TOC and content restructuring."""
     src = page.file.src_path
 
+    # Keyed on the markup, not on where the page lives: mkdocstrings emits a See
+    # Also block wherever a docstring is rendered, and a project is free to put
+    # ::: directives on a curated reference page. Gating this on
+    # `pages/api/generated/` left those blocks raw -- kedro-dagster's datasets
+    # page rendered three entries as plain text while the same names linked fine
+    # on the generated pages, which is exactly the shape of "it works where we
+    # looked". --strict never sees it: this is our own HTML.
+
+    html = _linkify_see_also(html, _site_root_prefix(page))
+
     # Process generated API member pages (per-class/function detail pages)
     if src.startswith("pages/api/generated/"):
+        # ORDER IS LOAD-BEARING: mkdocstrings emits See Also as a
+        # <details class="see-also"> block, and _process_api_page_content
+        # dissolves that block for class-level docstrings.  Linkifying after it
+        # silently does nothing for class-level See Also sections -- the
+        # majority of them -- while appearing to work for method-level ones.
         html = _process_api_page_content(html, page, config)
 
-    if src.startswith("pages/api/"):
-        html = _linkify_see_also(html)
+    # Keyed on the template a page declares, not on where the page happens to
+    # live: the index is wherever a project put it. Matching a hardcoded
+    # `pages/reference/api.md` leaves a relocated index with no module_toc at
+    # all -- its sidebar renders empty, and nothing errors.
+    if page.meta.get("template") in ("api-index.html", "api-submodule.html"):
+        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src, prefix=_site_root_prefix(page))
 
-    if src == "pages/api/index.md":
-        # API index: flat module list (api-index.html template)
-        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
-    elif (
-        src.startswith("pages/api/")
-        and not src.startswith("pages/api/generated/")
-        and page.meta.get("template") == "api-submodule.html"
-    ):
-        # Submodule page: module list with active/children expansion
-        page.meta["module_toc"] = _build_module_toc(config, current_src_path=src)
-
-    # Glossary auto-linking (first occurrence per page for allowlisted terms)
-    html = _linkify_glossary_terms(html, page, files)
+    # Last: the API restructuring above rewrites whole regions, so linking
+    # before it would have its links discarded with the markup they sat in.
+    html = _linkify_glossary_terms(html, page, Path(__file__).parent.parent)
 
     return html
 
@@ -1505,25 +2072,29 @@ def on_page_markdown(markdown, page, config, files):
 
     Placeholder injection
     ---------------------
-    ``<!-- API_TABLE -->``         → submodule table for API index
-    ``<!-- GALLERY -->``           → flat card grid of example notebooks
+    ``<!-- API_TABLE -->``            → submodule table for API index
+    ``<!-- SUBPAGES -->``             → linked list of the pages an index introduces
+    ``<!-- GALLERY -->``              → flat card grid of example notebooks
+    ``<!-- GALLERY:section:name -->`` → card grid for one section of the gallery
+    ``<!-- COMPANION_NOTEBOOKS -->``  → cards for notebooks naming this page
     """
     project_root = Path(__file__).parent.parent
+    prefix = _site_root_prefix(page)
 
     # API_TABLE placeholder
     if "<!-- API_TABLE -->" in markdown:
-        table = _build_api_table_html(project_root)
+        table = _build_api_table_html(project_root, prefix)
         markdown = markdown.replace("<!-- API_TABLE -->", table)
+
+    # SUBPAGES placeholder
+    if "<!-- SUBPAGES -->" in markdown:
+        markdown = _replace_marker(markdown, "<!-- SUBPAGES -->", _build_subpages_list(config, page, files))
 
     # EXAMPLES_FOR placeholders on generated API pages
     for match in re.finditer(r"<!-- EXAMPLES_FOR:([\w.]+) -->", markdown):
         qualified = match.group(1)
         examples_html = _build_api_examples_html(project_root, qualified)
         markdown = markdown.replace(match.group(0), examples_html)
-
-    src_parts = page.file.src_path.split("/")
-    depth = len(src_parts) if src_parts[-1] != "index.md" else len(src_parts) - 1
-    prefix = "../" * depth
 
     repo_url = config.get("repo_url", "").rstrip("/")
     github_path = repo_url.removeprefix("https://")
@@ -1533,21 +2104,47 @@ def on_page_markdown(markdown, page, config, files):
     )
     playground_base = f"https://marimo.app/{github_path}/blob/{git_ref}"
 
+    # GALLERY:section:<name> placeholders → one section's cards. Matched before
+    # the bare marker below; the two are distinct strings, so the order is for
+    # the reader, not the parser.
+    for match in _SECTION_GALLERY_RE.finditer(markdown):
+        section_html = _build_gallery_html(project_root, section=match.group(1))
+        markdown = _replace_marker(markdown, match.group(0), section_html)
+
     # GALLERY placeholder
     if "<!-- GALLERY -->" in markdown:
         gallery_html = _build_gallery_html(project_root)
         markdown = markdown.replace("<!-- GALLERY -->", gallery_html)
 
-    # Per-category: <!-- GALLERY:point -->, <!-- GALLERY:section:panel-data -->, etc.
-    for match in re.finditer(r"<!-- GALLERY:(\w[\w:-]*) -->", markdown):
-        cat = match.group(1)
-        gallery_html = _build_gallery_html(project_root, category=cat)
-        markdown = markdown.replace(match.group(0), gallery_html)
-
-    # COMPANION_NOTEBOOKS placeholder → companion notebook cards
+    # COMPANION_NOTEBOOKS placeholder → cards for notebooks naming this page.
+    # Substituted here, before the URL rewrites below, so companion cards go
+    # through the same [View]/[Open in marimo] resolution as gallery cards.
+    # Emitting resolved HTML directly would bypass those markdown-syntax
+    # rewrites and ship unresolved links.
+    #
+    # The marker is optional. A notebook's `companion` is the whole declaration
+    # of the association; requiring the target page to opt in as well means a
+    # notebook can name a page that never shows it, and nothing anywhere says
+    # so. Appending when the marker is absent makes the notebook's declaration
+    # sufficient on its own, and the marker purely a placement override.
+    companion_html = _build_companion_cards_html(project_root, page.file.src_path)
     if "<!-- COMPANION_NOTEBOOKS -->" in markdown:
-        companion_html = _build_companion_cards_html(project_root, page.file.src_path)
-        markdown = markdown.replace("<!-- COMPANION_NOTEBOOKS -->", companion_html)
+        if not companion_html:
+            # The marker is well-formed, so the catch-all below never sees it:
+            # it is consumed and replaced with nothing, leaving a blank where the
+            # page asked for cards. This is the one marker the template seeds by
+            # default -- it points at hello.py, so replacing hello.py without
+            # re-pointing its `companion` empties the page and says nothing.
+            log.warning(
+                "%s carries <!-- COMPANION_NOTEBOOKS --> but no notebook names it as their "
+                'companion, so it renders blank. Add `"companion": "%s"` to a notebook\'s '
+                "__gallery__, or drop the marker.",
+                page.file.src_path,
+                page.file.src_path,
+            )
+        markdown = _replace_marker(markdown, "<!-- COMPANION_NOTEBOOKS -->", companion_html)
+    elif companion_html:
+        markdown = markdown.rstrip("\n") + "\n\n" + companion_html
 
     # Resolve [Open in marimo] placeholder URLs → full marimo.app playground URLs
     markdown = re.sub(
@@ -1559,50 +2156,21 @@ def on_page_markdown(markdown, page, config, files):
     # Rewrite [View] to relative paths pointing to local HTML exports
     markdown = re.sub(r"\]\(/examples/", f"]({prefix}examples/", markdown)
 
+    # Absolute doc-page links (e.g. the gallery overflow link) resolve to the
+    # current page's depth, the same way [View] does.
+    markdown = re.sub(r"\]\(/pages/", f"]({prefix}pages/", markdown)
+
+    _warn_on_unhandled_markers(markdown, page.file.src_path)
+
     return markdown
 
 
-def on_startup(**kwargs):
-    """Reset module-level caches at the start of each build."""
-    global _GALLERY_CACHE, _COMPANION_INDEX, _NOTEBOOK_API_USAGE_CACHE
-    global _DISCOVERY_CACHE, _SEE_ALSO_LOOKUP, _SUBMODULE_CACHE, _GIT_REF_CACHE
-    _GALLERY_CACHE = None
-    _COMPANION_INDEX = None
-    _NOTEBOOK_API_USAGE_CACHE = None
-    _DISCOVERY_CACHE = None
-    _SEE_ALSO_LOOKUP = None
-    _SUBMODULE_CACHE = None
-    _GIT_REF_CACHE = None
-
-
-def _notebook_content_hash(notebook: Path) -> str:
-    """Compute a SHA-256 hash of a notebook file's contents."""
-    return hashlib.sha256(notebook.read_bytes()).hexdigest()
-
-
-def _is_cached(output_dir: Path, expected_hash: str) -> bool:
-    """Check whether a notebook export is cached and up-to-date."""
-    hash_file = output_dir / ".source_hash"
-    html_file = output_dir / "index.html"
-    if not html_file.exists() or not hash_file.exists():
-        return False
-    try:
-        return hash_file.read_text().strip() == expected_hash
-    except OSError:
-        return False
-
-
 def on_pre_build(config):
-    """Export marimo notebooks and generate API pages before building docs."""
+    """Generate API submodule pages and export marimo notebooks."""
     project_root = Path(__file__).parent.parent
 
-    # Generate per-class API pages and inject them into nav
+    # Generate per-submodule API reference pages
     _generate_api_pages(project_root)
-
-    # Allow skipping slow notebook export during development
-    if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
-        print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
-        return
 
     examples_dir = project_root / "examples"
 
@@ -1618,37 +2186,55 @@ def on_pre_build(config):
     if not notebooks:
         return
 
+    # Checked before the skip below, not after: a stem collision is a property of
+    # the source tree, not of the export, and check_docs -- the only place a
+    # warning is fatal -- always sets MKDOCS_SKIP_NOTEBOOKS. Warning after the
+    # return would fire only where nothing listens.
+    #
+    # The export dir is keyed on the stem alone, so two notebooks with the same
+    # stem in different subdirectories write to one directory and the second
+    # rmtree's the first. Both gallery cards then point at whichever won, and the
+    # loser is unreachable with nothing said. The winner is filesystem-order
+    # dependent: this walk is unsorted while the gallery's is sorted.
+    seen_stems = {}
+    for notebook in sorted(notebooks):
+        first = seen_stems.setdefault(notebook.stem, notebook)
+        if first is not notebook:
+            log.warning(
+                "notebook stem %r is used by both %s and %s; they export to the same page and only "
+                "one survives. Rename one.",
+                notebook.stem,
+                first.relative_to(project_root),
+                notebook.relative_to(project_root),
+            )
+
+    # Allow skipping slow notebook export during development
+    if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
+        print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
+        return
+
     docs_examples = project_root / "docs" / "examples"
     docs_examples.mkdir(parents=True, exist_ok=True)
 
-    # Filter to only notebooks that need re-exporting (content hash changed)
-    to_export: list[tuple[Path, str]] = []
-    cached_count = 0
-    for nb in notebooks:
-        content_hash = _notebook_content_hash(nb)
-        output_dir = docs_examples / nb.stem
-        if _is_cached(output_dir, content_hash):
-            cached_count += 1
-        else:
-            to_export.append((nb, content_hash))
+    failed: list[str] = []
 
-    if cached_count:
-        print(f"[hooks] {cached_count} notebook(s) unchanged, skipping", flush=True)
-
-    if not to_export:
-        print("[hooks] all notebooks cached, nothing to export", flush=True)
-        return
-
-    def _export_notebook(item):
-        """Export a single marimo notebook to HTML. Returns (rel_path, error)."""
-        notebook, content_hash = item
+    for notebook in notebooks:
         rel_path = notebook.relative_to(project_root)
         output_dir = docs_examples / notebook.stem
 
+        # Exporting a notebook means executing it, which dominates the build.
+        # Skip the ones whose source has not changed since their last export.
+        content_hash = _notebook_content_hash(notebook)
+        if _is_cached(output_dir, content_hash):
+            print(f"[hooks] unchanged, reusing export: {rel_path}")
+            continue
+
+        # Clean previous export artifacts before re-exporting
         if output_dir.exists():
             shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Export static HTML (read-only view)
         static_file = output_dir / "index.html"
         try:
             subprocess.run(
@@ -1669,68 +2255,20 @@ def on_pre_build(config):
                 capture_output=True,
                 text=True,
             )
-            # Write content hash so subsequent builds can skip this notebook
-            (output_dir / ".source_hash").write_text(content_hash)
-            return str(rel_path), None
+            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
+            # Stamp the source hash only after a successful export, so a failed
+            # or interrupted run re-exports next time instead of caching a
+            # half-written page.
+            (output_dir / _SOURCE_HASH_FILE).write_text(content_hash, encoding="utf-8")
         except subprocess.CalledProcessError as e:
-            # Marimo exits 1 when "Export was successful, but some cells failed
-            # to execute". The HTML file is still produced and usable (cells show
-            # error indicators). Treat as a warning if the output file exists.
-            if static_file.exists() and static_file.stat().st_size > 0:
-                (output_dir / ".source_hash").write_text(content_hash)
-                return str(rel_path), ("warn", e)
-            return str(rel_path), e
+            failed.append(str(rel_path))
+            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
+            if e.stderr:
+                print(e.stderr, file=sys.stderr)
+            continue
         except FileNotFoundError:
-            return str(rel_path), FileNotFoundError("marimo")
-
-    # RTD has a 7GB memory limit. Most notebook exports peak at ~350MB,
-    # heaviest (class_proba) at ~1.7GB. Use 4 workers on RTD: realistic
-    # concurrent peak is ~2.7GB (1 heavy + 3 light), well within 7GB.
-    _default_workers = 4 if os.environ.get("READTHEDOCS") else min((os.cpu_count() or 2) * 2, 8)
-    max_workers = int(os.environ.get("MKDOCS_EXPORT_WORKERS", _default_workers))
-
-    import threading
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    failed: list[str] = []
-    done_count = 0
-    total = len(to_export)
-    print(f"[hooks] exporting {total} notebook(s) with {max_workers} workers", flush=True)
-
-    # Heartbeat thread to prevent RTD "inactivity" kills
-    heartbeat_stop = threading.Event()
-
-    def _heartbeat():
-        while not heartbeat_stop.wait(60):
-            print(f"[hooks] ... still exporting ({done_count}/{total} done)", flush=True)
-
-    heartbeat = threading.Thread(target=_heartbeat, daemon=True)
-    heartbeat.start()
-
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_export_notebook, item): item for item in to_export}
-        for future in as_completed(futures):
-            rel_path, error = future.result()
-            done_count += 1
-            if error is None:
-                print(f"[hooks] [{done_count}/{total}] exported {rel_path}", flush=True)
-            elif isinstance(error, tuple) and error[0] == "warn":
-                # Export produced HTML but some cells had execution errors
-                print(f"[hooks] [{done_count}/{total}] exported {rel_path} (with cell warnings)", flush=True)
-                if hasattr(error[1], "stderr") and error[1].stderr:
-                    print(f"[hooks]   {error[1].stderr.strip()}", file=sys.stderr, flush=True)
-            elif isinstance(error, FileNotFoundError):
-                print("[hooks] marimo not found, skipping notebook export", file=sys.stderr, flush=True)
-                pool.shutdown(wait=False, cancel_futures=True)
-                heartbeat_stop.set()
-                return
-            else:
-                failed.append(rel_path)
-                print(f"[hooks] [{done_count}/{total}] FAILED {rel_path}: {error}", file=sys.stderr, flush=True)
-                if hasattr(error, "stderr") and error.stderr:
-                    print(error.stderr, file=sys.stderr, flush=True)
-
-    heartbeat_stop.set()
+            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
+            break
 
     if failed:
         msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
@@ -2021,12 +2559,17 @@ def _is_excluded(relative_posix: str, patterns: list[str]) -> bool:
 
 
 def _inject_rtd_css(html_file: Path) -> None:
-    """Inject CSS to hide Read The Docs version menu flyout in marimo notebooks."""
+    """Inject CSS to hide Read The Docs version menu flyout in marimo notebooks.
+
+    This ensures marimo notebooks have the same clean appearance as other documentation
+    pages by hiding the RTD version selector that appears in the bottom right corner.
+    """
     if not html_file.exists():
         return
 
     html_content = html_file.read_text(encoding="utf-8")
 
+    # CSS to hide the RTD flyout menu
     rtd_css = """
   <style>
     readthedocs-flyout {
@@ -2035,6 +2578,7 @@ def _inject_rtd_css(html_file: Path) -> None:
   </style>
 """
 
+    # Inject the CSS before the closing </head> tag
     if "</head>" in html_content:
         html_content = html_content.replace("</head>", f"{rtd_css}</head>", 1)
         html_file.write_text(html_content, encoding="utf-8")
@@ -2057,6 +2601,7 @@ def on_post_build(config):
             if not index_html.exists():
                 continue
 
+            # Create target directory in site
             target_dir = site_dir / "examples" / html_dir.name
             target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2074,26 +2619,31 @@ def on_post_build(config):
     # Note: mkdocs converts exclude_docs to a GitIgnoreSpec object, so we hardcode patterns
     exclude_patterns = ["examples/**/CLAUDE.md"]
 
+    # Remove legacy llm/ directory if it exists
     legacy_dir = site_dir / "llm"
     if legacy_dir.exists():
         shutil.rmtree(legacy_dir)
 
+    # Copy llms.txt if it exists
     llms_txt_source = docs_dir / "llms.txt"
     if llms_txt_source.exists():
         llms_txt_dest = site_dir / "llms.txt"
         shutil.copy2(llms_txt_source, llms_txt_dest)
         print("[hooks] copied llms.txt to site")
 
+    # Process markdown files
     copied_count = 0
     for md_file in sorted(docs_dir.rglob("*.md")):
         relative_posix = md_file.relative_to(docs_dir).as_posix()
 
+        # Skip excluded files
         if _is_excluded(relative_posix, exclude_patterns):
             continue
 
         destination = site_dir / relative_posix
         destination.parent.mkdir(parents=True, exist_ok=True)
 
+        # Try to convert from built HTML first
         html_path = _html_path_for(relative_posix, site_dir)
         if html_path.exists():
             html = html_path.read_text(encoding="utf-8")
@@ -2104,6 +2654,7 @@ def on_post_build(config):
                 copied_count += 1
                 continue
 
+        # Fallback: copy original markdown
         destination.write_text(md_file.read_text(encoding="utf-8"), encoding="utf-8")
         copied_count += 1
 

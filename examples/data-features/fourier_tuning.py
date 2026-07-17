@@ -439,10 +439,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Decomposition pipelines**: See [`examples/compose/decomposition_variations.py`](/examples/forecasting-models/decomposition_variations/)
-    - **Stationarity transforms**: See [`examples/stationarity/stationarity_transforms.py`](/examples/data-features/stationarity_transforms/)
-    - **Decomposition**: See [`examples/stationarity/decomposition.py`](/examples/getting-started/decomposition/)
-    - **Hyperparameter search**: See [`examples/model_selection/hyperparameter_search.py`](/examples/evaluation-search/hyperparameter_search/)
+    - **Decomposition pipelines**: See [`examples/forecasting-models/decomposition_variations.py`](/examples/decomposition_variations/)
+    - **Stationarity transforms**: See [`examples/data-features/stationarity_transforms.py`](/examples/stationarity_transforms/)
+    - **Decomposition**: See [`examples/data-features/decomposition.py`](/examples/decomposition/)
+    - **Hyperparameter search**: See [`examples/evaluation-search/hyperparameter_search.py`](/examples/hyperparameter_search/)
     """)
 
 
