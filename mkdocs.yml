@@ -214,15 +214,7 @@ nav:
       - Handle Short Series: pages/how-to/handle-short-series.md
       - Handle Long Series: pages/how-to/handle-long-series.md
       - Save and Load Forecasters: pages/how-to/save-load-forecasters.md
-  - Examples:
-    - pages/examples/index.md
-    - Quickstart: pages/examples/quickstart.md
-    - Getting Started: pages/examples/getting-started.md
-    - Forecasting Models: pages/examples/forecasting-models.md
-    - Data & Features: pages/examples/data-features.md
-    - Panel Data: pages/examples/panel-data.md
-    - Evaluation & Search: pages/examples/evaluation-search.md
-    - Visualization: pages/examples/visualization.md
+  - Examples: pages/examples/index.md
   - Explanation:
     - pages/explanation/index.md
     - Core Concepts: pages/explanation/core-concepts.md

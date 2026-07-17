@@ -217,4 +217,4 @@ theory.
 - **Tutorial**: [Class-Probability Forecasting](../tutorials/class-proba-forecasting.md) walks through a complete classification workflow.
 - **Practice**: [How to Forecast with Class Probabilities](../how-to/class-probability-forecasting.md) provides step-by-step recipes.
 - **API**: the full reference is at [yohou.class_proba](../api/class_proba.md).
-- **Examples**: interactive notebooks are available in the [Class-Probability Examples](../examples/forecasting-models.md).
+- **Examples**: interactive notebooks are available in the [Class-Probability Examples](../examples/index.md#forecasting-models).
