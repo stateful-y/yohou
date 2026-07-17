@@ -38,7 +38,7 @@ def _(mo):
     cross-validation machinery.
 
     **Prerequisites:** Familiarity with the built-in scorers
-    ([Point Metrics](/examples/evaluation-search/point_metrics/) · [Evaluate Forecast Accuracy](/pages/how-to/evaluate-forecast-accuracy/)).
+    ([Point Metrics](/examples/point_metrics/) · [Evaluate Forecast Accuracy](/pages/how-to/evaluate-forecast-accuracy/)).
     """)
 
 

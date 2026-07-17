@@ -274,10 +274,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Multi-metric search**: See [`examples/model_selection/multi_metric_search.py`](/examples/evaluation-search/multi_metric_search/)
-    - **Interval search**: See [`examples/model_selection/interval_search.py`](/examples/evaluation-search/interval_search/)
-    - **CV splitters**: See [`examples/model_selection/cv_splitters.py`](/examples/getting-started/cv_splitters/)
-    - **Panel forecasting**: See [`examples/point/panel_forecasting.py`](/examples/panel-data/panel_forecasting/)
+    - **Multi-metric search**: See [`examples/evaluation-search/multi_metric_search.py`](/examples/multi_metric_search/)
+    - **Interval search**: See [`examples/evaluation-search/interval_search.py`](/examples/interval_search/)
+    - **CV splitters**: See [`examples/getting-started/cv_splitters.py`](/examples/cv_splitters/)
+    - **Panel forecasting**: See [`examples/panel-data/panel_forecasting.py`](/examples/panel_forecasting/)
     """)
 
 

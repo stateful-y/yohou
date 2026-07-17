@@ -10,12 +10,11 @@ cover your evaluation needs. The guide follows the most common pattern
 - yohou installed ([Getting Started](../tutorials/getting-started.md))
 - Familiarity with the fit/score API ([Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass the Base
 
-Create a class that extends [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) and implement
+Create a class that extends [`BasePointScorer`](/pages/api/generated/yohou.metrics.BasePointScorer/) and implement
 `_compute_raw_errors`. The base `score()` method handles weight resolution,
 weight application, aggregation, vintage collapse, and column renaming
 automatically.
@@ -77,7 +76,7 @@ Scorers that implement `_compute_raw_errors` inherit full weight support
 and forward them to `super().__init__()` (shown below).
 
 If you are evaluating prediction intervals instead of point predictions,
-extend [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) and implement `_compute_raw_scores`.
+extend [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.BaseIntervalScorer/) and implement `_compute_raw_scores`.
 See the [yohou.metrics API Reference](../api/metrics.md) for all base
 class options.
 
@@ -213,7 +212,7 @@ the scorer positionally as well would raise `TypeError` for a duplicate
 argument.)
 
 The generator yields approximately 11 checks depending on scorer type.
-[`check_scorer_multi_vintage`](/pages/api/generated/yohou.testing.scorer.check_scorer_multi_vintage/) automatically builds a 2-vintage dataset
+[`check_scorer_multi_vintage`](/pages/api/generated/yohou.testing.check_scorer_multi_vintage/) automatically builds a 2-vintage dataset
 from your test data and verifies the scorer produces a finite result.
 Add your own tests for numerical correctness alongside the generated
 checks.

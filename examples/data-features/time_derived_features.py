@@ -408,8 +408,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Window transformers**: See [`window_transformers.py`](/examples/data-features/window_transformers/) for lag, rolling, and EMA features
-    - **Custom transforms**: See [`function_transformer.py`](/examples/data-features/function_transformer/) for wrapping arbitrary polars operations
+    - **Window transformers**: See [`window_transformers.py`](/examples/window_transformers/) for lag, rolling, and EMA features
+    - **Custom transforms**: See [`function_transformer.py`](/examples/function_transformer/) for wrapping arbitrary polars operations
     - **Using in forecasters**: Pass to `feature_transformer` in [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
     """)
 

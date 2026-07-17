@@ -419,12 +419,12 @@ def _(mo):
 
     ## Next Steps
 
-    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/getting-started/reduction_strategies/) for multi-output vs direct vs dir-rec comparison
-    - **LocalPanelForecaster deep dive**: See [`examples/compose/local_panel_forecaster.py`](/examples/panel-data/local_panel_forecaster/)
-    - **Per-group specialisation**: See [`examples/point/panel_forecasting.py`](/examples/panel-data/panel_forecasting/)
-    - **Composition patterns**: See [`examples/compose/panel_pipelines.py`](/examples/panel-data/panel_pipelines/)
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/panel-data/panel_intervals/)
-    - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/panel-data/panel_cross_validation/)
+    - **Reduction strategies**: See [`reduction_strategies.py`](/examples/reduction_strategies/) for multi-output vs direct vs dir-rec comparison
+    - **LocalPanelForecaster deep dive**: See [`examples/panel-data/local_panel_forecaster.py`](/examples/local_panel_forecaster/)
+    - **Per-group specialisation**: See [`examples/panel-data/panel_forecasting.py`](/examples/panel_forecasting/)
+    - **Composition patterns**: See [`examples/panel-data/panel_pipelines.py`](/examples/panel_pipelines/)
+    - **Panel intervals**: See [`examples/panel-data/panel_intervals.py`](/examples/panel_intervals/)
+    - **Panel cross-validation**: See [`examples/panel-data/panel_cross_validation.py`](/examples/panel_cross_validation/)
     """)
 
 

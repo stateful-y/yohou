@@ -14,15 +14,15 @@ Pages that draw on external academic literature or published standards close wit
 
 - [Panel Data](panel-data.md): The `{entity}__{variable}` naming convention, the three panel strategies, and panel-aware behavior in forecasters and scorers.
 - [Exogenous Features](exogenous-features.md): The three exogenous types (X_actual, X_future, X_forecast), step-indexed columns, and vintage alignment.
-- [Preprocessing](preprocessing.md): Stateful vs. stateless transformers, the [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) contract, and incremental observation in pipelines.
+- [Preprocessing](preprocessing.md): Stateful vs. stateless transformers, the [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) contract, and incremental observation in pipelines.
 - [Transformer Kinds](transformer-kinds.md): The actual and forecast kinds, why the vintage axis rules out statefulness, and why lifting beats reimplementing.
 - [Stationarity](stationarity.md): Why non-stationary series are problematic for regression models, and how differencing and decomposition help.
-- [Feature Pipelines](feature-pipelines.md): [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/): how to compose transformers and how `observation_horizon` propagates.
+- [Feature Pipelines](feature-pipelines.md): [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/): how to compose transformers and how `observation_horizon` propagates.
 
 ## Forecasting
 
-- [Forecaster Composition](forecaster-composition.md): [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/), [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/), [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/), [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/), and state propagation through composite forecasters.
-- [Interval Forecasting](interval-forecasting.md): Prediction intervals, conformal coverage, and when to use [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) vs. quantile regression.
+- [Forecaster Composition](forecaster-composition.md): [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/), [`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/), [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/), [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/), and state propagation through composite forecasters.
+- [Interval Forecasting](interval-forecasting.md): Prediction intervals, conformal coverage, and when to use [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) vs. quantile regression.
 - [Class-Probability Forecasting](class-probability-forecasting.md): Categorical time series, calibration, and the class-probability forecaster API.
 - [Ensemble Forecasting](ensemble-forecasting.md): Voting strategies, error diversity, and when ensembles outperform single models.
 

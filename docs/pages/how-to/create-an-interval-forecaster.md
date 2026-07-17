@@ -3,7 +3,7 @@
 This guide shows you how to implement an interval forecaster that produces
 prediction intervals at specified coverage rates. Use this when you need a
 custom approach to uncertainty quantification that the built-in
-[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/)
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
 does not cover.
 
 ## Prerequisites
@@ -11,12 +11,11 @@ does not cover.
 - Familiarity with the fit/predict API ([Getting Started](../tutorials/getting-started.md))
 - Understanding of prediction intervals ([Produce Prediction Intervals](interval-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Subclass `BaseIntervalForecaster`
 
-Create a class that extends [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/)
+Create a class that extends [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/)
 and implement three things:
 
 - **`_observation_horizon`** (property): how many recent observations the forecaster needs.

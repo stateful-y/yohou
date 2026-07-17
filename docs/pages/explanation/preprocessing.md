@@ -1,6 +1,6 @@
 # Preprocessing
 
-Preprocessing in yohou is built around [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/), the base for transformers over single-axis data. Whether it computes lag features, scales values, or applies a digital filter, such a transformer follows one contract: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
+Preprocessing in yohou is built around [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/), the base for transformers over single-axis data. Whether it computes lag features, scales values, or applies a digital filter, such a transformer follows one contract: accept a polars DataFrame with a `"time"` column, return a polars DataFrame with a `"time"` column. What makes yohou's preprocessing distinct from sklearn's is the addition of *temporal state*: the ability for transformers to remember past observations and use them when new data arrives.
 
 This page is about that single-axis kind, which is what nearly every transformer in the library is. Transformers over the forecast channel carry a second time axis and a correspondingly different contract; see [Transformer Kinds](transformer-kinds.md) for the taxonomy and for why the memory API discussed below belongs to the single-axis kind alone.
 
@@ -86,9 +86,9 @@ for procedures.
 
 Transformers fall into two categories based on whether they need historical context to produce output.
 
-**Stateless transformers** operate on each row independently. Scaling a column by its mean and standard deviation, applying a log transform, or selecting a subset of columns are all stateless operations. The transformer learns parameters during `fit` (the mean and standard deviation, for instance), but once fitted, it can transform any input without needing to know what came before. A [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/) is a typical stateless transformer. It stores the fitted statistics, but each row's transformation depends only on that row's values and the stored statistics.
+**Stateless transformers** operate on each row independently. Scaling a column by its mean and standard deviation, applying a log transform, or selecting a subset of columns are all stateless operations. The transformer learns parameters during `fit` (the mean and standard deviation, for instance), but once fitted, it can transform any input without needing to know what came before. A [`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/) is a typical stateless transformer. It stores the fitted statistics, but each row's transformation depends only on that row's values and the stored statistics.
 
-**Stateful transformers** need a lookback window of past data to compute their output. A [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) with `lag=3` needs 3 previous rows to produce a valid lagged value for the current row. A [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/) computing a 7-day rolling mean needs 7 days of history. Without that history, the first rows of output would be incomplete, and yohou handles this by dropping them rather than filling with nulls.
+**Stateful transformers** need a lookback window of past data to compute their output. A [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) with `lag=3` needs 3 previous rows to produce a valid lagged value for the current row. A [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/) computing a 7-day rolling mean needs 7 days of history. Without that history, the first rows of output would be incomplete, and yohou handles this by dropping them rather than filling with nulls.
 
 The distinction matters most during *streaming* or *rolling evaluation* scenarios, where new observations arrive incrementally and you need to transform them without refitting the entire model.
 
@@ -115,7 +115,7 @@ The `observe` and `rewind` methods manage the memory buffer directly. `observe` 
 
 Some transformers support `inverse_transform`, which reverses the transformation. This is essential for forecasting pipelines where the model trains on transformed data but predictions must be returned in the original scale.
 
-Stateless invertible transformers (such as [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/) or [`PowerTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.PowerTransformer/)) need only the transformed data to invert. Stateful invertible transformers (such as [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/)) require past observations to reconstruct the original values, which are passed via the `X_p` parameter:
+Stateless invertible transformers (such as [`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/) or [`PowerTransformer`](/pages/api/generated/yohou.preprocessing.PowerTransformer/)) need only the transformed data to invert. Stateful invertible transformers (such as [`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/)) require past observations to reconstruct the original values, which are passed via the `X_p` parameter:
 
 ```python
 from yohou.stationarity import SeasonalDifferencing
@@ -127,7 +127,7 @@ X_diff = diff.transform(X)  # First 4 rows dropped
 X_original = diff.inverse_transform(X_t=X_diff, X_p=past_observations)
 ```
 
-When transformers are composed inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/), the pipeline handles `inverse_transform` automatically by reversing the steps and passing the necessary context.
+When transformers are composed inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), the pipeline handles `inverse_transform` automatically by reversing the steps and passing the necessary context.
 
 Transformers that modify values in existing columns (scaling, differencing, power transforms) are typically invertible, while those that create new derived columns (lags, rolling statistics, calendar features) are not.
 
@@ -137,16 +137,16 @@ Real-world feature engineering rarely involves a single transformation. Yohou pr
 three composition patterns, each mirroring an sklearn counterpart but adapted for
 time series:
 
-- [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/)
+- [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/)
 chains transformers sequentially. Its combined `observation_horizon` is the **sum**
 across all steps because each step's output (minus its lookback overhead) feeds into
 the next.
 
-- [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
+- [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)
 runs transformers in parallel on the same input and concatenates outputs column-wise.
 Its combined `observation_horizon` is the **maximum** across all transformers.
 
-- [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/)
+- [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/)
 applies different transformers to different column subsets, then concatenates the
 results. Its `observation_horizon` is the **maximum** across all column-specific
 transformers.
@@ -158,9 +158,9 @@ propagation.
 
 ## Bridging sklearn with Polars
 
-Sklearn's extensive library of transformers operates on NumPy arrays and expects no `"time"` column. [`SklearnTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_base.SklearnTransformer/) and [`SklearnScaler`](/pages/api/generated/yohou.preprocessing.sklearn_base.SklearnScaler/) bridge this gap by wrapping any sklearn-compatible transformer to work with polars DataFrames. They handle the conversion automatically: strip the `"time"` column, convert to NumPy, apply the sklearn transformer, convert back to polars, and reattach the `"time"` column.
+Sklearn's extensive library of transformers operates on NumPy arrays and expects no `"time"` column. [`SklearnTransformer`](/pages/api/generated/yohou.preprocessing.SklearnTransformer/) and [`SklearnScaler`](/pages/api/generated/yohou.preprocessing.SklearnScaler/) bridge this gap by wrapping any sklearn-compatible transformer to work with polars DataFrames. They handle the conversion automatically: strip the `"time"` column, convert to NumPy, apply the sklearn transformer, convert back to polars, and reattach the `"time"` column.
 
-Pre-built wrappers are provided for the most common sklearn transformers: [`StandardScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.StandardScaler/), [`MinMaxScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.MinMaxScaler/), [`RobustScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.RobustScaler/), [`MaxAbsScaler`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.MaxAbsScaler/), [`Normalizer`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.Normalizer/), [`PolynomialFeatures`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.PolynomialFeatures/), [`PowerTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.PowerTransformer/), [`QuantileTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.QuantileTransformer/), and [`SplineTransformer`](/pages/api/generated/yohou.preprocessing.sklearn_wrappers.SplineTransformer/). These are thin subclasses that set the correct default sklearn class, so you can use them directly without specifying the `transformer` parameter.
+Pre-built wrappers are provided for the most common sklearn transformers: [`StandardScaler`](/pages/api/generated/yohou.preprocessing.StandardScaler/), [`MinMaxScaler`](/pages/api/generated/yohou.preprocessing.MinMaxScaler/), [`RobustScaler`](/pages/api/generated/yohou.preprocessing.RobustScaler/), [`MaxAbsScaler`](/pages/api/generated/yohou.preprocessing.MaxAbsScaler/), [`Normalizer`](/pages/api/generated/yohou.preprocessing.Normalizer/), [`PolynomialFeatures`](/pages/api/generated/yohou.preprocessing.PolynomialFeatures/), [`PowerTransformer`](/pages/api/generated/yohou.preprocessing.PowerTransformer/), [`QuantileTransformer`](/pages/api/generated/yohou.preprocessing.QuantileTransformer/), and [`SplineTransformer`](/pages/api/generated/yohou.preprocessing.SplineTransformer/). These are thin subclasses that set the correct default sklearn class, so you can use them directly without specifying the `transformer` parameter.
 
 For any other sklearn transformer, you can wrap it on the fly:
 
@@ -192,7 +192,7 @@ statistics, and `1` for exponential moving averages.
 
 **Function transformers** apply arbitrary operations element-wise or column-wise to
 a polars DataFrame, with time column preservation and optional inverse transform
-support. [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.function.FunctionTransformer/)
+support. [`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.FunctionTransformer/)
 automatically detects its `observation_horizon` during fitting by counting how many
 leading rows produce null output from the custom function, making it adapt to
 arbitrary user logic. They serve as an escape hatch for custom transformations that
@@ -212,8 +212,8 @@ in a transformed feature space can capture complex multi-variate patterns.
 **Outlier handling transformers** detect and treat extreme values using either fixed
 thresholds or data-driven percentile bounds. Values outside the specified range can
 be clipped to the boundary or replaced with null for downstream imputation. Both
-[`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierThresholdHandler/)
-and [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.outlier.OutlierPercentileHandler/)
+[`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.OutlierThresholdHandler/)
+and [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.OutlierPercentileHandler/)
 are stateless.
 
 **Resampling transformers** change time series frequency by aggregating to a lower
@@ -234,20 +234,20 @@ proximity features (days to next holiday, days since last). Fourier feature
 pairs ($[\sin(2\pi k t / P), \cos(2\pi k t / P)]$ for harmonics $k = 1, \ldots, K$)
 represent smooth seasonal patterns in a compact, continuous form that avoids the
 discontinuities of raw calendar integers. A
-[`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.time_features.TimeIndexTransformer/)
+[`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.TimeIndexTransformer/)
 converts timestamps to a numeric index with optional polynomial expansion, useful for
 capturing long-range trends.
 
 These transformers derive entirely from the timestamps, so they can be applied at
-predict time without any additional data. They are usually combined via [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/)
+predict time without any additional data. They are usually combined via [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)
 and passed as the `feature_transformer` parameter to forecasters. For recipes, see
 the [how-to guide on time features](../how-to/time-features.md).
 
 ## Panel Data Support
 
-All transformers handle panel (grouped) data through yohou's `__` column naming convention. When input columns follow the pattern `{group}__{variable}` (for example, `store_1__sales`, `store_2__sales`), transformers apply their operations independently to each group while preserving the naming structure. Output columns maintain the separator: a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) applied to `store_1__sales` produces `store_1__sales_lag_1`.
+All transformers handle panel (grouped) data through yohou's `__` column naming convention. When input columns follow the pattern `{group}__{variable}` (for example, `store_1__sales`, `store_2__sales`), transformers apply their operations independently to each group while preserving the naming structure. Output columns maintain the separator: a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) applied to `store_1__sales` produces `store_1__sales_lag_1`.
 
-Composition utilities respect this convention as well. When [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) prefixes output features with transformer names, the prefix is inserted after the group separator (`store_1__lags_sales`) rather than before it, keeping group identity as the leading element.
+Composition utilities respect this convention as well. When [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) prefixes output features with transformer names, the prefix is inserted after the group separator (`store_1__lags_sales`) rather than before it, keeping group identity as the leading element.
 
 ## References
 
@@ -259,7 +259,7 @@ Preprocessing sits between raw data and the forecasting models. Transformers are
 passed to forecasters as `target_transformer` or `feature_transformer` parameters,
 where they are applied automatically during fit and predict. The
 [Stationarity](stationarity.md) transforms (differencing, decomposition) follow the
-same [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) contract but focus specifically on making time series
+same [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) contract but focus specifically on making time series
 stationary. For how transformers compose inside forecasters and pipelines, see
 [Feature Pipelines](feature-pipelines.md).
 

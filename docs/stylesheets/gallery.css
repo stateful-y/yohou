@@ -14,66 +14,27 @@
   }
 }
 
-/* Gallery badge: Diataxis category label on gallery cards. */
+/* Companion notebook cards: rendered on docs pages via the
+   <!-- COMPANION_NOTEBOOKS --> placeholder.  Uses the same grid as the
+   gallery so a companion card and a gallery card read as one system. */
 
-.gallery-badge {
-  font-size: 0.7em;
-  padding: 0.1em 0.5em;
-  border-radius: 0.8em;
-  font-weight: 600;
-  vertical-align: middle;
-  margin-right: 0.3em;
-}
-
-.gallery-badge--tutorial {
-  background: var(--md-primary-fg-color);
-  color: var(--md-primary-bg-color);
-}
-
-.gallery-badge--howto {
-  background: var(--md-accent-fg-color);
-  color: var(--md-accent-bg-color);
-}
-
-/* Companion notebook cards: rendered inside admonitions via raw HTML. */
-
-.companion-cards {
+.md-typeset .companion-cards {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   margin: 0.5rem 0 0;
 }
 
-.companion-card {
+.md-typeset .companion-card {
   flex: 1 1 calc(50% - 0.75rem);
-  max-width: calc(50% - 0.375rem);
+  min-width: 12rem;
+  padding: 0.8rem;
   border: 1px solid var(--md-default-fg-color--lightest);
-  border-radius: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--md-default-bg-color);
+  border-radius: 0.2rem;
 }
 
-.companion-card strong {
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.companion-card p {
-  margin: 0 0 0.5rem;
-  font-size: 0.85em;
-}
-
-.companion-card .companion-card-links {
-  font-size: 0.85em;
-}
-
-.companion-card .companion-card-links a + a {
-  margin-left: 0.5rem;
-}
-
-@media (max-width: 600px) {
-  .companion-card {
+@media screen and (max-width: 44.9375em) {
+  .md-typeset .companion-card {
     flex: 1 1 100%;
-    max-width: 100%;
   }
 }

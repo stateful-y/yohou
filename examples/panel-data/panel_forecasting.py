@@ -381,9 +381,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/panel-data/panel_intervals/)
-    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/evaluation-search/aggregation_modes/)
-    - **Panel cross-validation**: See [`examples/model_selection/panel_cross_validation.py`](/examples/panel-data/panel_cross_validation/)
+    - **Panel intervals**: See [`examples/panel-data/panel_intervals.py`](/examples/panel_intervals/)
+    - **Aggregation modes**: See [`examples/evaluation-search/aggregation_modes.py`](/examples/aggregation_modes/)
+    - **Panel cross-validation**: See [`examples/panel-data/panel_cross_validation.py`](/examples/panel_cross_validation/)
     """)
 
 

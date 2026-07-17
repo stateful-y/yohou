@@ -1,17 +1,16 @@
 # Panel Data
 
-In this tutorial, we will forecast multiple related time series simultaneously using panel data. Many real forecasting tasks involve groups of related series: regional sales, sensor networks, tourism by destination. Yohou represents these as a single DataFrame where column names encode the group with a `__` separator (e.g. `T187__tourists`, `T188__tourists`). We will load a multi-series tourism dataset, inspect its panel structure, fit independent models per group with [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/), evaluate with aggregate and per-group metrics, and visualize the results.
-
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+In this tutorial, we will forecast multiple related time series simultaneously using panel data. Many real forecasting tasks involve groups of related series: regional sales, sensor networks, tourism by destination. Yohou represents these as a single DataFrame where column names encode the group with a `__` separator (e.g. `T187__tourists`, `T188__tourists`). We will load a multi-series tourism dataset, inspect its panel structure, fit independent models per group with [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/), evaluate with aggregate and per-group metrics, and visualize the results.
 
 ## Prerequisites
 
 - Completed [Getting Started](getting-started.md)
 
+<!-- COMPANION_NOTEBOOKS -->
+
 ## Load a Panel Dataset
 
-The [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/) function loads monthly tourism series from the Monash forecasting archive. The full dataset contains 366 series of varying length; we select three long series and drop any rows with missing values:
+The [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/) function loads monthly tourism series from the Monash forecasting archive. The full dataset contains 366 series of varying length; we select three long series and drop any rows with missing values:
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -52,7 +51,7 @@ shape: (5, 4)
 
 ## Inspect the Panel Structure
 
-The [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) utility separates global columns (without `__`) from panel groups:
+The [`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/) utility separates global columns (without `__`) from panel groups:
 
 ```python
 from yohou.utils.panel import inspect_panel
@@ -71,7 +70,7 @@ Each key is a group name, and the value lists the full column names for that gro
 
 ## Explore the Data
 
-[`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/) automatically detects panel columns and creates faceted subplots:
+[`plot_time_series`](/pages/api/generated/yohou.plotting.plot_time_series/) automatically detects panel columns and creates faceted subplots:
 
 ```python
 from yohou.plotting import plot_time_series
@@ -83,7 +82,7 @@ Each region shows a clear annual seasonal pattern, but at different scales. T187
 
 ## Train/Test Split
 
-Split the data using [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/), keeping the last 12 months for testing:
+Split the data using [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/), keeping the last 12 months for testing:
 
 ```python
 from yohou.model_selection import train_test_split
@@ -99,7 +98,7 @@ Train: 321 months, Test: 12 months
 
 ## 1. Seasonal Baseline
 
-[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) clones a forecaster for each panel group and fits them independently. Start with a [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) baseline that repeats values from one year ago:
+[`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/) clones a forecaster for each panel group and fits them independently. Start with a [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) baseline that repeats values from one year ago:
 
 ```python
 from yohou.point import SeasonalNaive
@@ -141,7 +140,7 @@ The predictions preserve the `__` column convention, so all downstream tools (sc
 
 ## 3. Evaluate
 
-Panel scorers such as [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/) and [`MeanSquaredError`](/pages/api/generated/yohou.metrics.point.MeanSquaredError/) aggregate across all groups by default:
+Panel scorers such as [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/) and [`MeanSquaredError`](/pages/api/generated/yohou.metrics.MeanSquaredError/) aggregate across all groups by default:
 
 ```python
 from yohou.metrics import MeanAbsoluteError, MeanSquaredError
@@ -188,7 +187,7 @@ Per-group scoring reveals which regions the baseline handles well and which need
 
 ## 4. Visualize
 
-[`plot_forecast`](/pages/api/generated/yohou.plotting.forecasting.plot_forecast/) automatically detects panel data and creates faceted subplots:
+[`plot_forecast`](/pages/api/generated/yohou.plotting.plot_forecast/) automatically detects panel data and creates faceted subplots:
 
 ```python
 from yohou.plotting import plot_forecast
@@ -206,7 +205,7 @@ The `n_history=36` parameter shows the last three years of training data for con
 
 ## 5. Try a Stronger Model
 
-The pipeline is model-agnostic. Replace SeasonalNaive with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) that uses [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) features wrapped in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) and a Ridge regressor:
+The pipeline is model-agnostic. Replace SeasonalNaive with a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) that uses [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) features wrapped in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) and a Ridge regressor:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -247,7 +246,7 @@ plot_forecast(
 )
 ```
 
-For a metric-level comparison across groups, [`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/) visualizes per-group scores as a bar chart:
+For a metric-level comparison across groups, [`plot_group_scores`](/pages/api/generated/yohou.plotting.plot_group_scores/) visualizes per-group scores as a bar chart:
 
 ```python
 from yohou.plotting import plot_group_scores
@@ -266,11 +265,11 @@ You should see the Ridge model achieving lower error than SeasonalNaive across r
 
 In this tutorial, we:
 
-- Loaded a multi-series tourism dataset with the `__` panel naming convention using [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/)
-- Inspected panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.panel.inspect_panel/) and explored it visually with [`plot_time_series`](/pages/api/generated/yohou.plotting.exploration.plot_time_series/)
-- Fitted independent models per group using [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/), first with a seasonal baseline, then with a Ridge reduction pipeline
+- Loaded a multi-series tourism dataset with the `__` panel naming convention using [`fetch_tourism_monthly`](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/)
+- Inspected panel structure with [`inspect_panel`](/pages/api/generated/yohou.utils.inspect_panel/) and explored it visually with [`plot_time_series`](/pages/api/generated/yohou.plotting.plot_time_series/)
+- Fitted independent models per group using [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/), first with a seasonal baseline, then with a Ridge reduction pipeline
 - Evaluated with aggregate and per-group metrics using `aggregation_method`
-- Visualized panel forecasts with faceted subplots and compared models with [`plot_group_scores`](/pages/api/generated/yohou.plotting.evaluation.plot_group_scores/)
+- Visualized panel forecasts with faceted subplots and compared models with [`plot_group_scores`](/pages/api/generated/yohou.plotting.plot_group_scores/)
 
 ## Next Steps
 

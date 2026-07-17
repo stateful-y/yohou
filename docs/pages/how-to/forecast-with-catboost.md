@@ -9,12 +9,11 @@ reduction forecasters for point, interval, and categorical predictions.
 - CatBoost installed (`pip install catboost`)
 - Understanding of reduction forecasting ([Reduction Forecasting](../explanation/reduction-forecasting.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Fit a Point Forecaster
 
-Pass a [`CatBoostRegressor`](https://catboost.ai/en/docs/concepts/python-reference_catboostregressor) to [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/). Any `CatBoostRegressor` parameter (learning rate, depth, regularization) can be set directly:
+Pass a [`CatBoostRegressor`](https://catboost.ai/en/docs/concepts/python-reference_catboostregressor) to [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/). Any `CatBoostRegressor` parameter (learning rate, depth, regularization) can be set directly:
 
 ```python
 from catboost import CatBoostRegressor
@@ -50,7 +49,7 @@ If you want a single model that predicts all horizons at once, keep the default 
 
 ## Produce Interval Forecasts
 
-Pass a `CatBoostRegressor` whose `loss_function` already starts with `MultiQuantile` to [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) and specify `coverage_rates` at fit time. The framework reads the `MultiQuantile` loss as a signal to fit a single model for all quantiles, overriding the placeholder alpha with the alpha values derived from `coverage_rates`. This path requires `forecasting_horizon=1`:
+Pass a `CatBoostRegressor` whose `loss_function` already starts with `MultiQuantile` to [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/) and specify `coverage_rates` at fit time. The framework reads the `MultiQuantile` loss as a signal to fit a single model for all quantiles, overriding the placeholder alpha with the alpha values derived from `coverage_rates`. This path requires `forecasting_horizon=1`:
 
 ```python
 from yohou.interval import IntervalReductionForecaster
@@ -79,7 +78,7 @@ For multi-step horizons, use a single-quantile estimator (such as
 
 ## Forecast Categorical Data
 
-Pass a [`CatBoostClassifier`](https://catboost.ai/en/docs/concepts/python-reference_catboostclassifier) to [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) for categorical time series (for example, demand tiers or quality levels):
+Pass a [`CatBoostClassifier`](https://catboost.ai/en/docs/concepts/python-reference_catboostclassifier) to [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) for categorical time series (for example, demand tiers or quality levels):
 
 ```python
 from catboost import CatBoostClassifier
@@ -103,7 +102,7 @@ See [Forecast with Class Probabilities](class-probability-forecasting.md) for ev
 
 ## Tune CatBoost with Randomized Search
 
-Use Yohou's [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) to search over CatBoost parameters:
+Use Yohou's [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) to search over CatBoost parameters:
 
 ```python
 from yohou.model_selection import RandomizedSearchCV, ExpandingWindowSplitter
@@ -124,7 +123,7 @@ search.fit(y, forecasting_horizon=12)
 best_forecaster = search.best_forecaster_
 ```
 
-For exhaustive search, use [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) instead. See [Tune Hyperparameters](tune-hyperparameters.md) for details.
+For exhaustive search, use [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) instead. See [Tune Hyperparameters](tune-hyperparameters.md) for details.
 
 ## See Also
 

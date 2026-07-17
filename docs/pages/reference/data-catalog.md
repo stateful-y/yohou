@@ -6,16 +6,16 @@ Bundled datasets available in `yohou.datasets`. Each dataset is downloaded on fi
 
 | Function | Shape | Frequency | Series | Observations | Domain |
 |---|---|---|---|---|---|
-| [`fetch_sunspot()`](/pages/api/generated/yohou.datasets._fetchers.fetch_sunspot/) | Univariate | Daily | 1 | 73,924 | Astronomy |
-| [`fetch_tourism_monthly()`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/) | Panel | Monthly | 366 | ~80/series | Tourism |
-| [`fetch_tourism_quarterly()`](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_quarterly/) | Panel | Quarterly | 427 | ~32/series | Tourism |
-| [`fetch_hospital()`](/pages/api/generated/yohou.datasets._fetchers.fetch_hospital/) | Panel | Monthly | 767 | 84/series | Healthcare |
-| [`fetch_pedestrian_counts()`](/pages/api/generated/yohou.datasets._fetchers.fetch_pedestrian_counts/) | Panel | Hourly | 66 | ~10,000/series | Transport |
-| [`fetch_kdd_cup()`](/pages/api/generated/yohou.datasets._fetchers.fetch_kdd_cup/) | Panel | Hourly | 270 (59 stations × up to 6 pollutants) | ~8,760/series | Environment |
-| [`fetch_electricity_demand()`](/pages/api/generated/yohou.datasets._fetchers.fetch_electricity_demand/) | Panel | Half-hourly | 5 | ~46,000/series | Energy |
-| [`fetch_dominick()`](/pages/api/generated/yohou.datasets._fetchers.fetch_dominick/) | Panel | Weekly | 115,704 | ~412/series | Retail |
-| [`fetch_air_quality_classification()`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/) | Classification | Hourly | 1 | ~8,000 | Environment |
-| [`fetch_demand_classification()`](/pages/api/generated/yohou.datasets._fetchers.fetch_demand_classification/) | Classification | Half-hourly | 1 | ~46,000 | Energy |
+| [`fetch_sunspot()`](/pages/api/generated/yohou.datasets.fetch_sunspot/) | Univariate | Daily | 1 | 73,924 | Astronomy |
+| [`fetch_tourism_monthly()`](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/) | Panel | Monthly | 366 | ~80/series | Tourism |
+| [`fetch_tourism_quarterly()`](/pages/api/generated/yohou.datasets.fetch_tourism_quarterly/) | Panel | Quarterly | 427 | ~32/series | Tourism |
+| [`fetch_hospital()`](/pages/api/generated/yohou.datasets.fetch_hospital/) | Panel | Monthly | 767 | 84/series | Healthcare |
+| [`fetch_pedestrian_counts()`](/pages/api/generated/yohou.datasets.fetch_pedestrian_counts/) | Panel | Hourly | 66 | ~10,000/series | Transport |
+| [`fetch_kdd_cup()`](/pages/api/generated/yohou.datasets.fetch_kdd_cup/) | Panel | Hourly | 270 (59 stations × up to 6 pollutants) | ~8,760/series | Environment |
+| [`fetch_electricity_demand()`](/pages/api/generated/yohou.datasets.fetch_electricity_demand/) | Panel | Half-hourly | 5 | ~46,000/series | Energy |
+| [`fetch_dominick()`](/pages/api/generated/yohou.datasets.fetch_dominick/) | Panel | Weekly | 115,704 | ~412/series | Retail |
+| [`fetch_air_quality_classification()`](/pages/api/generated/yohou.datasets.fetch_air_quality_classification/) | Classification | Hourly | 1 | ~8,000 | Environment |
+| [`fetch_demand_classification()`](/pages/api/generated/yohou.datasets.fetch_demand_classification/) | Classification | Half-hourly | 1 | ~46,000 | Energy |
 
 ## Return Type
 
@@ -62,7 +62,7 @@ Panel datasets also accept:
 
 ### `fetch_sunspot()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_sunspot/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_sunspot/){ .md-button .md-button--primary .md-button--small }
 
 Daily sunspot numbers, 1818 to 2020. Single univariate series with 73,924 observations.
 
@@ -83,7 +83,7 @@ bunch.frame.shape  # (73924, 2)
 
 ### `fetch_tourism_monthly()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_monthly/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_tourism_monthly/){ .md-button .md-button--primary .md-button--small }
 
 Monthly Australian tourism visitor counts, 1992 to 2011. Up to 366 panel series, ~80 observations each.
 
@@ -104,7 +104,7 @@ bunch.n_series  # 10
 
 ### `fetch_tourism_quarterly()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_tourism_quarterly/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_tourism_quarterly/){ .md-button .md-button--primary .md-button--small }
 
 Quarterly Australian tourism visitor counts, 1992 to 2011. Up to 427 panel series, ~32 observations each.
 
@@ -125,7 +125,7 @@ bunch.frame.columns[:3]  # ['time', 'T1__tourists', 'T2__tourists']
 
 ### `fetch_hospital()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_hospital/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_hospital/){ .md-button .md-button--primary .md-button--small }
 
 Monthly hospital patient counts, 2000 to 2006. Up to 767 panel series, 84 observations each.
 
@@ -146,7 +146,7 @@ bunch.feature_names[:2]  # ['T1__patients', 'T2__patients']
 
 ### `fetch_pedestrian_counts()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_pedestrian_counts/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_pedestrian_counts/){ .md-button .md-button--primary .md-button--small }
 
 Hourly Melbourne pedestrian sensor counts, 2009 to 2020. Up to 66 sensors, ~10,000 observations each.
 
@@ -167,7 +167,7 @@ bunch_all = fetch_pedestrian_counts(n_series=None)  # all 66 sensors
 
 ### `fetch_kdd_cup()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_kdd_cup/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_kdd_cup/){ .md-button .md-button--primary .md-button--small }
 
 Hourly air quality measurements from 59 monitoring stations (Beijing and London), 2017 to 2018. Each station reports up to 6 pollutants (PM2.5, PM10, NO2, CO, O3, SO2), so the total loaded series is at most `n_groups × 6`; London stations carry fewer measurements, so the actual count when loading all groups is 270. Column names follow the `station__measurement` format.
 
@@ -190,7 +190,7 @@ bunch.n_series  # 12 (2 stations × 6 pollutants)
 
 ### `fetch_electricity_demand()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_electricity_demand/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_electricity_demand/){ .md-button .md-button--primary .md-button--small }
 
 Half-hourly electricity demand for 5 Australian states, 2008 to 2015. Fixed panel dataset (`group__column` naming) with ~46,000 observations per series.
 
@@ -211,7 +211,7 @@ bunch.feature_names  # ['nsw__demand', 'qun__demand', 'sa__demand', 'tas__demand
 
 ### `fetch_dominick()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_dominick/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_dominick/){ .md-button .md-button--primary .md-button--small }
 
 Weekly store-level profit data from Dominick's Finer Foods, 1989 to 1997. Up to 115,704 panel series, ~412 observations each. Default `n_series=50` limits memory usage. Pass `n_series=None` to load all series (several GB).
 
@@ -236,7 +236,7 @@ Classification fetch functions return `y` (target labels) and `X_actual` (numeri
 
 ### `fetch_air_quality_classification()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_air_quality_classification/){ .md-button .md-button--primary .md-button--small }
 
 Hourly air quality classification derived from `fetch_kdd_cup(n_groups=1)`. PM2.5 values are binned into 4 WHO categories using thresholds at 15, 35, and 75 µg/m³. Rows with null PM2.5 are dropped. ~8,000 observations.
 
@@ -257,7 +257,7 @@ bunch.y.head()
 
 ### `fetch_demand_classification()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.fetch_demand_classification/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.fetch_demand_classification/){ .md-button .md-button--primary .md-button--small }
 
 Half-hourly electricity demand classification derived from `fetch_electricity_demand()`. Victoria's demand is binned into 3 tercile-based levels. Features are the remaining 4 states. ~46,000 observations.
 
@@ -282,7 +282,7 @@ Generator functions create synthetic datasets locally (no download required). Us
 
 ### `make_exogenous_regression()`
 
-[API Reference](/pages/api/generated/yohou.datasets._generators.make_exogenous_regression/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.make_exogenous_regression/){ .md-button .md-button--primary .md-button--small }
 
 Generates synthetic hourly electricity prices driven by temperature, holiday, and weather forecast features.
 
@@ -329,7 +329,7 @@ bunch.X_actual.shape  # (500, 2)
 
 ### `make_exogenous_classification()`
 
-[API Reference](/pages/api/generated/yohou.datasets._generators.make_exogenous_classification/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.make_exogenous_classification/){ .md-button .md-button--primary .md-button--small }
 
 Generates synthetic hourly air quality labels driven by pollutant level, weekend indicator, and pollutant forecast features.
 
@@ -378,7 +378,7 @@ bunch.classes  # ['good', 'moderate', 'poor']
 
 ### `get_data_home()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.get_data_home/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.get_data_home/){ .md-button .md-button--primary .md-button--small }
 
 ```python
 from yohou.datasets import get_data_home
@@ -391,7 +391,7 @@ Returns the path to the data cache directory. If `data_home` is `None`, resolves
 
 ### `clear_data_home()`
 
-[API Reference](/pages/api/generated/yohou.datasets._fetchers.clear_data_home/){ .md-button .md-button--primary .md-button--small }
+[API Reference](/pages/api/generated/yohou.datasets.clear_data_home/){ .md-button .md-button--primary .md-button--small }
 
 ```python
 from yohou.datasets import clear_data_home
@@ -400,8 +400,6 @@ clear_data_home()  # deletes all files in ~/yohou_data/
 ```
 
 Deletes all cached data files in the data home directory.
-
-<!-- GALLERY:section:data-catalog -->
 
 ## See Also
 

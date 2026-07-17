@@ -36,7 +36,7 @@ def _(mo):
     into a single ensemble using [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/).
 
     **Prerequisites:** Familiarity with class-probability forecasting. See the
-    [Class-Probability Forecasting Quickstart](/examples/forecasting-models/class_proba_forecaster/).
+    [Class-Probability Forecasting Quickstart](/examples/class_proba_forecaster/).
     """)
 
 

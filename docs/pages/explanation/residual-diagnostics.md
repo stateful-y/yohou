@@ -33,9 +33,9 @@ intercept).
 **3. Constant variance (homoscedasticity).** The spread of residuals should be roughly
 the same across all time periods. If residuals are small during calm periods and large
 during volatile ones, variance-stabilizing transforms (variance stabilization) can help:
-[`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.transformers.BoxCoxTransformer/)
+[`BoxCoxTransformer`](/pages/api/generated/yohou.stationarity.BoxCoxTransformer/)
 works well for power-law scaling but requires strictly positive data, while
-[`ASinhTransformer`](/pages/api/generated/yohou.stationarity.transformers.ASinhTransformer/)
+[`ASinhTransformer`](/pages/api/generated/yohou.stationarity.ASinhTransformer/)
 handles negative values and outliers more robustly via the inverse hyperbolic sine.
 See [Stationarity](stationarity.md) for details on these transforms.
 
@@ -55,7 +55,7 @@ Yohou's plotting module provides tools for each diagnostic check.
 
 ### Four-Panel Residual Diagnostics
 
-[`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+[`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/)
 produces a 4-panel diagnostic layout when called with a single target column. The four
 panels map directly to the four properties above:
 
@@ -83,13 +83,13 @@ panels map directly to the four properties above:
    that the histogram may obscure.
 
 When multiple columns are resolved (through `columns` or `groups`),
-[`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+[`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/)
 produces a faceted layout showing residuals over time for each column, which is useful
 for comparing residual behavior across components in multivariate or panel data.
 
 ### Autocorrelation Analysis
 
-[`plot_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_autocorrelation/)
+[`plot_autocorrelation`](/pages/api/generated/yohou.plotting.plot_autocorrelation/)
 applied to residuals reveals remaining temporal structure. Significant spikes at seasonal
 lags (7 for weekly, 12 for monthly, 52 for annual-in-weekly data) mean the model missed
 a periodic pattern, and a seasonal component or differencing step would remove it.
@@ -100,7 +100,7 @@ residuals, suggesting more aggressive differencing or a stronger trend component
 all autocorrelation values fall within the significance bounds, the residuals are
 consistent with white noise and the model has extracted what was predictable.
 
-[`plot_partial_autocorrelation`](/pages/api/generated/yohou.plotting.diagnostics.plot_partial_autocorrelation/)
+[`plot_partial_autocorrelation`](/pages/api/generated/yohou.plotting.plot_partial_autocorrelation/)
 complements the ACF by showing correlation between the series and each lag after
 removing the effect of intermediate lags. This is useful for identifying the
 autoregressive order: a PACF that cuts off sharply after lag $p$ suggests that $p$ lag
@@ -110,7 +110,7 @@ lag-1 correlation; the PACF separates these cases.
 
 ### Additional Diagnostic Plots
 
-[`plot_lag_scatter`](/pages/api/generated/yohou.plotting.diagnostics.plot_lag_scatter/)
+[`plot_lag_scatter`](/pages/api/generated/yohou.plotting.plot_lag_scatter/)
 creates scatter plots of $y_t$ vs $y_{t-k}$ for chosen lags $k$. Applied to residuals,
 these reveal nonlinear dependence that the ACF (a linear measure) would miss. A curve
 or cluster pattern in the lag scatter indicates that a more flexible model or additional
@@ -126,12 +126,12 @@ zero. Yohou does not implement this test directly, but it is available via
 ## Extracting Residuals
 
 To compute residuals from a fitted forecaster, subtract its in-sample predictions from
-the actuals. [`plot_residuals`](/pages/api/generated/yohou.plotting.evaluation.plot_residuals/)
+the actuals. [`plot_residuals`](/pages/api/generated/yohou.plotting.plot_residuals/)
 computes this internally from `y_pred` and `y_truth`, so no manual subtraction is needed
 when using the diagnostic plots.
 
 For
-[`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/),
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/),
 setting `store_residuals=True` at construction stores residuals after each component
 forecaster in the `residuals_` attribute (a `dict[str, pl.DataFrame]` keyed by
 component name). This lets you diagnose each stage of the decomposition independently,
@@ -147,10 +147,10 @@ point-forecast conformity scorers are available:
 
 | Scorer | Formula | Intervals | When to use |
 |---|---|---|---|
-| [`Residual`](/pages/api/generated/yohou.metrics.conformity.Residual/) | $s = y - \hat{y}$ | Asymmetric | Errors are systematically skewed |
-| [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteResidual/) | $s = \lvert y - \hat{y} \rvert$ | Symmetric | Errors have roughly constant variance |
-| [`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/) | $s = \frac{y - \hat{y}}{\hat{y} + \epsilon}$ | Asymmetric, adaptive | Variance scales with prediction magnitude |
-| [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.conformity.AbsoluteGammaResidual/) | $s = \left\lvert \frac{y - \hat{y}}{\hat{y} + \epsilon} \right\rvert$ | Symmetric, adaptive | Symmetric errors that scale with magnitude |
+| [`Residual`](/pages/api/generated/yohou.metrics.Residual/) | $s = y - \hat{y}$ | Asymmetric | Errors are systematically skewed |
+| [`AbsoluteResidual`](/pages/api/generated/yohou.metrics.AbsoluteResidual/) | $s = \lvert y - \hat{y} \rvert$ | Symmetric | Errors have roughly constant variance |
+| [`GammaResidual`](/pages/api/generated/yohou.metrics.GammaResidual/) | $s = \frac{y - \hat{y}}{\hat{y} + \epsilon}$ | Asymmetric, adaptive | Variance scales with prediction magnitude |
+| [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.AbsoluteGammaResidual/) | $s = \left\lvert \frac{y - \hat{y}}{\hat{y} + \epsilon} \right\rvert$ | Symmetric, adaptive | Symmetric errors that scale with magnitude |
 
 If the residuals are well-behaved (uncorrelated, constant variance), the conformal
 intervals will be well-calibrated. If the residuals exhibit heteroscedasticity, the

@@ -2,7 +2,7 @@
 
 Metadata routing is the mechanism by which parameters like `coverage_rates` and
 `groups` flow from a top-level call (such as
-[`GridSearchCV.fit()`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/))
+[`GridSearchCV.fit()`](/pages/api/generated/yohou.model_selection.GridSearchCV/))
 down through nested estimators to the objects that actually use them. Without
 it, there would be no way for a pipeline or search object to know which of its
 child estimators should receive a given parameter.
@@ -46,7 +46,7 @@ Sklearn's routing model has two roles:
   without necessarily using it itself.
 
 An object can be both. An
-[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/)
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
 is a consumer of `coverage_rates`, which it uses directly in its
 `predict_interval` method, and at the same time a router that forwards `fit`
 metadata to its wrapped sklearn estimator.
@@ -56,7 +56,7 @@ metadata to its wrapped sklearn estimator.
 | Class | Methods | Accepted metadata |
 |---|---|---|
 | Wrapped sklearn estimator (e.g. `Ridge`) | `fit` | `sample_weight` |
-| [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) | `fit`, `predict_interval` | `coverage_rates` |
+| [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/) | `fit`, `predict_interval` | `coverage_rates` |
 | Panel forecasters | `predict`, `observe_predict` | `groups` |
 | Pipeline transformers / custom consumers | `fit`, `transform` | any requested key |
 
@@ -64,11 +64,11 @@ metadata to its wrapped sklearn estimator.
 
 | Router | Children | Routed methods |
 |---|---|---|
-| [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) / [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/) | forecaster, scorer, splitter | `fit`, `predict`, `predict_interval`, `predict_class_proba`, `observe_predict`, `observe_predict_interval`, `observe_predict_class_proba`, `score`, `split` |
-| [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) | named sub-forecasters, `target_transformer`, `feature_transformer` | `fit`, `predict`, `observe_predict`, `transform` |
-| [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) | sequential steps | `fit`, `fit_transform`, `transform`, `inverse_transform`, `score` (final step only) |
-| [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) | per-column transformers | `fit`, `fit_transform`, `transform` |
-| [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.local_panel_forecaster.LocalPanelForecaster/) | wrapped forecaster | `fit`, `predict`, `predict_interval`, `observe_predict`, `observe_predict_interval` |
+| [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) / [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) | forecaster, scorer, splitter | `fit`, `predict`, `predict_interval`, `predict_class_proba`, `observe_predict`, `observe_predict_interval`, `observe_predict_class_proba`, `score`, `split` |
+| [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) | named sub-forecasters, `target_transformer`, `feature_transformer` | `fit`, `predict`, `observe_predict`, `transform` |
+| [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) | sequential steps | `fit`, `fit_transform`, `transform`, `inverse_transform`, `score` (final step only) |
+| [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) | per-column transformers | `fit`, `fit_transform`, `transform` |
+| [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/) | wrapped forecaster | `fit`, `predict`, `predict_interval`, `observe_predict`, `observe_predict_interval` |
 | `BaseReductionForecaster` | wrapped sklearn estimator | `fit` |
 
 ## The Request API
@@ -141,7 +141,7 @@ Seven additional methods are registered as routable:
 | `observe_predict_class_proba` | composite | `observe` + `predict_class_proba` |
 
 The composite decomposition is what makes this work seamlessly. When
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/)
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/)
 calls `observe_predict` during cross-validation, sklearn's routing
 infrastructure splits the incoming parameters and forwards them to both
 `observe` and `predict` individually. A `groups` parameter requested by a

@@ -369,9 +369,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Interval reduction**: See [`interval_reduction.py`](/examples/forecasting-models/interval_reduction/) for quantile regression intervals
-    - **Scoring**: See [Metrics](/examples/#metrics) for comprehensive interval evaluation
-    - **Calibration plots**: See [Plotting](/examples/#plotting) for [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
+    - **Interval reduction**: See [`interval_reduction.py`](/examples/interval_reduction/) for quantile regression intervals
+    - **Scoring**: See [Evaluation & Search](/pages/examples/#evaluation-search) for comprehensive interval evaluation
+    - **Calibration plots**: See [Visualization](/pages/examples/#visualization) for [`plot_calibration`](/pages/api/generated/yohou.plotting.evaluation.plot_calibration/)
     """)
 
 

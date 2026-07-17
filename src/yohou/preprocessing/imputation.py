@@ -81,7 +81,7 @@ class SimpleImputer(SklearnTransformer):
     --------
     - [`TransformedSpaceKNNImputer`][yohou.preprocessing.imputation.TransformedSpaceKNNImputer] : K-nearest neighbors imputation.
     - [`SimpleTimeImputer`][yohou.preprocessing.imputation.SimpleTimeImputer] : Time series specific imputation methods.
-    `sklearn.impute.SimpleImputer` : Underlying implementation.
+    - [`sklearn.impute.SimpleImputer`][sklearn.impute.SimpleImputer] : Underlying implementation.
 
     """
 

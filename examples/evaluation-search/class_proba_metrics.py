@@ -465,10 +465,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - [`class_proba_forecaster.py`](/examples/point/class_proba_forecaster/) - Full class-probability forecasting walkthrough
-    - [`point_metrics.py`](/examples/evaluation-search/point_metrics/) - Point forecast evaluation metrics
-    - [`aggregation_modes.py`](/examples/evaluation-search/aggregation_modes/) - Deep dive into aggregation modes
-    - [Metrics](/examples/#metrics) - All metric examples
+    - [`class_proba_forecaster.py`](/examples/class_proba_forecaster/) - Full class-probability forecasting walkthrough
+    - [`point_metrics.py`](/examples/point_metrics/) - Point forecast evaluation metrics
+    - [`aggregation_modes.py`](/examples/aggregation_modes/) - Deep dive into aggregation modes
+    - [Evaluation & Search](/pages/examples/#evaluation-search) - All metric examples
     """)
 
 

@@ -10,8 +10,7 @@ scenarios.
 - Familiarity with the fit/predict lifecycle
   ([Exogenous Features Tutorial](../tutorials/exogenous-features.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Classify Your Features
 
@@ -71,7 +70,7 @@ model's predictions unchanged.
 ## Pass Exogenous Features to a Forecaster
 
 Supply any combination of the three parameters to `fit()` on a
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/).
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/).
 At predict time, only `X_future` and `X_forecast` are accepted because
 `X_actual` comes from the forecaster's stored observation window.
 
@@ -122,7 +121,7 @@ If your `X_future` or `X_forecast` columns evolve meaningfully across steps
 
 ## Use Composition Forecasters
 
-### [`ColumnForecaster`](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/)
+### [`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/)
 
 Each child forecaster receives all three exogenous parameters. Children that
 don't use exogenous features ignore them:
@@ -146,7 +145,7 @@ forecaster.fit(
 )
 ```
 
-### [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/)
+### [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/)
 
 All three parameters pass through to the residual forecaster after trend
 and seasonality removal:
@@ -179,7 +178,7 @@ pipeline.fit(
 )
 ```
 
-### [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/)
+### [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/)
 
 Use `ForecastedFeatureForecaster` when you want Yohou to forecast the
 exogenous feature itself. `X_actual` trains the feature forecaster (as its

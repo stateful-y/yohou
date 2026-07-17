@@ -28,7 +28,7 @@ values become targets. Once the data is in this form, any sklearn regressor (lin
 regression, random forests, gradient boosting) can learn the mapping from past to
 future.
 
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
 implements this idea. It accepts an `estimator` parameter (any sklearn regressor) and
 handles the conversion internally. A [`LinearRegression`](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html) forecaster and a
 [`GradientBoostingRegressor`](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingRegressor.html) forecaster share the same tabularization logic; only the
@@ -52,13 +52,13 @@ forecasting with no additional implementation.
 ## Tabularization
 
 The conversion from time series to tabular format is handled by
-[`tabularize()`](/pages/api/generated/yohou.utils.tabularization.tabularize/). It takes
+[`tabularize()`](/pages/api/generated/yohou.utils.tabularize/). It takes
 a DataFrame and a sequence of lag values, then produces a new DataFrame where each
 row contains shifted versions of the original series.
 
 For a concrete example, given a series `[10, 20, 30, 40, 50]` indexed by date and
 `lags=[1, 2]`,
-[`tabularize`](/pages/api/generated/yohou.utils.tabularization.tabularize/) produces:
+[`tabularize`](/pages/api/generated/yohou.utils.tabularize/) produces:
 
 | time | value_lag_1 | value_lag_2 |
 |---|---|---|
@@ -72,7 +72,7 @@ the value one step before the current row; `value_lag_2` is two steps before. Th
 first `max(lags)` rows are dropped because they would contain nulls.
 
 Inside
-[`BaseReductionForecaster`](/pages/api/generated/yohou.base.reduction.BaseReductionForecaster/),
+[`BaseReductionForecaster`](/pages/api/generated/yohou.base.BaseReductionForecaster/),
 tabularization builds the target matrix. It tabularizes the (transformed) target `y`
 with lags `[0, 1, ..., H]`, then renames the columns so that `step_1` is the
 one-step-ahead value, `step_2` is two steps ahead, and so on. The feature matrix is
@@ -89,7 +89,7 @@ used depends on the reduction strategy.
 ## Reduction Strategies
 
 The `reduction_strategy` parameter on
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
 controls how the estimator relates to the multi-step horizon. There are three options.
 In all cases, $\mathbf{x}_t$ denotes the full feature vector at time $t$. This vector
 is assembled from the feature transformer output (lagged values of the target and any
@@ -159,9 +159,9 @@ Reduction forecasters support two transformer pipelines that serve distinct purp
 The **target transformer** (`target_transformer`) operates on `y` before tabularization.
 Its job is to transform the prediction target into a space where the regressor can learn
 more effectively. Common examples include
-[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/)
+[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/)
 (which removes seasonal patterns) and
-[`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/)
+[`LogTransformer`](/pages/api/generated/yohou.stationarity.LogTransformer/)
 (which stabilizes variance in exponentially growing series). After the regressor
 produces predictions in the transformed space, the forecaster automatically applies
 `inverse_transform` to return predictions to the original scale.
@@ -171,8 +171,8 @@ from the target and any `X_actual` exogenous columns. What the feature transform
 receives as input depends on `target_as_feature`: when set to `"transformed"` (the
 default), it receives the transformed target concatenated with `X_actual`; when set to
 `"raw"`, it receives the original untransformed target instead. Transformers like
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) and
-[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) and
+[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/)
 produce lagged values, moving averages, or other derived signals that the regressor uses
 as predictors. These features are never inverted; they flow into the regressor as
 inputs, not outputs. After the feature transformer runs, any step-indexed columns from
@@ -207,9 +207,9 @@ and uses it to maintain a fixed-size sliding window of recent data.
 
 The practical question for reduction forecasting is: how much history should the
 regressor see? The transformers you choose set a hard minimum. A
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
 with `lags=[1, 7]` needs at least 7 rows. Adding a
-[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.RollingStatisticsTransformer/)
+[`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/)
 with `window_size=14` pushes the requirement to 14.
 
 Beyond the minimum, adding more context is a tradeoff. Longer lookback windows
@@ -250,7 +250,7 @@ prediction is attempted with `X_forecast`.
 
 ## Sample Weighting
 
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
 accepts `time_weight` and `vintage_weight` parameters at `fit()` time, which control
 how much influence each training sample has on the learned model.
 
@@ -286,7 +286,7 @@ from several sources:
    the supervised target after tabularization.
 
 The `nan_handling` parameter on
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/)
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
 (and all other reduction forecasters) controls what happens next:
 
 | Value | Behavior |
@@ -335,7 +335,7 @@ direct, and dir-rec on the same dataset.
 strategies (global, multivariate, local) for multi-entity data.
 
 The reduction pattern extends naturally to categorical targets through
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/), which wraps sklearn classifiers instead of
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/), which wraps sklearn classifiers instead of
 regressors. See [Class-Probability Forecasting](class-probability-forecasting.md)
 for the full treatment.
 

@@ -74,10 +74,18 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
+      # Appended to every page so the glossary abbreviations resolve everywhere.
       auto_append:
         - includes/glossary.md
+      # Ordered: docs-relative includes win, but a page can still reach the
+      # repo root (e.g. CHANGELOG.md).  Do not narrow this to [docs] -- a
+      # project may legitimately include a file from src/ or the repo root.
       base_path:
         - docs
+        - .
+      # Without this a missing include is dropped silently, rendering a page
+      # that looks deliberate and is empty.
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - class: mermaid
@@ -108,6 +116,7 @@ exclude_docs: |
 # Generated API pages are injected into nav dynamically by hooks.py
 not_in_nav: |
   assets/README.md
+  includes/*.md
   pages/api/*.md
   pages/api/generated/*.md
 
@@ -131,9 +140,14 @@ plugins:
         python:
           paths: [src]
           inventories:
+            # Resolves standard-library types in signatures and See Also
+            # entries.  Add your dependencies' inventories here too, e.g.
+            #   - https://numpy.org/doc/stable/objects.inv
             - https://docs.python.org/3/objects.inv
             - https://scikit-learn.org/stable/objects.inv
             - https://docs.pola.rs/api/python/stable/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://docs.scipy.org/doc/scipy/objects.inv
           options:
             docstring_style: numpy
             show_source: true
@@ -200,15 +214,7 @@ nav:
       - Handle Short Series: pages/how-to/handle-short-series.md
       - Handle Long Series: pages/how-to/handle-long-series.md
       - Save and Load Forecasters: pages/how-to/save-load-forecasters.md
-  - Examples:
-    - pages/examples/index.md
-    - Quickstart: pages/examples/quickstart.md
-    - Getting Started: pages/examples/getting-started.md
-    - Forecasting Models: pages/examples/forecasting-models.md
-    - Data & Features: pages/examples/data-features.md
-    - Panel Data: pages/examples/panel-data.md
-    - Evaluation & Search: pages/examples/evaluation-search.md
-    - Visualization: pages/examples/visualization.md
+  - Examples: pages/examples/index.md
   - Explanation:
     - pages/explanation/index.md
     - Core Concepts: pages/explanation/core-concepts.md
@@ -265,4 +271,7 @@ extra:
 watch:
   - mkdocs.yml
   - docs
+  # The API pages are generated from the package source, so a source edit must
+  # trigger a rebuild -- otherwise adding a class shows nothing until restart.
+  - src
   - examples

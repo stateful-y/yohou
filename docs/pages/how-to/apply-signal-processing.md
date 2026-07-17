@@ -9,12 +9,11 @@ parameters.
 - Familiarity with transformers ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Understanding of the fit/transform pattern ([Getting Started](../tutorials/getting-started.md))
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Smooth High-Frequency Noise
 
-[`NumericalFilter`](/pages/api/generated/yohou.preprocessing.signal.NumericalFilter/)
+[`NumericalFilter`](/pages/api/generated/yohou.preprocessing.NumericalFilter/)
 applies standard digital IIR filters. A lowpass filter removes noise above a
 chosen cutoff frequency:
 
@@ -31,7 +30,7 @@ df_smooth = smoother.fit_transform(df)
 ```
 
 The `cutoff_frequency` is normalized between 0 and 1, where 1 is the Nyquist
-frequency (half the sampling rate). Use [`plot_spectrum`](/pages/api/generated/yohou.plotting.signal.plot_spectrum/)
+frequency (half the sampling rate). Use [`plot_spectrum`](/pages/api/generated/yohou.plotting.plot_spectrum/)
 (below) to identify where noise begins and set the cutoff just below that point.
 
 Start with `design="butterworth"` and `order=4`. If the filtered signal still
@@ -75,7 +74,7 @@ known interference frequency).
 
 ## Extract Rate of Change
 
-[`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.signal.NumericalDifferentiator/)
+[`NumericalDifferentiator`](/pages/api/generated/yohou.preprocessing.NumericalDifferentiator/)
 computes numerical derivatives using central differences:
 
 ```python
@@ -89,7 +88,7 @@ The `order` parameter controls boundary accuracy: `1` uses 2-point differences
 at boundaries, `2` uses 3-point second-order accurate differences.
 
 To integrate a derivative back, use
-[`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.signal.NumericalIntegrator/):
+[`NumericalIntegrator`](/pages/api/generated/yohou.preprocessing.NumericalIntegrator/):
 
 ```python
 from yohou.preprocessing import NumericalIntegrator
@@ -103,7 +102,7 @@ The `method` parameter accepts `"cumulative_trapezoid"` (faster) or
 
 ## Inspect the Frequency Spectrum
 
-Use [`plot_spectrum`](/pages/api/generated/yohou.plotting.signal.plot_spectrum/)
+Use [`plot_spectrum`](/pages/api/generated/yohou.plotting.plot_spectrum/)
 to visualize the power spectral density before choosing a cutoff:
 
 ```python
@@ -119,7 +118,7 @@ boundary between signal and noise.
 
 ## Check Phase Alignment
 
-Use [`plot_phase`](/pages/api/generated/yohou.plotting.signal.plot_phase/)
+Use [`plot_phase`](/pages/api/generated/yohou.plotting.plot_phase/)
 to inspect the phase angle of each frequency component via FFT:
 
 ```python

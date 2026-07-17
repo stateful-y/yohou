@@ -4,13 +4,13 @@ template: api-submodule.html
 
 # yohou.point
 
-Point forecasters for generating scalar-value predictions.
+Point forecasters for generating single-valued predictions.
 
-### Point Forecasters
+### Classes
 
 | Name | Description |
-| --- | --- |
-| [`BasePointForecaster`](generated/yohou.point.base.BasePointForecaster.md) | Base class for point forecasters. |
-| [`MeanSeasonalNaive`](generated/yohou.point.naive.MeanSeasonalNaive.md) | Seasonal naive forecaster that averages values across previous seasons. |
-| [`PointReductionForecaster`](generated/yohou.point.reduction.PointReductionForecaster.md) | Point forecaster using sklearn estimators on tabularized time series. |
-| [`SeasonalNaive`](generated/yohou.point.naive.SeasonalNaive.md) | Seasonal naive forecaster that repeats values from previous season. |
+|------|-------------|
+| [`BasePointForecaster`](generated/yohou.point.BasePointForecaster.md) | Base class for point forecasters. |
+| [`MeanSeasonalNaive`](generated/yohou.point.MeanSeasonalNaive.md) | Seasonal naive forecaster that averages values across past seasons. |
+| [`SeasonalNaive`](generated/yohou.point.SeasonalNaive.md) | Seasonal naive forecaster that repeats values from previous season. |
+| [`PointReductionForecaster`](generated/yohou.point.PointReductionForecaster.md) | Point forecaster using sklearn estimators on tabularized time series. |

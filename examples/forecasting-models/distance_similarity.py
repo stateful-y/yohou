@@ -505,9 +505,9 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Conformity scorers**: See [`conformity_scorers.py`](/examples/evaluation-search/conformity_scorers/) for comparing Residual, GammaResidual, etc.
-    - **Panel intervals**: See [`examples/interval/panel_intervals.py`](/examples/panel-data/panel_intervals/) for prediction intervals on panel data
-    - **Interval metrics**: See [`examples/metrics/interval_metrics.py`](/examples/evaluation-search/interval_metrics/) for EmpiricalCoverage, IntervalScore, and more
+    - **Conformity scorers**: See [`conformity_scorers.py`](/examples/conformity_scorers/) for comparing Residual, GammaResidual, etc.
+    - **Panel intervals**: See [`examples/panel-data/panel_intervals.py`](/examples/panel_intervals/) for prediction intervals on panel data
+    - **Interval metrics**: See [`examples/evaluation-search/interval_metrics.py`](/examples/interval_metrics/) for EmpiricalCoverage, IntervalScore, and more
     """)
 
 

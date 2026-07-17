@@ -290,8 +290,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Aggregation modes**: See [`examples/metrics/aggregation_modes.py`](/examples/evaluation-search/aggregation_modes/) for coveragewise scoring
-    - **Conformity scorers**: See [`examples/metrics/conformity_scorers.py`](/examples/evaluation-search/conformity_scorers/)
+    - **Aggregation modes**: See [`examples/evaluation-search/aggregation_modes.py`](/examples/aggregation_modes/) for coveragewise scoring
+    - **Conformity scorers**: See [`examples/evaluation-search/conformity_scorers.py`](/examples/conformity_scorers/)
     """)
 
 

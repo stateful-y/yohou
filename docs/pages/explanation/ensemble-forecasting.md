@@ -8,8 +8,8 @@ to reduce these errors through diversity.
 The core idea is variance reduction through aggregation. If base forecasters make
 uncorrelated errors, averaging their predictions cancels out individual mistakes
 while preserving the shared signal. Yohou implements this through three voting
-forecasters, one for each prediction type: [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
-[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/), and [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/).
+forecasters, one for each prediction type: [`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/),
+[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/), and [`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/).
 
 ## Variance Reduction Through Diversity
 
@@ -52,7 +52,7 @@ trade zero increase in bias for potentially large decreases in variance.
 
 In time series forecasting, variance is often the dominant source of error for
 flexible models (gradient-boosted trees, neural networks, reduction forecasters with
-many lags). Simpler models like [`SeasonalNaive`](/pages/api/generated/yohou.point.naive.SeasonalNaive/) have high bias but low variance.
+many lags). Simpler models like [`SeasonalNaive`](/pages/api/generated/yohou.point.SeasonalNaive/) have high bias but low variance.
 Ensembling across the complexity spectrum (simple + flexible) can balance both terms.
 
 ## Achieving Diversity
@@ -118,7 +118,7 @@ methods ignore them.
 
 ### Point Ensembles
 
-[`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/) combines point predictions using two methods controlled by the `method` parameter:
+[`VotingPointForecaster`](/pages/api/generated/yohou.ensemble.VotingPointForecaster/) combines point predictions using two methods controlled by the `method` parameter:
 
 **Mean** (default) computes a weighted average of predictions across base
 forecasters. With uniform weights this is optimal under squared-error loss when
@@ -131,7 +131,7 @@ have heavy-tailed error distributions.
 
 ### Interval Ensembles
 
-[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/) combines prediction intervals using three methods controlled by the `method` parameter:
+[`VotingIntervalForecaster`](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/) combines prediction intervals using three methods controlled by the `method` parameter:
 
 **Envelope** (default) takes the minimum of all lower bounds and the maximum of
 all upper bounds. This guarantees that the ensemble interval contains every
@@ -152,7 +152,7 @@ independent of the interval `method`.
 
 ### Class-Probability Ensembles
 
-[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/) combines probability distributions using two methods controlled by the `method` parameter:
+[`VotingClassProbaForecaster`](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/) combines probability distributions using two methods controlled by the `method` parameter:
 
 **Soft voting** (default) computes a weighted average of class probabilities across
 base forecasters. It preserves calibration better than hard voting because it
@@ -195,6 +195,6 @@ the ensemble benefit. Going from 10 to 20 rarely helps.
 
 ## Connections
 
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) can tune ensemble weights or compare an ensemble against its individual members, as described in [Model Selection](model-selection.md). [`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) can preprocess data before passing to an ensemble, and ensembles can serve as components in larger [`DecompositionPipeline`](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) workflows. All voting forecasters support panel data transparently: each base forecaster receives the full panel, and aggregation happens per group.
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) can tune ensemble weights or compare an ensemble against its individual members, as described in [Model Selection](model-selection.md). [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) can preprocess data before passing to an ensemble, and ensembles can serve as components in larger [`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/) workflows. All voting forecasters support panel data transparently: each base forecaster receives the full panel, and aggregation happens per group.
 
-[Class-Probability Forecasting](class-probability-forecasting.md) covers categorical ensembles, and [Interval Forecasting](interval-forecasting.md) discusses interval ensemble context. For practical recipes, see [How to Combine Forecasters with Ensembles](../how-to/ensemble-forecasting.md). The full API is documented in the [yohou.ensemble reference](../api/ensemble.md), and interactive examples are available in the [Ensemble Examples](../examples/forecasting-models.md).
+[Class-Probability Forecasting](class-probability-forecasting.md) covers categorical ensembles, and [Interval Forecasting](interval-forecasting.md) discusses interval ensemble context. For practical recipes, see [How to Combine Forecasters with Ensembles](../how-to/ensemble-forecasting.md). The full API is documented in the [yohou.ensemble reference](../api/ensemble.md), and interactive examples are available in the [Ensemble Examples](../examples/index.md#forecasting-models).

@@ -42,7 +42,7 @@ def _(mo):
 
         **Prerequisites:** Familiarity with `X_actual`, `X_future`,
         `X_forecast` parameters
-        ([Tutorial](/examples/getting-started/exogenous_features/)).
+        ([Tutorial](/examples/exogenous_features/)).
         """
     )
 

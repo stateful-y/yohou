@@ -6,7 +6,7 @@ Extension packages add forecasters, metrics, and integrations to Yohou. This pag
 
 | Name | Install | Description |
 |------|---------|-------------|
-| yohou-optuna | `uv add yohou-optuna` | Hyperparameter optimization via [Optuna](https://optuna.org/). Provides [`OptunaSearchCV`](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna) as a drop-in replacement for [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/). ([source](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna)) |
+| yohou-optuna | `uv add yohou-optuna` | Hyperparameter optimization via [Optuna](https://optuna.org/). Provides [`OptunaSearchCV`](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna) as a drop-in replacement for [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/). ([source](https://github.com/stateful-y/yohou/tree/main/packages/yohou-optuna)) |
 | yohou-nixtla | `uv add yohou-nixtla` | Integration with [Nixtla](https://nixtla.io/) forecasting libraries (statsforecast, mlforecast, neuralforecast). Wraps Nixtla models as Yohou forecasters. ([source](https://github.com/stateful-y/yohou/tree/main/packages/yohou-nixtla)) |
 
 ## Community Extensions
@@ -23,42 +23,42 @@ For step-by-step implementation guides, see [Create a Point Forecaster](../how-t
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/) | `yohou.point` | `fit()`, `_predict_one()` |
-| [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/) | `yohou.interval` | `fit()`, `_predict_interval_one()` |
-| [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/) | `yohou.class_proba` | `fit()`, `_predict_class_proba_one()` |
+| [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/) | `yohou.point` | `fit()`, `_predict_one()` |
+| [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/) | `yohou.interval` | `fit()`, `_predict_interval_one()` |
+| [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/) | `yohou.class_proba` | `fit()`, `_predict_class_proba_one()` |
 
 ### Scorers
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BasePointScorer`](/pages/api/generated/yohou.metrics.base.BasePointScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
-| [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.base.BaseIntervalScorer/) | `yohou.metrics` | `_compute_raw_scores()` |
-| [`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.base.BaseClassProbaScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
+| [`BasePointScorer`](/pages/api/generated/yohou.metrics.BasePointScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
+| [`BaseIntervalScorer`](/pages/api/generated/yohou.metrics.BaseIntervalScorer/) | `yohou.metrics` | `_compute_raw_scores()` |
+| [`BaseClassProbaScorer`](/pages/api/generated/yohou.metrics.BaseClassProbaScorer/) | `yohou.metrics` | `_compute_raw_errors()` |
 
 ### Transformers
 
 | Base Class | Import | Frame Contract | Abstract Methods |
 |-----------|--------|----------------|-----------------|
-| [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) | `yohou.base` | Single-axis: `["time", ...]` | `_transform()`, `get_feature_names_out()` |
-| [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) | `yohou.base` | Two-axis: `["vintage_time", "time", ...]` | `_transform()`, `get_feature_names_out()` |
+| [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) | `yohou.base` | Single-axis: `["time", ...]` | `_transform()`, `get_feature_names_out()` |
+| [`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/) | `yohou.base` | Two-axis: `["vintage_time", "time", ...]` | `_transform()`, `get_feature_names_out()` |
 
 Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required only for invertible transformers).
 
-The two bases differ in the frame they accept, not in the methods you implement. Only [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/) has the `observe`/`rewind` memory API, which carries a buffer between calls; a forecast transformer refits per vintage and keeps nothing across calls, so neither applies. Before subclassing [`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/), check whether the operation can be expressed per vintage, in which case wrapping an actual transformer in [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.per_vintage.PerVintageActualTransformer/) is the normal path; the wrapped transformer may be stateful, since each vintage is fitted on its own rows. Subclass only for genuinely cross-vintage work. See [Transformer Kinds](../explanation/transformer-kinds.md).
+The two bases differ in the frame they accept, not in the methods you implement. Only [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) has the `observe`/`rewind` memory API, which carries a buffer between calls; a forecast transformer refits per vintage and keeps nothing across calls, so neither applies. Before subclassing [`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/), check whether the operation can be expressed per vintage, in which case wrapping an actual transformer in [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) is the normal path; the wrapped transformer may be stateful, since each vintage is fitted on its own rows. Subclass only for genuinely cross-vintage work. See [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ### Splitters
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BaseSplitter`](/pages/api/generated/yohou.model_selection.split.BaseSplitter/) | `yohou.model_selection` | `split()`, `_iter_test_indices()`, `get_n_splits()` |
+| [`BaseSplitter`](/pages/api/generated/yohou.model_selection.BaseSplitter/) | `yohou.model_selection` | `split()`, `_iter_test_indices()`, `get_n_splits()` |
 
 ### Search Strategies
 
 | Base Class | Import | Abstract Methods |
 |-----------|--------|-----------------|
-| [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) | `yohou.model_selection.search` | `_run_search()` |
+| [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.BaseSearchCV/) | `yohou.model_selection.search` | `_run_search()` |
 
-Built-in implementations: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/), [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.search.RandomizedSearchCV/). Extend [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/) only for custom search strategies (e.g., Bayesian optimization).
+Built-in implementations: [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/), [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/). Extend [`BaseSearchCV`](/pages/api/generated/yohou.model_selection.BaseSearchCV/) only for custom search strategies (e.g., Bayesian optimization).
 
 ## See Also
 

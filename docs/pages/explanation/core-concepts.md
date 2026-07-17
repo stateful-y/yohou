@@ -88,7 +88,7 @@ Polars brings several advantages for time series work:
 - **Datetime handling**: Polars natively distinguishes between regular intervals
   (`Duration` type for "1h", "1d") and calendar intervals (`"1mo"`, `"1y"` where month
   lengths vary). Yohou's
-  [`check_interval_consistency`](/pages/api/generated/yohou.utils.validation.check_interval_consistency/)
+  [`check_interval_consistency`](/pages/api/generated/yohou.utils.check_interval_consistency/)
   validates that time series have uniform spacing using this machinery.
 
 Code within yohou's `src/` directory uses polars idioms consistently: selector-based
@@ -119,29 +119,29 @@ combine observation and prediction into a single atomic call, which is the most 
 operation during rolling evaluation.
 
 Interval-specific methods (`predict_interval`, `observe_predict_interval`) live on
-[`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/)
-rather than on [`BaseForecaster`](/pages/api/generated/yohou.base.forecaster.BaseForecaster/), and class-probability methods
+[`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/)
+rather than on [`BaseForecaster`](/pages/api/generated/yohou.base.BaseForecaster/), and class-probability methods
 (`predict_class_proba`, `observe_predict_class_proba`) live on
-[`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/).
+[`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/).
 This keeps the base class focused on point prediction while allowing specialized
 forecasters to add their prediction types.
 
 For transformers, the pattern mirrors forecasters: a shared private root holds the
 scaffolding, and the capabilities that depend on the data shape live on the subclass
-that has that shape. [`BaseActualTransformer`](/pages/api/generated/yohou.base.transformer.BaseActualTransformer/), the base for single-axis
+that has that shape. [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/), the base for single-axis
 data, is where the memory API lives. It adds `observe` and `rewind` for memory
 management, plus the composite `observe_transform`, which transforms using pre-existing
 memory and then updates state, and `rewind_transform`, which applies the full
 transformation (internally dropping the first `observation_horizon` rows for stateful
 transformers) and then rewinds the state.
 
-[`BaseForecastTransformer`](/pages/api/generated/yohou.base.forecast_transformer.BaseForecastTransformer/) is the sibling branch, for transformers over
+[`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/) is the sibling branch, for transformers over
 vintage-indexed forecast frames. It has no memory API at all, because the axis it works
 on cannot support one. See [Transformer Kinds](transformer-kinds.md) for why the split
 falls where it does.
 
 This design means Yohou components work with Scikit-Learn utilities like `clone()`,
-[`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) (via Yohou's time-series-aware wrapper), and [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html) composition.
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) (via Yohou's time-series-aware wrapper), and [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html) composition.
 See [Model Selection](model-selection.md) for details on cross-validation.
 
 The following diagram shows the full class hierarchy:
@@ -190,33 +190,33 @@ classDiagram
 The three forecaster subtypes correspond to three prediction types:
 
 - **Point predictions** (`predict()`): a single numeric value per timestep, produced by
-  [`BasePointForecaster`](/pages/api/generated/yohou.point.base.BasePointForecaster/)
+  [`BasePointForecaster`](/pages/api/generated/yohou.point.BasePointForecaster/)
 - **Interval predictions** (`predict_interval()`): lower and upper bounds per coverage
   rate, produced by
-  [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.base.BaseIntervalForecaster/)
+  [`BaseIntervalForecaster`](/pages/api/generated/yohou.interval.BaseIntervalForecaster/)
 - **Class-probability predictions** (`predict_class_proba()`): probability distributions
   over categorical classes, produced by
-  [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.base.BaseClassProbaForecaster/)
+  [`BaseClassProbaForecaster`](/pages/api/generated/yohou.class_proba.BaseClassProbaForecaster/)
 
 For more on each, see [Reduction Forecasting](reduction-forecasting.md),
 [Interval Forecasting](interval-forecasting.md), and
 [Class-Probability Forecasting](class-probability-forecasting.md).
 
 The remaining base classes in the diagram serve supporting roles.
-[`BaseReductionForecaster`](/pages/api/generated/yohou.base.reduction.BaseReductionForecaster/)
+[`BaseReductionForecaster`](/pages/api/generated/yohou.base.BaseReductionForecaster/)
 wraps any Scikit-Learn regressor and provides the tabularization machinery that converts
 time series into supervised learning features (see [Reduction Forecasting](reduction-forecasting.md)).
-[`BaseSearchCV`](/pages/api/generated/yohou.model_selection.search.BaseSearchCV/)
+[`BaseSearchCV`](/pages/api/generated/yohou.model_selection.BaseSearchCV/)
 wraps a forecaster with hyperparameter search and delegates `predict`, `observe`, and
 `rewind` to the best configuration after fitting.
-[`BaseScorer`](/pages/api/generated/yohou.metrics.base.BaseScorer/) and its subclasses
+[`BaseScorer`](/pages/api/generated/yohou.metrics.BaseScorer/) and its subclasses
 (`BasePointScorer`, `BaseIntervalScorer`, `BaseClassProbaScorer`) compute
 [accuracy metrics](forecast-accuracy.md) with flexible aggregation across steps,
 vintages, components, and panel groups.
-[`BaseSplitter`](/pages/api/generated/yohou.model_selection.split.BaseSplitter/) defines
+[`BaseSplitter`](/pages/api/generated/yohou.model_selection.BaseSplitter/) defines
 temporal cross-validation splits that respect time ordering (see
 [Model Selection](model-selection.md)).
-[`BaseSimilarity`](/pages/api/generated/yohou.interval.base.BaseSimilarity/) computes
+[`BaseSimilarity`](/pages/api/generated/yohou.interval.BaseSimilarity/) computes
 observation weights for conformal prediction intervals, enabling locally adaptive
 coverage (see [Interval Forecasting](interval-forecasting.md)).
 
@@ -235,9 +235,9 @@ maintains a sliding buffer of that many recent rows. A zero value means the comp
 *stateless* and carries no memory.
 
 For transformers, the value comes directly from the operation.
-[`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/)
+[`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
 with `lag=[1, 7]` has an observation horizon of 7.
-[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.transformers.SeasonalDifferencing/)
+[`SeasonalDifferencing`](/pages/api/generated/yohou.stationarity.SeasonalDifferencing/)
 with `seasonality=12` has an observation horizon of 12. Stateless transformers (scaling, log
 transforms) have an observation horizon of 0.
 
@@ -245,7 +245,7 @@ Forecasters compute their observation horizon as the maximum of the forecaster's
 internal requirement and those of all attached transformers. A forecaster whose target
 transformer needs 7 rows and whose feature transformer needs 12 rows has an observation
 horizon of at least 12. The `observation_horizon` property on
-[`BaseForecaster`](/pages/api/generated/yohou.base.forecaster.BaseForecaster/)
+[`BaseForecaster`](/pages/api/generated/yohou.base.BaseForecaster/)
 walks the transformer tree and returns this maximum automatically.
 
 The `observe` and `rewind` methods manage the estimator's memory:

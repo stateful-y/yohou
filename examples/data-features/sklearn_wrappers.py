@@ -420,8 +420,8 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Column-wise transforms**: See [`examples/compose/column_transformer.py`](/examples/data-features/column_transformer/) for applying different scalers to different columns
-    - **Custom transforms**: See [`examples/preprocessing/function_transformer.py`](/examples/data-features/function_transformer/) for wrapping arbitrary polars operations
+    - **Column-wise transforms**: See [`examples/data-features/column_transformer.py`](/examples/column_transformer/) for applying different scalers to different columns
+    - **Custom transforms**: See [`examples/data-features/function_transformer.py`](/examples/function_transformer/) for wrapping arbitrary polars operations
     - **Stationarity transforms**: See `examples/stationarity/` for decomposition-based transforms (LogTransformer, BoxCoxTransformer, etc.)
     """)
 

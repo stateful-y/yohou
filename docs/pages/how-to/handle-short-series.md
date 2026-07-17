@@ -10,8 +10,7 @@ patterns, run temporal cross-validation, or calibrate conformal intervals.
 - Familiarity with panel data concepts ([Work with Panel Data](panel-data.md))
   if you have multiple series
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+<!-- COMPANION_NOTEBOOKS -->
 
 ## Choose a Fallback
 
@@ -28,7 +27,7 @@ patterns, run temporal cross-validation, or calibrate conformal intervals.
 ## Use Fourier Terms for Seasonality
 
 When you have fewer than 2-3 complete seasonal cycles,
-[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.seasonality.FourierSeasonalityForecaster/)
+[`FourierSeasonalityForecaster`](/pages/api/generated/yohou.stationarity.FourierSeasonalityForecaster/)
 is more reliable than pattern-based decomposition. Fourier terms fit smooth
 harmonic functions that need less data to converge than estimating a full
 seasonal shape:
@@ -45,7 +44,7 @@ data.
 ## Reduce Cross-Validation Splits
 
 When the series is too short for multi-split CV, use the minimum split count.
-[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/) requires at least two splits. This gives up the
+[`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.ExpandingWindowSplitter/) requires at least two splits. This gives up the
 variance estimate that more splits provide but avoids creating splits where the
 training set is too small:
 
@@ -84,9 +83,9 @@ perform worse than individual models. See
 MASE and RMSSE scale errors by the in-sample naive forecast error. If the
 training period is shorter than one seasonal cycle, the denominator cannot be
 computed. Use
-[`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.MeanAbsolutePercentageError/)
+[`MeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.MeanAbsolutePercentageError/)
 (when zero values are not present) or
-[`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.point.SymmetricMeanAbsolutePercentageError/)
+[`SymmetricMeanAbsolutePercentageError`](/pages/api/generated/yohou.metrics.SymmetricMeanAbsolutePercentageError/)
 as alternatives:
 
 ```python

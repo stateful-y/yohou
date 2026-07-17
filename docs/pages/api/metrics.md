@@ -4,77 +4,55 @@ template: api-submodule.html
 
 # yohou.metrics
 
-Scorers for evaluating point forecasts, prediction intervals, class-probability forecasts, and conformal prediction calibration.
+Scoring functions for point, interval, class-probability, and conformity predictions.
 
-**User guide**: See [Forecast Accuracy](../explanation/forecast-accuracy.md) for vintage-based evaluation and accuracy scoring.
-
-### Base Classes
+### Classes
 
 | Name | Description |
-| --- | --- |
-| [`BaseScorer`](generated/yohou.metrics.base.BaseScorer.md) | Base class for all forecasting metrics. |
-| [`BasePointScorer`](generated/yohou.metrics.base.BasePointScorer.md) | Base class for point forecast metrics. |
-| [`BaseIntervalScorer`](generated/yohou.metrics.base.BaseIntervalScorer.md) | Base class for interval forecast metrics. |
-| [`BaseClassProbaScorer`](generated/yohou.metrics.base.BaseClassProbaScorer.md) | Base class for class-probability metrics. |
-| [`BaseHardLabelScorer`](generated/yohou.metrics.base.BaseHardLabelScorer.md) | Base class for hard-label classification metrics. |
-| [`BaseRankingScorer`](generated/yohou.metrics.base.BaseRankingScorer.md) | Base class for ranking-based classification metrics. |
-| [`BaseConformityScorer`](generated/yohou.metrics.conformity_base.BaseConformityScorer.md) | Base class for conformal prediction conformity scorers. |
+|------|-------------|
+| [`BaseClassProbaScorer`](generated/yohou.metrics.BaseClassProbaScorer.md) | Base class for class-probability forecast metrics. |
+| [`BaseHardLabelScorer`](generated/yohou.metrics.BaseHardLabelScorer.md) | Base class for confusion-matrix classification metrics. |
+| [`BaseIntervalScorer`](generated/yohou.metrics.BaseIntervalScorer.md) | Base class for interval forecast metrics. |
+| [`BasePointScorer`](generated/yohou.metrics.BasePointScorer.md) | Base class for point forecast metrics. |
+| [`BaseRankingScorer`](generated/yohou.metrics.BaseRankingScorer.md) | Base class for ranking classification metrics. |
+| [`BaseScorer`](generated/yohou.metrics.BaseScorer.md) | Base class for all forecasting metrics. |
+| [`BrierScore`](generated/yohou.metrics.BrierScore.md) | Multi-class Brier score for class-probability forecasts. |
+| [`LogLoss`](generated/yohou.metrics.LogLoss.md) | Logarithmic loss (cross-entropy) for class-probability forecasts. |
+| [`RankedProbabilityScore`](generated/yohou.metrics.RankedProbabilityScore.md) | Ranked Probability Score for class-probability forecasts. |
+| [`Accuracy`](generated/yohou.metrics.Accuracy.md) | Categorical accuracy from class-probability forecasts. |
+| [`FBetaScore`](generated/yohou.metrics.FBetaScore.md) | F-beta score from class-probability forecasts. |
+| [`PRAuC`](generated/yohou.metrics.PRAuC.md) | Precision-Recall AUC from class-probability forecasts. |
+| [`Precision`](generated/yohou.metrics.Precision.md) | Precision from class-probability forecasts. |
+| [`Recall`](generated/yohou.metrics.Recall.md) | Recall (sensitivity) from class-probability forecasts. |
+| [`ROCAuC`](generated/yohou.metrics.ROCAuC.md) | ROC AUC from class-probability forecasts. |
+| [`AbsoluteGammaResidual`](generated/yohou.metrics.AbsoluteGammaResidual.md) | Absolute gamma residual scorer using absolute relative errors. |
+| [`AbsoluteQuantileResidual`](generated/yohou.metrics.AbsoluteQuantileResidual.md) | Absolute quantile residual scorer for interval forecasts. |
+| [`AbsoluteResidual`](generated/yohou.metrics.AbsoluteResidual.md) | Absolute residual conformity scorer using unsigned prediction errors. |
+| [`GammaResidual`](generated/yohou.metrics.GammaResidual.md) | Gamma residual scorer using relative prediction errors. |
+| [`QuantileResidual`](generated/yohou.metrics.QuantileResidual.md) | Quantile residual scorer for interval forecasts. |
+| [`Residual`](generated/yohou.metrics.Residual.md) | Residual-based conformity scorer using signed prediction errors. |
+| [`BaseConformityScorer`](generated/yohou.metrics.BaseConformityScorer.md) | Base class for conformal prediction conformity scorers. |
+| [`CalibrationError`](generated/yohou.metrics.CalibrationError.md) | Calibration Error for prediction intervals. |
+| [`ContinuousRankedProbabilityScore`](generated/yohou.metrics.ContinuousRankedProbabilityScore.md) | Continuous Ranked Probability Score (CRPS) for prediction intervals. |
+| [`EmpiricalCoverage`](generated/yohou.metrics.EmpiricalCoverage.md) | Empirical coverage rate for prediction intervals. |
+| [`IntervalScore`](generated/yohou.metrics.IntervalScore.md) | Interval Score (Winkler Score) for prediction intervals. |
+| [`MeanIntervalWidth`](generated/yohou.metrics.MeanIntervalWidth.md) | Mean width of prediction intervals. |
+| [`PinballLoss`](generated/yohou.metrics.PinballLoss.md) | Pinball Loss (Quantile Score) for prediction intervals. |
+| [`MaxAbsoluteError`](generated/yohou.metrics.MaxAbsoluteError.md) | Maximum Absolute Error metric for point forecasts. |
+| [`MeanAbsoluteError`](generated/yohou.metrics.MeanAbsoluteError.md) | Mean Absolute Error metric for point forecasts. |
+| [`MeanAbsolutePercentageError`](generated/yohou.metrics.MeanAbsolutePercentageError.md) | Mean Absolute Percentage Error metric for point forecasts. |
+| [`MeanAbsoluteScaledError`](generated/yohou.metrics.MeanAbsoluteScaledError.md) | Mean Absolute Scaled Error metric for point forecasts. |
+| [`MeanDirectionalAccuracy`](generated/yohou.metrics.MeanDirectionalAccuracy.md) | Mean Directional Accuracy metric for point forecasts. |
+| [`MeanSquaredError`](generated/yohou.metrics.MeanSquaredError.md) | Mean Squared Error metric for point forecasts. |
+| [`MedianAbsoluteError`](generated/yohou.metrics.MedianAbsoluteError.md) | Median Absolute Error metric for point forecasts. |
+| [`R2Score`](generated/yohou.metrics.R2Score.md) | R-squared (Coefficient of Determination) metric for point forecasts. |
+| [`RootMeanSquaredError`](generated/yohou.metrics.RootMeanSquaredError.md) | Root Mean Squared Error metric for point forecasts. |
+| [`RootMeanSquaredScaledError`](generated/yohou.metrics.RootMeanSquaredScaledError.md) | Root Mean Squared Scaled Error metric for point forecasts. |
+| [`SymmetricMeanAbsolutePercentageError`](generated/yohou.metrics.SymmetricMeanAbsolutePercentageError.md) | Symmetric Mean Absolute Percentage Error metric for point forecasts. |
 
-### Point Scorers
-
-| Name | Description |
-| --- | --- |
-| [`MeanAbsoluteError`](generated/yohou.metrics.point.MeanAbsoluteError.md) | Mean Absolute Error metric for point forecasts. |
-| [`MeanAbsolutePercentageError`](generated/yohou.metrics.point.MeanAbsolutePercentageError.md) | Mean Absolute Percentage Error metric for point forecasts. |
-| [`MeanAbsoluteScaledError`](generated/yohou.metrics.point.MeanAbsoluteScaledError.md) | Mean Absolute Scaled Error metric for point forecasts. |
-| [`MaxAbsoluteError`](generated/yohou.metrics.point.MaxAbsoluteError.md) | Maximum Absolute Error metric for point forecasts. |
-| [`MeanDirectionalAccuracy`](generated/yohou.metrics.point.MeanDirectionalAccuracy.md) | Mean Directional Accuracy metric for point forecasts. |
-| [`MeanSquaredError`](generated/yohou.metrics.point.MeanSquaredError.md) | Mean Squared Error metric for point forecasts. |
-| [`MedianAbsoluteError`](generated/yohou.metrics.point.MedianAbsoluteError.md) | Median Absolute Error metric for point forecasts. |
-| [`R2Score`](generated/yohou.metrics.point.R2Score.md) | Coefficient of determination (R-squared) metric for point forecasts. |
-| [`RootMeanSquaredError`](generated/yohou.metrics.point.RootMeanSquaredError.md) | Root Mean Squared Error metric for point forecasts. |
-| [`RootMeanSquaredScaledError`](generated/yohou.metrics.point.RootMeanSquaredScaledError.md) | Root Mean Squared Scaled Error metric for point forecasts. |
-| [`SymmetricMeanAbsolutePercentageError`](generated/yohou.metrics.point.SymmetricMeanAbsolutePercentageError.md) | Symmetric Mean Absolute Percentage Error metric for point forecasts. |
-
-### Interval Scorers
-
-| Name | Description |
-| --- | --- |
-| [`CalibrationError`](generated/yohou.metrics.interval.CalibrationError.md) | Calibration Error for prediction intervals. |
-| [`ContinuousRankedProbabilityScore`](generated/yohou.metrics.interval.ContinuousRankedProbabilityScore.md) | Continuous Ranked Probability Score for prediction intervals. |
-| [`EmpiricalCoverage`](generated/yohou.metrics.interval.EmpiricalCoverage.md) | Empirical coverage rate for prediction intervals. |
-| [`IntervalScore`](generated/yohou.metrics.interval.IntervalScore.md) | Interval Score (Winkler Score) for prediction intervals. |
-| [`MeanIntervalWidth`](generated/yohou.metrics.interval.MeanIntervalWidth.md) | Mean width of prediction intervals. |
-| [`PinballLoss`](generated/yohou.metrics.interval.PinballLoss.md) | Pinball Loss (Quantile Score) for prediction intervals. |
-
-### Conformity Scorers
-
-| Name | Description |
-| --- | --- |
-| [`AbsoluteGammaResidual`](generated/yohou.metrics.conformity.AbsoluteGammaResidual.md) | Absolute gamma residual scorer using absolute relative errors. |
-| [`AbsoluteQuantileResidual`](generated/yohou.metrics.conformity.AbsoluteQuantileResidual.md) | Absolute quantile residual conformity scorer using unsigned pinball errors. |
-| [`AbsoluteResidual`](generated/yohou.metrics.conformity.AbsoluteResidual.md) | Absolute residual conformity scorer using unsigned prediction errors. |
-| [`GammaResidual`](generated/yohou.metrics.conformity.GammaResidual.md) | Gamma residual scorer using relative prediction errors. |
-| [`QuantileResidual`](generated/yohou.metrics.conformity.QuantileResidual.md) | Quantile residual conformity scorer using signed pinball errors. |
-| [`Residual`](generated/yohou.metrics.conformity.Residual.md) | Residual-based conformity scorer using signed prediction errors. |
-
-### Classification Scorers
+### Functions
 
 | Name | Description |
-| --- | --- |
-| [`Accuracy`](generated/yohou.metrics.classification.Accuracy.md) | Categorical accuracy from class-probability forecasts. |
-| [`BrierScore`](generated/yohou.metrics.class_proba.BrierScore.md) | Multi-class Brier score for class-probability forecasts. |
-| [`FBetaScore`](generated/yohou.metrics.classification.FBetaScore.md) | F-beta score (hard-label) from class-probability forecasts. |
-| [`LogLoss`](generated/yohou.metrics.class_proba.LogLoss.md) | Logarithmic loss (cross-entropy) for class-probability forecasts. |
-| [`PRAuC`](generated/yohou.metrics.classification.PRAuC.md) | Area under the precision-recall curve from class-probability forecasts. |
-| [`Precision`](generated/yohou.metrics.classification.Precision.md) | Precision (hard-label) from class-probability forecasts. |
-| [`RankedProbabilityScore`](generated/yohou.metrics.class_proba.RankedProbabilityScore.md) | Ranked Probability Score for ordered class-probability forecasts. |
-| [`Recall`](generated/yohou.metrics.classification.Recall.md) | Recall (hard-label) from class-probability forecasts. |
-| [`ROCAuC`](generated/yohou.metrics.classification.ROCAuC.md) | Area under the ROC curve from class-probability forecasts. |
-
-### Utilities
-
-| Name | Description |
-| --- | --- |
-| [`get_scorer`](generated/yohou.metrics.get_scorer.md) | Get a default-configured scorer instance by name. |
+|------|-------------|
+| [`get_scorer`](generated/yohou.metrics.get_scorer.md) | Get a scorer instance by name. |
 | [`make_scorer`](generated/yohou.metrics.make_scorer.md) | Create a scorer instance with custom parameters. |

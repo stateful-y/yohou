@@ -67,8 +67,8 @@ a public holiday is not a function of anything measurable today. It is a lookup.
 The same test, in the form you can apply while writing the `fit()` call: **can
 you compute it from the timestamp alone, or do you need an external table?** A
 timestamp alone means a *clock feature*, which belongs in `feature_transformer`
-(see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/)
-and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/)).
+(see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.FourierFeatureTransformer/)
+and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.CalendarFeatureTransformer/)).
 An external table means an *event feature*, which belongs in `X_future`.
 
 Note that "deterministic and knowable in advance" does not separate the two. A
@@ -81,7 +81,7 @@ Determinism is not the question; derivability from `T` is.
 Holidays deserve a note, because they can legitimately appear on either channel
 and the two uses are complementary rather than competing.
 
-[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.HolidayFeatureTransformer/)
+[`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/)
 on `X_actual` gives *past* holiday effects: whether recently observed timestamps
 were holidays, which is what you want when demand rebounds the day after a
 closure. It runs on the observation frame, so it cannot say anything about a
@@ -164,11 +164,11 @@ any transformer-derived features (`target_lag_1`, `temp_rolling_mean_7`, etc.).
 
 Two public utilities handle this pivoting:
 
-- [`window_forecasts()`](/pages/api/generated/yohou.utils.pivot.window_forecasts/) selects the latest vintage at or before each
+- [`window_forecasts()`](/pages/api/generated/yohou.utils.window_forecasts/) selects the latest vintage at or before each
   observation time (as-of matching) and converts tidy
   `[vintage_time, time, col1, col2]` to wide
   `[time, col1_step_1, col1_step_2, ...]`
-- [`window_futures()`](/pages/api/generated/yohou.utils.pivot.window_futures/) converts flat `[time, col1, col2]` to wide format by
+- [`window_futures()`](/pages/api/generated/yohou.utils.window_futures/) converts flat `[time, col1, col2]` to wide format by
   looking forward from each observation time
 
 Both are called internally by `_derive_step_columns()` but are available as
@@ -307,7 +307,7 @@ issued within the test window, matching what would be available in a real
 walk-forward deployment.
 
 The same splitting logic is available via
-[`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/)
+[`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/)
 for a single temporal split. Positional arrays (`y`, `X_actual`) are split by
 row position, `X_future` is not split (pass it to both `fit` and `predict`
 directly), and `X_forecast` is split by `vintage_time` range using the cutoff
@@ -317,14 +317,14 @@ inferred from the first array's `"time"` column.
 
 All composition forecasters propagate the three parameters to their children:
 
-- [**`ColumnForecaster`**](/pages/api/generated/yohou.compose.column_forecaster.ColumnForecaster/) routes `X_actual`, `X_future`, `X_forecast` to each
+- [**`ColumnForecaster`**](/pages/api/generated/yohou.compose.ColumnForecaster/) routes `X_actual`, `X_future`, `X_forecast` to each
   child forecaster. Children that don't use exogenous features ignore the
   parameters via the `requires_exogenous` tag.
 
-- [**`DecompositionPipeline`**](/pages/api/generated/yohou.compose.decomposition_pipeline.DecompositionPipeline/) passes all three parameters to the residual
+- [**`DecompositionPipeline`**](/pages/api/generated/yohou.compose.DecompositionPipeline/) passes all three parameters to the residual
   forecaster after trend/seasonality removal.
 
-- [**`ForecastedFeatureForecaster`**](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/) uses `X_actual` as the target for the
+- [**`ForecastedFeatureForecaster`**](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/) uses `X_actual` as the target for the
   feature forecaster (training it to predict the exogenous series). At predict
   time the feature forecaster produces a forecast that is passed to the target
   forecaster as `X_forecast` (merged with any caller-supplied `X_forecast`), so
@@ -333,12 +333,12 @@ All composition forecasters propagate the three parameters to their children:
   often the feature forecaster regenerates this forecast (every step by default),
   for cases where the feature model is too expensive to re-run on every step.
 
-- [**`VotingPointForecaster`**](/pages/api/generated/yohou.ensemble.voting_point.VotingPointForecaster/),
-  [**`VotingIntervalForecaster`**](/pages/api/generated/yohou.ensemble.voting_interval.VotingIntervalForecaster/),
-  and [**`VotingClassProbaForecaster`**](/pages/api/generated/yohou.ensemble.voting_class_proba.VotingClassProbaForecaster/)
+- [**`VotingPointForecaster`**](/pages/api/generated/yohou.ensemble.VotingPointForecaster/),
+  [**`VotingIntervalForecaster`**](/pages/api/generated/yohou.ensemble.VotingIntervalForecaster/),
+  and [**`VotingClassProbaForecaster`**](/pages/api/generated/yohou.ensemble.VotingClassProbaForecaster/)
   each pass all three parameters to every ensemble member.
 
-- [**`SplitConformalForecaster`**](/pages/api/generated/yohou.interval.split_conformal.SplitConformalForecaster/) forwards all parameters to the wrapped point
+- [**`SplitConformalForecaster`**](/pages/api/generated/yohou.interval.SplitConformalForecaster/) forwards all parameters to the wrapped point
   forecaster.
 
 ## Connections
@@ -348,7 +348,7 @@ All composition forecasters propagate the three parameters to their children:
 - [How to Use Exogenous Features](../how-to/exogenous-features.md) covers
   production workflow recipes
 - [Forecaster Composition](forecaster-composition.md) describes
-  [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.forecasted_feature_forecaster.ForecastedFeatureForecaster/),
+  [`ForecastedFeatureForecaster`](/pages/api/generated/yohou.compose.ForecastedFeatureForecaster/),
   which automates the two-stage pattern of forecasting exogenous features
   before the target
 - [Reduction Forecasting](reduction-forecasting.md) explains the direct

@@ -2,16 +2,15 @@
 
 In this tutorial, we will build a forecasting model that uses all three types of exogenous features: actual observations (`X_actual`), known future indicators (`X_future`), and external forecast vintages (`X_forecast`). We will fit the model on synthetic electricity price data, show that different weather forecast vintages produce different predictions, and run a walk-forward evaluation to measure the improvement from including weather forecasts.
 
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
-
 ## Prerequisites
 
 - Completed [Forecasting Workflow](forecasting-workflow.md)
 
+<!-- COMPANION_NOTEBOOKS -->
+
 ## 1. Load the Data
 
-Start by generating a synthetic electricity dataset that includes all three exogenous types. [`make_exogenous_regression()`](/pages/api/generated/yohou.datasets._generators.make_exogenous_regression/) creates hourly electricity prices driven by temperature (actual), a holiday indicator (future), and weather model forecasts (forecast vintage).
+Start by generating a synthetic electricity dataset that includes all three exogenous types. [`make_exogenous_regression()`](/pages/api/generated/yohou.datasets.make_exogenous_regression/) creates hourly electricity prices driven by temperature (actual), a holiday indicator (future), and weather model forecasts (forecast vintage).
 
 ```python
 from yohou.datasets import make_exogenous_regression
@@ -40,7 +39,7 @@ X_forecast: (1143, 3)
 
 ## 2. Split and Fit
 
-We split the data with [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/), which handles both row-indexed arrays and vintage-indexed `X_forecast` in a single call:
+We split the data with [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/), which handles both row-indexed arrays and vintage-indexed `X_forecast` in a single call:
 
 ```python
 from yohou.model_selection import train_test_split
@@ -50,7 +49,7 @@ y_train, y_test, X_actual_train, X_actual_test, X_forecast_train, _ = train_test
 )
 ```
 
-Now we build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) with the `"direct"` strategy and `HistGradientBoostingRegressor`, using a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) to build lag features:
+Now we build a [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) with the `"direct"` strategy and `HistGradientBoostingRegressor`, using a [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) to build lag features:
 
 ```python
 from sklearn.ensemble import HistGradientBoostingRegressor
@@ -123,7 +122,7 @@ Notice that the predictions differ because the weather forecasts differ. The acc
 
 ## 4. Walk-Forward Evaluation
 
-`observe_predict` steps through `y_test` one stride at a time, observing new `X_actual` and issuing fresh forecasts, with accuracy computed using [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.point.MeanAbsoluteError/):
+`observe_predict` steps through `y_test` one stride at a time, observing new `X_actual` and issuing fresh forecasts, with accuracy computed using [`MeanAbsoluteError`](/pages/api/generated/yohou.metrics.MeanAbsoluteError/):
 
 ```python
 from yohou.metrics import MeanAbsoluteError

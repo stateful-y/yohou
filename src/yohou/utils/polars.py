@@ -163,7 +163,10 @@ def get_categorical_columns(df: pl.DataFrame, exclude: list[str] | None = None) 
     See Also
     --------
     - [`get_numeric_columns`][yohou.utils.polars.get_numeric_columns] : List numeric column names from a DataFrame.
-    - [`is_categorical_dtype`][yohou.utils.polars.is_categorical_dtype] : Check if a dtype is categorical.
+
+    Notes
+    -----
+    ``is_categorical_dtype`` checks whether a single dtype is categorical.
 
     """
     exclude = exclude or []

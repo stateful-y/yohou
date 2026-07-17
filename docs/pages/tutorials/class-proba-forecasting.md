@@ -1,13 +1,12 @@
 # Class-Probability Forecasting
 
-In this tutorial, we will forecast air quality categories using [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/), producing a probability distribution over four WHO air quality classes instead of a single numeric value. We will load a real dataset with hourly pollution readings, fit a classifier-backed forecaster, and evaluate the probabilistic output with the Brier score and accuracy.
-
-!!! tip "Try it interactively"
-    <!-- COMPANION_NOTEBOOKS -->
+In this tutorial, we will forecast air quality categories using [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/), producing a probability distribution over four WHO air quality classes instead of a single numeric value. We will load a real dataset with hourly pollution readings, fit a classifier-backed forecaster, and evaluate the probabilistic output with the Brier score and accuracy.
 
 ## Prerequisites
 
 - Completed [Getting Started](getting-started.md)
+
+<!-- COMPANION_NOTEBOOKS -->
 
 ## 1. Load and Inspect the Data
 
@@ -44,7 +43,7 @@ shape: (3, 2)
 
 ## 2. Train/Test Split
 
-We split the data so that the last 24 hours form the test set (one full day ahead) using [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/):
+We split the data so that the last 24 hours form the test set (one full day ahead) using [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/):
 
 ```python
 from yohou.model_selection import train_test_split
@@ -76,7 +75,7 @@ shape: (2, 2)
 
 ## 3. Fit the Forecaster
 
-[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) wraps any Scikit-Learn classifier that supports `predict_proba` and uses a reduction strategy to produce forecasts for each step in the horizon. We pass `X_actual` at fit time so the model learns to use pollutant readings as features:
+[`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) wraps any Scikit-Learn classifier that supports `predict_proba` and uses a reduction strategy to produce forecasts for each step in the horizon. We pass `X_actual` at fit time so the model learns to use pollutant readings as features:
 
 ```python
 from yohou.class_proba import ClassProbaReductionForecaster
@@ -93,7 +92,7 @@ forecaster = ClassProbaReductionForecaster(
 forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, X_actual=X_train)
 ```
 
-[`FeaturePipeline`](/pages/api/generated/yohou.compose.feature_pipeline.FeaturePipeline/) chains feature transformers sequentially, just like sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html). Here we use a single [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) that creates autoregressive features from 1, 2, 3, and 24 hours back.
+[`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) chains feature transformers sequentially, just like sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html). Here we use a single [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) that creates autoregressive features from 1, 2, 3, and 24 hours back.
 
 ## 4. Predict Class Probabilities
 
@@ -133,11 +132,11 @@ The first line shows the full column names. Polars may truncate long names in th
     does not necessarily mean the event occurs 80% of the time. If reliable
     probability estimates matter for your application, consider calibrating the
     underlying classifier (e.g., with [`CalibratedClassifierCV`](https://scikit-learn.org/stable/modules/generated/sklearn.calibration.CalibratedClassifierCV.html)) before passing
-    it to [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/).
+    it to [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/).
 
 ## 5. Evaluate
 
-We score the probabilistic forecasts with [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/), which measures calibration quality (lower is better), and with [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/), which evaluates the argmax class prediction against the true label (higher is better). Both scorers require a `.fit(y_train)` call to infer the panel structure and time interval from the training data:
+We score the probabilistic forecasts with [`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/), which measures calibration quality (lower is better), and with [`Accuracy`](/pages/api/generated/yohou.metrics.Accuracy/), which evaluates the argmax class prediction against the true label (higher is better). Both scorers require a `.fit(y_train)` call to infer the panel structure and time interval from the training data:
 
 ```python
 from yohou.metrics import Accuracy, BrierScore
@@ -171,10 +170,10 @@ A Brier score near 0 means the predicted probabilities are concentrated around t
 
 We built a complete class-probability forecasting workflow. Along the way, we:
 
-- Loaded a real-world air quality dataset with [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets._fetchers.fetch_air_quality_classification/) and split it with [`train_test_split`](/pages/api/generated/yohou.model_selection.split.train_test_split/)
-- Fit a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.reduction.ClassProbaReductionForecaster/) backed by a Random Forest classifier with lag features
+- Loaded a real-world air quality dataset with [`fetch_air_quality_classification`](/pages/api/generated/yohou.datasets.fetch_air_quality_classification/) and split it with [`train_test_split`](/pages/api/generated/yohou.model_selection.train_test_split/)
+- Fit a [`ClassProbaReductionForecaster`](/pages/api/generated/yohou.class_proba.ClassProbaReductionForecaster/) backed by a Random Forest classifier with lag features
 - Called `predict_class_proba` to produce a four-class probability distribution for each hour
-- Evaluated calibration with [`BrierScore`](/pages/api/generated/yohou.metrics.class_proba.BrierScore/) and classification accuracy with [`Accuracy`](/pages/api/generated/yohou.metrics.classification.Accuracy/)
+- Evaluated calibration with [`BrierScore`](/pages/api/generated/yohou.metrics.BrierScore/) and classification accuracy with [`Accuracy`](/pages/api/generated/yohou.metrics.Accuracy/)
 
 ## Next Steps
 

@@ -39,7 +39,7 @@ def _(mo):
     ## Prerequisites
 
     Basic familiarity with [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) -
-    see [`reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) for an introduction.
+    see [`reduction_forecaster.py`](/examples/reduction_forecaster/) for an introduction.
     """)
 
 
@@ -405,10 +405,10 @@ def _(mo):
     mo.md(r"""
     ## Next Steps
 
-    - **Reduction basics**: See [`reduction_forecaster.py`](/examples/getting-started/reduction_forecaster/) for transformers and GridSearchCV
-    - **Interval strategies**: See [`interval_reduction.py`](/examples/forecasting-models/interval_reduction/) for quantile regression with reduction strategies
-    - **Panel data**: See [`panel_reduction.py`](/examples/panel-data/panel_reduction/) for panel strategies (orthogonal to reduction strategies)
-    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/forecasting-models/time_weighted_reduction/) for sample weight alignment
+    - **Reduction basics**: See [`reduction_forecaster.py`](/examples/reduction_forecaster/) for transformers and GridSearchCV
+    - **Interval strategies**: See [`interval_reduction.py`](/examples/interval_reduction/) for quantile regression with reduction strategies
+    - **Panel data**: See [`panel_reduction.py`](/examples/panel_reduction/) for panel strategies (orthogonal to reduction strategies)
+    - **Time weighting**: See [`time_weighted_reduction.py`](/examples/time_weighted_reduction/) for sample weight alignment
     """)
 
 
