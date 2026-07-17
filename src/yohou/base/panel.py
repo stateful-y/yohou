@@ -662,7 +662,7 @@ class BasePanelForecaster:
             else:
                 self._X_forecast_raw_ = X_forecast.clear()
             # Narrow the transformed cache identically, reusing the transform above.
-            if X_forecast_eff is not None:
+            if X_forecast_eff is not None:  # pragma: no branch - non-None whenever X_forecast is provided
                 self._X_forecast_t_ = (
                     X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
                     if latest_vintage is not None

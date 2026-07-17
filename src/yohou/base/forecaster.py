@@ -261,7 +261,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     feature_observation_horizon = typing_cast(
                         BaseActualTransformer, first_transformer
                     ).observation_horizon
-            elif isinstance(self.actual_transformer_, BaseActualTransformer):
+            elif isinstance(  # pragma: no branch - actual_transformer_ is a dict or a BaseActualTransformer, never neither
+                self.actual_transformer_, BaseActualTransformer
+            ):
                 feature_observation_horizon = self.actual_transformer_.observation_horizon
 
         self_observation_horizon = self._observation_horizon
@@ -383,7 +385,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # transformer consuming nothing empties every step column.
         min_lost = (per_vintage["len"] - per_vintage["len_t"].fill_null(0)).min()
 
-        if min_lost is None:
+        if (
+            min_lost is None
+        ):  # pragma: no cover - defensive: per_vintage is non-empty once the empty guard above returns
             return
         lost = typing_cast(int, min_lost)
         if lost < 1:

@@ -195,7 +195,7 @@ def _fit_transform_transformers_one(
     target_transformer : BaseActualTransformer or None
         Target transformer to apply.
     actual_transformer : BaseActualTransformer or None
-        Feature transformer to apply.
+        Actual transformer to apply.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the target after ``target_transformer``,
@@ -284,7 +284,7 @@ def _build_feature_input(
         ``"raw"`` includes the original target, and ``None`` uses only
         exogenous features.
     actual_transformer : BaseActualTransformer or None
-        Feature transformer (used for validation when
+        Actual transformer (used for validation when
         ``target_as_feature=None``).
 
     Returns
@@ -367,7 +367,7 @@ def _observe_transformers_one(
     target_transformer : BaseActualTransformer or None
         Target transformer to observe.
     actual_transformer : BaseActualTransformer or None
-        Feature transformer to observe.
+        Actual transformer to observe.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
 
@@ -409,7 +409,7 @@ def _rewind_transformers_one(
     target_transformer : BaseActualTransformer or None
         Target transformer to rewind.
     actual_transformer : BaseActualTransformer or None
-        Feature transformer to rewind.
+        Actual transformer to rewind.
     observation_horizon : int
         Number of time steps to retain in observation horizon.
     target_as_feature : {"transformed", "raw"} or None

@@ -492,7 +492,9 @@ def check_rewind_propagates_to_transformers(
 
     """
     # Check if forecaster has transformers (target_transformer or actual_transformer)
-    if not hasattr(forecaster, "target_transformer_") and not hasattr(forecaster, "actual_transformer_"):
+    if not hasattr(forecaster, "target_transformer_") and not hasattr(
+        forecaster, "actual_transformer_"
+    ):  # pragma: no branch - the generator only yields this check for transformer-using forecasters
         return  # Nothing to check
 
     # Rewind the forecaster
@@ -533,7 +535,7 @@ def check_rewind_propagates_to_transformers(
                     and getattr(transformer, "observation_horizon", 0) > 0
                 ):
                     assert len(transformer._X_observed) > 0, (
-                        f"Feature transformer for group '{group_name}' should have observations after rewind"
+                        f"Actual transformer for group '{group_name}' should have observations after rewind"
                     )
         # Non-panel data
         elif (
@@ -542,7 +544,7 @@ def check_rewind_propagates_to_transformers(
             and getattr(forecaster.actual_transformer_, "observation_horizon", 0) > 0
         ):
             assert len(forecaster.actual_transformer_._X_observed) > 0, (
-                "Feature transformer should have observations after rewind"
+                "Actual transformer should have observations after rewind"
             )
 
 
@@ -837,7 +839,7 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
             )
 
     # Check uses_actual_transformer matches parameter
-    if hasattr(forecaster, "actual_transformer"):
+    if hasattr(forecaster, "actual_transformer"):  # pragma: no branch - every forecaster declares the slot
         has_actual_transformer = forecaster.actual_transformer is not None
         uses_actual_transformer = tags.forecaster_tags.uses_actual_transformer
 
@@ -848,7 +850,7 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
             )
 
     # Check uses_forecast_transformer matches parameter
-    if hasattr(forecaster, "forecast_transformer"):
+    if hasattr(forecaster, "forecast_transformer"):  # pragma: no branch - every forecaster declares the slot
         has_forecast_transformer = forecaster.forecast_transformer is not None
         uses_forecast_transformer = tags.forecaster_tags.uses_forecast_transformer
 

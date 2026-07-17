@@ -425,7 +425,7 @@ class BaseStandardForecaster:
             # already applied above rather than re-running it. Narrowing the
             # transformed frame also avoids handing the transformer a lone vintage,
             # which is the shape min_vintage_rows can drop.
-            if X_forecast_eff is not None:
+            if X_forecast_eff is not None:  # pragma: no branch - non-None whenever X_forecast is provided
                 self._X_forecast_t_ = (
                     X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
                     if latest_vintage is not None

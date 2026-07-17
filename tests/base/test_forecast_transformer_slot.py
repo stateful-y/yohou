@@ -8,6 +8,8 @@ from sklearn.base import clone
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
+from yohou.base.forecast_transformer import BaseForecastTransformer
+from yohou.base.transformer import BaseActualTransformer
 from yohou.base.utils import _derive_step_columns
 from yohou.compose import (
     ColumnForecaster,
@@ -21,6 +23,20 @@ from yohou.compose import (
 )
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import FunctionTransformer, LagTransformer
+
+
+class _MinimalForecastTransformer(BaseForecastTransformer):
+    """A concrete forecast transformer that keeps the base ``min_vintage_rows`` default."""
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "_MinimalForecastTransformer":
+        return self
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        return X
+
+    def get_feature_names_out(self, input_features=None) -> list[str]:
+        return [c for c in self.feature_names_in_ if c not in ("vintage_time", "time")]
+
 
 H = 3
 N_TRAIN = 25
@@ -710,3 +726,98 @@ def test_dead_step_warning_still_fires_when_a_tail_is_dropped_too(recwarn):
         pytest.raises(ValueError, match="window shape cannot be larger"),
     ):
         forecaster.fit(_y(["y"], n=60), X_forecast=_ragged_x_forecast(), forecasting_horizon=5)
+
+
+def test_forecast_slot_without_x_forecast_passes_the_guard_and_stays_unset():
+    """A forecast-kind slot fitted with no X_forecast is accepted and left unfitted."""
+    forecaster = _forecaster(forecast_transformer=_passthrough())
+    forecaster.fit(_y(["y"]), forecasting_horizon=H)
+
+    assert forecaster.forecast_transformer_ is None
+
+
+def test_actual_transformer_contributes_to_observation_horizon():
+    """A single (non-panel) actual_transformer raises the forecaster's observation horizon."""
+    forecaster = PointReductionForecaster(
+        HistGradientBoostingRegressor(max_iter=5, random_state=42),
+        reduction_strategy="direct",
+        actual_transformer=LagTransformer(lag=5),
+    )
+    forecaster.fit(_y(["y"], n=30), forecasting_horizon=H)
+
+    assert isinstance(forecaster.actual_transformer_, BaseActualTransformer)
+    assert forecaster.observation_horizon >= 5
+
+
+def test_base_forecast_transformer_min_vintage_rows_defaults_to_one():
+    """A leaf that does not override the property reports the base default of one."""
+    transformer = _MinimalForecastTransformer()
+    with pytest.raises(Exception):  # noqa: B017 - NotFittedError subclasses differ across sklearn versions
+        _ = transformer.min_vintage_rows
+
+    transformer.fit(_x_forecast(["temp"]))
+    assert transformer.min_vintage_rows == 1
+
+
+@pytest.mark.parametrize(
+    "composition",
+    [
+        ColumnTransformer([("a", LagTransformer(lag=1), ["load"])]),
+        FeatureUnion([("a", LagTransformer(lag=1))]),
+        FeaturePipeline([("a", LagTransformer(lag=1))]),
+    ],
+    ids=["column", "union", "pipeline"],
+)
+def test_actual_kind_composition_reports_min_vintage_rows_of_one(composition):
+    """A composition of children lacking the property aggregates to the default of one."""
+    composition.fit(_y(["load"], n=20))
+
+    assert composition.min_vintage_rows == 1
+
+
+def test_decomposition_pipeline_routes_both_transformer_slots():
+    """A DecompositionPipeline with both slots set registers each as a router child."""
+    pipeline = DecompositionPipeline(
+        [("t", PointReductionForecaster(estimator=HistGradientBoostingRegressor(max_iter=5)))],
+        actual_transformer=LagTransformer(lag=1),
+        forecast_transformer=_passthrough(),
+    )
+
+    route_mappings = pipeline.get_metadata_routing()._route_mappings
+    assert {"actual_transformer", "forecast_transformer"} <= set(route_mappings)
+
+
+def test_warn_dead_forecast_steps_is_inert_on_edge_inputs(recwarn):
+    """The warning's guards short-circuit on None frames and on an empty frame."""
+    forecaster = _forecaster(forecast_transformer=_passthrough())
+    forecaster.fit(_y(["y"]), X_forecast=_x_forecast(["temp"]), forecasting_horizon=H)
+
+    forecaster._warn_dead_forecast_steps(None, None, H)
+    empty = _x_forecast(["temp"]).clear()
+    forecaster._warn_dead_forecast_steps(empty, empty, H)
+
+    assert not [w for w in recwarn if "start of every vintage" in str(w.message)]
+
+
+def test_assert_horizon_helper_is_inert_without_a_reported_minimum():
+    """The horizon assert skips a slot that reports no minimum rather than assuming one."""
+    forecaster = _forecaster(forecast_transformer=_passthrough())
+    forecaster.fit(_y(["y"]), X_forecast=_x_forecast(["temp"]), forecasting_horizon=H)
+
+    forecaster.forecast_transformer_ = None
+    forecaster._assert_forecasting_horizon_meets_minimum(H)
+
+    # A fitted slot that exposes no ``min_vintage_rows`` is skipped, not assumed to be 1.
+    forecaster.forecast_transformer_ = object()
+    forecaster._assert_forecasting_horizon_meets_minimum(H)
+
+
+def test_transform_x_forecast_skips_none_group_transformers():
+    """Under the per-group dict, a None entry is skipped; all-None returns the input frame."""
+    forecaster = _forecaster(forecast_transformer=_net_load(), panel_strategy="global")
+    forecaster.fit(_y(["a__y", "b__y"]), X_forecast=_x_forecast(PANEL_COLS), forecasting_horizon=H)
+
+    forecaster.forecast_transformer_ = {"a": None, "b": None}
+    out = forecaster._transform_X_forecast(_x_forecast(PANEL_COLS))
+
+    assert out is not None and len(out) > 0
