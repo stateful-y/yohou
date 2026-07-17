@@ -212,7 +212,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -220,10 +220,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer. When provided,
+            columns. Bypasses the actual transformer. When provided,
             recursive prediction (``forecasting_horizon > fit_forecasting_horizon_``
             at predict time) is not supported and raises a ``ValueError``;
             use ``ForecastedFeatureForecaster`` for that use case.

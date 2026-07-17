@@ -1112,3 +1112,86 @@ class TestStepColumnStripping:
         pipe = self._pipeline()
         with pytest.raises(ValueError, match="Step column name clash"):
             pipe.fit(y, forecasting_horizon=1, X_future=x_future)
+
+
+class TestForecastTransformerReachesComponents:
+    """The forecast_transformer slot must affect component forecasts.
+
+    The pipeline fits the slot and strips its transformed pipeline-level step
+    columns before forwarding, so it must forward the transformed X_forecast to
+    components; forwarding the raw frame renders the slot inert.
+    """
+
+    @staticmethod
+    def _y(n):
+        time = pl.datetime_range(
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 1) + timedelta(days=n - 1),
+            interval="1d",
+            eager=True,
+        )
+        return pl.DataFrame({"time": time, "y": [float(i % 7) + i * 0.13 for i in range(n)]})
+
+    @staticmethod
+    def _x_forecast(n, horizon):
+        rows = []
+        for i in range(n):
+            vintage = datetime(2024, 1, 1) + timedelta(days=i)
+            for h in range(1, horizon + 1):
+                rows.append({
+                    "vintage_time": vintage,
+                    "time": vintage + timedelta(days=h),
+                    "load": float(10 + i + h),
+                    "wind": float(3 + (i % 5)),
+                })
+        return pl.DataFrame(rows)
+
+    @staticmethod
+    def _pipeline(forecast_transformer):
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.point import PointReductionForecaster
+
+        return DecompositionPipeline(
+            [("t", PointReductionForecaster(estimator=LinearRegression(), nan_handling="drop"))],
+            forecast_transformer=forecast_transformer,
+        )
+
+    def _net_transformer(self):
+        from yohou.compose import PerVintageActualTransformer
+        from yohou.preprocessing import FunctionTransformer
+
+        def net(df):
+            return df.with_columns((pl.col("load") - pl.col("wind")).alias("net")).drop("load", "wind")
+
+        return PerVintageActualTransformer(transformer=FunctionTransformer(func=net))
+
+    def test_slot_changes_forecasts_and_component_features(self):
+        """A slot deriving a new feature changes predictions and the component's inputs."""
+        n, horizon = 48, 3
+        y = self._y(n)
+        x_forecast = self._x_forecast(n, horizon)
+
+        with_slot = self._pipeline(self._net_transformer())
+        with_slot.fit(y, X_forecast=x_forecast, forecasting_horizon=horizon)
+        without_slot = self._pipeline(None)
+        without_slot.fit(y, X_forecast=x_forecast, forecasting_horizon=horizon)
+
+        component = with_slot.forecasters_[0][1]
+        assert any(name.startswith("net_step_") for name in component.feature_names_in_)
+        assert not any(name.startswith("load_step_") for name in component.feature_names_in_)
+
+        assert with_slot.predict()["y"].to_list() != without_slot.predict()["y"].to_list()
+
+    def test_unset_slot_leaves_predictions_unchanged(self):
+        """forecast_transformer=None forwards the raw frame, so components see load/wind."""
+        n, horizon = 48, 3
+        y = self._y(n)
+        x_forecast = self._x_forecast(n, horizon)
+
+        pipe = self._pipeline(None)
+        pipe.fit(y, X_forecast=x_forecast, forecasting_horizon=horizon)
+
+        component = pipe.forecasters_[0][1]
+        assert any(name.startswith("load_step_") for name in component.feature_names_in_)
+        assert pipe.predict().height == horizon

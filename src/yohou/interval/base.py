@@ -323,7 +323,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             columns. Vintage times do not need to align exactly with
             observation times; the latest vintage at or before each
             observation time is selected automatically (as-of matching).
-            Bypasses the feature transformer.
+            Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 

@@ -215,6 +215,7 @@ class LocalPanelForecaster(BaseForecaster):
             tags.forecaster_tags.requires_exogenous = child_tags.forecaster_tags.requires_exogenous
             tags.forecaster_tags.uses_target_transformer = child_tags.forecaster_tags.uses_target_transformer
             tags.forecaster_tags.uses_actual_transformer = child_tags.forecaster_tags.uses_actual_transformer
+            tags.forecaster_tags.uses_forecast_transformer = child_tags.forecaster_tags.uses_forecast_transformer
 
         tags.forecaster_tags.supports_panel_data = True
         tags.forecaster_tags.tracks_observations = False
@@ -247,10 +248,10 @@ class LocalPanelForecaster(BaseForecaster):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Bypasses the actual transformer.
         **params : dict
             Metadata routing parameters forwarded to the wrapped forecaster.
 

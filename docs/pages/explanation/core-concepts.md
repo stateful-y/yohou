@@ -45,7 +45,7 @@ leakage by separating features according to their temporal availability:
   derived from the observation point and so needs an external table (e.g. holiday
   calendars, promotion schedules). These bypass the `actual_transformer` and are
   converted to step-indexed columns. Features computable from the timestamp alone
-  (Fourier terms, day-of-week) belong in a `actual_transformer` instead.
+  (Fourier terms, day-of-week) belong in an `actual_transformer` instead.
 - **`X_forecast`**: predictions from external models, each issued at a specific vintage
   time (e.g. weather forecasts, demand projections). These also bypass the
   `actual_transformer` and require a `"vintage_time"` column.
@@ -243,7 +243,7 @@ transforms) have an observation horizon of 0.
 
 Forecasters compute their observation horizon as the maximum of the forecaster's own
 internal requirement and those of all attached transformers. A forecaster whose target
-transformer needs 7 rows and whose feature transformer needs 12 rows has an observation
+transformer needs 7 rows and whose actual transformer needs 12 rows has an observation
 horizon of at least 12. The `observation_horizon` property on
 [`BaseForecaster`](/pages/api/generated/yohou.base.forecaster.BaseForecaster/)
 walks the transformer tree and returns this maximum automatically.

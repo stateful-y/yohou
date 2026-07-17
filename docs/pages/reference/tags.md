@@ -44,7 +44,8 @@ These apply to all estimator types.
 | `stateful` | `bool` | `False` | Whether the forecaster uses an observation horizon mechanism |
 | `uses_reduction` | `bool` | `False` | Whether the forecaster converts to tabular regression |
 | `uses_target_transformer` | `bool` | `False` | Whether a target transformer is applied before fitting |
-| `uses_actual_transformer` | `bool` | `False` | Whether a feature transformer is applied before fitting |
+| `uses_actual_transformer` | `bool` | `False` | Whether an actual transformer is applied to `X_actual` before fitting |
+| `uses_forecast_transformer` | `bool` | `False` | Whether a forecast transformer is applied to `X_forecast` before step columns are derived |
 | `supports_panel_data` | `bool` | `True` | Whether the forecaster handles panel data |
 | `supports_time_weight` | `bool` | `False` | Whether time weighting is supported during training |
 | `supports_vintage_weight` | `bool` | `False` | Whether vintage weighting is supported |

@@ -609,7 +609,7 @@ default="first_step"
         if len(X_tab) == 0:
             raise ValueError(
                 "Training dataset is empty (0 samples). This typically occurs when "
-                "the feature transformer reduces the data size below the minimum "
+                "the actual transformer reduces the data size below the minimum "
                 "required for the forecasting horizon. Please check your "
                 "transformer settings and ensure sufficient data length."
             )

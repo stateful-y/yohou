@@ -368,7 +368,7 @@ class _BaseEnsembleForecaster:
         self.local_y_t_schema_ = getattr(first_forecaster, "local_y_t_schema_", self.local_y_schema_)
         # The transformed feature schema/buffer must reflect the post-pipeline
         # space, which only the child knows; the raw X_actual is not a valid
-        # stand-in when a child wraps a feature transformer. Mirror the child's
+        # stand-in when a child wraps a actual transformer. Mirror the child's
         # transformed state so the contract attributes are accurate. The
         # ensemble itself never reads these on any predict path (predict,
         # observe, and rewind all delegate to the children), so they exist

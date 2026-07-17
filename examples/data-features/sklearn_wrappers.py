@@ -231,7 +231,7 @@ def _(mo):
     mo.md(r"""
     ## 7. PolynomialFeatures
 
-    Creates interaction and polynomial terms. Useful as a `actual_transformer`
+    Creates interaction and polynomial terms. Useful as an `actual_transformer`
     to enrich the feature space before a linear regression.
     """)
 

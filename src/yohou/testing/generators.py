@@ -35,6 +35,7 @@ from .forecaster import (
     check_fit_predict_with_X_future,
     check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
+    check_forecast_transformer_slot,
     check_forecaster_methods_call_check_is_fitted,
     check_forecaster_not_fitted_error,
     check_forecaster_tags_accessible_before_fit,
@@ -699,6 +700,21 @@ def _yield_yohou_forecaster_checks(
                     "forecasting_horizon": 3,
                 },
             )
+
+            # Exercise the forecast_transformer slot for every family that exposes
+            # it (point, interval, and class-probability reduction forecasters, plus
+            # DecompositionPipeline), rather than only in ad-hoc single-class tests.
+            if "forecast_transformer" in forecaster.get_params():
+                yield (
+                    "check_forecast_transformer_slot",
+                    check_forecast_transformer_slot,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_forecast": X_forecast_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
 
         if len(y_test) >= 3 and tags.get("tracks_observations", True):
             y_update = y_test[:3]

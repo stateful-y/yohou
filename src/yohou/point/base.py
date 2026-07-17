@@ -81,7 +81,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -89,13 +89,13 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Vintage times do not need to align exactly with
             observation times; the latest vintage at or before each
             observation time is selected automatically (as-of matching).
-            Bypasses the feature transformer.
+            Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 

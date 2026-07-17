@@ -142,8 +142,8 @@ class ForecasterTags:
         Whether the forecaster uses a target transformer to transform
         the target time series before fitting.
     uses_actual_transformer : bool, default=False
-        Whether the forecaster uses a feature transformer to transform
-        the feature time series before fitting.
+        Whether the forecaster uses an actual transformer to transform
+        the ``X_actual`` frame before fitting.
     uses_forecast_transformer : bool, default=False
         Whether the forecaster uses a forecast transformer to transform
         the ``X_forecast`` frame before step columns are derived.

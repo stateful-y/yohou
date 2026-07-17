@@ -180,10 +180,10 @@ def _fit_transform_transformers_one(
     actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseActualTransformer | None, BaseActualTransformer | None]:
-    """Fit and apply target and feature transformers to a single time series.
+    """Fit and apply target and actual transformers to a single time series.
 
     Orchestrates the transformation pipeline: target transformer first (if any),
-    then feature transformer (if any). Handles observation horizon alignment to
+    then actual transformer (if any). Handles observation horizon alignment to
     ensure transformed data matches temporally.
 
     Parameters
@@ -211,7 +211,7 @@ def _fit_transform_transformers_one(
     target_transformer : BaseActualTransformer or None
         Fitted target transformer.
     actual_transformer : BaseActualTransformer or None
-        Fitted feature transformer.
+        Fitted actual transformer.
 
     Notes
     -----
@@ -219,7 +219,7 @@ def _fit_transform_transformers_one(
     1. Apply target_transformer to y → y_t
     2. Align X_actual to y_t timestamps via a semi-join, then concatenate with y_t
     3. Apply actual_transformer to combined → X_t
-    4. Trim y_t if feature transformer has its own observation horizon
+    4. Trim y_t if actual transformer has its own observation horizon
 
     This ensures features can include lagged versions of the transformed target.
 
@@ -246,7 +246,7 @@ def _fit_transform_transformers_one(
         X_t = actual_transformer_fitted.fit_transform(X_feat_in)
         feature_observation_horizon = actual_transformer_fitted.observation_horizon
         # Trim y_t to align with X_t
-        # First, align by feature transformer's observation horizon (handles transformers that don't drop rows)
+        # First, align by actual transformer's observation horizon (handles transformers that don't drop rows)
         y_t = y_t[feature_observation_horizon:]
         # Also trim X_t: drop null rows produced by transformers that keep all rows
         # but fill initial positions with null (e.g., LagTransformer, RollingStatisticsTransformer)
@@ -332,7 +332,7 @@ def _build_feature_input(
                 # This should not happen since _validate_pre_fit checks at fit
                 # time, but guard against direct calls.
                 raise ValueError(
-                    "target_as_feature=None requires X_actual to be provided when a actual_transformer is set, but X_actual is None."
+                    "target_as_feature=None requires X_actual to be provided when an actual_transformer is set, but X_actual is None."
                 )
             else:
                 X_feat_in = None
@@ -445,7 +445,7 @@ def _rewind_transformers_one(
         feature_observation_horizon = actual_transformer.observation_horizon
 
         # X_feat_in is aligned to y_t timestamps (observation_horizon rows)
-        # but the feature transformer may need more rows for its own rewind.
+        # but the actual transformer may need more rows for its own rewind.
         # Widen by transforming earlier rows through the target transformer.
         needed = feature_observation_horizon + 1
         if len(X_feat_in) < needed and target_transformer is not None:
@@ -470,7 +470,7 @@ def _rewind_transformers_one(
         # separate transform.
         X_t_all = actual_transformer.rewind_transform(X_feat_in)
         # Keep the row aligned to the most-recent observation timestamp rather
-        # than blindly taking the last row: when the feature transformer drops
+        # than blindly taking the last row: when the actual transformer drops
         # rows (its own observation_horizon), the surviving tail may not line up
         # with the latest observation.
         last_time = y["time"][-1]

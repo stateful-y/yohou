@@ -252,7 +252,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             elif isinstance(self.target_transformer_, BaseActualTransformer):
                 target_observation_horizon = self.target_transformer_.observation_horizon
 
-        # Compute feature transformer observation horizon
+        # Compute actual transformer observation horizon
         feature_observation_horizon = 0
         if self.actual_transformer is not None and hasattr(self, "actual_transformer_"):
             if isinstance(self.actual_transformer_, dict):
@@ -297,10 +297,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         """
         self.forecast_transformer_ = None
-        if self.forecast_transformer is None or X_forecast is None:
+        if self.forecast_transformer is None:
             return X_forecast
 
+        # Reject a wrong-kind slot at fit whether or not X_forecast is present. A
+        # wrong-kind transformer is a static misconfiguration, so it must not be
+        # silently accepted on a fit that omits X_forecast and then surface only if
+        # X_forecast later appears at predict. The guard therefore runs before the
+        # X_forecast-None early return.
         _require_forecast_transformer(self.forecast_transformer, "forecast_transformer")
+
+        if X_forecast is None:
+            return X_forecast
 
         if groups is None:
             self.forecast_transformer_ = clone(self.forecast_transformer).fit(X_forecast)
@@ -368,11 +376,16 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         before = X_forecast.group_by("vintage_time").len()
         after = X_forecast_t.group_by("vintage_time").len().rename({"len": "len_t"})
         per_vintage = before.join(after, on="vintage_time", how="left")
-        max_lost = (per_vintage["len"] - per_vintage["len_t"].fill_null(0)).max()
+        # min, not max: the warning claims the loss holds in every vintage, so the
+        # least-affected vintage is what licenses it. A vintage dropped whole (too
+        # short to fit, which is the documented tail case) joins to null and reads
+        # as total loss, so a max would let one dropped tail vintage assert that a
+        # transformer consuming nothing empties every step column.
+        min_lost = (per_vintage["len"] - per_vintage["len_t"].fill_null(0)).min()
 
-        if max_lost is None:
+        if min_lost is None:
             return
-        lost = typing_cast(int, max_lost)
+        lost = typing_cast(int, min_lost)
         if lost < 1:
             return
 
@@ -397,9 +410,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         fresh single-vintage frame survives the transform. Failing here turns two
         silent-degradation modes into a fit-time error.
 
-        Only ``BaseForecastTransformer`` implementations report the minimum. A
-        forecast-kind *composition* is a ``BaseActualTransformer`` subclass and
-        exposes no ``min_vintage_rows``, so it is skipped rather than assumed to
+        Forecast-kind compositions report a minimum too, aggregated from their
+        children, so a composition is guarded exactly as the leaf it wraps is.
+        Anything that reports no minimum at all is skipped rather than assumed to
         be ``1``: assuming a minimum it never stated would report a guarantee the
         guard has not checked.
 
@@ -560,7 +573,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             check_panel_groups_match(y, X_actual)
 
         # Validate that X_actual is provided when target_as_feature=None
-        # and a feature transformer is configured.  Failing early here avoids
+        # and a actual transformer is configured.  Failing early here avoids
         # a confusing error at predict time inside _build_feature_input().
         if (
             getattr(self, "target_as_feature", None) is None
@@ -568,7 +581,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             and X_actual is None
         ):
             raise ValueError(
-                "target_as_feature=None with a actual_transformer requires X_actual to be provided, but X_actual is None."
+                "target_as_feature=None with an actual_transformer requires X_actual to be provided, but X_actual is None."
             )
 
         # Validate that X_actual is provided when target_as_feature=None and the
@@ -687,7 +700,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -695,13 +708,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values that are windowed forward from each observation time.
-            Bypasses the feature transformer.
+            Bypasses the actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Vintage times do not need to align exactly with
             observation times; the latest vintage at or before each
             observation time is selected automatically (as-of matching).
-            Bypasses the feature transformer.
+            Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -890,7 +903,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             New actual feature observations with a ``"time"`` column
-            aligned with ``y``. Passed through the feature transformer to
+            aligned with ``y``. Passed through the actual transformer to
             update the internal observation state.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
