@@ -44,12 +44,16 @@ def _collect_notebooks(subdir: str | None = None) -> list:
 
 def _run_notebook(notebook_file: pathlib.Path) -> None:
     """Run a marimo notebook as a script and assert success."""
+    # stdin is closed and the run is bounded: a notebook that blocks on input --
+    # a stray breakpoint(), an input() -- otherwise inherits the terminal's stdin
+    # and hangs here forever with no output instead of failing.
     try:
         result = subprocess.run(
             [sys.executable, str(notebook_file)],
             capture_output=True,
             text=True,
             check=False,
+            stdin=subprocess.DEVNULL,
             timeout=300,
         )
     except subprocess.TimeoutExpired:
