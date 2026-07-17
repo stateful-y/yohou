@@ -10,7 +10,7 @@ from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer, BaseForecaster
+from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransformer
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 from yohou.utils._compat import _fit_context
 
@@ -229,8 +229,13 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
+    forecast_transformer : instance of `BaseForecastTransformer` or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -268,12 +273,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     def __init__(
         self,
-        feature_transformer: BaseActualTransformer | None = None,
+        *,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
         super().__init__(
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             target_transformer=None,
             target_as_feature=target_as_feature,
             panel_strategy=panel_strategy,

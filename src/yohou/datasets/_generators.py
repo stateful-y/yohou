@@ -36,7 +36,7 @@ indicator cannot be reconstructed from any cyclical encoding of the clock. That
 is what makes it a genuine ``X_future`` feature: a forecaster must be told the
 holiday status of each future step, because no transformer can derive it from
 the observation point. A weekday predicate would instead be a clock feature and
-would belong in a ``feature_transformer``.
+would belong in a ``actual_transformer``.
 
 The early-January entries are load-bearing. The default series is 200 hourly
 rows, spanning only 2024-01-01 to 2024-01-09, so a calendar carrying nothing but

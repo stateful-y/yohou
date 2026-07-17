@@ -128,7 +128,7 @@ class TestHolidayCalendarIsAnEventFeature:
     """The generators' is_holiday must be a genuine X_future feature.
 
     A weekday predicate would be a clock feature: derivable from the timestamp,
-    and therefore something a feature_transformer should produce rather than
+    and therefore something a actual_transformer should produce rather than
     something the X_future channel must carry. These tests pin the property the
     channel's semantics depend on.
     """

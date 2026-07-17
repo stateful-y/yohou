@@ -121,7 +121,7 @@ class TestNanHandlingDrop:
             estimator=_RecordingEstimator(),
             nan_handling="drop",
             target_as_feature=None,
-            feature_transformer=None,
+            actual_transformer=None,
         )
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")

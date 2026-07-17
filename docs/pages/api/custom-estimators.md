@@ -198,7 +198,7 @@ For the full walkthrough, see
 
 Follow scikit-learn conventions: every parameter must be stored as an attribute
 with the same name. Forward shared parameters (`target_transformer`,
-`feature_transformer`, `panel_strategy`) to the parent:
+`actual_transformer`, `panel_strategy`) to the parent:
 
 ```python
 def __init__(self, my_param=1, **kwargs):

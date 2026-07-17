@@ -168,7 +168,7 @@ def _(
 
     dt = ClassProbaReductionForecaster(
         estimator=DecisionTreeClassifier(random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     dt.fit(y_train, X_actual_train, forecasting_horizon=fh)
     dt_hard = deepcopy(dt)
@@ -176,7 +176,7 @@ def _(
 
     rf = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     rf.fit(y_train, X_actual_train, forecasting_horizon=fh)
     rf_hard = deepcopy(rf)

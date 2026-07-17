@@ -216,14 +216,14 @@ def _(
 ):
     fc_uniform = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     fc_uniform.fit(y_train, forecasting_horizon=forecasting_horizon)
     pred_uniform = fc_uniform.predict(forecasting_horizon=forecasting_horizon)
 
     fc_weighted = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
         time_weighter=ExponentialDecayWeighter(half_life=365),
     )
     fc_weighted.fit(
@@ -296,7 +296,7 @@ def _(
     for _align in _alignments:
         _fc = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            actual_transformer=LagTransformer(lag=list(range(1, 13))),
             time_weighter=_weight_fn,
             sample_weight_alignment=_align,
         )
@@ -346,7 +346,7 @@ def _(
     for _label, _wfn in _weight_configs.items():
         _fc = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            actual_transformer=LagTransformer(lag=list(range(1, 13))),
             time_weighter=_wfn,
         )
         _fc.fit(y_train, forecasting_horizon=forecasting_horizon)

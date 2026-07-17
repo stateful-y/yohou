@@ -40,14 +40,14 @@ class TestGridSearchNestedParamGrid:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scale", StandardScaler()),
             ]),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1, 1.0],
-            "feature_transformer__lag__lag": [1, [1, 2], [1, 2, 3]],
+            "actual_transformer__lag__lag": [1, [1, 2], [1, 2, 3]],
         }
         scorer = MeanAbsoluteError()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -58,7 +58,7 @@ class TestGridSearchNestedParamGrid:
         # Should have 3 * 3 = 9 combinations
         assert len(search.cv_results_["params"]) == 9
         assert "param_estimator__alpha" in search.cv_results_
-        assert "param_feature_transformer__lag__lag" in search.cv_results_
+        assert "param_actual_transformer__lag__lag" in search.cv_results_
         assert "mean_test_score" in search.cv_results_
         assert "rank_test_score" in search.cv_results_
 
@@ -68,14 +68,14 @@ class TestGridSearchNestedParamGrid:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scale", StandardScaler()),
             ]),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1, 1.0],
-            "feature_transformer__lag__lag": [1, [1, 2]],
+            "actual_transformer__lag__lag": [1, [1, 2]],
         }
         scorer = MeanAbsoluteError()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -86,7 +86,7 @@ class TestGridSearchNestedParamGrid:
         # Best params should be among tested values (relaxed assertion due to CV variance)
         assert search.best_params_["estimator__alpha"] in [0.0, 0.1, 1.0]
         # Best lag configuration should be among the tested values
-        assert search.best_params_["feature_transformer__lag__lag"] in [1, [1, 2]]
+        assert search.best_params_["actual_transformer__lag__lag"] in [1, [1, 2]]
 
     def test_grid_search_nested_param_grid_best_forecaster_fitted(self, linear_series):
         """Verify best_forecaster_ is fitted and has correct params."""
@@ -94,11 +94,11 @@ class TestGridSearchNestedParamGrid:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.5, 1.0],
-            "feature_transformer__lag": [1, [1, 2]],
+            "actual_transformer__lag": [1, [1, 2]],
         }
         scorer = MeanAbsoluteError()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -111,7 +111,7 @@ class TestGridSearchNestedParamGrid:
 
         # Should have best params set
         assert search.best_forecaster_.estimator.alpha == search.best_params_["estimator__alpha"]
-        assert search.best_forecaster_.feature_transformer.lag == search.best_params_["feature_transformer__lag"]
+        assert search.best_forecaster_.actual_transformer.lag == search.best_params_["actual_transformer__lag"]
 
     def test_grid_search_nested_param_grid_predict_horizon(self, linear_series):
         """Verify predict() on fitted search produces correct horizon."""
@@ -119,11 +119,11 @@ class TestGridSearchNestedParamGrid:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1],
-            "feature_transformer__lag": [1, [1, 2]],
+            "actual_transformer__lag": [1, [1, 2]],
         }
         scorer = MeanAbsoluteError()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -146,11 +146,11 @@ class TestGridSearchNestedParamGrid:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1, 1.0],
-            "feature_transformer__lag": [1, [1, 2]],
+            "actual_transformer__lag": [1, [1, 2]],
         }
         scorer = MeanAbsoluteError()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -180,7 +180,7 @@ class TestGridSearchMultiMetric:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1, 1.0],
@@ -203,7 +203,7 @@ class TestGridSearchMultiMetric:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer([1, 2]),
+            actual_transformer=LagTransformer([1, 2]),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.5, 1.0, 2.0],
@@ -241,7 +241,7 @@ class TestRandomizedSearch:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_distributions = {
             "estimator__alpha": uniform(0, 10),
@@ -277,7 +277,7 @@ class TestGridSearchCVSplitters:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 1.0],
@@ -303,7 +303,7 @@ class TestGridSearchCVSplitters:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer([1, 2]),
+            actual_transformer=LagTransformer([1, 2]),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.5, 1.0],
@@ -341,13 +341,13 @@ class TestGridSearchConformalForecaster:
         forecaster = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(1),
+                actual_transformer=LagTransformer(1),
             ),
             conformity_scorer=AbsoluteResidual(),
             calibration_size=20,  # Small calibration set to fit within CV splits
         )
         param_grid = {
-            "point_forecaster__feature_transformer__lag": [1, [1, 2]],
+            "point_forecaster__actual_transformer__lag": [1, [1, 2]],
         }
         scorer = IntervalScore()
         cv = SlidingWindowSplitter(n_splits=3, test_size=10)
@@ -357,7 +357,7 @@ class TestGridSearchConformalForecaster:
 
         # Should complete without error and select a lag from the tested grid.
         assert len(search.cv_results_["params"]) == 2
-        assert search.best_params_["point_forecaster__feature_transformer__lag"] in [1, [1, 2]]
+        assert search.best_params_["point_forecaster__actual_transformer__lag"] in [1, [1, 2]]
         check_is_fitted(search.best_forecaster_)
 
     def test_grid_search_conformal_predict_interval(self, linear_series):
@@ -367,7 +367,7 @@ class TestGridSearchConformalForecaster:
         forecaster = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer([1, 2]),
+                actual_transformer=LagTransformer([1, 2]),
             ),
             conformity_scorer=AbsoluteResidual(),
             calibration_size=20,  # Small calibration set
@@ -396,14 +396,14 @@ class TestGridSearchConformalForecaster:
         forecaster = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(1),
+                actual_transformer=LagTransformer(1),
             ),
             conformity_scorer=AbsoluteResidual(),
             calibration_size=20,  # Small calibration set
         )
         # Tune both point forecaster and conformity scorer
         param_grid = {
-            "point_forecaster__feature_transformer__lag": [1, [1, 2]],
+            "point_forecaster__actual_transformer__lag": [1, [1, 2]],
             "conformity_scorer": [AbsoluteResidual()],
         }
         scorer = IntervalScore()
@@ -414,7 +414,7 @@ class TestGridSearchConformalForecaster:
 
         # Should have 2 * 1 = 2 combinations
         assert len(search.cv_results_["params"]) == 2
-        assert "param_point_forecaster__feature_transformer__lag" in search.cv_results_
+        assert "param_point_forecaster__actual_transformer__lag" in search.cv_results_
         assert "param_conformity_scorer" in search.cv_results_
 
 
@@ -428,7 +428,7 @@ class TestGridSearchConfiguration:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.1, 1.0],
@@ -449,7 +449,7 @@ class TestGridSearchConfiguration:
 
         forecaster = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer([1, 2]),
+            actual_transformer=LagTransformer([1, 2]),
         )
         param_grid = {
             "estimator__alpha": [0.0, 0.5, 1.0],
@@ -479,7 +479,7 @@ class TestNestedCVColumnForecaster:
         inner_search = GridSearchCV(
             PointReductionForecaster(
                 estimator=Ridge(),
-                feature_transformer=LagTransformer(1),
+                actual_transformer=LagTransformer(1),
             ),
             {"estimator__alpha": [0.0, 1.0]},
             scoring=MeanAbsoluteError(),
@@ -507,7 +507,7 @@ class TestNestedCVColumnForecaster:
         inner_search = GridSearchCV(
             PointReductionForecaster(
                 estimator=Ridge(),
-                feature_transformer=LagTransformer([1, 2]),
+                actual_transformer=LagTransformer([1, 2]),
             ),
             {"estimator__alpha": [0.0, 0.5, 1.0]},
             scoring=MeanAbsoluteError(),
@@ -536,9 +536,9 @@ class TestNestedCVColumnForecaster:
         inner_search = GridSearchCV(
             PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(1),
+                actual_transformer=LagTransformer(1),
             ),
-            {"feature_transformer__lag": [1, [1, 2]]},
+            {"actual_transformer__lag": [1, [1, 2]]},
             scoring=MeanAbsoluteError(),
             cv=SlidingWindowSplitter(n_splits=3, test_size=10),
         )

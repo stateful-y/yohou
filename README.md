@@ -88,7 +88,7 @@ forecaster = PointReductionForecaster(
     target_transformer=FeaturePipeline([
         ("diff", SeasonalDifferencing(seasonality=27)),
     ]),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lag", LagTransformer(lag=[1, 2, 3, 27])),
     ]),
 )

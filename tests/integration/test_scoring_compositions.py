@@ -52,7 +52,7 @@ class TestPointScorerCompositions:
         "forecaster",
         [
             SeasonalNaive(seasonality=1),
-            PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
             DecompositionPipeline([
                 ("trend", PolynomialTrendForecaster(degree=1)),
                 ("residual", SeasonalNaive(seasonality=1)),
@@ -632,7 +632,7 @@ class TestTimeWeighting:
         "forecaster",
         [
             SeasonalNaive(seasonality=1),
-            PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
             DecompositionPipeline([
                 ("trend", PolynomialTrendForecaster(degree=1)),
                 ("residual", SeasonalNaive(seasonality=1)),

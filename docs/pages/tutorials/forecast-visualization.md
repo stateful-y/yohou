@@ -35,7 +35,7 @@ y_pred_baseline = baseline.predict(forecasting_horizon=forecasting_horizon)
 
 ridge = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=list(range(1, 13)))),
     ]),
 )

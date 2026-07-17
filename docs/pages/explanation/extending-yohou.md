@@ -55,7 +55,7 @@ All forecasters inherit from a common `BaseForecaster` that provides:
 - **Validation**: data shape, time column presence, dtype checks.
 - **Panel dispatch**: automatic detection of `group__column` naming and
   per-group transformer management (see [Panel Dispatch](#panel-dispatch) below).
-- **Transformer composition**: `target_transformer` and `feature_transformer`
+- **Transformer composition**: `target_transformer` and `actual_transformer`
   parameters for wrapping transforms around the forecasting step.
 - **Observation tracking**: `_y_observed` maintains the most recent
   `observation_horizon` rows, updated by `observe()`.
@@ -169,7 +169,7 @@ class Child(Base):
 
 Some tags are computed dynamically. For instance, the base forecaster
 automatically sets `stateful=True` when `target_transformer` or
-`feature_transformer` has `stateful=True` in its own tags. A subclass that is
+`actual_transformer` has `stateful=True` in its own tags. A subclass that is
 intrinsically stateful (independent of its transformers) overrides
 `__sklearn_tags__()` to set `forecaster_tags.stateful = True` directly.
 

@@ -120,7 +120,7 @@ def _(
 ):
     _forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 4]),
+        actual_transformer=LagTransformer(lag=[1, 4]),
     )
 
     _param_grid = {

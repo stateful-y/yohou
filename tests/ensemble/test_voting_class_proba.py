@@ -804,7 +804,7 @@ class TestVotingClassProbaTags:
         """stateful is True when any child is stateful, like the point/interval voters."""
         from yohou.preprocessing import LagTransformer
 
-        stateful_child = _make_class_proba_forecaster(feature_transformer=LagTransformer(lag=1))
+        stateful_child = _make_class_proba_forecaster(actual_transformer=LagTransformer(lag=1))
         assert stateful_child.__sklearn_tags__().forecaster_tags.stateful is True
 
         forecaster = VotingClassProbaForecaster(

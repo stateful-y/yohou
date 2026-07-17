@@ -121,15 +121,15 @@ def _target_series() -> pl.DataFrame:
     return pl.DataFrame({"time": time, "v": [float(i) for i in range(len(time))]})
 
 
-def test_forecast_leaf_rejected_from_feature_transformer():
-    """A forecast leaf is rejected from feature_transformer (by the parameter constraint)."""
-    with pytest.raises(Exception, match="feature_transformer"):
-        PointReductionForecaster(estimator=Ridge(), feature_transformer=_net_load_pv())._validate_params()
+def test_forecast_leaf_rejected_from_actual_transformer():
+    """A forecast leaf is rejected from actual_transformer (by the parameter constraint)."""
+    with pytest.raises(Exception, match="actual_transformer"):
+        PointReductionForecaster(estimator=Ridge(), actual_transformer=_net_load_pv())._validate_params()
 
 
-def test_forecast_kind_composer_rejected_from_feature_transformer():
-    """A forecast-kind composer is rejected from feature_transformer at fit (by the kind guard)."""
-    forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=_forecast_union())
+def test_forecast_kind_composer_rejected_from_actual_transformer():
+    """A forecast-kind composer is rejected from actual_transformer at fit (by the kind guard)."""
+    forecaster = PointReductionForecaster(estimator=Ridge(), actual_transformer=_forecast_union())
     with pytest.raises(ValueError, match="actual-kind transformer"):
         forecaster.fit(_target_series(), forecasting_horizon=3)
 

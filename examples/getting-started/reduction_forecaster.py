@@ -142,12 +142,12 @@ def _(mo):
 
     [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts time series forecasting into tabular regression:
 
-    1. **Feature generation**: `feature_transformer` creates lag features from past y values
+    1. **Feature generation**: `actual_transformer` creates lag features from past y values
     2. **Fit**: Trains an sklearn regressor on the (lags, y) tabular data
     3. **Predict**: Recursively forecasts by feeding predictions back as features
 
     Key distinction:
-    - **`feature_transformer`**: Generates input features from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags) - not invertible
+    - **`actual_transformer`**: Generates input features from y (e.g., [`LagTransformer`](/pages/api/generated/yohou.preprocessing.window.LagTransformer/) for lags) - not invertible
     - **`target_transformer`**: Applied to y before fitting, inverted after prediction (e.g., [`LogTransformer`](/pages/api/generated/yohou.stationarity.transformers.LogTransformer/)) - must be invertible
 
     We start with a simple Ridge regressor and 12 lag features.
@@ -164,7 +164,7 @@ def _(
 ):
     forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
@@ -228,7 +228,7 @@ def _(
         _fc = PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
             target_as_feature=_taf,
-            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            actual_transformer=LagTransformer(lag=list(range(1, 13))),
         )
         _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
         _pred = _fc.predict(forecasting_horizon=len(y_test))
@@ -266,7 +266,7 @@ def _(
     forecaster_log = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
         target_transformer=LogTransformer(offset=1.0),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     forecaster_log.fit(y_train, forecasting_horizon=forecasting_horizon)
@@ -297,7 +297,7 @@ def _(mo):
     ## 6. Hyperparameter Tuning with GridSearchCV
 
     We tune Ridge regularization (`estimator__alpha`), lag count
-    (`feature_transformer__lag`), and **`reduction_strategy`** using
+    (`actual_transformer__lag`), and **`reduction_strategy`** using
     [`GridSearchCV`](/pages/api/generated/yohou.model_selection.search.GridSearchCV/) with time series cross-validation via
     [`ExpandingWindowSplitter`](/pages/api/generated/yohou.model_selection.split.ExpandingWindowSplitter/).
 
@@ -321,12 +321,12 @@ def _(
     forecaster_to_tune = PointReductionForecaster(
         estimator=Ridge(),
         target_transformer=LogTransformer(offset=1.0),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     param_grid = {
         "estimator__alpha": [0.1, 1.0, 10.0],
-        "feature_transformer__lag": [
+        "actual_transformer__lag": [
             list(range(1, 7)),
             list(range(1, 13)),
         ],

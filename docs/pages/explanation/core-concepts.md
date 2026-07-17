@@ -39,16 +39,16 @@ Forecasters replace the single `X` with three specialized parameters that preven
 leakage by separating features according to their temporal availability:
 
 - **`X_actual`**: observation features that are only available for past timestamps (e.g.
-  sensor readings, realized demand). These flow through the `feature_transformer` pipeline
+  sensor readings, realized demand). These flow through the `actual_transformer` pipeline
   and are never available at `predict` time because the future has not happened yet.
 - **`X_future`**: known-future features whose value at a future timestamp cannot be
   derived from the observation point and so needs an external table (e.g. holiday
-  calendars, promotion schedules). These bypass the `feature_transformer` and are
+  calendars, promotion schedules). These bypass the `actual_transformer` and are
   converted to step-indexed columns. Features computable from the timestamp alone
-  (Fourier terms, day-of-week) belong in a `feature_transformer` instead.
+  (Fourier terms, day-of-week) belong in a `actual_transformer` instead.
 - **`X_forecast`**: predictions from external models, each issued at a specific vintage
   time (e.g. weather forecasts, demand projections). These also bypass the
-  `feature_transformer` and require a `"vintage_time"` column.
+  `actual_transformer` and require a `"vintage_time"` column.
 
 For more on how these three feature types interact during fitting and prediction, see
 [Exogenous Features](exogenous-features.md).

@@ -34,10 +34,10 @@ class TestSplitConformalForecaster:
         "point_forecaster",
         [
             SeasonalNaive(seasonality=1),
-            PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
             PointReductionForecaster(
                 LinearRegression(),
-                feature_transformer=FeaturePipeline([("lag1", LagTransformer(lag=1)), ("lag3", LagTransformer(lag=3))]),
+                actual_transformer=FeaturePipeline([("lag1", LagTransformer(lag=1)), ("lag3", LagTransformer(lag=3))]),
             ),
         ],
         ids=["seasonal_naive", "reduction_lag1", "reduction_pipeline"],
@@ -224,7 +224,7 @@ class TestIntervalReductionForecaster:
 
         forecaster = IntervalReductionForecaster(
             estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, coverage_rates=coverage_rates)
 
@@ -271,7 +271,7 @@ class TestIntervalReductionForecaster:
 
         forecaster = IntervalReductionForecaster(
             estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=fit_horizon, coverage_rates=[0.9])
 
@@ -304,7 +304,7 @@ class TestIntervalReductionForecaster:
 
         forecaster = IntervalReductionForecaster(
             estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-            feature_transformer=FeaturePipeline([("lag", LagTransformer(lag=1)), ("scaler", StandardScaler())]),
+            actual_transformer=FeaturePipeline([("lag", LagTransformer(lag=1)), ("scaler", StandardScaler())]),
         )
         forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, coverage_rates=[0.9])
 
@@ -334,7 +334,7 @@ class TestIntervalReductionForecaster:
 
         forecaster = IntervalReductionForecaster(
             estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=forecasting_horizon, coverage_rates=[0.9])
 
@@ -392,7 +392,7 @@ class TestColumnForecasterInterval:
         forecaster = ColumnForecaster([
             (
                 "point_col",
-                PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+                PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
                 ["col_a"],
             ),
             (
@@ -436,7 +436,7 @@ class TestColumnForecasterInterval:
                 "interval_2",
                 IntervalReductionForecaster(
                     MultiOutputRegressor(QuantileRegressor(solver="highs")),
-                    feature_transformer=LagTransformer(lag=1),
+                    actual_transformer=LagTransformer(lag=1),
                 ).set_fit_request(coverage_rates=True),
                 ["col_b"],
             ),
@@ -524,7 +524,7 @@ class TestForecastedFeatureForecasterInterval:
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
-            feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            feature_forecaster=PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
         )
         forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
@@ -563,7 +563,7 @@ class TestForecastedFeatureForecasterInterval:
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
-            feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            feature_forecaster=PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
         )
         forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 
@@ -608,7 +608,7 @@ class TestForecastedFeatureForecasterInterval:
             target_forecaster=SplitConformalForecaster(
                 point_forecaster=SeasonalNaive(seasonality=1), calibration_size=30
             ),
-            feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            feature_forecaster=PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
             strategy=strategy,
             split_ratio=0.8,
         )
@@ -645,7 +645,7 @@ class TestForecastedFeatureForecasterInterval:
 
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1)),
-            feature_forecaster=PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer(lag=1)),
+            feature_forecaster=PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer(lag=1)),
         )
         forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 

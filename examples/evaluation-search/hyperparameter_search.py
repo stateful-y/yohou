@@ -140,14 +140,14 @@ def _(
 ):
     base_fc = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 7))),
+        actual_transformer=LagTransformer(lag=list(range(1, 7))),
     )
 
     grid_search = GridSearchCV(
         forecaster=base_fc,
         param_grid={
             "estimator__alpha": [0.01, 0.1, 1.0, 10.0],
-            "feature_transformer__lag": [
+            "actual_transformer__lag": [
                 list(range(1, 7)),
                 list(range(1, 13)),
             ],
@@ -246,7 +246,7 @@ def _(
     rand_search = RandomizedSearchCV(
         forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=list(range(1, 7))),
+            actual_transformer=LagTransformer(lag=list(range(1, 7))),
         ),
         param_distributions={
             "estimator__alpha": uniform(loc=0.01, scale=20),
@@ -324,14 +324,14 @@ def _(
 ):
     cls_base = ClassProbaReductionForecaster(
         estimator=DecisionTreeClassifier(random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3]),
     )
 
     cls_grid_search = GridSearchCV(
         forecaster=cls_base,
         param_grid={
             "estimator__max_depth": [3, 5, 10, None],
-            "feature_transformer__lag": [
+            "actual_transformer__lag": [
                 [1, 2, 3],
                 [1, 2, 3, 6, 12, 24],
             ],

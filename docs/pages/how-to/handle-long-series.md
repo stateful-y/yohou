@@ -151,7 +151,7 @@ pipeline = FeaturePipeline([
 y_train, y_test = train_test_split(y_daily, test_size=14)
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=pipeline,
+    actual_transformer=pipeline,
 )
 forecaster.fit(y_train, forecasting_horizon=14)
 y_pred = forecaster.predict()

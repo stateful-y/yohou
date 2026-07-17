@@ -286,12 +286,12 @@ class TestTags:
         """uses_*_transformer flags reflect the wrapped forecaster."""
         child = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         f = LocalPanelForecaster(forecaster=child)
         tags = f.__sklearn_tags__()
         child_tags = child.__sklearn_tags__().forecaster_tags
-        assert tags.forecaster_tags.uses_feature_transformer == child_tags.uses_feature_transformer
+        assert tags.forecaster_tags.uses_actual_transformer == child_tags.uses_actual_transformer
         assert tags.forecaster_tags.uses_target_transformer == child_tags.uses_target_transformer
 
 

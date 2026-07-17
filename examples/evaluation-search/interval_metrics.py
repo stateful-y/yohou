@@ -116,7 +116,7 @@ def _(
 
     interval_forecaster = IntervalReductionForecaster(
         estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     interval_forecaster.fit(y_train, forecasting_horizon=fh, coverage_rates=coverage_rates)
     y_pred_int = interval_forecaster.predict_interval(forecasting_horizon=fh, coverage_rates=coverage_rates)

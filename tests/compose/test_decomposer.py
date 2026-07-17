@@ -65,7 +65,7 @@ class TestPanelObserveRewind:
     """Panel-mode observe/rewind must not crash on the scalar-transformer assumption.
 
     In panel mode the base class stores ``target_transformer_``/
-    ``feature_transformer_`` as dicts keyed by group, so ``observe``/``rewind``
+    ``actual_transformer_`` as dicts keyed by group, so ``observe``/``rewind``
     must branch on ``groups_`` instead of asserting a single ``BaseActualTransformer``
     (which would raise ``AssertionError``).
     """
@@ -106,10 +106,10 @@ class TestPanelObserveRewind:
         assert "g1__value" in y_pred_rewound.columns
 
     @pytest.mark.parametrize("with_shared", [False, True])
-    def test_panel_observe_then_rewind_with_feature_transformer(self, panel_data, with_shared):
+    def test_panel_observe_then_rewind_with_actual_transformer(self, panel_data, with_shared):
         """Panel observe/rewind must apply the per-group feature transformer.
 
-        Covers the ``feature_transformer_`` panel branch (and the shared
+        Covers the ``actual_transformer_`` panel branch (and the shared
         ``_panel_X_actual_schema`` helper): with X_actual present in panel
         mode, ``observe``/``rewind`` build the per-group transform dict instead
         of asserting a single ``BaseActualTransformer``. The ``with_shared`` parameter
@@ -128,7 +128,7 @@ class TestPanelObserveRewind:
 
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
-            feature_transformer=FunctionTransformer(),
+            actual_transformer=FunctionTransformer(),
         )
         forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=3)
 
@@ -145,7 +145,7 @@ class TestPanelObserveRewind:
     def test_panel_observe_with_both_transformers_active(self, panel_data):
         """Panel observe must dispatch target and feature transformers together.
 
-        With a panel target_transformer (dict) and a panel feature_transformer
+        With a panel target_transformer (dict) and a panel actual_transformer
         (dict) both fitted, observe(y, X_actual) builds y_t_dict via the target
         branch and X_t_dict via the feature branch in the same call. This
         exercises the simultaneous-dict path that the target-only and
@@ -161,11 +161,11 @@ class TestPanelObserveRewind:
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
             target_transformer=LogTransformer(),
-            feature_transformer=FunctionTransformer(),
+            actual_transformer=FunctionTransformer(),
         )
         forecaster.fit(y_train, X_actual=X_train, forecasting_horizon=3)
         assert isinstance(forecaster.target_transformer_, dict)
-        assert isinstance(forecaster.feature_transformer_, dict)
+        assert isinstance(forecaster.actual_transformer_, dict)
 
         forecaster.observe(y_new, X_actual=X_new)
         y_pred = forecaster.predict()
@@ -617,7 +617,7 @@ class TestExogenousFeatures:
             ("trend", PolynomialTrendForecaster(degree=1)),
             (
                 "ml",
-                PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+                PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])),
             ),
         ])
         fit_forecasting_horizon = 5
@@ -694,39 +694,39 @@ class TestDecompositionPipelineWithoutExogenous:
 
 
 class TestFeatureTransformerParam:
-    """Tests for feature_transformer parameter on DecompositionPipeline."""
+    """Tests for actual_transformer parameter on DecompositionPipeline."""
 
-    def test_feature_transformer_in_get_params(self):
-        """feature_transformer should appear in get_params()."""
+    def test_actual_transformer_in_get_params(self):
+        """actual_transformer should appear in get_params()."""
         forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
         ])
         params = forecaster.get_params()
-        assert "feature_transformer" in params
-        assert params["feature_transformer"] is None
+        assert "actual_transformer" in params
+        assert params["actual_transformer"] is None
 
-    def test_feature_transformer_set_params(self):
-        """feature_transformer should be settable via set_params()."""
+    def test_actual_transformer_set_params(self):
+        """actual_transformer should be settable via set_params()."""
         from yohou.preprocessing import LagTransformer
 
         forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
         ])
         lag = LagTransformer(lag=[1])
-        forecaster.set_params(feature_transformer=lag)
-        assert forecaster.feature_transformer is lag
+        forecaster.set_params(actual_transformer=lag)
+        assert forecaster.actual_transformer is lag
 
-    def test_feature_transformer_clone(self):
-        """feature_transformer should survive clone()."""
+    def test_actual_transformer_clone(self):
+        """actual_transformer should survive clone()."""
         from yohou.preprocessing import LagTransformer
 
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         cloned = clone(forecaster)
-        assert cloned.feature_transformer is not None
-        assert isinstance(cloned.feature_transformer, LagTransformer)
+        assert cloned.actual_transformer is not None
+        assert isinstance(cloned.actual_transformer, LagTransformer)
 
 
 class TestDecompositionPipelinePanelInverseTransform:
@@ -798,15 +798,15 @@ class TestDecompositionPipelineObserveRewind:
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
-    def test_observe_with_feature_transformer(self, y_X_factory):
-        """Observe with feature_transformer exercises feature transform path."""
+    def test_observe_with_actual_transformer(self, y_X_factory):
+        """Observe with actual_transformer exercises feature transform path."""
         from yohou.preprocessing import LagTransformer
 
         y, X_actual = y_X_factory(length=80, n_targets=1, n_features=2)
 
         forecaster = DecompositionPipeline(
             [("trend", PolynomialTrendForecaster(degree=1))],
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         forecaster.fit(y[:60], X_actual[:60], forecasting_horizon=5)
 
@@ -851,10 +851,10 @@ class TestDecompositionPipelineObserveRewind:
 
 
 class TestDecompositionPipelineFeatureTransformer:
-    """Tests for DecompositionPipeline with feature_transformer."""
+    """Tests for DecompositionPipeline with actual_transformer."""
 
-    def test_rewind_with_feature_transformer(self, time_series_factory):
-        """Rewind with feature_transformer exercises feature rewind_transform path."""
+    def test_rewind_with_actual_transformer(self, time_series_factory):
+        """Rewind with actual_transformer exercises feature rewind_transform path."""
         from yohou.preprocessing import FunctionTransformer
 
         y = time_series_factory(length=80, n_components=1)
@@ -866,7 +866,7 @@ class TestDecompositionPipelineFeatureTransformer:
                 ("trend", PolynomialTrendForecaster(degree=1)),
                 ("season", SeasonalNaive(seasonality=7)),
             ],
-            feature_transformer=FunctionTransformer(),
+            actual_transformer=FunctionTransformer(),
         )
         forecaster.fit(y[:60], X_actual=X_actual[:60], forecasting_horizon=5)
 
@@ -916,7 +916,7 @@ class TestObservePredictWithExogenous:
             ("trend", PolynomialTrendForecaster(degree=1)),
             (
                 "ml",
-                PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+                PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])),
             ),
         ])
         forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)
@@ -1007,7 +1007,7 @@ class TestPanelExogenous:
             ("trend", PolynomialTrendForecaster(degree=1)),
             (
                 "ml",
-                PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+                PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])),
             ),
         ])
         forecaster.fit(y[:30], X_actual=X_actual[:30], forecasting_horizon=5)

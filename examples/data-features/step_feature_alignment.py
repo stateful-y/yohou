@@ -133,7 +133,7 @@ def _(
     for _mode in ["all", "matched", "cumulative"]:
         forecaster = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
             step_feature_alignment=_mode,
         )
@@ -204,7 +204,7 @@ def _(
     for _mode in ["all", "matched", "cumulative"]:
         fc = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
             step_feature_alignment=_mode,
         )

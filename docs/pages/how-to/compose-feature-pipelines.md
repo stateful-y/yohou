@@ -101,7 +101,7 @@ from yohou.compose import FeaturePipeline, FeatureUnion
 from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
 from yohou.stationarity import SeasonalDifferencing
 
-feature_transformer = FeaturePipeline([
+actual_transformer = FeaturePipeline([
     ("diff", SeasonalDifferencing(seasonality=12)),
     ("features", FeatureUnion([
         ("lags", LagTransformer(lag=[1, 3, 6, 12])),
@@ -116,7 +116,7 @@ The same pattern works with `ColumnTransformer` when features need column-specif
 from yohou.compose import FeaturePipeline, ColumnTransformer
 from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
 
-feature_transformer = FeaturePipeline([
+actual_transformer = FeaturePipeline([
     ("features", ColumnTransformer(
         transformers=[
             ("lags", LagTransformer(lag=[1, 3, 6]), ["temperature"]),
@@ -135,7 +135,7 @@ from sklearn.linear_model import Ridge
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=feature_transformer,
+    actual_transformer=actual_transformer,
 )
 forecaster.fit(y_train, forecasting_horizon=12)
 predictions = forecaster.predict()
@@ -168,8 +168,8 @@ pipeline[0:1]     # slice returns a new FeaturePipeline
 Both `FeaturePipeline` and `FeatureUnion` support `get_params` / `set_params` with double-underscore notation for nested access:
 
 ```python
-feature_transformer.set_params(features__lags__lag=[1, 2, 3])
-feature_transformer.get_params()["features__lags__lag"]  # [1, 2, 3]
+actual_transformer.set_params(features__lags__lag=[1, 2, 3])
+actual_transformer.get_params()["features__lags__lag"]  # [1, 2, 3]
 ```
 
 This integrates with hyperparameter search. See [How to Tune Hyperparameters](tune-hyperparameters.md) for details.
@@ -181,7 +181,7 @@ Pipelines work with panel data automatically. When column names use the `__` nam
 ```python
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=feature_transformer,
+    actual_transformer=actual_transformer,
 )
 # Transformers apply per group automatically
 forecaster.fit(y_panel, forecasting_horizon=12)

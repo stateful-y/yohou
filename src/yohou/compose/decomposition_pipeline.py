@@ -14,7 +14,7 @@ from sklearn.utils.metadata_routing import (
 )
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer
+from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
@@ -55,10 +55,15 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Use `target_transformer=LogTransformer()` for multiplicative decomposition
         (additive in log-space).
 
-    feature_transformer : BaseActualTransformer or None, default=None
+    actual_transformer : BaseActualTransformer or None, default=None
         Transformer applied to exogenous features before passing to component
         forecasters. Applied once at DecompositionPipeline level; all components receive
         the same transformed features.
+    forecast_transformer : BaseForecastTransformer or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -172,15 +177,18 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     def __init__(
         self,
         forecasters: list[tuple[str, BasePointForecaster]],
+        *,
         store_residuals: bool = False,
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BasePointForecaster.__init__(
             self,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             target_as_feature=None,
             panel_strategy=panel_strategy,
         )
@@ -715,8 +723,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         """
         observation_horizon = forecaster.observation_horizon
-        if forecaster.feature_transformer is not None:
-            ft_ = forecaster.feature_transformer_
+        if forecaster.actual_transformer is not None:
+            ft_ = forecaster.actual_transformer_
             if isinstance(ft_, dict):
                 feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
             else:
@@ -944,14 +952,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         else:
             y_t = y
 
-        if X_actual is not None and self.feature_transformer_ is not None:
+        if X_actual is not None and self.actual_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseActualTransformer)
-                X_t = self.feature_transformer_.observe_transform(X_actual)
+                assert isinstance(self.actual_transformer_, BaseActualTransformer)
+                X_t = self.actual_transformer_.observe_transform(X_actual)
             else:
-                assert isinstance(self.feature_transformer_, dict)
+                assert isinstance(self.actual_transformer_, dict)
                 X_t_dict = self._transform_panel(
-                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "observe_transform"
+                    self.actual_transformer_, X_actual, self._panel_X_actual_schema(), "observe_transform"
                 )
                 X_t = dict_to_panel(X_t_dict)
         else:
@@ -1079,14 +1087,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         else:
             y_t = y
 
-        if X_actual is not None and self.feature_transformer_ is not None:
+        if X_actual is not None and self.actual_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseActualTransformer)
-                X_t = self.feature_transformer_.rewind_transform(X_actual)
+                assert isinstance(self.actual_transformer_, BaseActualTransformer)
+                X_t = self.actual_transformer_.rewind_transform(X_actual)
             else:
-                assert isinstance(self.feature_transformer_, dict)
+                assert isinstance(self.actual_transformer_, dict)
                 X_t_dict = self._transform_panel(
-                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "rewind_transform"
+                    self.actual_transformer_, X_actual, self._panel_X_actual_schema(), "rewind_transform"
                 )
                 X_t = dict_to_panel(X_t_dict)
         else:
@@ -1184,9 +1192,21 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 .add(caller="predict", callee="transform"),
             )
 
-        if self.feature_transformer is not None:
+        if self.actual_transformer is not None:
             router.add(
-                feature_transformer=self.feature_transformer,
+                actual_transformer=self.actual_transformer,
+                method_mapping=MethodMapping()
+                .add(caller="fit", callee="fit")
+                .add(caller="fit", callee="transform")
+                .add(caller="predict", callee="transform"),
+            )
+
+        # The same three mappings the two actual slots already register here, which
+        # this class needs because it applies its transformers at predict too. No
+        # observe or rewind mapping: BaseForecastTransformer has neither method.
+        if self.forecast_transformer is not None:
+            router.add(
+                forecast_transformer=self.forecast_transformer,
                 method_mapping=MethodMapping()
                 .add(caller="fit", callee="fit")
                 .add(caller="fit", callee="transform")

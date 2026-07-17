@@ -82,14 +82,14 @@ class TestRetailDemandPipeline:
             ("log", LogTransformer(offset=1.0)),
             ("deseason", SeasonalDifferencing(seasonality=7)),
         ])
-        feature_transformer = FeaturePipeline([
+        actual_transformer = FeaturePipeline([
             ("lags", LagTransformer([1, 7, 14])),
             ("rolling", RollingStatisticsTransformer(window_size=7, statistics=["mean", "std"])),
         ])
         forecaster = PointReductionForecaster(
             estimator=Ridge(alpha=0.1),
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         # Fit
@@ -140,7 +140,7 @@ class TestRetailDemandPipeline:
                 ("log", LogTransformer(offset=1.0)),
                 ("deseason", SeasonalDifferencing(seasonality=7)),
             ]),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lags", LagTransformer([1, 7, 14])),
                 ("rolling", RollingStatisticsTransformer(window_size=7, statistics=["mean", "std"])),
             ]),
@@ -193,7 +193,7 @@ class TestRetailDemandPipeline:
                 ("log", LogTransformer(offset=1.0)),
                 ("deseason", SeasonalDifferencing(seasonality=7)),
             ]),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lags", LagTransformer([1, 7, 14])),
                 ("rolling", RollingStatisticsTransformer(window_size=7, statistics=["mean", "std"])),
             ]),
@@ -228,7 +228,7 @@ class TestRetailDemandPipeline:
                 ("log", LogTransformer(offset=1.0)),
                 ("deseason", SeasonalDifferencing(seasonality=7)),
             ]),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lags", LagTransformer([1, 7, 14])),
                 ("rolling", RollingStatisticsTransformer(window_size=7, statistics=["mean", "std"])),
             ]),
@@ -250,7 +250,7 @@ class TestRetailDemandPipeline:
 
         # Observation horizon includes both target and feature transformers.
         # target_transformer: SeasonalDifferencing(7) → 7
-        # feature_transformer: LagTransformer([1,7,14]) → 14, RollingStatisticsTransformer(7) → 6
+        # actual_transformer: LagTransformer([1,7,14]) → 14, RollingStatisticsTransformer(7) → 6
         #                      FeaturePipeline sum → 20
         # max(0, 7, 20) = 20
         expected_horizon = 20
@@ -287,7 +287,7 @@ class TestMultiStorePanelPipeline:
                 "main_stores",
                 PointReductionForecaster(
                     LR(),
-                    feature_transformer=LagTransformer([1, 7]),
+                    actual_transformer=LagTransformer([1, 7]),
                 ),
                 ["sales__store_1", "sales__store_2", "sales__store_3"],
             ),
@@ -338,7 +338,7 @@ class TestMultiStorePanelPipeline:
                 "main_stores",
                 PointReductionForecaster(
                     LR(),
-                    feature_transformer=LagTransformer([1, 7]),
+                    actual_transformer=LagTransformer([1, 7]),
                 ),
                 ["sales__store_1", "sales__store_2", "sales__store_3"],
             ),
@@ -388,7 +388,7 @@ class TestMultiStorePanelPipeline:
                 "main_stores",
                 PointReductionForecaster(
                     LR(),
-                    feature_transformer=LagTransformer([1, 7]),
+                    actual_transformer=LagTransformer([1, 7]),
                 ),
                 ["sales__store_1", "sales__store_2", "sales__store_3"],
             ),
@@ -426,7 +426,7 @@ class TestMultiStorePanelPipeline:
 
         forecaster = PointReductionForecaster(
             LR(),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
         )
 
         forecaster.fit(df[:70], forecasting_horizon=5)
@@ -464,7 +464,7 @@ class TestMultiStorePanelPipeline:
 
         forecaster = PointReductionForecaster(
             LR(),
-            feature_transformer=LagTransformer([1, 7]),
+            actual_transformer=LagTransformer([1, 7]),
         )
 
         forecaster.fit(df[:80], forecasting_horizon=7)
@@ -513,7 +513,7 @@ class TestDecompositionConformalPipeline:
         point_forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("season", PatternSeasonalityForecaster(seasonality=12, method="average")),
-            ("residual", PointReductionForecaster(LR(), feature_transformer=LagTransformer([1, 12]))),
+            ("residual", PointReductionForecaster(LR(), actual_transformer=LagTransformer([1, 12]))),
         ])
         forecaster = SplitConformalForecaster(
             point_forecaster=point_forecaster,
@@ -555,7 +555,7 @@ class TestDecompositionConformalPipeline:
         point_forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("season", PatternSeasonalityForecaster(seasonality=12, method="average")),
-            ("residual", PointReductionForecaster(LR(), feature_transformer=LagTransformer([1, 12]))),
+            ("residual", PointReductionForecaster(LR(), actual_transformer=LagTransformer([1, 12]))),
         ])
         forecaster = SplitConformalForecaster(
             point_forecaster=point_forecaster,
@@ -597,7 +597,7 @@ class TestDecompositionConformalPipeline:
         point_forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("season", PatternSeasonalityForecaster(seasonality=12, method="average")),
-            ("residual", PointReductionForecaster(LR(), feature_transformer=LagTransformer([1, 12]))),
+            ("residual", PointReductionForecaster(LR(), actual_transformer=LagTransformer([1, 12]))),
         ])
         forecaster = SplitConformalForecaster(
             point_forecaster=point_forecaster,
@@ -644,7 +644,7 @@ class TestDecompositionConformalPipeline:
         point_forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("season", PatternSeasonalityForecaster(seasonality=12, method="average")),
-            ("residual", PointReductionForecaster(LR(), feature_transformer=LagTransformer([1, 12]))),
+            ("residual", PointReductionForecaster(LR(), actual_transformer=LagTransformer([1, 12]))),
         ])
         forecaster = SplitConformalForecaster(
             point_forecaster=point_forecaster,
@@ -695,7 +695,7 @@ class TestDecompositionConformalPipeline:
         point_forecaster = DecompositionPipeline([
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("season", PatternSeasonalityForecaster(seasonality=12, method="average")),
-            ("residual", PointReductionForecaster(LR(), feature_transformer=LagTransformer([1, 12]))),
+            ("residual", PointReductionForecaster(LR(), actual_transformer=LagTransformer([1, 12]))),
         ])
         forecaster = SplitConformalForecaster(
             point_forecaster=point_forecaster,
@@ -748,14 +748,14 @@ class TestFeatureForecastedPipeline:
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.0),
-                feature_transformer=FeaturePipeline([
+                actual_transformer=FeaturePipeline([
                     ("lags", LagTransformer([1, 24])),
                     ("scale", StandardScaler()),
                 ]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             strategy="predicted",
             split_ratio=0.6,
@@ -797,11 +797,11 @@ class TestFeatureForecastedPipeline:
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.0),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             strategy="actual",  # Use actual features to isolate target learning
             split_ratio=0.6,
@@ -850,14 +850,14 @@ class TestFeatureForecastedPipeline:
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.01),
-                feature_transformer=FeaturePipeline([
+                actual_transformer=FeaturePipeline([
                     ("lags", LagTransformer([1, 24])),
                     ("scale", StandardScaler()),
                 ]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             strategy="predicted",
             split_ratio=0.6,
@@ -909,11 +909,11 @@ class TestFeatureForecastedPipeline:
         forecaster_actual = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.0),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             strategy="actual",
             split_ratio=0.6,
@@ -923,11 +923,11 @@ class TestFeatureForecastedPipeline:
         forecaster_predicted = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.0),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 24]),
+                actual_transformer=LagTransformer([1, 24]),
             ),
             strategy="predicted",
             split_ratio=0.6,
@@ -983,11 +983,11 @@ class TestFeatureForecastedPipeline:
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 Ridge(alpha=0.0),
-                feature_transformer=LagTransformer([1]),
+                actual_transformer=LagTransformer([1]),
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1]),
+                actual_transformer=LagTransformer([1]),
             ),
             strategy="predicted",
             split_ratio=0.6,
@@ -1028,7 +1028,7 @@ class TestHyperparameterTunedPipeline:
 
         base = PointReductionForecaster(
             Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scale", StandardScaler()),
             ]),
@@ -1072,7 +1072,7 @@ class TestHyperparameterTunedPipeline:
 
         base = PointReductionForecaster(
             Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer([1, 2])),
                 ("scale", StandardScaler()),
             ]),
@@ -1082,7 +1082,7 @@ class TestHyperparameterTunedPipeline:
             base,
             param_grid={
                 "estimator__alpha": [0.0, 0.1, 1.0],
-                "feature_transformer__lag__lag": [[1], [1, 2], [1, 2, 3]],
+                "actual_transformer__lag__lag": [[1], [1, 2], [1, 2, 3]],
             },
             scoring=MeanAbsoluteError(),
             cv=SlidingWindowSplitter(n_splits=3, test_size=10, stride=10),
@@ -1126,7 +1126,7 @@ class TestHyperparameterTunedPipeline:
 
         base = PointReductionForecaster(
             Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scale", StandardScaler()),
             ]),
@@ -1170,7 +1170,7 @@ class TestHyperparameterTunedPipeline:
 
         base = PointReductionForecaster(
             Ridge(),
-            feature_transformer=LagTransformer([1, 2]),
+            actual_transformer=LagTransformer([1, 2]),
         )
 
         search = GridSearchCV(
@@ -1212,7 +1212,7 @@ class TestHyperparameterTunedPipeline:
 
         base = PointReductionForecaster(
             Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scale", StandardScaler()),
             ]),
@@ -1269,7 +1269,7 @@ class TestMaxNestingPipeline:
                                 "residual",
                                 PointReductionForecaster(
                                     Ridge(alpha=0.1),
-                                    feature_transformer=FeaturePipeline([
+                                    actual_transformer=FeaturePipeline([
                                         (
                                             "lags",
                                             FeatureUnion([
@@ -1287,7 +1287,7 @@ class TestMaxNestingPipeline:
                     ),
                     feature_forecaster=PointReductionForecaster(
                         LR(),
-                        feature_transformer=LagTransformer([1, 7]),
+                        actual_transformer=LagTransformer([1, 7]),
                     ),
                     strategy="predicted",
                 ),
@@ -1365,7 +1365,7 @@ class TestMaxNestingPipeline:
                                 "residual",
                                 PointReductionForecaster(
                                     Ridge(alpha=0.1),
-                                    feature_transformer=LagTransformer([1, 2, 3, 7, 14]),
+                                    actual_transformer=LagTransformer([1, 2, 3, 7, 14]),
                                 ),
                             ),
                         ]),
@@ -1374,7 +1374,7 @@ class TestMaxNestingPipeline:
                     ),
                     feature_forecaster=PointReductionForecaster(
                         LR(),
-                        feature_transformer=LagTransformer([1, 7]),
+                        actual_transformer=LagTransformer([1, 7]),
                     ),
                     strategy="predicted",
                     split_ratio=0.8,
@@ -1416,7 +1416,7 @@ class TestMaxNestingPipeline:
                                 "residual",
                                 PointReductionForecaster(
                                     Ridge(alpha=0.1),
-                                    feature_transformer=LagTransformer([1, 2, 3, 7, 14]),
+                                    actual_transformer=LagTransformer([1, 2, 3, 7, 14]),
                                 ),
                             ),
                         ]),
@@ -1425,7 +1425,7 @@ class TestMaxNestingPipeline:
                     ),
                     feature_forecaster=PointReductionForecaster(
                         LR(),
-                        feature_transformer=LagTransformer([1, 7]),
+                        actual_transformer=LagTransformer([1, 7]),
                     ),
                     strategy="predicted",
                     split_ratio=0.8,
@@ -1501,7 +1501,7 @@ class TestMaxNestingPipeline:
                         "residual",
                         PointReductionForecaster(
                             Ridge(alpha=0.1),
-                            feature_transformer=LagTransformer([1, 2, 3, 7, 14]),
+                            actual_transformer=LagTransformer([1, 2, 3, 7, 14]),
                         ),
                     ),
                 ]),
@@ -1510,7 +1510,7 @@ class TestMaxNestingPipeline:
             ),
             feature_forecaster=PointReductionForecaster(
                 LR(),
-                feature_transformer=LagTransformer([1, 7]),
+                actual_transformer=LagTransformer([1, 7]),
             ),
             strategy="predicted",
             split_ratio=0.8,

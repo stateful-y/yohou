@@ -312,7 +312,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 7, 365]),
+                    actual_transformer=LagTransformer(lag=[1, 7, 365]),
                 ),
             ),
         ],

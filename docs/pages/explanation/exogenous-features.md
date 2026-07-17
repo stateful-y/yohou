@@ -22,7 +22,7 @@ readings, sensor data, realized demand, settled prices. These values are
 *historical* by definition: you cannot know tomorrow's actual temperature
 today.
 
-`X_actual` flows through the `feature_transformer` pipeline. Lag features,
+`X_actual` flows through the `actual_transformer` pipeline. Lag features,
 rolling statistics, and other time-dependent transformations apply to it
 just as they do to the target variable. Because `X_actual` is unavailable for
 future time steps, it does not appear in the `predict()` signature. The
@@ -38,7 +38,7 @@ a holiday gives the same answer whether you check in January or November, but
 no amount of inspecting today's date tells you when Easter falls next year.
 That takes a calendar.
 
-`X_future` bypasses the `feature_transformer` entirely. Instead, the framework
+`X_future` bypasses the `actual_transformer` entirely. Instead, the framework
 windows it forward from each observation point to produce *step-indexed*
 columns (`is_holiday_step_1`, `is_holiday_step_2`, ..., `is_holiday_step_H`).
 Each step column tells the estimator what the holiday status will be at that
@@ -46,14 +46,14 @@ specific forecast horizon.
 
 #### What Belongs Here
 
-`feature_transformer` only ever runs on the observation frame, which stops at
+`actual_transformer` only ever runs on the observation frame, which stops at
 the observation point `T`. It can compute a feature for `T`, for `T-1`, for any
 timestamp already observed, and for none beyond. That single fact decides the
 channel:
 
 > Does the feature's value at `T` determine its value at `T+h`?
 
-If it does, `feature_transformer` already suffices and `X_future` is the wrong
+If it does, `actual_transformer` already suffices and `X_future` is the wrong
 home. A Fourier pair is the clearest case: `sin(2*pi*(t+h)/S)` is a fixed linear
 combination of the sine and cosine at `t`, so once the estimator sees the pair
 at `T` it can express the value at every horizon. Windowing it forward across
@@ -66,7 +66,7 @@ a public holiday is not a function of anything measurable today. It is a lookup.
 
 The same test, in the form you can apply while writing the `fit()` call: **can
 you compute it from the timestamp alone, or do you need an external table?** A
-timestamp alone means a *clock feature*, which belongs in `feature_transformer`
+timestamp alone means a *clock feature*, which belongs in `actual_transformer`
 (see [`FourierFeatureTransformer`](/pages/api/generated/yohou.preprocessing.time_features.FourierFeatureTransformer/)
 and [`CalendarFeatureTransformer`](/pages/api/generated/yohou.preprocessing.calendar.CalendarFeatureTransformer/)).
 An external table means an *event feature*, which belongs in `X_future`.
@@ -103,18 +103,42 @@ same target hour typically differ because the model was updated with newer
 data.
 
 `X_forecast` requires a `vintage_time` column that identifies when each
-forecast was issued. Like `X_future`, it bypasses `feature_transformer` and
+forecast was issued. Like `X_future`, it bypasses `actual_transformer` and
 produces step-indexed columns. Unlike `X_future`, different vintages produce
 different step values, enabling multi-vintage prediction from a single
 observation state.
 
-Bypassing `feature_transformer` is a statement about that slot, not about the
-frame. `feature_transformer` operates on single-axis `X_actual` data, and an
-`X_forecast` frame carries a second time axis it cannot read. The frame can still
-be transformed, just earlier and by a transformer built for its shape: derive the
-features first, then pass the result in through `X_forecast`. See
+Bypassing `actual_transformer` is a statement about that slot, not about the
+frame. `actual_transformer` operates on single-axis `X_actual` data, and an
+`X_forecast` frame carries a second time axis it cannot read. The frame is still
+transformable, by a transformer built for its shape, and that transformer has a
+slot of its own: `forecast_transformer`. See
 [Transformer Kinds](transformer-kinds.md) for the two transformer kinds and why
 the vintage axis needs its own.
+
+### The Three Transformer Slots
+
+A forecaster holds three transformer slots, each named for what it consumes:
+
+| Slot | Consumes | Kind |
+| --- | --- | --- |
+| `target_transformer` | the target series | actual (single-axis) |
+| `actual_transformer` | the feature frame built from `y` and `X_actual` | actual (single-axis) |
+| `forecast_transformer` | `X_forecast` | forecast (vintage-indexed) |
+
+The split follows the frame shape rather than the role. An actual-kind
+transformer reads one `time` axis; a forecast-kind transformer reads
+`(vintage_time, time)`. Passing one where the other belongs raises a
+`ValueError` naming the slot, and the message points at the slot that does
+accept it.
+
+`X_future` has no slot. It is single-axis, so it needs no new base class, but a
+stateful actual transformer applied to it would hold future rows in its buffer
+across `observe` calls, which is a leak with no guard today. So one arm of the
+step-column derivation arrives transformed and the other does not. This is a
+known gap rather than a design position; clock features that would otherwise
+tempt you toward `X_future` belong in `actual_transformer`, which does have a
+slot.
 
 ## Benefits of the Three-Parameter API
 
@@ -176,8 +200,8 @@ public utilities for data preparation workflows.
 
 ## The Bypass Principle
 
-Step-indexed columns bypass `feature_transformer` entirely. The
-`feature_transformer` operates on `X_actual` (and optionally on the target
+Step-indexed columns bypass `actual_transformer` entirely. The
+`actual_transformer` operates on `X_actual` (and optionally on the target
 via `target_as_feature`) to produce lags, rolling statistics, and other
 observation-derived features. Step columns from `X_future` and `X_forecast`
 are already forward-looking by construction: `is_holiday_step_3` *is* the
@@ -277,7 +301,7 @@ columns are padded with null and a `UserWarning` is emitted.
 The `observe()` method accepts `X_actual`, `X_future`, and `X_forecast`,
 matching the `fit()` signature. When new data becomes available after fitting,
 `observe()` extends the internal observation buffer (`_X_t_observed`) with
-new `X_actual` data processed through `feature_transformer`, and re-derives
+new `X_actual` data processed through `actual_transformer`, and re-derives
 step columns from `X_future` and `X_forecast`.
 
 A typical walk-forward evaluation alternates between `observe()` (to feed

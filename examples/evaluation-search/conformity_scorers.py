@@ -138,7 +138,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge):
     base_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     return (base_forecaster,)
 
@@ -440,7 +440,7 @@ def _(
 ):
     _base_sim = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     fc_sim = SplitConformalForecaster(
         point_forecaster=_base_sim,

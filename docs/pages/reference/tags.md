@@ -44,7 +44,7 @@ These apply to all estimator types.
 | `stateful` | `bool` | `False` | Whether the forecaster uses an observation horizon mechanism |
 | `uses_reduction` | `bool` | `False` | Whether the forecaster converts to tabular regression |
 | `uses_target_transformer` | `bool` | `False` | Whether a target transformer is applied before fitting |
-| `uses_feature_transformer` | `bool` | `False` | Whether a feature transformer is applied before fitting |
+| `uses_actual_transformer` | `bool` | `False` | Whether a feature transformer is applied before fitting |
 | `supports_panel_data` | `bool` | `True` | Whether the forecaster handles panel data |
 | `supports_time_weight` | `bool` | `False` | Whether time weighting is supported during training |
 | `supports_vintage_weight` | `bool` | `False` | Whether vintage weighting is supported |
@@ -85,7 +85,7 @@ Some tags are computed at runtime rather than declared in `_tags`. Override
 
 | Tag | Computed When | Description |
 |-----|---------------|-------------|
-| `forecaster_tags.stateful` | `target_transformer` or `feature_transformer` has `stateful=True` | Base forecaster automatically marks itself stateful when any attached transformer is stateful |
+| `forecaster_tags.stateful` | `target_transformer` or `actual_transformer` has `stateful=True` | Base forecaster automatically marks itself stateful when any attached transformer is stateful |
 | `forecaster_tags.forecaster_type` | Multiple base classes are combined | A forecaster that inherits both point and interval capabilities gets `{"point", "interval"}` automatically |
 | `forecaster_tags.requires_exogenous` | Subclass overrides `__sklearn_tags__()` | Set `False` for forecasters that never use `X_actual` |
 

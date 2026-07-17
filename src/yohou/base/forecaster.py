@@ -10,14 +10,15 @@ from typing import cast as typing_cast
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, clone
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTransformer
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
 from yohou.base.transformer import BaseActualTransformer
-from yohou.base.utils import _derive_step_columns
+from yohou.base.utils import _derive_step_columns, _require_forecast_transformer
 from yohou.utils import (
     Tags,
     cast,
@@ -45,10 +46,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
-        Transformer used to transform the feature time series into features.
     target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
+        Transformer used to transform the feature time series into features.
+    forecast_transformer : instance of `BaseForecastTransformer` or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -94,7 +100,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     _parameter_constraints: dict = {
         "target_transformer": [BaseActualTransformer, None],
-        "feature_transformer": [BaseActualTransformer, None],
+        "actual_transformer": [BaseActualTransformer, None],
+        # Loose structurally, strict by tag, mirroring "actual_transformer" above.
+        # A forecast-kind composition (a FeatureUnion of forecast transformers) is a
+        # BaseActualTransformer subclass reporting kind="forecast", so listing only
+        # BaseForecastTransformer here would reject it. _require_forecast_transformer
+        # rejects what reports kind="actual".
+        "forecast_transformer": [BaseForecastTransformer, BaseActualTransformer, None],
         "target_as_feature": [StrOptions({"transformed", "raw"}), None],
         "panel_strategy": [StrOptions({"global", "multivariate"})],
     }
@@ -104,13 +116,16 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
     def __init__(
         self,
-        feature_transformer: BaseActualTransformer | None = None,
+        *,
         target_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
-        self.feature_transformer = feature_transformer
         self.target_transformer = target_transformer
+        self.actual_transformer = actual_transformer
+        self.forecast_transformer = forecast_transformer
         self.target_as_feature = target_as_feature
         self.panel_strategy = panel_strategy
 
@@ -141,7 +156,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # Set transformer usage flags (static - based on __init__ params)
         tags.forecaster_tags.uses_target_transformer = self.target_transformer is not None
-        tags.forecaster_tags.uses_feature_transformer = self.feature_transformer is not None
+        tags.forecaster_tags.uses_actual_transformer = self.actual_transformer is not None
+        tags.forecaster_tags.uses_forecast_transformer = self.forecast_transformer is not None
 
         # A forecaster is stateful if it uses a stateful transformer.
         # Subclasses that are intrinsically stateful override __sklearn_tags__
@@ -153,8 +169,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             if target_tags is not None:
                 stateful = target_tags.stateful
 
-        if not stateful and self.feature_transformer is not None:
-            feature_tags = self.feature_transformer.__sklearn_tags__().transformer_tags
+        if not stateful and self.actual_transformer is not None:
+            feature_tags = self.actual_transformer.__sklearn_tags__().transformer_tags
             if feature_tags is not None:
                 stateful = feature_tags.stateful
 
@@ -238,18 +254,246 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # Compute feature transformer observation horizon
         feature_observation_horizon = 0
-        if self.feature_transformer is not None and hasattr(self, "feature_transformer_"):
-            if isinstance(self.feature_transformer_, dict):
-                first_transformer = next(iter(self.feature_transformer_.values()))
+        if self.actual_transformer is not None and hasattr(self, "actual_transformer_"):
+            if isinstance(self.actual_transformer_, dict):
+                first_transformer = next(iter(self.actual_transformer_.values()))
                 if first_transformer is not None:
                     feature_observation_horizon = typing_cast(
                         BaseActualTransformer, first_transformer
                     ).observation_horizon
-            elif isinstance(self.feature_transformer_, BaseActualTransformer):
-                feature_observation_horizon = self.feature_transformer_.observation_horizon
+            elif isinstance(self.actual_transformer_, BaseActualTransformer):
+                feature_observation_horizon = self.actual_transformer_.observation_horizon
 
         self_observation_horizon = self._observation_horizon
         return max(self_observation_horizon, target_observation_horizon, feature_observation_horizon)
+
+    def _fit_forecast_transformer(
+        self,
+        X_forecast: pl.DataFrame | None,
+        forecasting_horizon: int,
+        groups: list[str] | None = None,
+    ) -> pl.DataFrame | None:
+        """Fit the ``forecast_transformer`` slot, assert the horizon, and transform.
+
+        Ordering here is load-bearing: the slot must be fitted before
+        ``min_vintage_rows`` is readable, the horizon assert must precede
+        ``_derive_step_columns``, and the returned frame is what derivation
+        consumes.
+
+        Parameters
+        ----------
+        X_forecast : pl.DataFrame or None
+            The raw wide ``X_forecast`` frame, or ``None``.
+        forecasting_horizon : int
+            The fit horizon, checked against the slot's ``min_vintage_rows``.
+        groups : list of str or None, default=None
+            Panel group names for the per-group fit, or ``None`` for a single
+            instance over the wide frame (standard and multivariate).
+
+        Returns
+        -------
+        pl.DataFrame or None
+            The transformed frame, or the input unchanged when the slot is unset.
+
+        """
+        self.forecast_transformer_ = None
+        if self.forecast_transformer is None or X_forecast is None:
+            return X_forecast
+
+        _require_forecast_transformer(self.forecast_transformer, "forecast_transformer")
+
+        if groups is None:
+            self.forecast_transformer_ = clone(self.forecast_transformer).fit(X_forecast)
+        else:
+            schema = self._build_X_forecast_schema()
+            self.forecast_transformer_ = {
+                group_name: clone(self.forecast_transformer).fit(
+                    get_group_df(
+                        df=X_forecast,
+                        group_name=group_name,
+                        schema=schema,
+                        key_cols=FORECAST_INDEX_COLS,
+                    )
+                )
+                for group_name in groups
+            }
+
+        self._assert_forecasting_horizon_meets_minimum(forecasting_horizon)
+        X_forecast_t = self._transform_X_forecast(X_forecast)
+        self._warn_dead_forecast_steps(X_forecast, X_forecast_t, forecasting_horizon)
+        return X_forecast_t
+
+    def _warn_dead_forecast_steps(
+        self,
+        X_forecast: pl.DataFrame | None,
+        X_forecast_t: pl.DataFrame | None,
+        forecasting_horizon: int,
+    ) -> None:
+        """Warn when the transform leaves the nearest-term step columns entirely null.
+
+        A stateful inner consumes rows from the **start** of every vintage, and those
+        are the nearest-term forecast steps. Step-column derivation pads them back as
+        nulls, which the horizon guard permits: the transform still yields rows, so
+        it is partial loss rather than total loss.
+
+        What the guard cannot see is that the loss is the same in every vintage, so
+        those step columns are null in every row rather than in some. An entirely
+        null column is not merely lossy. It defeats ``nan_handling="drop"``, since
+        every row then carries a null, and it breaks estimators that otherwise
+        tolerate NaN, including ``HistGradientBoostingRegressor``, whose binner
+        cannot bin an all-NaN feature. No horizon value avoids this, because the
+        loss scales with the transformer rather than the horizon.
+
+        So this reports the measurement rather than raising: a lifted lag is a
+        legitimate feature (the ramp between steps of one vintage), and the caller
+        may know their estimator tolerates the dead columns. It exists so that a
+        search over ``forecast_transformer__transformer__lag`` cannot trade away the
+        nearest-term steps silently.
+
+        Parameters
+        ----------
+        X_forecast : pl.DataFrame or None
+            The raw frame, before the transform.
+        X_forecast_t : pl.DataFrame or None
+            The transformed frame.
+        forecasting_horizon : int
+            The fit horizon, which bounds how many step columns exist.
+
+        """
+        if self.forecast_transformer_ is None or X_forecast is None or X_forecast_t is None:
+            return
+        if X_forecast.is_empty() or "vintage_time" not in X_forecast_t.columns:
+            return
+
+        before = X_forecast.group_by("vintage_time").len()
+        after = X_forecast_t.group_by("vintage_time").len().rename({"len": "len_t"})
+        per_vintage = before.join(after, on="vintage_time", how="left")
+        max_lost = (per_vintage["len"] - per_vintage["len_t"].fill_null(0)).max()
+
+        if max_lost is None:
+            return
+        lost = typing_cast(int, max_lost)
+        if lost < 1:
+            return
+
+        dead = min(lost, forecasting_horizon)
+        warnings.warn(
+            f"forecast_transformer consumes {lost} row(s) from the start of every vintage, "
+            f"so step columns 1 to {dead} are derived from no rows and will be null for every "
+            f"training instance, not merely for some. Those are the nearest-term forecast steps. "
+            f"An entirely null column is dropped by nan_handling='drop' (every row carries a null) "
+            f"and rejected by estimators that otherwise tolerate NaN. Raising forecasting_horizon "
+            f"does not help, because the loss scales with the transformer rather than the horizon; "
+            f"reduce the transformer's row consumption to keep those steps.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    def _assert_forecasting_horizon_meets_minimum(self, forecasting_horizon: int) -> None:
+        """Raise unless the horizon reaches the slot's minimum vintage length.
+
+        A served vintage spans the forecasting horizon, so
+        ``forecasting_horizon >= min_vintage_rows`` is the condition under which a
+        fresh single-vintage frame survives the transform. Failing here turns two
+        silent-degradation modes into a fit-time error.
+
+        Only ``BaseForecastTransformer`` implementations report the minimum. A
+        forecast-kind *composition* is a ``BaseActualTransformer`` subclass and
+        exposes no ``min_vintage_rows``, so it is skipped rather than assumed to
+        be ``1``: assuming a minimum it never stated would report a guarantee the
+        guard has not checked.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            The fit horizon.
+
+        Raises
+        ------
+        ValueError
+            If the horizon is below the slot's reported minimum.
+
+        """
+        transformer = self.forecast_transformer_
+        if transformer is None:
+            return
+        representative = next(iter(transformer.values()), None) if isinstance(transformer, dict) else transformer
+
+        minimum = getattr(representative, "min_vintage_rows", None)
+        if minimum is None:
+            return
+
+        if forecasting_horizon < minimum:
+            raise ValueError(
+                f"forecasting_horizon ({forecasting_horizon}) is below the minimum vintage "
+                f"length the forecast_transformer requires ({minimum}). A served vintage spans "
+                f"the forecasting horizon, so every vintage would transform to an empty frame. "
+                f"Raise forecasting_horizon to at least {minimum}, or reduce the transformer's "
+                f"row consumption."
+            )
+
+    def _transform_X_forecast(self, X_forecast: pl.DataFrame | None) -> pl.DataFrame | None:
+        """Apply the fitted ``forecast_transformer`` to an ``X_forecast`` frame.
+
+        The single entry point for every ``_derive_step_columns`` call site, which
+        is what makes the sites safe rather than merely tidy. Under
+        ``panel_strategy="global"`` the fitted slot is a dict keyed by group, and
+        two of the sites (predict and the observe-predict loop) live in this class,
+        shared by standard and panel forecasters rather than overridden per mode.
+        A caller-side ``forecast_transformer_.transform(...)`` would raise
+        ``AttributeError`` on the dict at exactly those two sites, which carry the
+        walk-forward path. Resolving the three shapes here means no caller has to.
+
+        Callers pass the frame the transform should apply to, so an
+        ``X_forecast_eff`` fallback must resolve *before* calling this. Applying it
+        afterwards would re-transform the already-transformed cached frame.
+
+        Parameters
+        ----------
+        X_forecast : pl.DataFrame or None
+            A raw wide ``X_forecast`` frame, or ``None``.
+
+        Returns
+        -------
+        pl.DataFrame or None
+            The transformed frame, or the input unchanged when the slot is unset
+            or the input is ``None``.
+
+        """
+        transformer = getattr(self, "forecast_transformer_", None)
+        if transformer is None or X_forecast is None:
+            return X_forecast
+
+        if not isinstance(transformer, dict):
+            return transformer.transform(X_forecast)
+
+        schema = self._build_X_forecast_schema()
+        index_cols = list(FORECAST_INDEX_COLS)
+        parts: list[pl.DataFrame] = []
+        for group_name, group_transformer in transformer.items():
+            if group_transformer is None:
+                continue
+            local = get_group_df(
+                df=X_forecast,
+                group_name=group_name,
+                schema=schema,
+                key_cols=FORECAST_INDEX_COLS,
+            )
+            transformed = group_transformer.transform(local)
+            parts.append(
+                transformed.rename({c: f"{group_name}__{c}" for c in transformed.columns if c not in index_cols})
+            )
+
+        if not parts:
+            return X_forecast
+
+        # Join on both index columns. Joining on "time" alone would fan rows out
+        # across every vintage sharing a timestamp, which is silent corruption
+        # rather than an error.
+        wide = parts[0]
+        for part in parts[1:]:
+            wide = wide.join(part, on=index_cols, how="full", coalesce=True)
+        return wide.sort(index_cols)
 
     def _validate_pre_fit(
         self,
@@ -320,11 +564,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # a confusing error at predict time inside _build_feature_input().
         if (
             getattr(self, "target_as_feature", None) is None
-            and getattr(self, "feature_transformer", None) is not None
+            and getattr(self, "actual_transformer", None) is not None
             and X_actual is None
         ):
             raise ValueError(
-                "target_as_feature=None with a feature_transformer requires X_actual to be provided, but X_actual is None."
+                "target_as_feature=None with a actual_transformer requires X_actual to be provided, but X_actual is None."
             )
 
         # Validate that X_actual is provided when target_as_feature=None and the
@@ -473,7 +717,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             have mismatched panel group names, if
             ``target_as_feature=None`` without exogenous features when the
             forecaster requires them, or if ``target_as_feature=None`` and a
-            ``feature_transformer`` is configured but ``X_actual`` is ``None``.
+            ``actual_transformer`` is configured but ``X_actual`` is ``None``.
 
         """
 
@@ -547,7 +791,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         - ``observed_time_`` : datetime or dict[str, datetime] (scalar in
           standard mode, per-group dict in panel mode)
         - ``target_transformer_`` : fitted transformer or None
-        - ``feature_transformer_`` : fitted transformer or None
+        - ``actual_transformer_`` : fitted transformer or None
 
         """
 
@@ -635,7 +879,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     ) -> "BaseForecaster":
         """Observe new data and update observation buffers without refitting.
 
-        Stateful transformers (``target_transformer_``, ``feature_transformer_``)
+        Stateful transformers (``target_transformer_``, ``actual_transformer_``)
         are updated via their ``observe()`` method; the model weights themselves
         are not changed.
 
@@ -757,7 +1001,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         # Resolve effective raws
         X_future_eff = X_future if X_future is not None else self._X_future_raw_
-        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_raw_
+        # A supplied frame is raw and is transformed below, after the remap. An
+        # omitted one falls back to the transformed cache, which must not be
+        # transformed again.
+        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_t_
 
         # Re-derive ALL step columns for current observed_time_
         # Panel data stores observed_time_ as a dict; use first group's time
@@ -776,6 +1023,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             vintages = X_forecast_eff["vintage_time"].unique()
             if len(vintages) == 1 and vintages[0] != obs_time:
                 X_forecast_eff = X_forecast_eff.with_columns(vintage_time=pl.lit(obs_time))
+            # Transform after the remap. The remap rewrites vintage_time, so a
+            # transformer that keyed on the value would partition differently
+            # either side of it. PerVintageActualTransformer partitions by
+            # vintage_time without reading the value, so it is insensitive to this
+            # order today; the contract does not promise that for every subclass,
+            # hence the choice is fixed here rather than left implicit.
+            X_forecast_eff = self._transform_X_forecast(X_forecast_eff)
 
         X_step_new = _derive_step_columns(
             X_future_eff,
@@ -1020,9 +1274,13 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # Pre-compute step columns once for all observation times
         step_columns_full = None
         if observe_fn is None:
+            # The only site with no raw fallback: it derives from the argument
+            # alone, so the transform applies unconditionally rather than through
+            # a ternary. Shared by standard and panel, so it reaches the helper's
+            # per-group dict branch under panel_strategy="global".
             step_columns_full = _derive_step_columns(
                 X_future,
-                X_forecast,
+                self._transform_X_forecast(X_forecast),
                 y["time"],
                 self.fit_forecasting_horizon_,
                 self.interval_,
@@ -1251,7 +1509,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         BaseForecaster is both a consumer AND a router:
         - Consumer: Can accept metadata like forecasting_horizon
-        - Router: Forwards metadata to target_transformer and feature_transformer
+        - Router: Forwards metadata to target_transformer and actual_transformer
 
         Subclasses with additional nested estimators should call super() and
         add their own child routing.
@@ -1272,11 +1530,33 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 method_mapping=MethodMapping().add(caller="fit", callee="fit").add(caller="fit", callee="transform"),
             )
 
-        # Route to feature_transformer if present
-        if hasattr(self, "feature_transformer") and self.feature_transformer is not None:
+        # Route to actual_transformer if present
+        if hasattr(self, "actual_transformer") and self.actual_transformer is not None:
             router.add(
-                feature_transformer=self.feature_transformer,
+                actual_transformer=self.actual_transformer,
                 method_mapping=MethodMapping().add(caller="fit", callee="fit").add(caller="fit", callee="transform"),
+            )
+
+        # Route to forecast_transformer if present. Wider than the actual slots by
+        # one mapping: predict -> transform. That is not decoration. The slot's
+        # transform is genuinely called on the predict path, and
+        # BaseForecastTransformer.transform accepts **params, so omitting the
+        # mapping would make process_routing reject a request for a call that
+        # demonstrably happens. The actual slots need no such mapping because they
+        # reach their transformer through the observe/rewind memory API at predict
+        # rather than through transform.
+        #
+        # No observe or rewind mapping: BaseForecastTransformer has neither method,
+        # and that absence is what keeps the slot clear of the memory-API guard.
+        if hasattr(self, "forecast_transformer") and self.forecast_transformer is not None:
+            router.add(
+                forecast_transformer=self.forecast_transformer,
+                method_mapping=(
+                    MethodMapping()
+                    .add(caller="fit", callee="fit")
+                    .add(caller="fit", callee="transform")
+                    .add(caller="predict", callee="transform")
+                ),
             )
 
         return router

@@ -141,7 +141,7 @@ def _(
 
     ridge_fc = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     ridge_fc.fit(y_train, forecasting_horizon=fh)
     y_pred_ridge = ridge_fc.predict(forecasting_horizon=fh)
@@ -240,7 +240,7 @@ def _(
     search = GridSearchCV(
         forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=list(range(1, 13))),
+            actual_transformer=LagTransformer(lag=list(range(1, 13))),
         ),
         param_grid={"estimator__alpha": [0.1, 1.0, 10.0]},
         scoring=MaxAbsoluteError(),

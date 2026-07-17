@@ -108,7 +108,7 @@ def _require_actual_memory_api(transformer: object, method: str) -> None:
 def _require_actual_transformer(transformer: object, slot: str) -> None:
     """Raise if ``transformer`` is a forecast-kind transformer in an actual slot.
 
-    A forecaster's ``target_transformer`` / ``feature_transformer`` operate on
+    A forecaster's ``target_transformer`` / ``actual_transformer`` operate on
     the single-axis target / ``X_actual`` frames, so they must be actual-kind.
     Leaf forecast transformers are already rejected by the parameter constraint
     (they are not ``BaseActualTransformer`` instances); this catches a
@@ -132,7 +132,44 @@ def _require_actual_transformer(transformer: object, slot: str) -> None:
         raise ValueError(
             f"{slot} must be an actual-kind transformer (operating on the single-axis "
             f"target/X_actual frame), but got a forecast-kind transformer. Forecast "
-            f"transformers belong on the X_forecast channel, not in {slot}."
+            f"transformers belong in the forecast_transformer slot, which applies them "
+            f"to the X_forecast frame, not in {slot}."
+        )
+
+
+def _require_forecast_transformer(transformer: object, slot: str) -> None:
+    """Raise if ``transformer`` is an actual-kind transformer in the forecast slot.
+
+    The mirror of :func:`_require_actual_transformer`. A forecaster's
+    ``forecast_transformer`` operates on the vintage-indexed ``X_forecast`` frame,
+    so it must be forecast-kind.
+
+    The parameter constraint cannot carry this on its own. A forecast-kind
+    composition (e.g. a ``FeatureUnion`` of forecast transformers) is a
+    ``BaseActualTransformer`` subclass reporting ``kind="forecast"``, so the
+    constraint has to admit ``BaseActualTransformer`` to let compositions through,
+    which also lets a genuine actual transformer past. The kind tag is what
+    separates them, exactly as on the actual side.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer assigned to the slot (or ``None``).
+    slot : str
+        Slot name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` is not ``None`` and does not report ``kind == "forecast"``.
+
+    """
+    if transformer is not None and not _is_forecast_kind(transformer):
+        raise ValueError(
+            f"{slot} must be a forecast-kind transformer (operating on the "
+            f"vintage-indexed X_forecast frame), but got an actual-kind transformer. "
+            f"Lift it onto the vintage axis with PerVintageActualTransformer, or pass "
+            f"it to actual_transformer to apply it to the single-axis X_actual frame."
         )
 
 
@@ -140,7 +177,7 @@ def _fit_transform_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_transformer: BaseActualTransformer | None,
-    feature_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseActualTransformer | None, BaseActualTransformer | None]:
     """Fit and apply target and feature transformers to a single time series.
@@ -157,7 +194,7 @@ def _fit_transform_transformers_one(
         Feature time series with "time" column.
     target_transformer : BaseActualTransformer or None
         Target transformer to apply.
-    feature_transformer : BaseActualTransformer or None
+    actual_transformer : BaseActualTransformer or None
         Feature transformer to apply.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
@@ -173,7 +210,7 @@ def _fit_transform_transformers_one(
         Transformed feature matrix (includes transformed y if no separate X_actual provided).
     target_transformer : BaseActualTransformer or None
         Fitted target transformer.
-    feature_transformer : BaseActualTransformer or None
+    actual_transformer : BaseActualTransformer or None
         Fitted feature transformer.
 
     Notes
@@ -181,7 +218,7 @@ def _fit_transform_transformers_one(
     Transformation order matters:
     1. Apply target_transformer to y → y_t
     2. Align X_actual to y_t timestamps via a semi-join, then concatenate with y_t
-    3. Apply feature_transformer to combined → X_t
+    3. Apply actual_transformer to combined → X_t
     4. Trim y_t if feature transformer has its own observation horizon
 
     This ensures features can include lagged versions of the transformed target.
@@ -192,7 +229,7 @@ def _fit_transform_transformers_one(
 
     """
     _require_actual_transformer(target_transformer, "target_transformer")
-    _require_actual_transformer(feature_transformer, "feature_transformer")
+    _require_actual_transformer(actual_transformer, "actual_transformer")
 
     y_t = y
     target_transformer_fitted = None
@@ -200,14 +237,14 @@ def _fit_transform_transformers_one(
         target_transformer_fitted = clone(target_transformer)
         y_t = target_transformer_fitted.fit_transform(y)
 
-    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, actual_transformer)
 
     X_t = X_feat_in
-    feature_transformer_fitted = None
-    if feature_transformer is not None and X_feat_in is not None:
-        feature_transformer_fitted = clone(feature_transformer)
-        X_t = feature_transformer_fitted.fit_transform(X_feat_in)
-        feature_observation_horizon = feature_transformer_fitted.observation_horizon
+    actual_transformer_fitted = None
+    if actual_transformer is not None and X_feat_in is not None:
+        actual_transformer_fitted = clone(actual_transformer)
+        X_t = actual_transformer_fitted.fit_transform(X_feat_in)
+        feature_observation_horizon = actual_transformer_fitted.observation_horizon
         # Trim y_t to align with X_t
         # First, align by feature transformer's observation horizon (handles transformers that don't drop rows)
         y_t = y_t[feature_observation_horizon:]
@@ -217,7 +254,7 @@ def _fit_transform_transformers_one(
         # Then, align by timestamps (handles transformers that DO drop rows)
         y_t = y_t.join(X_t.select("time"), on="time", how="semi")
 
-    return y_t, X_t, target_transformer_fitted, feature_transformer_fitted
+    return y_t, X_t, target_transformer_fitted, actual_transformer_fitted
 
 
 def _build_feature_input(
@@ -225,11 +262,11 @@ def _build_feature_input(
     y_t: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_as_feature: str | None,
-    feature_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
 ) -> pl.DataFrame | None:
     """Build feature input based on target_as_feature parameter.
 
-    Constructs the input to the feature_transformer by combining original y,
+    Constructs the input to the actual_transformer by combining original y,
     transformed y_t, and exogenous features X_actual according to the
     target_as_feature configuration.
 
@@ -246,14 +283,14 @@ def _build_feature_input(
         ``"transformed"`` includes the target after ``target_transformer``,
         ``"raw"`` includes the original target, and ``None`` uses only
         exogenous features.
-    feature_transformer : BaseActualTransformer or None
+    actual_transformer : BaseActualTransformer or None
         Feature transformer (used for validation when
         ``target_as_feature=None``).
 
     Returns
     -------
     pl.DataFrame or None
-        Feature input for feature_transformer.
+        Feature input for actual_transformer.
 
     Notes
     -----
@@ -291,11 +328,11 @@ def _build_feature_input(
     elif target_as_feature is None:
         # Only exogenous features
         if X_actual is None:
-            if feature_transformer is not None:
+            if actual_transformer is not None:
                 # This should not happen since _validate_pre_fit checks at fit
                 # time, but guard against direct calls.
                 raise ValueError(
-                    "target_as_feature=None requires X_actual to be provided when a feature_transformer is set, but X_actual is None."
+                    "target_as_feature=None requires X_actual to be provided when a actual_transformer is set, but X_actual is None."
                 )
             else:
                 X_feat_in = None
@@ -316,7 +353,7 @@ def _observe_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_transformer: BaseActualTransformer | None,
-    feature_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
 ) -> pl.DataFrame | None:
     """Observe new data through transformers.
@@ -329,7 +366,7 @@ def _observe_transformers_one(
         New features.
     target_transformer : BaseActualTransformer or None
         Target transformer to observe.
-    feature_transformer : BaseActualTransformer or None
+    actual_transformer : BaseActualTransformer or None
         Feature transformer to observe.
     target_as_feature : {"transformed", "raw"} or None
         Controls whether the target is included as a feature.
@@ -344,11 +381,11 @@ def _observe_transformers_one(
     if target_transformer is not None:
         y_t = target_transformer.observe_transform(y)
 
-    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, actual_transformer)
 
     X_t = X_feat_in
-    if feature_transformer is not None and X_feat_in is not None:
-        X_t = feature_transformer.observe_transform(X_feat_in)
+    if actual_transformer is not None and X_feat_in is not None:
+        X_t = actual_transformer.observe_transform(X_feat_in)
 
     return X_t
 
@@ -357,7 +394,7 @@ def _rewind_transformers_one(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_transformer: BaseActualTransformer | None,
-    feature_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
     observation_horizon: int,
     target_as_feature: str | None,
 ) -> pl.DataFrame | None:
@@ -371,7 +408,7 @@ def _rewind_transformers_one(
         Historical feature observations to rewind state from.
     target_transformer : BaseActualTransformer or None
         Target transformer to rewind.
-    feature_transformer : BaseActualTransformer or None
+    actual_transformer : BaseActualTransformer or None
         Feature transformer to rewind.
     observation_horizon : int
         Number of time steps to retain in observation horizon.
@@ -401,11 +438,11 @@ def _rewind_transformers_one(
         target_transformer.rewind(X=y[:split])
         y_t = target_transformer.observe_transform(y[split:])
 
-    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, feature_transformer)
+    X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, actual_transformer)
 
     X_t = X_feat_in
-    if feature_transformer is not None and X_feat_in is not None:
-        feature_observation_horizon = feature_transformer.observation_horizon
+    if actual_transformer is not None and X_feat_in is not None:
+        feature_observation_horizon = actual_transformer.observation_horizon
 
         # X_feat_in is aligned to y_t timestamps (observation_horizon rows)
         # but the feature transformer may need more rows for its own rewind.
@@ -421,7 +458,7 @@ def _rewind_transformers_one(
             y_extra = y[start:end]
             X_extra = X_actual[start:end] if X_actual is not None else None
             y_t_extra = target_transformer.rewind_transform(y_extra) if len(y_extra) > target_obs else y_extra
-            X_feat_extra = _build_feature_input(y_extra, y_t_extra, X_extra, target_as_feature, feature_transformer)
+            X_feat_extra = _build_feature_input(y_extra, y_t_extra, X_extra, target_as_feature, actual_transformer)
             if X_feat_extra is not None:
                 # Only keep the tail; rewind_transform may drop observation_horizon rows
                 X_feat_extra = X_feat_extra.tail(deficit)
@@ -431,7 +468,7 @@ def _rewind_transformers_one(
         # transformed output X_t_all, so the combined rewind-and-transform is
         # the right call rather than a state-only rewind() followed by a
         # separate transform.
-        X_t_all = feature_transformer.rewind_transform(X_feat_in)
+        X_t_all = actual_transformer.rewind_transform(X_feat_in)
         # Keep the row aligned to the most-recent observation timestamp rather
         # than blindly taking the last row: when the feature transformer drops
         # rows (its own observation_horizon), the surviving tail may not line up
@@ -550,7 +587,7 @@ def _warn_rank_deficient_step_columns(
             f"forecast step, so the forward window buys nothing and the collinear "
             f"copies dilute any regularisation applied to them. If '{col}' is "
             f"computable from the timestamp alone, generate it with a "
-            f"feature_transformer instead of passing it through X_future. If it is "
+            f"actual_transformer instead of passing it through X_future. If it is "
             f"constant, or genuinely needs an external table, this warning does not "
             f"apply and can be silenced.",
             UserWarning,

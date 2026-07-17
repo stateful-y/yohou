@@ -61,7 +61,7 @@ def _fit_forecaster() -> PointReductionForecaster:
 
     f = PointReductionForecaster(
         estimator=HistGradientBoostingRegressor(max_iter=10, random_state=SEED),
-        feature_transformer=LagTransformer([1, 2]),
+        actual_transformer=LagTransformer([1, 2]),
         reduction_strategy="direct",
     )
     f.fit(y_train, forecasting_horizon=H, X_forecast=x_fc)
@@ -168,7 +168,7 @@ class TestPanelObserveAsofVintageSelection:
 
         f = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(max_iter=10, random_state=SEED),
-            feature_transformer=LagTransformer([1, 2]),
+            actual_transformer=LagTransformer([1, 2]),
             reduction_strategy="direct",
         )
         f.fit(y_train, forecasting_horizon=H, X_forecast=x_fc)

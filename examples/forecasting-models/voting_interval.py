@@ -126,7 +126,7 @@ def _(
             SplitConformalForecaster(
                 point_forecaster=PointReductionForecaster(
                     estimator=Ridge(),
-                    feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
                 ),
                 calibration_size=120,
             ),
@@ -136,7 +136,7 @@ def _(
             SplitConformalForecaster(
                 point_forecaster=PointReductionForecaster(
                     estimator=GradientBoostingRegressor(n_estimators=50, random_state=42),
-                    feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
                     reduction_strategy="direct",
                 ),
                 calibration_size=120,

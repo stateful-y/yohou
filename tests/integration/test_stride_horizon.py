@@ -40,7 +40,7 @@ class TestObservePredictStride:
         # Fit with forecasting_horizon=3
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -92,7 +92,7 @@ class TestObservePredictStride:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -130,7 +130,7 @@ class TestObservePredictStride:
         # Forecaster 1: stride=1 (step-by-step predict + observe)
         forecaster_1 = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster_1.fit(y_train, forecasting_horizon=1)
 
@@ -144,7 +144,7 @@ class TestObservePredictStride:
         # Forecaster 2: single batch observe_predict with stride=1
         forecaster_2 = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster_2.fit(y_train, forecasting_horizon=1)
         y_pred_batch = forecaster_2.observe_predict(y_test, stride=1, forecasting_horizon=1)
@@ -168,7 +168,7 @@ class TestObservePredictStride:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -208,7 +208,7 @@ class TestObservePredictStride:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -247,7 +247,7 @@ class TestHorizonMismatch:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
 
         # Fit with horizon=2
@@ -273,7 +273,7 @@ class TestHorizonMismatch:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y[:70], forecasting_horizon=3)
 
@@ -295,7 +295,7 @@ class TestHorizonMismatch:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y[:90], forecasting_horizon=5)
 
@@ -330,7 +330,7 @@ class TestHorizonMismatch:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y[:80], forecasting_horizon=fit_fh)
 
@@ -364,7 +364,7 @@ class TestHorizonMismatch:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y[:50], forecasting_horizon=1)
 
@@ -519,7 +519,7 @@ class TestObservePredictState:
         # Forecaster 1: Sequential observes then predict
         forecaster_1 = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster_1.fit(y_train, forecasting_horizon=5)
 
@@ -532,7 +532,7 @@ class TestObservePredictState:
         # Forecaster 2: Batch observe then predict
         forecaster_2 = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster_2.fit(y_train, forecasting_horizon=5)
         forecaster_2.observe(y_test)
@@ -556,7 +556,7 @@ class TestObservePredictState:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -593,7 +593,7 @@ class TestObservePredictState:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -637,7 +637,7 @@ class TestPanelStrideHorizon:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -676,7 +676,7 @@ class TestPanelStrideHorizon:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=10)
 
@@ -728,7 +728,7 @@ class TestPanelStrideHorizon:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 

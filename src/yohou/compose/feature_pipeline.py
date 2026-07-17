@@ -504,6 +504,45 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
         return tags
 
     @property
+    def min_vintage_rows(self) -> int:
+        """Get the smallest vintage length that yields non-empty output.
+
+        Steps run in sequence, each consuming rows from what the previous one left,
+        so the requirements accumulate rather than taking a maximum. This parallels
+        ``observation_horizon``, which sums across steps here while
+        ``FeatureUnion`` takes the max of its parallel branches.
+
+        The value is a safe upper bound rather than a tight one. A step reporting a
+        minimum of ``m`` consumes at most ``m - 1`` rows, so
+        ``sum(m_i - 1) + 1`` never understates the requirement, and it is exact for
+        a single step. A chain of stateless steps is the loose case: each reports
+        ``2`` while consuming nothing, so the sum grows where the true minimum stays
+        at ``2``. Over-reporting fails a fit that would have worked, which is
+        recoverable; under-reporting admits a configuration that silently empties
+        every vintage, which is the failure the minimum exists to prevent.
+
+        Only forecast-kind children report a minimum. On an actual-kind composition
+        this reports ``1`` and is never consulted.
+
+        Returns
+        -------
+        int
+            Smallest vintage length yielding non-empty output, at least ``1``.
+
+        Raises
+        ------
+        NotFittedError
+            If the composition has not been fitted yet.
+
+        """
+        check_is_fitted(self)
+        consumed = 0
+        for _, t in self.steps:
+            if t != "passthrough" and t is not None and hasattr(t, "min_vintage_rows"):
+                consumed += t.min_vintage_rows - 1
+        return consumed + 1 if consumed else 1
+
+    @property
     def observation_horizon(self) -> int:
         """Get cumulative observation horizon across all steps.
 

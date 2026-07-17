@@ -129,11 +129,11 @@ def _(
     fc_actual = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="actual",
     )
@@ -167,11 +167,11 @@ def _(
     fc_predicted = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="predicted",
         split_ratio=0.7,
@@ -204,11 +204,11 @@ def _(
     fc_rewind = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="rewind",
     )
@@ -291,11 +291,11 @@ def _(
         _fc = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 3]),
+                actual_transformer=LagTransformer(lag=[1, 3]),
             ),
             feature_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 3]),
+                actual_transformer=LagTransformer(lag=[1, 3]),
             ),
             strategy="predicted",
             split_ratio=_ratio,
@@ -337,11 +337,11 @@ def _(
     ff_stride = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 3]),
+            actual_transformer=LagTransformer(lag=[1, 3]),
         ),
         strategy="rewind",
         feature_stride=2,  # regenerate the feature forecast every 2 steps

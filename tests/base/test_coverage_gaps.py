@@ -70,7 +70,7 @@ class TestPanelGlobalStepColumns:
         y, X_actual, X_future = _make_panel_data_with_global_X()
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5, X_future=X_future)
 
@@ -90,12 +90,12 @@ class TestPanelObservePredictWithTransformers:
     """
 
     def test_observe_predict_panel_with_transformers_and_shared_X(self):
-        """observe_predict with target_transformer, feature_transformer, and shared X."""
+        """observe_predict with target_transformer, actual_transformer, and shared X."""
         y, X_actual, X_future = _make_panel_data_with_global_X()
         f = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=LogTransformer(offset=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5, X_future=X_future)
 
@@ -103,7 +103,7 @@ class TestPanelObservePredictWithTransformers:
         assert f.shared_X_actual_schema_ is not None
         assert "weather" in f.shared_X_actual_schema_
         assert isinstance(f.target_transformer_, dict)
-        assert isinstance(f.feature_transformer_, dict)
+        assert isinstance(f.actual_transformer_, dict)
 
         # observe_predict triggers _observe_with_precomputed_steps_panel
         y_pred = f.observe_predict(
@@ -152,7 +152,7 @@ class TestPanelObservePredictWithTransformers:
         f = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=LogTransformer(offset=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5, X_future=X_future)
         assert isinstance(f.target_transformer_, dict)
@@ -179,7 +179,7 @@ class TestPredictWithStepOverridePanel:
         y, X_actual, X_future = _make_panel_data_with_global_X()
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5, X_future=X_future)
 
@@ -231,7 +231,7 @@ class TestLocalPanelForecasterOnTheFlySchema:
         f = LocalPanelForecaster(
             forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(lag=[1, 2]),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5)
@@ -297,7 +297,7 @@ class TestLocalPanelForecasterOnTheFlySchema:
         f = LocalPanelForecaster(
             forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(lag=[1, 2]),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
         )
         f.fit(y[:80], X_actual[:80], forecasting_horizon=5)

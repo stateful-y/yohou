@@ -148,7 +148,7 @@ def _(Ridge, fetch_tourism_monthly):
 
     forecaster_global = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=FeaturePipeline([("lags", LagTransformer(lag=[1, 2, 3]))]),
+        actual_transformer=FeaturePipeline([("lags", LagTransformer(lag=[1, 2, 3]))]),
         panel_strategy="global",
     )
     forecaster_global.fit(panel, forecasting_horizon=6)

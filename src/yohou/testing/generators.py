@@ -423,7 +423,8 @@ def _yield_yohou_forecaster_checks(
         - uses_reduction: bool
         - supports_panel_data: bool
         - uses_target_transformer: bool
-        - uses_feature_transformer: bool
+        - uses_actual_transformer: bool
+        - uses_forecast_transformer: bool
         - requires_exogenous: bool
         - tracks_observations: bool
 
@@ -445,7 +446,10 @@ def _yield_yohou_forecaster_checks(
             "uses_target_transformer": sklearn_tags.forecaster_tags.uses_target_transformer
             if sklearn_tags.forecaster_tags
             else False,
-            "uses_feature_transformer": sklearn_tags.forecaster_tags.uses_feature_transformer
+            "uses_actual_transformer": sklearn_tags.forecaster_tags.uses_actual_transformer
+            if sklearn_tags.forecaster_tags
+            else False,
+            "uses_forecast_transformer": sklearn_tags.forecaster_tags.uses_forecast_transformer
             if sklearn_tags.forecaster_tags
             else False,
             "tracks_observations": sklearn_tags.forecaster_tags.tracks_observations
@@ -561,7 +565,7 @@ def _yield_yohou_forecaster_checks(
         )
 
     # Transformer composition checks
-    if (tags.get("uses_target_transformer", False) or tags.get("uses_feature_transformer", False)) and len(y_test) >= 5:
+    if (tags.get("uses_target_transformer", False) or tags.get("uses_actual_transformer", False)) and len(y_test) >= 5:
         y_reset = y_test[:10] if len(y_test) >= 10 else y_test
         X_actual_reset = X_actual_test[:10] if X_actual_test is not None and len(X_actual_test) >= 10 else X_actual_test
         yield (

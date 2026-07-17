@@ -9,7 +9,7 @@ from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
 
-from yohou.base import BaseActualTransformer, BaseReductionForecaster
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -43,8 +43,13 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         for full per-option semantics.
     target_transformer : BaseActualTransformer or None, default=None
         Transformer for target preprocessing.
-    feature_transformer : BaseActualTransformer or None, default=None
+    actual_transformer : BaseActualTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
+    forecast_transformer : BaseForecastTransformer or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Whether to include the target variable as a feature for reduction.
         If ``"transformed"``, the transformed target is used. If ``"raw"``,
@@ -149,9 +154,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     def __init__(
         self,
         estimator: BaseEstimator = LogisticRegression(),
+        *,
         reduction_strategy: Literal["direct", "multi-output"] = "multi-output",
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -167,7 +174,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,

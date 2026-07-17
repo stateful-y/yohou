@@ -8,12 +8,14 @@ forecast-transformer contract.
 """
 
 import polars as pl
+from sklearn.exceptions import NotFittedError
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.transformer import BaseActualTransformer
 
 __all__ = [
     "check_forecast_kind_tag",
+    "check_min_vintage_rows_contract",
     "check_missing_vintage_index_raises",
     "check_not_an_actual_transformer",
     "check_single_and_empty_vintage_handled",
@@ -66,6 +68,24 @@ def check_single_and_empty_vintage_handled(transformer: BaseForecastTransformer,
     assert "vintage_time" in empty_out.columns and "time" in empty_out.columns
 
 
+def check_min_vintage_rows_contract(transformer: BaseForecastTransformer, X: pl.DataFrame) -> None:
+    """Assert ``min_vintage_rows`` is unreadable before fit and a positive int after."""
+    name = type(transformer).__name__
+    try:
+        _ = transformer.min_vintage_rows
+        raise AssertionError(f"{name}.min_vintage_rows must raise NotFittedError when unfitted")
+    except NotFittedError:
+        pass
+
+    transformer.fit(X)
+
+    minimum = transformer.min_vintage_rows
+    assert isinstance(minimum, int) and not isinstance(minimum, bool), (
+        f"min_vintage_rows must be an int, got {type(minimum).__name__}"
+    )
+    assert minimum >= 1, f"min_vintage_rows must be at least 1, got {minimum}"
+
+
 #: All forecast-transformer contract checks, for iterating in a parametrized test.
 FORECAST_TRANSFORMER_CHECKS = [
     check_forecast_kind_tag,
@@ -73,4 +93,5 @@ FORECAST_TRANSFORMER_CHECKS = [
     check_vintage_time_preserved,
     check_missing_vintage_index_raises,
     check_single_and_empty_vintage_handled,
+    check_min_vintage_rows_contract,
 ]

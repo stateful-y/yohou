@@ -149,14 +149,14 @@ class TestBaseForecasterEmptyObserve:
 class TestBaseForecasterPreFitValidation:
     """Tests for _validate_pre_fit error paths."""
 
-    def test_feature_transformer_without_X_raises(self, y_X_factory):
+    def test_actual_transformer_without_X_raises(self, y_X_factory):
         """Feature transformer with target_as_feature=None and no X raises."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=0)
         f = PointReductionForecaster(
-            feature_transformer=SimpleTransformer(observation_horizon=0),
+            actual_transformer=SimpleTransformer(observation_horizon=0),
             target_as_feature=None,
         )
-        with pytest.raises(ValueError, match="feature_transformer requires X"):
+        with pytest.raises(ValueError, match="actual_transformer requires X"):
             f.fit(y, forecasting_horizon=1)
 
     def test_no_X_with_exogenous_forecaster_raises(self, y_X_factory):

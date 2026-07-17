@@ -17,6 +17,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.parallel import Parallel, delayed
 
+from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
 from yohou.base.transformer import BaseActualTransformer
 from yohou.utils import Tags, cast, tabularize
@@ -44,8 +45,13 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         includes the raw target, and ``None`` uses only exogenous features.
     target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series into features.
+    forecast_transformer : instance of `BaseForecastTransformer` or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
@@ -156,10 +162,12 @@ default="first_step"
     def __init__(
         self,
         estimator: BaseEstimator = LinearRegression(),
+        *,
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
-        target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
+        target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -172,7 +180,8 @@ default="first_step"
             self,
             target_as_feature=target_as_feature,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             panel_strategy=panel_strategy,
         )
 
@@ -1363,7 +1372,7 @@ default="first_step"
         router : MetadataRouter
             Router that forwards to transformers (from parent) and wrapped estimator.
         """
-        # Get parent routing (for target_transformer, feature_transformer)
+        # Get parent routing (for target_transformer, actual_transformer)
         router = super().get_metadata_routing()
 
         # Add wrapped sklearn estimator routing

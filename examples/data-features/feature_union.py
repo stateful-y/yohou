@@ -221,7 +221,7 @@ def _(mo):
     mo.md(r"""
     ## 5. FeatureUnion in a Forecaster
 
-    Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) as the `feature_transformer` to produce rich
+    Use [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/) as the `actual_transformer` to produce rich
     feature sets for the reduction-based forecaster.
     """)
 
@@ -241,7 +241,7 @@ def _(
 ):
     fc_union = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=union_three,
+        actual_transformer=union_three,
     )
     fc_union.fit(y_train, forecasting_horizon=horizon)
     _y_pred_union = fc_union.predict(forecasting_horizon=horizon)

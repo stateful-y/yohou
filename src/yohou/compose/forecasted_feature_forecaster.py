@@ -252,9 +252,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         tags.forecaster_tags.uses_target_transformer = getattr(
             target_tags.forecaster_tags, "uses_target_transformer", False
         ) or getattr(feature_tags.forecaster_tags, "uses_target_transformer", False)
-        tags.forecaster_tags.uses_feature_transformer = getattr(
-            target_tags.forecaster_tags, "uses_feature_transformer", False
-        ) or getattr(feature_tags.forecaster_tags, "uses_feature_transformer", False)
+        tags.forecaster_tags.uses_actual_transformer = getattr(
+            target_tags.forecaster_tags, "uses_actual_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_actual_transformer", False)
 
         # Aggregate other tags
         # Note: uses_reduction is False since this meta-forecaster doesn't have an `estimator`

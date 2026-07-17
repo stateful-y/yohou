@@ -155,7 +155,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y, X_actual, _ = validate_forecaster_data(self, y, X_actual, reset=True)
 
         # _pre_fit: set schemas/panel attributes, fit transformers
-        # (target_transformer=None, feature_transformer=None → no-ops),
+        # (target_transformer=None, actual_transformer=None → no-ops),
         # and populate observation buffers (observed_time_, _y_observed,
         # _X_t_observed).  Called on the full y before the
         # train/calibration split so base-class state reflects the

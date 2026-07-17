@@ -120,21 +120,21 @@ def _(
             "logistic",
             ClassProbaReductionForecaster(
                 estimator=MultiOutputClassifier(LogisticRegression(max_iter=500)),
-                feature_transformer=LagTransformer(lag=[1, 2, 3, 7]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3, 7]),
             ),
         ),
         (
             "tree",
             ClassProbaReductionForecaster(
                 estimator=DecisionTreeClassifier(max_depth=5, random_state=42),
-                feature_transformer=LagTransformer(lag=[1, 2, 3, 7]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3, 7]),
             ),
         ),
         (
             "rf",
             ClassProbaReductionForecaster(
                 estimator=RandomForestClassifier(n_estimators=50, random_state=42),
-                feature_transformer=LagTransformer(lag=[1, 2, 3, 7]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3, 7]),
             ),
         ),
         (
@@ -143,7 +143,7 @@ def _(
                 estimator=MultiOutputClassifier(
                     GradientBoostingClassifier(n_estimators=50, random_state=42)
                 ),
-                feature_transformer=LagTransformer(lag=[1, 2, 3, 7]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3, 7]),
             ),
         ),
     ]

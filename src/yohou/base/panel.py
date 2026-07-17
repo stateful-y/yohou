@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import polars as pl
 import polars.selectors as cs
 
+from yohou.base.forecast_transformer import FORECAST_INDEX_COLS
 from yohou.base.utils import (
     _derive_step_columns,
     _fit_transform_transformers_one,
@@ -16,6 +17,7 @@ from yohou.base.utils import (
 from yohou.utils import add_interval, get_group_df, inspect_panel
 
 if TYPE_CHECKING:
+    from yohou.base.forecast_transformer import BaseForecastTransformer
     from yohou.base.transformer import BaseActualTransformer
 
 __all__ = ["BasePanelForecaster"]
@@ -38,12 +40,15 @@ class BasePanelForecaster:
 
     # Type hints for attributes set by BaseForecaster
     target_transformer: "BaseActualTransformer | None"
-    feature_transformer: "BaseActualTransformer | None"
+    actual_transformer: "BaseActualTransformer | None"
+    forecast_transformer: "BaseForecastTransformer | None"
     target_as_feature: str | None
     groups_: list[str]
     local_y_schema_: dict[str, pl.DataType]
     local_X_actual_schema_: dict[str, pl.DataType] | None
     shared_X_actual_schema_: dict[str, pl.DataType] | None
+    local_X_forecast_schema_: dict[str, pl.DataType] | None
+    shared_X_forecast_schema_: dict[str, pl.DataType] | None
     observation_horizon: int
     observed_time_: dict[str, datetime]
     interval_: timedelta | str
@@ -136,6 +141,57 @@ class BasePanelForecaster:
             X_schema.update(self.shared_X_actual_schema_)
         return X_schema
 
+    def _set_X_forecast_schemas_panel(self, X_forecast: pl.DataFrame | None) -> None:
+        """Derive the per-group ``X_forecast`` schemas used to split before transforming.
+
+        The mirror of the ``X_actual`` schemas set in
+        ``_set_input_attributes_panel``. ``X_forecast`` never needed one before:
+        the wide frame went straight into ``_derive_step_columns`` and only the
+        derived step columns were split per group. Applying a per-group
+        ``forecast_transformer`` requires splitting the raw frame first, which
+        needs this schema.
+
+        Global (unprefixed) columns land in the shared schema, and ``get_group_df``
+        copies them into every group's slice. That localizes them, which is the
+        intended behaviour: a global column fed through a per-group-fitted
+        transformer produces per-group output by definition.
+
+        Parameters
+        ----------
+        X_forecast : pl.DataFrame or None
+            The raw wide ``X_forecast`` frame, or ``None``.
+
+        """
+        self.local_X_forecast_schema_ = None
+        self.shared_X_forecast_schema_ = None
+        if X_forecast is None:
+            return
+
+        shared_names, panel_groups = inspect_panel(X_forecast)
+        shared_names = [c for c in shared_names if c not in FORECAST_INDEX_COLS]
+
+        if panel_groups:
+            group_cols = panel_groups.get(self.groups_[0], [])
+            local = X_forecast.select(group_cols).rename({c: c.split("__", 1)[1] for c in group_cols})
+            self.local_X_forecast_schema_ = dict(local.schema)
+        else:
+            self.local_X_forecast_schema_ = {}
+        self.shared_X_forecast_schema_ = dict(X_forecast.select(shared_names).schema) if shared_names else {}
+
+    def _build_X_forecast_schema(self) -> dict[str, pl.DataType]:
+        """Build the merged (local + shared) X_forecast schema for ``get_group_df``.
+
+        Returns
+        -------
+        dict[str, pl.DataType]
+            Local X_forecast schema updated with any shared (global) columns.
+
+        """
+        X_schema = dict(self.local_X_forecast_schema_ or {})
+        if self.shared_X_forecast_schema_:
+            X_schema.update(self.shared_X_forecast_schema_)
+        return X_schema
+
     def _fit_transform_inputs_panel(
         self, y: pl.DataFrame, X_actual: pl.DataFrame | None
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
@@ -159,7 +215,7 @@ class BasePanelForecaster:
         y_t: dict[str, pl.DataFrame] = {}
         X_t: dict[str, pl.DataFrame | None] = {}
         target_transformer: dict[str, BaseActualTransformer | None] = {}
-        feature_transformer: dict[str, BaseActualTransformer | None] = {}
+        actual_transformer: dict[str, BaseActualTransformer | None] = {}
 
         for group_name in self.groups_:
             # Extract group data using get_group_df
@@ -174,22 +230,22 @@ class BasePanelForecaster:
                 y_t_local,
                 X_t_local,
                 target_transformer_local,
-                feature_transformer_local,
+                actual_transformer_local,
             ) = _fit_transform_transformers_one(
                 y=y_local,
                 X_actual=X_local,
                 target_transformer=self.target_transformer,
-                feature_transformer=self.feature_transformer,
+                actual_transformer=self.actual_transformer,
                 target_as_feature=self.target_as_feature,
             )
 
             y_t[group_name] = y_t_local
             X_t[group_name] = X_t_local
             target_transformer[group_name] = target_transformer_local
-            feature_transformer[group_name] = feature_transformer_local
+            actual_transformer[group_name] = actual_transformer_local
 
         self.target_transformer_ = target_transformer
-        self.feature_transformer_ = feature_transformer
+        self.actual_transformer_ = actual_transformer
 
         # Filter out None values from X_t if all are None
         X_t_result: dict[str, pl.DataFrame] | None = None
@@ -317,9 +373,18 @@ class BasePanelForecaster:
                 # columns, which get_group_df includes in every group's frame.
                 existing_columns |= local_cols
 
+        # Split X_forecast per group, fit a clone each, re-prefix and re-stack, all
+        # before derivation. X_forecast has never been split per group before: the
+        # wide frame went straight into derivation and only the step columns were
+        # split afterwards. Returns X_forecast unchanged when the slot is unset.
+        self._set_X_forecast_schemas_panel(X_forecast)
+        X_forecast_t = self._fit_forecast_transformer(  # ty: ignore[unresolved-attribute]
+            X_forecast, forecasting_horizon, groups=self.groups_
+        )
+
         X_step = _derive_step_columns(
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=X_forecast_t,
             observation_times=observation_times,
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
@@ -330,6 +395,7 @@ class BasePanelForecaster:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future
             self._X_forecast_raw_ = X_forecast
+            self._X_forecast_t_ = X_forecast_t
             self._X_future_schema_ = dict(X_future.select(~cs.by_name("time")).schema) if X_future is not None else None
             self._X_forecast_schema_ = (
                 dict(X_forecast.select(~cs.by_name("time", "vintage_time")).schema) if X_forecast is not None else None
@@ -366,6 +432,7 @@ class BasePanelForecaster:
             self._step_column_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
+            self._X_forecast_t_ = None
             self._X_future_schema_ = None
             self._X_forecast_schema_ = None
             self._step_schema_per_group_ = None
@@ -419,15 +486,15 @@ class BasePanelForecaster:
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
                 local_target_transformer = self.target_transformer_[panel_group_name]
 
-            local_feature_transformer = None
-            if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
-                local_feature_transformer = self.feature_transformer_[panel_group_name]
+            local_actual_transformer = None
+            if self.actual_transformer is not None and isinstance(self.actual_transformer_, dict):
+                local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             X_t_local = _rewind_transformers_one(
                 y_local,
                 X_local,
                 local_target_transformer,
-                local_feature_transformer,
+                local_actual_transformer,
                 self.observation_horizon,
                 self.target_as_feature,
             )
@@ -493,16 +560,16 @@ class BasePanelForecaster:
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
                 local_target_transformer = self.target_transformer_[panel_group_name]
 
-            local_feature_transformer = None
-            if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
-                local_feature_transformer = self.feature_transformer_[panel_group_name]
+            local_actual_transformer = None
+            if self.actual_transformer is not None and isinstance(self.actual_transformer_, dict):
+                local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             # Update transformers with new data only
             X_t_updated[panel_group_name] = _observe_transformers_one(
                 y_local,
                 X_local,
                 local_target_transformer,
-                local_feature_transformer,
+                local_actual_transformer,
                 self.target_as_feature,
             )
 
@@ -547,7 +614,14 @@ class BasePanelForecaster:
         obs_time = self.observed_time_[first_group]
 
         X_future_eff = X_future if X_future is not None else self._X_future_raw_
-        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_raw_
+        # Resolve the branch before transforming: the fallback is already
+        # transformed, so transforming after the ternary would double-transform it.
+        # The helper resolves the per-group dict internally.
+        X_forecast_eff = (
+            self._transform_X_forecast(X_forecast)  # ty: ignore[unresolved-attribute]
+            if X_forecast is not None
+            else self._X_forecast_t_
+        )
 
         X_step = _derive_step_columns(
             X_future_eff,
@@ -587,6 +661,13 @@ class BasePanelForecaster:
                 self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
             else:
                 self._X_forecast_raw_ = X_forecast.clear()
+            # Narrow the transformed cache identically, reusing the transform above.
+            if X_forecast_eff is not None:
+                self._X_forecast_t_ = (
+                    X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
+                    if latest_vintage is not None
+                    else X_forecast_eff.clear()
+                )
 
     def _observe_with_precomputed_steps_panel(
         self,
@@ -628,15 +709,15 @@ class BasePanelForecaster:
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
                 local_target_transformer = self.target_transformer_[panel_group_name]
 
-            local_feature_transformer = None
-            if self.feature_transformer is not None and isinstance(self.feature_transformer_, dict):
-                local_feature_transformer = self.feature_transformer_[panel_group_name]
+            local_actual_transformer = None
+            if self.actual_transformer is not None and isinstance(self.actual_transformer_, dict):
+                local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             X_t_local = _observe_transformers_one(
                 y_local,
                 X_local,
                 local_target_transformer,
-                local_feature_transformer,
+                local_actual_transformer,
                 self.target_as_feature,
             )
 

@@ -34,7 +34,7 @@ class _LastValueForecaster(BasePointForecaster):
 
     def __init__(self):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
         )
@@ -81,7 +81,7 @@ class _WindowMeanForecaster(BasePointForecaster):
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
             panel_strategy=panel_strategy,
@@ -139,7 +139,7 @@ class _ConstantIntervalForecaster(BaseIntervalForecaster):
 
     def __init__(self, half_width: float = 1.0):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_as_feature=None,
         )
         self.half_width = half_width
@@ -203,7 +203,7 @@ class _UniformClassProbaForecaster(BaseClassProbaForecaster):
 
     def __init__(self):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
         )

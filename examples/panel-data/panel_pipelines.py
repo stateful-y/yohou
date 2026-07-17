@@ -135,7 +135,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_test, y_train):
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 24]),
+        actual_transformer=LagTransformer(lag=[1, 24]),
     )
     fc_global.fit(y_train, forecasting_horizon=horizon)
     y_pred_global = fc_global.predict(forecasting_horizon=horizon)
@@ -200,7 +200,7 @@ def _(
                 "station_1_ridge",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 24]),
+                    actual_transformer=LagTransformer(lag=[1, 24]),
                 ),
                 _g1_cols,
             ),
@@ -209,7 +209,7 @@ def _(
                 "station_3_ridge",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=10.0),
-                    feature_transformer=LagTransformer(lag=[1, 24, 48]),
+                    actual_transformer=LagTransformer(lag=[1, 24, 48]),
                 ),
                 _g3_cols,
             ),
@@ -248,7 +248,7 @@ def _(mo):
     ## 4. FeaturePipeline + FeatureUnion
 
     Build rich feature sets by combining lag features and rolling statistics
-    in parallel via [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), then use as `feature_transformer`.
+    in parallel via [`FeatureUnion`](/pages/api/generated/yohou.compose.feature_union.FeatureUnion/), then use as `actual_transformer`.
     """)
 
 
@@ -273,7 +273,7 @@ def _(
 
     fc_union = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=_union,
+        actual_transformer=_union,
     )
     fc_union.fit(y_train, forecasting_horizon=horizon)
     _y_pred_union = fc_union.predict(forecasting_horizon=horizon)
@@ -319,7 +319,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 24]),
+                    actual_transformer=LagTransformer(lag=[1, 24]),
                 ),
             ),
         ],
@@ -378,7 +378,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=_union_nested,
+                    actual_transformer=_union_nested,
                 ),
             ),
         ],

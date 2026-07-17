@@ -119,7 +119,7 @@ class TestPointReductionPanel:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        "feature_transformer",
+        "actual_transformer",
         [
             None,
             LagTransformer(lag=[1]),
@@ -127,12 +127,12 @@ class TestPointReductionPanel:
         ],
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
-    def test_point_reduction_panel_fit_predict(self, linear_panel_5groups, feature_transformer):
+    def test_point_reduction_panel_fit_predict(self, linear_panel_5groups, actual_transformer):
         """Test PointReductionForecaster fit/predict on panel data with analytical verification."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         # Split data
@@ -174,7 +174,7 @@ class TestPointReductionPanel:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        "feature_transformer",
+        "actual_transformer",
         [
             None,
             LagTransformer(lag=[1]),
@@ -182,12 +182,12 @@ class TestPointReductionPanel:
         ],
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
-    def test_point_reduction_panel_observe_all_groups(self, linear_panel_5groups, feature_transformer):
+    def test_point_reduction_panel_observe_all_groups(self, linear_panel_5groups, actual_transformer):
         """Test observe() with all groups updates all group states."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         # Fit on first 60 rows
@@ -215,7 +215,7 @@ class TestPointReductionPanel:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        "feature_transformer",
+        "actual_transformer",
         [
             None,
             LagTransformer(lag=[1]),
@@ -223,12 +223,12 @@ class TestPointReductionPanel:
         ],
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
-    def test_point_reduction_panel_observe_subset_groups(self, linear_panel_5groups, feature_transformer):
+    def test_point_reduction_panel_observe_subset_groups(self, linear_panel_5groups, actual_transformer):
         """Test observe() with groups filters to specific groups."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         # Fit on first 60 rows
@@ -261,7 +261,7 @@ class TestPointReductionPanel:
 
     @pytest.mark.integration
     @pytest.mark.parametrize(
-        "feature_transformer",
+        "actual_transformer",
         [
             None,
             LagTransformer(lag=[1]),
@@ -269,12 +269,12 @@ class TestPointReductionPanel:
         ],
         ids=["no_features", "lag_only", "lag_pipeline"],
     )
-    def test_point_reduction_panel_rewind_subset_groups(self, linear_panel_5groups, feature_transformer):
+    def test_point_reduction_panel_rewind_subset_groups(self, linear_panel_5groups, actual_transformer):
         """Test rewind() with groups filters to specific groups."""
         y = linear_panel_5groups
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         # Fit on first 80 rows
@@ -852,7 +852,7 @@ class TestColumnTransformerPanel:
 
     @pytest.mark.integration
     def test_column_transformer_panel_with_forecaster(self):
-        """Test ColumnTransformer as feature_transformer in forecaster on panel."""
+        """Test ColumnTransformer as actual_transformer in forecaster on panel."""
         n = 100
         time_index = pl.datetime_range(
             start=pl.datetime(2020, 1, 1),
@@ -872,7 +872,7 @@ class TestColumnTransformerPanel:
         X_actual = pl.DataFrame(X_data)
 
         # Use ColumnTransformer to scale features before forecasting
-        feature_transformer = ColumnTransformer(
+        actual_transformer = ColumnTransformer(
             transformers=[
                 ("scaler", StandardScaler(), ["feature"]),
             ],
@@ -881,7 +881,7 @@ class TestColumnTransformerPanel:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
         )
 
         y_train = y[:80]
@@ -1046,7 +1046,7 @@ class TestTenGroupPanelScalability:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         )
 
         import time

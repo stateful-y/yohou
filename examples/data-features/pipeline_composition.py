@@ -192,9 +192,9 @@ def _(fp_nested_out, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. FeaturePipeline as feature_transformer
+    ## 4. FeaturePipeline as actual_transformer
 
-    Use the nested pipeline as `feature_transformer` in a forecaster.
+    Use the nested pipeline as `actual_transformer` in a forecaster.
     """)
 
 
@@ -212,7 +212,7 @@ def _(
 ):
     fc_fp = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=fp_nested,
+        actual_transformer=fp_nested,
     )
     fc_fp.fit(y_train, forecasting_horizon=horizon)
     y_pred_fp = fc_fp.predict(forecasting_horizon=horizon)
@@ -287,7 +287,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=_union_deep,
+                    actual_transformer=_union_deep,
                 ),
             ),
         ],

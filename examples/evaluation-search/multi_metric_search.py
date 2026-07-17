@@ -140,7 +140,7 @@ def _(
 ):
     _base = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=[1, 12]),
+        actual_transformer=LagTransformer(lag=[1, 12]),
     )
     multi_scoring = {
         "mae": MeanAbsoluteError(),
@@ -206,7 +206,7 @@ def _(
         _gs = GridSearchCV(
             forecaster=PointReductionForecaster(
                 estimator=Ridge(),
-                feature_transformer=LagTransformer(lag=[1, 12]),
+                actual_transformer=LagTransformer(lag=[1, 12]),
             ),
             param_grid={"estimator__alpha": [0.01, 0.1, 1.0, 10.0]},
             scoring={
@@ -252,7 +252,7 @@ def _(
     rand_search = RandomizedSearchCV(
         forecaster=PointReductionForecaster(
             estimator=ElasticNet(),
-            feature_transformer=LagTransformer(lag=[1, 12]),
+            actual_transformer=LagTransformer(lag=[1, 12]),
         ),
         param_distributions={
             "estimator__alpha": loguniform(0.001, 10.0),

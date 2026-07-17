@@ -214,7 +214,7 @@ class LocalPanelForecaster(BaseForecaster):
             tags.forecaster_tags.uses_reduction = child_tags.forecaster_tags.uses_reduction
             tags.forecaster_tags.requires_exogenous = child_tags.forecaster_tags.requires_exogenous
             tags.forecaster_tags.uses_target_transformer = child_tags.forecaster_tags.uses_target_transformer
-            tags.forecaster_tags.uses_feature_transformer = child_tags.forecaster_tags.uses_feature_transformer
+            tags.forecaster_tags.uses_actual_transformer = child_tags.forecaster_tags.uses_actual_transformer
 
         tags.forecaster_tags.supports_panel_data = True
         tags.forecaster_tags.tracks_observations = False

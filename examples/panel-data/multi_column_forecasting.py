@@ -132,7 +132,7 @@ def _(
                 "nsw_demand",
                 PointReductionForecaster(
                     estimator=Ridge(),
-                    feature_transformer=LagTransformer(lag=list(range(1, 8))),
+                    actual_transformer=LagTransformer(lag=list(range(1, 8))),
                 ),
                 "nsw_demand",
             ),
@@ -271,7 +271,7 @@ def _(
                 "primary",
                 PointReductionForecaster(
                     estimator=Ridge(),
-                    feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
                 ),
                 "T1_patients",
             ),

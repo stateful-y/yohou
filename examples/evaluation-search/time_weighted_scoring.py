@@ -103,7 +103,7 @@ def _(
 
     fc = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 12]),
+        actual_transformer=LagTransformer(lag=[1, 12]),
     )
     fc.fit(y_train, forecasting_horizon=horizon)
     y_pred = fc.predict(forecasting_horizon=horizon)
@@ -269,7 +269,7 @@ def _(
 
     _fc_p = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        actual_transformer=LagTransformer(lag=[1, 7]),
     )
     _fc_p.fit(_y_train_p, forecasting_horizon=_horizon_p)
     _y_pred_p = _fc_p.predict(forecasting_horizon=_horizon_p)

@@ -269,7 +269,7 @@ class TestAR1:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=forecasting_horizon)
 
@@ -295,7 +295,7 @@ class TestAR1:
         # Use ar_p_series (starts at c, not stationary mean) so data is non-constant
         y = ar_p_series(coeffs=[phi], c=c, length=200, noise_std=0.0)
 
-        # No feature_transformer needed: internal tabularization creates
+        # No actual_transformer needed: internal tabularization creates
         # features = y_t, target = y_{t+1} = phi*y_t + c
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -318,7 +318,7 @@ class TestAR1:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=1)
 
@@ -341,7 +341,7 @@ class TestAR1:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=horizon)
 
@@ -367,7 +367,7 @@ class TestAR1:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=3)
 
@@ -393,7 +393,7 @@ class TestAR1:
         train_length = 10
         y = ar_p_series(coeffs=[phi], c=c, length=25, noise_std=0.0)
 
-        # No feature_transformer: internal tabularization creates
+        # No actual_transformer: internal tabularization creates
         # features = y_t, target = y_{t+1} = phi*y_t + c
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
@@ -428,7 +428,7 @@ class TestARHigherOrder:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         forecaster.fit(y[:250], forecasting_horizon=1)
 
@@ -454,7 +454,7 @@ class TestARHigherOrder:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=1)
 
@@ -478,7 +478,7 @@ class TestARHigherOrder:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         forecaster.fit(y[:train_length], forecasting_horizon=horizon)
 
@@ -515,7 +515,7 @@ class TestARHigherOrder:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         )
         forecaster.fit(y[:350], forecasting_horizon=1)
 
@@ -624,7 +624,7 @@ class TestExogenousFeatures:
 
         train_length = 120
 
-        # No feature_transformer: features = (y_t, x_t), target = y_{t+1}
+        # No actual_transformer: features = (y_t, x_t), target = y_{t+1}
         # Model learns: y_{t+1} = 0.8*y_t + 1.5*x_t + 2.0 (exact)
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),

@@ -192,7 +192,7 @@ def _(
 ):
     forecaster = ClassProbaReductionForecaster(
         estimator=DecisionTreeClassifier(random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     forecaster.fit(y_train, X_actual_train, forecasting_horizon=forecasting_horizon)
 

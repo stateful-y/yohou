@@ -18,7 +18,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     Parameters
     ----------
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series (``X_actual``) into features.
     target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
@@ -36,7 +36,7 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     tag is set to ``POINT``.
 
     Concrete naive forecasters (``SeasonalNaive``, ``MeanSeasonalNaive``)
-    fix ``target_transformer``, ``feature_transformer``, and
+    fix ``target_transformer``, ``actual_transformer``, and
     ``target_as_feature`` to ``None`` and do not expose them as constructor
     parameters.
 

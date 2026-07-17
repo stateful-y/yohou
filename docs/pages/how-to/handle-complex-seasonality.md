@@ -95,7 +95,7 @@ feature_pipeline = FeatureUnion([
 
 forecaster = PointReductionForecaster(
     estimator=GradientBoostingRegressor(),
-    feature_transformer=feature_pipeline,
+    actual_transformer=feature_pipeline,
     target_as_feature="transformed",  # uses the transformed target as an additional feature
 )
 ```

@@ -149,7 +149,7 @@ decomp = DecompositionPipeline(
         ("seasonality", PatternSeasonalityForecaster(seasonality=12)),
         ("residual", PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lags", LagTransformer(lag=list(range(1, 7)))),
             ]),
         )),

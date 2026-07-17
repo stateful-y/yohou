@@ -17,7 +17,7 @@ class TestPointReductionPanelChecks:
         "forecaster,tags,expected_failures",
         [
             (
-                PointReductionForecaster(estimator=LinearRegression(), feature_transformer=LagTransformer(lag=[1, 2])),
+                PointReductionForecaster(estimator=LinearRegression(), actual_transformer=LagTransformer(lag=[1, 2])),
                 {"forecaster_type": frozenset({"point"}), "uses_reduction": True, "supports_panel_data": True},
                 [],
             ),
@@ -46,7 +46,7 @@ class TestPointReductionPanelBehavior:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
@@ -66,7 +66,7 @@ class TestPointReductionPanelBehavior:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)
@@ -90,7 +90,7 @@ class TestPointReductionPanelBehavior:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
 
         forecaster.fit(y=y_train, X_actual=None, forecasting_horizon=3)

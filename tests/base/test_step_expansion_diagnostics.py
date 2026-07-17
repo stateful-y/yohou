@@ -88,7 +88,7 @@ class TestRankDeficiencyWarning:
         assert any("'f_cos'" in m for m in messages)
         assert all(f"expands to {H} step columns" in m for m in messages)
         assert all("rank of only 2" in m for m in messages)
-        assert all("feature_transformer" in m for m in messages)
+        assert all("actual_transformer" in m for m in messages)
 
     def test_event_calendar_does_not_warn(self, y_series, event_future):
         """An irregular event calendar is what the channel is for."""

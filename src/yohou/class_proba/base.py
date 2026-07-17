@@ -24,7 +24,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ----------
     target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series (``X_actual``) into features.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.

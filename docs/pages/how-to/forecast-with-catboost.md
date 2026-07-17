@@ -27,7 +27,7 @@ y = data.frame
 
 forecaster = PointReductionForecaster(
     estimator=CatBoostRegressor(iterations=500, verbose=0),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
 )
 forecaster.fit(y, forecasting_horizon=12)
 predictions = forecaster.predict()
@@ -40,7 +40,7 @@ The `reduction_strategy` parameter controls how horizons are modelled. If each h
 ```python
 forecaster = PointReductionForecaster(
     estimator=CatBoostRegressor(iterations=500, verbose=0),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
     reduction_strategy="direct",
     n_jobs=-1,
 )
@@ -61,7 +61,7 @@ forecaster = IntervalReductionForecaster(
         loss_function="MultiQuantile:alpha=0.5",
         verbose=0,
     ),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
 )
 forecaster.fit(y, forecasting_horizon=1, coverage_rates=[0.90])
 intervals = forecaster.predict_interval()
@@ -92,7 +92,7 @@ y_categorical = data.y
 
 forecaster = ClassProbaReductionForecaster(
     estimator=CatBoostClassifier(iterations=500, verbose=0),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
 )
 forecaster.fit(y_categorical, forecasting_horizon=12)
 y_proba = forecaster.predict_class_proba()

@@ -53,7 +53,7 @@ $$y_t = f_1(t) \cdot f_2(t) \cdot \varepsilon_t \quad\Rightarrow\quad \log y_t =
 
 ### Feature transformation
 
-The optional `feature_transformer` parameter applies a transformer to exogenous
+The optional `actual_transformer` parameter applies a transformer to exogenous
 features once at the pipeline level before any forecaster receives them. All
 component forecasters share the same transformed features, so feature
 preprocessing does not need to be duplicated inside each component.

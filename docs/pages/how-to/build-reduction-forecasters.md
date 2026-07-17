@@ -12,7 +12,7 @@ This guide shows you how to build forecasters using the reduction pattern: pick 
 
 ## Build a Basic Reduction Forecaster
 
-A [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts a time series problem into a tabular regression problem. The `feature_transformer` generates the feature matrix, and the `estimator` learns the mapping from features to targets:
+A [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/) converts a time series problem into a tabular regression problem. The `actual_transformer` generates the feature matrix, and the `estimator` learns the mapping from features to targets:
 
 ```python
 from yohou.datasets import fetch_tourism_monthly
@@ -25,7 +25,7 @@ y = bunch.frame
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
     reduction_strategy="multi-output",
 )
 forecaster.fit(y, forecasting_horizon=12)
@@ -45,7 +45,7 @@ The `reduction_strategy` parameter controls how the forecaster maps features to 
 ```python
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
     reduction_strategy="direct",
     n_jobs=-1,  # parallelize across horizons
 )
@@ -68,7 +68,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(),
-    feature_transformer=FeatureUnion([
+    actual_transformer=FeatureUnion([
         ("lags", LagTransformer(lag=[1, 3, 6, 12])),
         ("rolling", RollingStatisticsTransformer(window_size=12, statistics=["mean", "std"])),
         ("calendar", CalendarFeatureTransformer(features=["month", "day_of_week"])),
@@ -91,7 +91,7 @@ When using the `"direct"` strategy with exogenous features (`X_future` or `X_for
 ```python
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(),
-    feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    actual_transformer=LagTransformer(lag=[1, 2, 3]),
     reduction_strategy="direct",
     step_feature_alignment="matched",
 )
@@ -99,13 +99,13 @@ forecaster = PointReductionForecaster(
 
 ## Produce Prediction Intervals
 
-[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses the same reduction pattern but produces prediction intervals. It accepts the same `feature_transformer`, `reduction_strategy`, and `step_feature_alignment` parameters:
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.reduction.IntervalReductionForecaster/) uses the same reduction pattern but produces prediction intervals. It accepts the same `actual_transformer`, `reduction_strategy`, and `step_feature_alignment` parameters:
 
 ```python
 from yohou.interval import IntervalReductionForecaster
 
 interval_forecaster = IntervalReductionForecaster(
-    feature_transformer=LagTransformer(lag=[1, 3, 6, 12]),
+    actual_transformer=LagTransformer(lag=[1, 3, 6, 12]),
     reduction_strategy="multi-output",
 )
 interval_forecaster.fit(y, forecasting_horizon=12, coverage_rates=[0.1, 0.5, 0.9])

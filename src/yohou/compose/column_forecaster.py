@@ -241,7 +241,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         verbose_feature_names_out: bool = False,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
-        super().__init__(target_transformer=None, feature_transformer=None, panel_strategy=panel_strategy)
+        super().__init__(target_transformer=None, actual_transformer=None, panel_strategy=panel_strategy)
         self.forecasters = forecasters
         self.remainder = remainder
         self.n_jobs = n_jobs
@@ -442,8 +442,8 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 getattr(f.__sklearn_tags__().forecaster_tags, "uses_target_transformer", False)
                 for f in forecasters_to_check
             )
-            tags.forecaster_tags.uses_feature_transformer = any(
-                getattr(f.__sklearn_tags__().forecaster_tags, "uses_feature_transformer", False)
+            tags.forecaster_tags.uses_actual_transformer = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "uses_actual_transformer", False)
                 for f in forecasters_to_check
             )
             tags.forecaster_tags.supports_panel_data = all(

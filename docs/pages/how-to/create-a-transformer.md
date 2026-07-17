@@ -268,7 +268,7 @@ Add your own tests for numerical correctness alongside the generated checks.
 
 - [Use Preprocessing Transformers](use-preprocessing-transformers.md): using the built-in transformers
 - [Compose Feature Pipelines](compose-feature-pipelines.md): combining transformers into pipelines
-- [Create a Point Forecaster](create-a-point-forecaster.md): using transformers inside forecasters via `target_transformer` and `feature_transformer`
+- [Create a Point Forecaster](create-a-point-forecaster.md): using transformers inside forecasters via `target_transformer` and `actual_transformer`
 - [Create an Interval Forecaster](create-an-interval-forecaster.md): prediction interval forecasters
 - [Create a Class-Probability Forecaster](create-a-class-proba-forecaster.md): categorical outcome forecasters
 - [Create a Custom Scorer](create-a-scorer.md): custom evaluation metrics

@@ -99,7 +99,7 @@ def _(
 
     _fc = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 24]),
+        actual_transformer=LagTransformer(lag=[1, 24]),
     )
     _fc.fit(y_train, forecasting_horizon=fh)
     y_pred = _fc.predict(forecasting_horizon=fh)
@@ -315,7 +315,7 @@ def _(
     _fc_int = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 7]),
+            actual_transformer=LagTransformer(lag=[1, 7]),
         ),
         calibration_size=fh + 24,
     )
@@ -364,7 +364,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge, deepcopy, fh, y_test, y_train):
     _fc_v = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3]),
     )
     _fc_v.fit(y_train, forecasting_horizon=fh)
     _fc_v2 = deepcopy(_fc_v)

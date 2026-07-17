@@ -741,7 +741,7 @@ class TestTimeWeightConversion:
         # Fit with time_weight (fit_intercept=False for clean analytical comparison)
         forecaster = PointReductionForecaster(
             estimator=Ridge(alpha=0.0, fit_intercept=False),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
             time_weighter=TableWeighter(frame=time_weight, on="time"),
             sample_weight_alignment=alignment,
         )
@@ -809,7 +809,7 @@ class TestTimeWeightConversion:
         })
 
         # Fit without time_weight
-        f1 = PointReductionForecaster(Ridge(alpha=0.1), feature_transformer=LagTransformer(lag=[1, 2]))
+        f1 = PointReductionForecaster(Ridge(alpha=0.1), actual_transformer=LagTransformer(lag=[1, 2]))
         f1.fit(y, forecasting_horizon=1)
         coef_no_weight = f1.estimator_.coef_.copy()
 
@@ -820,7 +820,7 @@ class TestTimeWeightConversion:
         })
         f2 = PointReductionForecaster(
             Ridge(alpha=0.1),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
             time_weighter=TableWeighter(frame=time_weight_uniform, on="time"),
         )
         f2.fit(y, forecasting_horizon=1)
@@ -858,7 +858,7 @@ class TestTimeWeightConversion:
         })
 
         # Fit with uniform weight
-        f1 = PointReductionForecaster(Ridge(alpha=0.0), feature_transformer=LagTransformer(lag=1))
+        f1 = PointReductionForecaster(Ridge(alpha=0.0), actual_transformer=LagTransformer(lag=1))
         f1.fit(y, forecasting_horizon=1)
         coef_uniform = f1.estimator_.coef_[0]
 
@@ -871,7 +871,7 @@ class TestTimeWeightConversion:
         })
         f2 = PointReductionForecaster(
             Ridge(alpha=0.0),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
             time_weighter=TableWeighter(frame=time_weight, on="time"),
         )
         f2.fit(y, forecasting_horizon=1)
@@ -1011,7 +1011,7 @@ class TestCoverageRatesRouting:
         target_forecaster = (
             IntervalReductionForecaster(
                 estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-                feature_transformer=LagTransformer(lag=1),
+                actual_transformer=LagTransformer(lag=1),
             )
             .set_fit_request(coverage_rates=True)
             .set_predict_interval_request(coverage_rates=True)
@@ -1020,7 +1020,7 @@ class TestCoverageRatesRouting:
         # Feature forecaster (point forecaster, doesn't need coverage_rates)
         feature_forecaster = PointReductionForecaster(
             estimator=Ridge(alpha=0.1),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
 
         chained = ForecastedFeatureForecaster(
@@ -1065,7 +1065,7 @@ class TestCoverageRatesRouting:
 
         forecaster = IntervalReductionForecaster(
             estimator=MultiOutputRegressor(QuantileRegressor(solver="highs")),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         )
 
         # Multiple coverage rates - must be passed at fit AND predict time

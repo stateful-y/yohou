@@ -89,11 +89,11 @@ from yohou.preprocessing import LagTransformer, FourierFeatureTransformer
 
 lag_forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=LagTransformer([1, 2, 3, 7, 14]),
+    actual_transformer=LagTransformer([1, 2, 3, 7, 14]),
 )
 fourier_forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=FourierFeatureTransformer(seasonality=7, harmonics=[1, 2, 3]),
+    actual_transformer=FourierFeatureTransformer(seasonality=7, harmonics=[1, 2, 3]),
 )
 ensemble = VotingPointForecaster(
     forecasters=[("lag", lag_forecaster), ("fourier", fourier_forecaster)],

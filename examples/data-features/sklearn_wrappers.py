@@ -231,7 +231,7 @@ def _(mo):
     mo.md(r"""
     ## 7. PolynomialFeatures
 
-    Creates interaction and polynomial terms. Useful as a `feature_transformer`
+    Creates interaction and polynomial terms. Useful as a `actual_transformer`
     to enrich the feature space before a linear regression.
     """)
 
@@ -270,7 +270,7 @@ def _(
     # Baseline: no target scaling
     _fc_raw = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     _fc_raw.fit(y_train, forecasting_horizon=_horizon)
     _y_pred_raw = _fc_raw.predict(forecasting_horizon=_horizon)
@@ -279,7 +279,7 @@ def _(
     fc_scaled = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
         target_transformer=StandardScaler(),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     fc_scaled.fit(y_train, forecasting_horizon=_horizon)
     y_pred_scaled = fc_scaled.predict(forecasting_horizon=_horizon)
@@ -355,7 +355,7 @@ def _(
     _fc_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
         target_transformer=StandardScaler(),
-        feature_transformer=LagTransformer(lag=[1, 4]),
+        actual_transformer=LagTransformer(lag=[1, 4]),
     )
     _horizon_p = min(len(_y_test_p), 8)
     _fc_panel.fit(_y_train_p, forecasting_horizon=_horizon_p)

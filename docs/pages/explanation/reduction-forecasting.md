@@ -166,7 +166,7 @@ more effectively. Common examples include
 produces predictions in the transformed space, the forecaster automatically applies
 `inverse_transform` to return predictions to the original scale.
 
-The **feature transformer** (`feature_transformer`) creates additional input features
+The **feature transformer** (`actual_transformer`) creates additional input features
 from the target and any `X_actual` exogenous columns. What the feature transformer
 receives as input depends on `target_as_feature`: when set to `"transformed"` (the
 default), it receives the transformed target concatenated with `X_actual`; when set to

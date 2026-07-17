@@ -129,7 +129,7 @@ class TestTagDefaults:
         assert t.stateful is False
         assert t.uses_reduction is False
         assert t.uses_target_transformer is False
-        assert t.uses_feature_transformer is False
+        assert t.uses_actual_transformer is False
         assert t.supports_panel_data is True
         assert t.supports_time_weight is False
         assert t.tracks_observations is True

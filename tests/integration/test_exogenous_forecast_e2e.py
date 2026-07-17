@@ -183,7 +183,7 @@ def _build_forecaster(**overrides):
             max_depth=3,
             random_state=SEED,
         ),
-        "feature_transformer": LagTransformer([1, 2, 3]),
+        "actual_transformer": LagTransformer([1, 2, 3]),
         "reduction_strategy": "direct",
         "forecasting_horizon": H,
     }
@@ -733,11 +733,11 @@ class TestEdgeCases:
         d = electricity_data
         _, fh = _build_forecaster()
         # Build a forecaster without X_actual (recursive observe cannot
-        # supply X_actual, so the feature_transformer must not depend on
+        # supply X_actual, so the actual_transformer must not depend on
         # external actual features).
         f = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(random_state=SEED),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
         )
         f.fit(
@@ -942,7 +942,7 @@ class TestPanelExogenousDispatch:
         y, x_future = self._make_panel()
         f = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(max_iter=30, max_depth=3, random_state=SEED),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
         )
 
@@ -1003,7 +1003,7 @@ class TestSparseVintageSchedule:
 
         f = PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=SEED),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
         )
         f.fit(y=y_train, forecasting_horizon=h, X_forecast=x_fc_train)

@@ -59,7 +59,7 @@ from yohou.preprocessing import LagTransformer
 
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3),
-    feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    actual_transformer=LagTransformer(lag=[1, 2, 3]),
     reduction_strategy="direct",
 )
 
@@ -153,7 +153,7 @@ To see how much the weather signal contributes, we fit the same architecture wit
 ```python
 forecaster_no_wx = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3),
-    feature_transformer=LagTransformer(lag=[1, 2, 3]),
+    actual_transformer=LagTransformer(lag=[1, 2, 3]),
     reduction_strategy="direct",
 )
 forecaster_no_wx.fit(

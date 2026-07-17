@@ -129,7 +129,7 @@ def _(
 
     base_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
     )
 
     conformal_standard = SplitConformalForecaster(
@@ -199,7 +199,7 @@ def _(
     conformal_euclidean = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
         ),
         conformity_scorer=AbsoluteResidual(),
         calibration_size=30,
@@ -270,7 +270,7 @@ def _(
         _forecaster = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=Ridge(alpha=1.0),
-                feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
             ),
             conformity_scorer=AbsoluteResidual(),
             calibration_size=30,
@@ -404,7 +404,7 @@ def _(
     conformal_minkowski = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
         ),
         conformity_scorer=AbsoluteResidual(),
         calibration_size=36,

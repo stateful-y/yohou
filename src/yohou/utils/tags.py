@@ -141,9 +141,12 @@ class ForecasterTags:
     uses_target_transformer : bool, default=False
         Whether the forecaster uses a target transformer to transform
         the target time series before fitting.
-    uses_feature_transformer : bool, default=False
+    uses_actual_transformer : bool, default=False
         Whether the forecaster uses a feature transformer to transform
         the feature time series before fitting.
+    uses_forecast_transformer : bool, default=False
+        Whether the forecaster uses a forecast transformer to transform
+        the ``X_forecast`` frame before step columns are derived.
     supports_panel_data : bool, default=True
         Whether the forecaster can handle panel data (multiple time series
         with prefixed column names).
@@ -169,7 +172,8 @@ class ForecasterTags:
     stateful: bool = False
     uses_reduction: bool = False
     uses_target_transformer: bool = False
-    uses_feature_transformer: bool = False
+    uses_actual_transformer: bool = False
+    uses_forecast_transformer: bool = False
     supports_panel_data: bool = True
     supports_time_weight: bool = False
     supports_vintage_weight: bool = False

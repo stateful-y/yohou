@@ -266,7 +266,7 @@ def _(
             inverse_func=np.exp,
             check_inverse=False,
         ),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
 
     _horizon = len(y_test)
