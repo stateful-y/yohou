@@ -71,6 +71,55 @@ def _get_submodules(project_root):
     return _SUBMODULE_CACHE
 
 
+def _qualified_name(module_name, member_name):
+    """Public dotted path of a member.
+
+    A symbol exported only from the package root has no module segment --
+    `pkg.Name`, not `pkg..Name` -- which is the whole reason code keyed on a
+    submodule silently drops it.
+    """
+    parts = ["yohou", module_name, member_name]
+    return ".".join(part for part in parts if part)
+
+
+def _module_source(pkg_dir, module_name):
+    """The file backing a submodule: ``name.py``, else ``name/__init__.py``."""
+    mod_file = pkg_dir / f"{module_name}.py"
+    if not mod_file.exists():
+        mod_file = pkg_dir / module_name / "__init__.py"
+    return mod_file
+
+
+def _get_root_members(project_root):
+    """Public symbols the package exports only from its own ``__init__.py``.
+
+    ``_get_submodules`` skips every ``_``-prefixed name, which is right for
+    private modules and also silently excludes ``__init__.py`` itself. A package
+    that keeps a base class in ``_base.py`` and re-exports it from the root --
+    an ordinary layout, and what sklearn does -- therefore has a public symbol
+    that belongs to no submodule, reaches no page, and never appears in the API
+    table. Nothing reports it: yohou-nixtla ships 18 names in ``__all__`` and the
+    table lists 17.
+
+    Their public path has no module segment (``pkg.Name``, not
+    ``pkg.module.Name``), which is exactly why they fall through code keyed on a
+    submodule. Names a real submodule already publishes keep their module path;
+    only the homeless ones are adopted here.
+    """
+    pkg_dir = project_root / "src" / "yohou"
+    init_file = pkg_dir / "__init__.py"
+    if not init_file.exists():
+        return {"classes": [], "functions": []}
+
+    covered = set()
+    for mod in _get_submodules(project_root):
+        members = _get_public_members(_module_source(pkg_dir, mod["module_name"]), pkg_dir)
+        covered.update(entry["name"] for entry in members["classes"] + members["functions"])
+
+    root = _get_public_members(init_file, pkg_dir)
+    return {key: [entry for entry in root[key] if entry["name"] not in covered] for key in ("classes", "functions")}
+
+
 def _extract_module_docstring(py_file):
     """Extract the module-level docstring from a Python file."""
     try:
@@ -304,7 +353,7 @@ def _get_api_name_lookup(project_root):
 
     Shared by See Also resolution and example-notebook cross-referencing so the
     two cannot disagree about what a symbol is called.  Built by static
-    analysis only — the package is never imported.
+    analysis only; the package is never imported.
 
     When one symbol is reachable by two paths -- declared in a module and
     re-exported by a package -- the published path wins: that is the name users
@@ -320,13 +369,13 @@ def _get_api_name_lookup(project_root):
 
     pkg_dir = project_root / "src" / "yohou"
     candidates = {}
+    scans = []
     for mod in _get_submodules(project_root):
-        mod_file = pkg_dir / f"{mod['module_name']}.py"
-        if not mod_file.exists():
-            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
-        members = _get_public_members(mod_file, pkg_dir)
+        scans.append((mod["module_name"], _get_public_members(_module_source(pkg_dir, mod["module_name"]), pkg_dir)))
+    scans.append(("", _get_root_members(project_root)))
+    for module_name, members in scans:
         for entry in members["classes"] + members["functions"]:
-            qualified = f"yohou.{mod['module_name']}.{entry['name']}"
+            qualified = _qualified_name(module_name, entry["name"])
             candidates.setdefault(entry["name"], []).append({
                 "qualified": qualified,
                 "origin": entry.get("origin"),
@@ -386,6 +435,18 @@ def _build_members_tables(package_name, module_name, members):
         return ""
 
     return "\n\n".join(sections)
+
+
+def _write_member_pages(generated_dir, page_template, module_name, members):
+    """Write one detail page per public class/function. Returns how many."""
+    written = 0
+    for kind in ("classes", "functions"):
+        for entry in members[kind]:
+            qualified = _qualified_name(module_name, entry["name"])
+            page = generated_dir / f"{qualified}.md"
+            page.write_text(page_template.format(name=entry["name"], qualified=qualified))
+            written += 1
+    return written
 
 
 def _generate_api_pages(project_root):
@@ -456,17 +517,13 @@ def _generate_api_pages(project_root):
         print(f"[hooks] generated api page: pages/api/{mod['module_name']}.md")
 
         # Generate per-class/function detail pages
-        for cls in members["classes"]:
-            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
-            page = generated_dir / f"{qualified}.md"
-            page.write_text(_page_template.format(name=cls["name"], qualified=qualified))
-            member_count += 1
+        member_count += _write_member_pages(generated_dir, _page_template, mod["module_name"], members)
 
-        for func in members["functions"]:
-            qualified = f"yohou.{mod['module_name']}.{func['name']}"
-            page = generated_dir / f"{qualified}.md"
-            page.write_text(_page_template.format(name=func["name"], qualified=qualified))
-            member_count += 1
+    # Symbols exported only from the package root have no submodule and so no
+    # module page; they still need a detail page for the table and See Also to
+    # link at. Without this the link resolves to nothing and, being raw HTML,
+    # nothing validates it.
+    member_count += _write_member_pages(generated_dir, _page_template, "", _get_root_members(project_root))
 
     if member_count:
         print(f"[hooks] generated {member_count} API member pages in pages/api/generated/")
@@ -497,23 +554,27 @@ def _build_api_table_html(project_root, prefix):
     pkg_dir = project_root / "src" / "yohou"
 
     rows = []
+    scans = []
     for mod in modules:
-        mod_file = pkg_dir / f"{mod['module_name']}.py"
-        if not mod_file.exists():
-            mod_file = pkg_dir / mod["module_name"] / "__init__.py"
+        mod_file = _module_source(pkg_dir, mod["module_name"])
         if not mod_file.exists():
             continue
+        scans.append((mod["module_name"], _get_public_members(mod_file, pkg_dir)))
+    # Symbols exported only from the package root belong to no submodule, so a
+    # loop over submodules alone leaves them out of the table entirely.
+    scans.append(("", _get_root_members(project_root)))
 
-        members = _get_public_members(mod_file, pkg_dir)
-        module_label = f"yohou.{mod['module_name']}"
-        module_href = f"{prefix}pages/api/{mod['module_name']}/"
+    for module_name, members in scans:
+        module_label = _qualified_name(module_name, "").rstrip(".") or "yohou"
+        # A root export has no module page to point at; the API index is its home.
+        module_href = f"{prefix}pages/api/{module_name}/" if module_name else f"{prefix}pages/api/"
 
         for cls in members["classes"]:
-            qualified = f"yohou.{mod['module_name']}.{cls['name']}"
+            qualified = _qualified_name(module_name, cls["name"])
             rows.append((cls["name"], "Class", module_label, module_href, cls["doc"], qualified))
 
         for func in members["functions"]:
-            qualified = f"yohou.{mod['module_name']}.{func['name']}"
+            qualified = _qualified_name(module_name, func["name"])
             rows.append((func["name"], "Function", module_label, module_href, func["doc"], qualified))
 
     rows.sort(key=lambda r: r[0].lower())
@@ -660,8 +721,15 @@ def _get_gallery_items(project_root):
             continue
 
         stem = notebook.stem
+        # The export is flat (docs/examples/<stem>/), so [View] keys on the stem.
+        # The playground is not: it reconstructs the real repo path from this URL,
+        # so it must carry the notebook's path relative to examples/. Building it
+        # from the stem assumes a flat examples/ dir and 404s for every notebook
+        # in a subdirectory -- 78 of yohou's 79. The link is generated rather than
+        # authored, so mkdocs never validates it and --strict stays green.
+        rel_parts = notebook.relative_to(examples_dir).with_suffix("").parts
         view_path = f"/examples/{stem}/"
-        open_path = f"/examples/{stem}/edit/"
+        open_path = "/examples/" + "/".join(rel_parts) + "/edit/"
 
         # api_references: absent (None) means "infer from imports"; an empty
         # list means "this notebook belongs on no API page" -- a deliberate
@@ -1158,6 +1226,24 @@ def _build_subpages_list(config, page, files):
         return "<!-- no subpages -->\n"
 
     entries = _nav_entries(config)
+
+    # The index enumerates sibling *files*; the sidebar comes from mkdocs.yml.
+    # When the two disagree the index quietly papers over it -- an entry dropped
+    # from the nav still appears here, so the page stays reachable by link while
+    # vanishing from navigation. mkdocs itself reports not-in-nav pages at INFO,
+    # which --strict does not fail on, so nothing else says a word. A copier
+    # update deleted a real nav entry exactly this way and every other guard
+    # passed it.
+    orphans = sorted(s.src_path for s in siblings if s.src_path not in entries)
+    if orphans:
+        log.warning(
+            "%s lists %s, which %s missing from the nav in mkdocs.yml -- the page is linked but "
+            "unreachable by navigation.",
+            src,
+            ", ".join(orphans),
+            "is" if len(orphans) == 1 else "are",
+        )
+
     rows = []
     for sibling in siblings:
         title, description = _page_title_and_description(sibling.abs_src_path)
@@ -2066,11 +2152,6 @@ def on_pre_build(config):
     # Generate per-submodule API reference pages
     _generate_api_pages(project_root)
 
-    # Allow skipping slow notebook export during development
-    if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
-        print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
-        return
-
     examples_dir = project_root / "examples"
 
     if not examples_dir.exists():
@@ -2083,6 +2164,33 @@ def on_pre_build(config):
         if "__marimo__" not in p.parts and "bugs" not in p.parts and "__init__" not in p.name
     ]
     if not notebooks:
+        return
+
+    # Checked before the skip below, not after: a stem collision is a property of
+    # the source tree, not of the export, and check_docs -- the only place a
+    # warning is fatal -- always sets MKDOCS_SKIP_NOTEBOOKS. Warning after the
+    # return would fire only where nothing listens.
+    #
+    # The export dir is keyed on the stem alone, so two notebooks with the same
+    # stem in different subdirectories write to one directory and the second
+    # rmtree's the first. Both gallery cards then point at whichever won, and the
+    # loser is unreachable with nothing said. The winner is filesystem-order
+    # dependent: this walk is unsorted while the gallery's is sorted.
+    seen_stems = {}
+    for notebook in sorted(notebooks):
+        first = seen_stems.setdefault(notebook.stem, notebook)
+        if first is not notebook:
+            log.warning(
+                "notebook stem %r is used by both %s and %s; they export to the same page and only "
+                "one survives. Rename one.",
+                notebook.stem,
+                first.relative_to(project_root),
+                notebook.relative_to(project_root),
+            )
+
+    # Allow skipping slow notebook export during development
+    if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
+        print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
         return
 
     docs_examples = project_root / "docs" / "examples"

@@ -144,6 +144,14 @@ ignore = [
 # HTMLParser's handle_* methods -- so an unused parameter is the interface, not
 # an oversight. ARG002 is the method-level twin of ARG001.
 "docs/**/*" = ["T201", "ARG001", "ARG002", "PLW0603", "SIM105", "SIM108", "PLC0415"]  # Allow prints, unused args, globals, simplifiable patterns, and imports not at the top
+# docs/hooks.py is template-owned: `copier update` overwrites it wholesale, so it
+# has to stay byte-identical to python-package-copier's render and a fix made here
+# would be reverted by the next update. The template does not select "D", so its
+# docstrings are not written to satisfy pydocstyle and v0.25.0 shipped one in the
+# descriptive mood. Scoped to the file rather than docs/**, so docs/precache_datasets.py
+# -- which we do own -- keeps full D enforcement. Reported upstream; drop this once
+# the template's docstring is imperative.
+"docs/hooks.py" = ["D401"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

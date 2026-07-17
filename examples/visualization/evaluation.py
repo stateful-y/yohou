@@ -655,7 +655,7 @@ def _(mo):
     - **Forecasting**: See [`examples/plotting/forecasting_visualization.py`](/examples/visualization/forecasting_visualization/) for forecast plots, intervals, and comparison modes
     - **Cross-validation**: See [`examples/plotting/model_selection.py`](/examples/visualization/model_selection/) for train/test split visualization
     - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
-    - **Signal processing**: See [`examples/plotting/signal_processing.py`](/examples/visualization/signal_processing/) for spectrum and phase analysis
+    - **Signal processing**: See [`examples/visualization/signal_processing_visualization.py`](/examples/signal_processing_visualization/) for spectrum and phase analysis
     """)
 
 

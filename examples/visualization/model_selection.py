@@ -233,7 +233,7 @@ def _(mo):
     - **Evaluation**: See [`examples/plotting/evaluation.py`](/examples/visualization/evaluation/) for residual and score distribution plots
     - **Forecasting**: See [`examples/plotting/forecasting_visualization.py`](/examples/visualization/forecasting_visualization/) for forecast and comparison plots
     - **Similarity**: See `examples/plotting/similarity_heatmap.py` for distance-based interval weights
-    - **Signal processing**: See [`examples/plotting/signal_processing.py`](/examples/visualization/signal_processing/) for spectrum and phase analysis
+    - **Signal processing**: See [`examples/visualization/signal_processing_visualization.py`](/examples/signal_processing_visualization/) for spectrum and phase analysis
     """)
 
 
