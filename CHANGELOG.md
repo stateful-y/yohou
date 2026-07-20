@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.11] - 2026-07-20
+
+This **minor release** includes 5 commits.
+
+
+### Features
+- Forecast-channel transformers and kind-polymorphic composition  ([#94](https://github.com/stateful-y/yohou/pull/94)) by @gtauzin
+- Guard X_future step expansion and fix routing docs  ([#96](https://github.com/stateful-y/yohou/pull/96)) by @gtauzin
+- Rename feature_transformer to actual_transformer and add forecast_transformer  ([#98](https://github.com/stateful-y/yohou/pull/98)) by @gtauzin
+
+### Miscellaneous Tasks
+- Update from template v0.26.1  ([#95](https://github.com/stateful-y/yohou/pull/95)) by @gtauzin
+- Update from template v0.27.0  ([#99](https://github.com/stateful-y/yohou/pull/99)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [Unreleased]
 
 ### Features
