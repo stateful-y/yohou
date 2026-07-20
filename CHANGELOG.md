@@ -11,14 +11,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This **minor release** includes 5 commits.
 
 
+### Breaking
+- `BaseTransformer` is removed; use `BaseActualTransformer`  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- The transformer base is split into `_BaseTransformer` (private), `BaseActualTransformer`, and `BaseForecastTransformer`  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- Mixed-kind compositions are rejected at fit  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- `feature_transformer` is renamed to `actual_transformer`, with no deprecation alias  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- The fitted attribute is now `actual_transformer_` and the tag `uses_actual_transformer`  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Nested paths become `actual_transformer__*`, so `cv_results_` keys become `param_actual_transformer__*`  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Constructor parameters after `estimator` are keyword-only on the seven slot-declaring classes  ([#98](https://github.com/stateful-y/yohou/pull/98))
+
 ### Features
-- Forecast-channel transformers and kind-polymorphic composition  ([#94](https://github.com/stateful-y/yohou/pull/94)) by @gtauzin
-- Guard X_future step expansion and fix routing docs  ([#96](https://github.com/stateful-y/yohou/pull/96)) by @gtauzin
-- Rename feature_transformer to actual_transformer and add forecast_transformer  ([#98](https://github.com/stateful-y/yohou/pull/98)) by @gtauzin
+- Add `BaseForecastTransformer`, a base for transformers over `X_forecast` frames (`vintage_time` and `time` axes)  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- Add `PerVintageActualTransformer`, lifting an actual transformer onto the vintage axis  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- Add a `kind` tag (`"actual"` | `"forecast"`) to `TransformerTags`  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- `FeatureUnion`, `FeaturePipeline`, and `ColumnTransformer` accept either kind and derive theirs from their children  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- `ColumnTransformer` treats `vintage_time` as a protected index column  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- Add an `accepts_irregular_grid` tag and `representative_interval`; `Downsampler` opts in  ([#94](https://github.com/stateful-y/yohou/pull/94))
+- Warn at fit when an `X_future` step expansion is rank-deficient  ([#96](https://github.com/stateful-y/yohou/pull/96))
+- Add a `forecast_transformer` slot, applied to `X_forecast` before step columns are derived  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Split `X_forecast` per group under `panel_strategy="global"`, so `forecast_transformer_` is a dict keyed by group  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Cache the transformed `X_forecast` frame; the raw schema stays the input contract  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Add `min_vintage_rows` to `BaseForecastTransformer`, aggregated by forecast-kind compositions  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Raise at fit unless `forecasting_horizon >= min_vintage_rows`  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Warn at fit when a stateful inner empties the nearest-term step columns  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- Add a `uses_forecast_transformer` tag and metadata routing for the slot  ([#98](https://github.com/stateful-y/yohou/pull/98))
+- `DecompositionPipeline` exposes both transformer slots  ([#98](https://github.com/stateful-y/yohou/pull/98))
+
+### Documentation
+- Add a transformer-kinds explanation page and correct the exogenous-channel routing docs  ([#96](https://github.com/stateful-y/yohou/pull/96))
 
 ### Miscellaneous Tasks
-- Update from template v0.26.1  ([#95](https://github.com/stateful-y/yohou/pull/95)) by @gtauzin
-- Update from template v0.27.0  ([#99](https://github.com/stateful-y/yohou/pull/99)) by @gtauzin
+- Update from template v0.26.1  ([#95](https://github.com/stateful-y/yohou/pull/95))
+- Update from template v0.27.0  ([#99](https://github.com/stateful-y/yohou/pull/99))
 
 ### Contributors
 
@@ -26,30 +50,6 @@ Thanks to all contributors for this release:
 - @gtauzin
 
 ## [Unreleased]
-
-### Features
-- Add `BaseForecastTransformer`, a base class for transformers over `X_forecast`
-  frames (two time axes: `vintage_time` and `time`), and `PerVintageActualTransformer`,
-  which lifts any stateless `BaseActualTransformer` onto the vintage axis by applying
-  it independently to each vintage.
-- Add an `accepts_irregular_grid` tag to `TransformerTags`: a transformer that declares
-  it (default off) is accepted at fit and transform on a non-uniform time axis, the
-  shared validation skipping the strict interval-consistency check and recording a
-  representative (median) interval via `representative_interval` instead of raising.
-  `Downsampler` opts in, so a jittered or gapped sub-hourly feed can be reduced to a
-  coarser uniform grid without first being placed on a strict uniform grid; behavior on
-  a uniform grid is unchanged, and transformers that do not opt in still require one.
-- Add a `kind` tag (`"actual"` | `"forecast"`) to `TransformerTags`. The composition
-  estimators (`FeatureUnion`, `FeaturePipeline`, `ColumnTransformer`) now operate on
-  either kind, derive their kind from their children, and reject mixed-kind
-  compositions. `ColumnTransformer` treats `vintage_time` as a protected index column.
-
-### Breaking
-- **Renamed `BaseTransformer` to `BaseActualTransformer`.** The transformer base is
-  split into a private `_BaseTransformer` (shared scaffolding), `BaseActualTransformer`
-  (single-axis, with the observe/rewind memory API), and `BaseForecastTransformer`
-  (forecast frames, stateless). `BaseTransformer` is removed; update imports and
-  subclasses to `BaseActualTransformer`.
 
 ## [0.1.0-alpha.10] - 2026-07-02
 
