@@ -317,6 +317,37 @@ def fix(session: nox.Session) -> None:
 
 
 @nox.session(venv_backend="uv")
+def build_steps(session: nox.Session) -> None:
+    """Run the documentation build steps without building the site.
+
+    ``docs/hooks.py`` calls these from ``on_pre_build``/``on_post_build`` so that
+    ``mkdocs serve`` regenerates on a source edit, but none of them needs a theme,
+    a server or a markdown renderer -- they read the filesystem and write it. This
+    session is how you run one on its own: to see the generated API pages, to
+    re-export the notebooks, or to get a stack trace that is not buried in a build.
+
+    ``_markdown_export`` is deliberately not run here: its input is a site
+    directory a previous build produced, so it has nothing to convert until
+    ``build_docs`` has run.
+    """
+    session.run_install(
+        "uv",
+        "sync",
+        "--no-default-groups",
+        "--extra",
+        "plotting",
+        "--group",
+        "docs",
+        "--group",
+        "examples",
+        env={"UV_PROJECT_ENVIRONMENT": session.virtualenv.location},
+    )
+
+    session.run("python", "docs/_api_pages.py", external=True)
+    session.run("python", "docs/_notebooks.py", external=True)
+
+
+@nox.session(venv_backend="uv")
 def build_docs(session: nox.Session) -> None:
     """Build the documentation."""
     # Install dependencies
