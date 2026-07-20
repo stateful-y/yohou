@@ -141,7 +141,7 @@ Also notice the predicted values: 86, 98, 103, 93, 149 monthly sunspots. These a
 
 ## 5. Reduction Forecaster with Ridge
 
-[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) converts the forecasting problem into supervised learning. It tabularizes the time series, fits an sklearn regressor, and generates multi-step predictions. When no `feature_transformer` is provided, the forecaster uses the default tabularization, which creates a single lag feature from the most recent observation:
+[`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/) converts the forecasting problem into supervised learning. It tabularizes the time series, fits an sklearn regressor, and generates multi-step predictions. When no `actual_transformer` is provided, the forecaster uses the default tabularization, which creates a single lag feature from the most recent observation:
 
 ```python
 from sklearn.linear_model import Ridge
@@ -158,7 +158,7 @@ For targets that are categorical classes rather than continuous values, see the 
 
 ## 6. Add Lag Features
 
-A [`feature_transformer`](/pages/api/generated/yohou.point.PointReductionForecaster/) engineers input features for the regressor. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) creates autoregressive features from past values, letting the regressor learn patterns across multiple time steps. Wrap it in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) (the same pattern as sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)):
+An [`actual_transformer`](/pages/api/generated/yohou.point.PointReductionForecaster/) engineers input features for the regressor. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/) creates autoregressive features from past values, letting the regressor learn patterns across multiple time steps. Wrap it in a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) (the same pattern as sklearn's [`Pipeline`](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)):
 
 ```python
 from yohou.compose import FeaturePipeline
@@ -166,7 +166,7 @@ from yohou.preprocessing import LagTransformer
 
 ridge_lags = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=[1, 2, 3, 6, 12])),
     ]),
 )
@@ -174,7 +174,7 @@ ridge_lags.fit(y_train, forecasting_horizon=forecasting_horizon)
 y_pred_ridge_lags = ridge_lags.predict(forecasting_horizon=forecasting_horizon)
 ```
 
-The lags `[1, 2, 3, 6, 12]` give the model access to the previous month, two and three months back, half a year ago, and a full year ago. Notice that `feature_transformer` adds input features for the regressor without modifying the target values.
+The lags `[1, 2, 3, 6, 12]` give the model access to the previous month, two and three months back, half a year ago, and a full year ago. Notice that `actual_transformer` adds input features for the regressor without modifying the target values.
 
 ## 7. Add Rolling Statistics
 
@@ -186,7 +186,7 @@ from yohou.preprocessing import RollingStatisticsTransformer
 
 ridge_full = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("features", FeatureUnion([
             ("lags", LagTransformer(lag=list(range(1, 13)))),
             ("rolling", RollingStatisticsTransformer(window_size=12, statistics=["mean", "std"])),
@@ -288,7 +288,7 @@ from sklearn.ensemble import ExtraTreesRegressor
 
 etrees = PointReductionForecaster(
     estimator=ExtraTreesRegressor(n_estimators=200, random_state=42),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("features", FeatureUnion([
             ("lags", LagTransformer(lag=list(range(1, 13)))),
             ("rolling", RollingStatisticsTransformer(window_size=12, statistics=["mean", "std"])),

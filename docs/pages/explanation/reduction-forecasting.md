@@ -5,7 +5,7 @@ Yohou implements several forecasting approaches that share a common API (`fit`,
 The most flexible is the **reduction approach**, which converts time series into tabular
 data so that any Scikit-Learn estimator can power a forecaster. This page focuses on
 the reduction approach: how tabularization works, what strategy options are available,
-and how target and feature transformers shape the learning problem. For decomposition
+and how target and actual transformers shape the learning problem. For decomposition
 and composition, see [Forecaster Composition](forecaster-composition.md).
 
 ## The Reduction Approach
@@ -76,8 +76,8 @@ Inside
 tabularization builds the target matrix. It tabularizes the (transformed) target `y`
 with lags `[0, 1, ..., H]`, then renames the columns so that `step_1` is the
 one-step-ahead value, `step_2` is two steps ahead, and so on. The feature matrix is
-built separately by the feature transformer pipeline (see
-[Target and Feature Transformers](#target-and-feature-transformers) below), and the
+built separately by the actual transformer pipeline (see
+[Target and Actual Transformers](#target-and-actual-transformers) below), and the
 last `H` rows are discarded because they have no corresponding future targets.
 
 The forecasting horizon `H` determines the shape of the target matrix. With `H=3`, each
@@ -92,11 +92,11 @@ The `reduction_strategy` parameter on
 [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
 controls how the estimator relates to the multi-step horizon. There are three options.
 In all cases, $\mathbf{x}_t$ denotes the full feature vector at time $t$. This vector
-is assembled from the feature transformer output (lagged values of the target and any
+is assembled from the actual transformer output (lagged values of the target and any
 `X_actual` exogenous columns), plus forward step columns from `X_future` and
 `X_forecast`. Its exact composition depends on the transformer configuration,
 `target_as_feature`, and which exogenous inputs are provided (see
-[Target and Feature Transformers](#target-and-feature-transformers) below and
+[Target and Actual Transformers](#target-and-actual-transformers) below and
 [Exogenous Features](exogenous-features.md) for details).
 
 **Multi-output** (`"multi-output"`, the default) trains a single model that predicts all
@@ -152,7 +152,7 @@ the relationship between features and target changes substantially across horizo
 Dir-rec adds complexity but can improve accuracy on longer horizons where step-to-step
 dependencies matter.
 
-## Target and Feature Transformers
+## Target and Actual Transformers
 
 Reduction forecasters support two transformer pipelines that serve distinct purposes.
 
@@ -166,8 +166,8 @@ more effectively. Common examples include
 produces predictions in the transformed space, the forecaster automatically applies
 `inverse_transform` to return predictions to the original scale.
 
-The **feature transformer** (`feature_transformer`) creates additional input features
-from the target and any `X_actual` exogenous columns. What the feature transformer
+The **actual transformer** (`actual_transformer`) creates additional input features
+from the target and any `X_actual` exogenous columns. What the actual transformer
 receives as input depends on `target_as_feature`: when set to `"transformed"` (the
 default), it receives the transformed target concatenated with `X_actual`; when set to
 `"raw"`, it receives the original untransformed target instead. Transformers like
@@ -175,25 +175,25 @@ default), it receives the transformed target concatenated with `X_actual`; when 
 [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/)
 produce lagged values, moving averages, or other derived signals that the regressor uses
 as predictors. These features are never inverted; they flow into the regressor as
-inputs, not outputs. After the feature transformer runs, any step-indexed columns from
+inputs, not outputs. After the actual transformer runs, any step-indexed columns from
 `X_future` and `X_forecast` are joined onto the result, bypassing the transformer
 entirely.
 
 The distinction matters because it determines what the regressor learns. A target
 transformer changes the *question* being asked (predict differenced values instead of
-raw values). A feature transformer changes the *information* available to answer it
+raw values). A actual transformer changes the *information* available to answer it
 (give the regressor rolling statistics alongside raw lags). In practice, many forecasters
-use both: a target transformer for stationarity and a feature transformer for richer
+use both: a target transformer for stationarity and a actual transformer for richer
 input signals.
 
 The `target_as_feature` parameter controls whether the target series appears among
-the feature transformer's inputs. The default (`"transformed"`) feeds the transformed
+the actual transformer's inputs. The default (`"transformed"`) feeds the transformed
 target (after any target transformer) alongside `X_actual` into the feature
 transformer. Setting it to `"raw"` feeds the original untransformed target instead,
 which can be useful when the regressor benefits from seeing original values even though
 the prediction target is in the transformed space. Setting it to `None` excludes the
-target entirely and passes only `X_actual` to the feature transformer, which requires
-that `X_actual` is provided when a feature transformer is set.
+target entirely and passes only `X_actual` to the actual transformer, which requires
+that `X_actual` is provided when a actual transformer is set.
 
 ## Window Length and Observation Horizon
 

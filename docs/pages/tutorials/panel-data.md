@@ -216,7 +216,7 @@ from yohou.preprocessing import LagTransformer
 ridge_forecaster = LocalPanelForecaster(
     forecaster=PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=FeaturePipeline([
+        actual_transformer=FeaturePipeline([
             ("lags", LagTransformer(lag=[1, 2, 3, 6, 12])),
         ]),
     ),

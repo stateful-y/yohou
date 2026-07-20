@@ -167,7 +167,7 @@ branch that needs the most history.
 across all transformers applied to their respective columns, following the same
 logic as [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/).
 
-Forecasters read `observation_horizon` from their `feature_transformer` and
+Forecasters read `observation_horizon` from their `actual_transformer` and
 `target_transformer` to determine how much history to retain in `_y_observed`
 and `_X_observed`. Nesting deeply pipelined transformers increases the memory
 footprint because the pipeline's summed horizon grows with each step. Keeping
@@ -205,7 +205,7 @@ stateful features.
 Sequential and parallel patterns compose freely within a kind. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) can
 be a step inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), nested to any depth, so long as every
 transformer in the structure shares one kind. An actual-kind combination can then serve
-as the `feature_transformer` or `target_transformer` for a forecaster:
+as the `actual_transformer` or `target_transformer` for a forecaster:
 
 ```python
 from yohou.compose import FeaturePipeline, FeatureUnion
@@ -226,11 +226,17 @@ pipeline's steps: 0 ([`StandardScaler`](/pages/api/generated/yohou.preprocessing
 propagation, feature naming, and panel-aware prefixing all carry through the nesting
 without any additional configuration.
 
-Those two forecaster slots are the limit of where a composition can go. Both process
-single-axis data, so both accept actual-kind transformers only, and passing a
-forecast-kind composition to either is an error rather than a no-op. Forecast frames are
-transformed before they reach the forecaster and enter through the `X_forecast` channel
-instead, which is the subject of
+Both of those slots process single-axis data, so both accept actual-kind transformers
+only, and passing a forecast-kind composition to either is an error rather than a
+no-op. That rejection is not a dead end. A forecast-kind composition has a slot of its
+own, `forecast_transformer`, which applies it to the vintage-indexed `X_forecast` frame
+before the step columns are derived. The three slots divide by the shape each one
+consumes: `target_transformer` and `actual_transformer` read a single `time` axis,
+`forecast_transformer` reads `(vintage_time, time)`.
+
+So a composition goes wherever its kind goes, and its kind is derived from its children.
+The error you get from putting one in the wrong slot names the slot that would have
+accepted it. See
 [How to Transform Features on the Forecast Channel](../how-to/transform-forecast-features.md).
 
 ## Connections

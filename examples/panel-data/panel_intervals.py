@@ -119,7 +119,7 @@ def _(
     fc_conformal = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 4]),
+            actual_transformer=LagTransformer(lag=[1, 4]),
         ),
         calibration_size=horizon + 5,
     )

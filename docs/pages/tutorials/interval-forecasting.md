@@ -57,7 +57,7 @@ from sklearn.linear_model import Ridge
 point_forecaster = PointReductionForecaster(
     estimator=Ridge(),
     target_transformer=SeasonalDifferencing(seasonality=12),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=[1, 2, 3, 12])),
     ]),
 )

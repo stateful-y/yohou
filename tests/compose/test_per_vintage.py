@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import polars as pl
 import pytest
+from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.compose import FeatureUnion, PerVintageActualTransformer
@@ -223,6 +224,62 @@ def test_inner_leaving_one_row_per_vintage_succeeds():
 
     assert out.height == 2  # one surviving row per vintage
     assert out["vintage_time"].n_unique() == 2
+
+
+def test_min_vintage_rows_reports_the_fit_minimum_for_a_stateless_inner():
+    """A stateless inner consumes nothing, yet a vintage still needs two rows to fit.
+
+    This is exactly the case a ``forecasting_horizon > observation_horizon`` guard
+    would wrongly admit: the horizon term is 0, so such a guard passes at a
+    vintage length of 1, and the single-row vintage is then silently dropped to an
+    empty frame by the fit minimum.
+    """
+    tx = PerVintageActualTransformer(_net_load_transformer())
+    tx.fit(_sample_forecast_frame())
+
+    assert tx.transformer_.observation_horizon == 0
+    assert tx.min_vintage_rows == 2
+
+
+def test_min_vintage_rows_reports_the_horizon_term_when_it_dominates():
+    """A lifted lag needs one row more than it consumes, and a 3-row vintage leaves one."""
+    tx = PerVintageActualTransformer(LagTransformer(lag=2))
+    tx.fit(_stepped_forecast_frame(steps=6))
+
+    assert tx.min_vintage_rows == 3
+
+    out = tx.transform(_stepped_forecast_frame(steps=3))
+    assert [part.height for part in out.partition_by("vintage_time", maintain_order=True)] == [1, 1]
+
+
+def test_min_vintage_rows_is_unreadable_before_fit():
+    """The value derives from the inner's observation_horizon, itself fit-guarded."""
+    tx = PerVintageActualTransformer(LagTransformer(lag=2))
+
+    with pytest.raises(NotFittedError):
+        _ = tx.min_vintage_rows
+
+
+@pytest.mark.parametrize(
+    ("inner", "expected"),
+    [(_cumsum_transformer(), 2), (LagTransformer(lag=2), 3), (LagTransformer(lag=5), 6)],
+    ids=["stateless", "lag2", "lag5"],
+)
+def test_vintages_of_exactly_min_vintage_rows_all_survive(inner, expected, recwarn):
+    """At exactly the reported minimum, every vintage survives and neither guard fires.
+
+    This pins the reported value against the two constraints it summarizes: one row
+    fewer would either trip the drop warning or leave the vintage empty.
+    """
+    tx = PerVintageActualTransformer(inner)
+    tx.fit(_stepped_forecast_frame(steps=8))
+    assert tx.min_vintage_rows == expected
+
+    # No raise here is the whole-vintage ValueError not firing.
+    out = tx.transform(_stepped_forecast_frame(steps=expected))
+
+    assert out["vintage_time"].n_unique() == 2
+    assert [w.message for w in recwarn if issubclass(w.category, UserWarning)] == []
 
 
 def test_inner_needing_more_history_than_the_vintage_holds_names_the_constraint():

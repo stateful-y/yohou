@@ -7,7 +7,7 @@ from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
 
-from yohou.base import BaseActualTransformer, BaseReductionForecaster
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -29,8 +29,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         Strategy for multi-step forecasting.
     target_transformer : BaseActualTransformer or None, default=None
         Transformer for target preprocessing.
-    feature_transformer : BaseActualTransformer or None, default=None
+    actual_transformer : BaseActualTransformer or None, default=None
         Transformer for feature engineering (typically LagTransformer).
+    forecast_transformer : BaseForecastTransformer or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Whether to include the target variable as a feature for reduction.
         If ``"transformed"``, the transformed target is used. If ``"raw"``,
@@ -155,9 +160,11 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
     def __init__(
         self,
         estimator: BaseEstimator = LinearRegression(),
+        *,
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -173,7 +180,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
@@ -204,7 +212,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -212,10 +220,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer. When provided,
+            columns. Bypasses the actual transformer. When provided,
             recursive prediction (``forecasting_horizon > fit_forecasting_horizon_``
             at predict time) is not supported and raises a ``ValueError``;
             use ``ForecastedFeatureForecaster`` for that use case.

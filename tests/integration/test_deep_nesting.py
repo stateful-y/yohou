@@ -48,9 +48,9 @@ def full_tower_forecaster():
             PointReductionForecaster[
                 LinearRegression,
                 target_transformer=StandardScaler,
-                feature_transformer=FeaturePipeline[LagTransformer, RollingStats]
+                actual_transformer=FeaturePipeline[LagTransformer, RollingStats]
             ],
-            PointReductionForecaster[LinearRegression, feature_transformer=Lag]
+            PointReductionForecaster[LinearRegression, actual_transformer=Lag]
         ],
         DecompositionPipeline[PolynomialTrend, SeasonalNaive]
     ]
@@ -62,14 +62,14 @@ def full_tower_forecaster():
                 target_forecaster=PointReductionForecaster(
                     estimator=LinearRegression(),
                     target_transformer=StandardScaler(),
-                    feature_transformer=FeaturePipeline([
+                    actual_transformer=FeaturePipeline([
                         ("lag", LagTransformer([1, 2])),
                         ("roll", RollingStatisticsTransformer(3, statistics=["mean", "std"])),
                     ]),
                 ),
                 feature_forecaster=PointReductionForecaster(
                     estimator=LinearRegression(),
-                    feature_transformer=LagTransformer(1),
+                    actual_transformer=LagTransformer(1),
                 ),
                 strategy="actual",
             ),
@@ -91,7 +91,7 @@ class TestLevel1ForecasterPipelines:
     """Level 1: PointReductionForecaster with various feature/target pipeline combinations."""
 
     @pytest.mark.parametrize(
-        "feature_transformer",
+        "actual_transformer",
         [
             pytest.param(None, id="feat_none"),
             pytest.param(LagTransformer(1), id="feat_lag1"),
@@ -140,7 +140,7 @@ class TestLevel1ForecasterPipelines:
         self,
         linear_series,
         analytical_forecast,
-        feature_transformer,
+        actual_transformer,
         target_transformer,
         estimator,
     ):
@@ -158,7 +158,7 @@ class TestLevel1ForecasterPipelines:
         # Create forecaster with nested pipelines
         forecaster = PointReductionForecaster(
             estimator=clone(estimator),
-            feature_transformer=clone(feature_transformer) if feature_transformer else None,
+            actual_transformer=clone(actual_transformer) if actual_transformer else None,
             target_transformer=clone(target_transformer) if target_transformer else None,
         )
 
@@ -224,7 +224,7 @@ class TestLevel2ColumnForecaster:
                 "col_a",
                 PointReductionForecaster(
                     LinearRegression(),
-                    feature_transformer=LagTransformer(1),
+                    actual_transformer=LagTransformer(1),
                 ),
                 ["col_a"],
             ),
@@ -232,7 +232,7 @@ class TestLevel2ColumnForecaster:
                 "col_b",
                 PointReductionForecaster(
                     LinearRegression(),
-                    feature_transformer=FeaturePipeline([
+                    actual_transformer=FeaturePipeline([
                         ("lag", LagTransformer([1, 2])),
                         ("roll", RollingStatisticsTransformer(3)),
                     ]),
@@ -244,7 +244,7 @@ class TestLevel2ColumnForecaster:
                 PointReductionForecaster(
                     LinearRegression(),
                     target_transformer=StandardScaler(),
-                    feature_transformer=LagTransformer(1),
+                    actual_transformer=LagTransformer(1),
                 ),
                 ["col_c"],
             ),
@@ -484,7 +484,7 @@ class TestLevel4ForecastedFeatureForecaster:
         # Create nested forecasters
         target_forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(1)),
                 ("scaler", StandardScaler()),
             ]),
@@ -492,7 +492,7 @@ class TestLevel4ForecastedFeatureForecaster:
 
         feature_forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(1),
+            actual_transformer=LagTransformer(1),
         )
 
         forecaster = ForecastedFeatureForecaster(
@@ -536,9 +536,9 @@ class TestLevel5FullTower:
         assert "col_ab__target_forecaster__estimator__fit_intercept" in params
         assert params["col_ab__target_forecaster__estimator__fit_intercept"] is True
 
-        # Path to feature transformer pipeline: col_ab__target_forecaster__feature_transformer__lag__lag
-        assert "col_ab__target_forecaster__feature_transformer__lag__lag" in params
-        assert params["col_ab__target_forecaster__feature_transformer__lag__lag"] == [1, 2]
+        # Path to feature transformer pipeline: col_ab__target_forecaster__actual_transformer__lag__lag
+        assert "col_ab__target_forecaster__actual_transformer__lag__lag" in params
+        assert params["col_ab__target_forecaster__actual_transformer__lag__lag"] == [1, 2]
 
         # Path to decomposition: col_c__trend__degree
         assert "col_c__trend__degree" in params
@@ -549,14 +549,14 @@ class TestLevel5FullTower:
         # Modify deep nested parameter
         full_tower_forecaster.set_params(
             col_ab__target_forecaster__estimator__fit_intercept=False,
-            col_ab__target_forecaster__feature_transformer__lag__lag=[1, 2, 3],
+            col_ab__target_forecaster__actual_transformer__lag__lag=[1, 2, 3],
             col_c__trend__degree=2,
         )
 
         # Verify changes propagated
         params = full_tower_forecaster.get_params(deep=True)
         assert params["col_ab__target_forecaster__estimator__fit_intercept"] is False
-        assert params["col_ab__target_forecaster__feature_transformer__lag__lag"] == [1, 2, 3]
+        assert params["col_ab__target_forecaster__actual_transformer__lag__lag"] == [1, 2, 3]
         assert params["col_c__trend__degree"] == 2
 
     def test_level5_full_tower_clone(self, full_tower_forecaster):
@@ -573,8 +573,8 @@ class TestLevel5FullTower:
             == original_params["col_ab__target_forecaster__estimator__fit_intercept"]
         )
         assert (
-            cloned_params["col_ab__target_forecaster__feature_transformer__lag__lag"]
-            == original_params["col_ab__target_forecaster__feature_transformer__lag__lag"]
+            cloned_params["col_ab__target_forecaster__actual_transformer__lag__lag"]
+            == original_params["col_ab__target_forecaster__actual_transformer__lag__lag"]
         )
         assert cloned_params["col_c__trend__degree"] == original_params["col_c__trend__degree"]
 

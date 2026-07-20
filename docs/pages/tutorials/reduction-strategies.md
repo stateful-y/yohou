@@ -36,7 +36,7 @@ from yohou.preprocessing import LagTransformer
 
 fc_multi = PointReductionForecaster(
     estimator=RandomForestRegressor(n_estimators=50, random_state=42),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=list(range(1, 13)))),
     ]),
     reduction_strategy="multi-output",
@@ -52,7 +52,7 @@ The direct strategy trains `H` independent models, one per forecast step. Each m
 ```python
 fc_direct = PointReductionForecaster(
     estimator=RandomForestRegressor(n_estimators=50, random_state=42),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=list(range(1, 13)))),
     ]),
     reduction_strategy="direct",
@@ -68,7 +68,7 @@ The dir-rec (direct-recursive) hybrid trains `H` sequential models. Each model r
 ```python
 fc_dirrec = PointReductionForecaster(
     estimator=RandomForestRegressor(n_estimators=50, random_state=42),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=list(range(1, 13)))),
     ]),
     reduction_strategy="dir-rec",
@@ -123,12 +123,12 @@ fig.show()
 
 ## 6. Using `target_as_feature`
 
-The `target_as_feature` parameter controls what enters the feature matrix before `feature_transformer` generates lags. This is especially useful with the direct strategy, where lag features on the target series augment the feature matrix alongside exogenous inputs:
+The `target_as_feature` parameter controls what enters the feature matrix before `actual_transformer` generates lags. This is especially useful with the direct strategy, where lag features on the target series augment the feature matrix alongside exogenous inputs:
 
 ```python
 fc_direct_taf = PointReductionForecaster(
     estimator=RandomForestRegressor(n_estimators=50, random_state=42),
-    feature_transformer=FeaturePipeline([
+    actual_transformer=FeaturePipeline([
         ("lags", LagTransformer(lag=list(range(1, 13)))),
     ]),
     reduction_strategy="direct",

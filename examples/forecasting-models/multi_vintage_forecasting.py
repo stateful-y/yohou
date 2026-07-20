@@ -105,7 +105,7 @@ def _(
     train_size = len(y_train)
     forecaster = PointReductionForecaster(
         estimator=HistGradientBoostingRegressor(max_iter=50, max_depth=3, random_state=42),
-        feature_transformer=LagTransformer([1, 2, 3]),
+        actual_transformer=LagTransformer([1, 2, 3]),
         reduction_strategy="direct",
     )
     forecaster.fit(

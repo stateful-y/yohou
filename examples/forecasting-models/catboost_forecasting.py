@@ -123,7 +123,7 @@ def _(
                 verbose=0,
             )
         ),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     catboost_fc.fit(y_train, forecasting_horizon=forecasting_horizon)
@@ -175,7 +175,7 @@ def _(
 ):
     ridge_fc = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     ridge_fc.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_ridge = ridge_fc.predict(forecasting_horizon=forecasting_horizon)
@@ -231,7 +231,7 @@ def _(
             verbose=0,
         ),
         reduction_strategy="direct",
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     catboost_direct_fc.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_cb_direct = catboost_direct_fc.predict(forecasting_horizon=forecasting_horizon)

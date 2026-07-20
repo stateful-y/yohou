@@ -152,7 +152,7 @@ results. Its `observation_horizon` is the **maximum** across all column-specific
 transformers.
 
 These composites are commonly used as the `target_transformer` or
-`feature_transformer` parameter in forecasters. See [Feature Pipelines](feature-pipelines.md)
+`actual_transformer` parameter in forecasters. See [Feature Pipelines](feature-pipelines.md)
 for a deeper discussion of how these patterns interact with observe/rewind state
 propagation.
 
@@ -240,7 +240,7 @@ capturing long-range trends.
 
 These transformers derive entirely from the timestamps, so they can be applied at
 predict time without any additional data. They are usually combined via [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/)
-and passed as the `feature_transformer` parameter to forecasters. For recipes, see
+and passed as the `actual_transformer` parameter to forecasters. For recipes, see
 the [how-to guide on time features](../how-to/time-features.md).
 
 ## Panel Data Support
@@ -256,7 +256,7 @@ Composition utilities respect this convention as well. When [`FeatureUnion`](/pa
 ## Connections
 
 Preprocessing sits between raw data and the forecasting models. Transformers are
-passed to forecasters as `target_transformer` or `feature_transformer` parameters,
+passed to forecasters as `target_transformer` or `actual_transformer` parameters,
 where they are applied automatically during fit and predict. The
 [Stationarity](stationarity.md) transforms (differencing, decomposition) follow the
 same [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) contract but focus specifically on making time series

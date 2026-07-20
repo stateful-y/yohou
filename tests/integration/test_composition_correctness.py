@@ -150,7 +150,7 @@ class TestFeaturePipelineReduction:
         # Build forecaster
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(lag=[1])),
             ]),
         )
@@ -177,7 +177,7 @@ class TestFeaturePipelineReduction:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1]),
+            actual_transformer=LagTransformer(lag=[1]),
         )
 
         forecaster.fit(y_train, forecasting_horizon=5)
@@ -253,7 +253,7 @@ class TestFeatureUnion:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=FeatureUnion([
+            actual_transformer=FeatureUnion([
                 ("lag1", LagTransformer(lag=[1])),
                 ("lag2", LagTransformer(lag=[2])),
             ]),
@@ -388,17 +388,17 @@ class TestColumnForecaster:
             [
                 (
                     "col1",
-                    PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1])),
+                    PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1])),
                     ["col1"],
                 ),
                 (
                     "col2",
-                    PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1])),
+                    PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1])),
                     ["col2"],
                 ),
                 (
                     "col3",
-                    PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1])),
+                    PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1])),
                     ["col3"],
                 ),
             ],
@@ -459,7 +459,7 @@ class TestColumnForecaster:
             [
                 (
                     "col1",
-                    PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1])),
+                    PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1])),
                     ["col1"],
                 ),
                 ("col2", SeasonalNaive(seasonality=1), ["col2"]),  # Different forecaster type
@@ -570,7 +570,7 @@ class TestForecastedFeatureForecaster:
         y_train = linear_series(slope=6.0, intercept=25.0, length=200)
 
         # Feature forecaster predicts future x
-        feature_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
+        feature_forecaster = PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1]))
 
         # Target forecaster uses features (both observed and forecasted)
         target_forecaster = PointReductionForecaster(
@@ -605,7 +605,7 @@ class TestForecastedFeatureForecaster:
         x_train = linear_series(slope=2.0, intercept=5.0, length=200).rename({"value": "feature"})
         y_train = linear_series(slope=4.0, intercept=10.0, length=200)
 
-        feature_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
+        feature_forecaster = PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1]))
         target_forecaster = PointReductionForecaster(LinearRegression())
 
         forecaster = ForecastedFeatureForecaster(
@@ -631,7 +631,7 @@ class TestForecastedFeatureForecaster:
         # Known future X
         _X_future = linear_series(slope=1.0, intercept=5.0, length=85).tail(5).rename({"value": "feature"})
 
-        feature_forecaster = PointReductionForecaster(LinearRegression(), feature_transformer=LagTransformer([1]))
+        feature_forecaster = PointReductionForecaster(LinearRegression(), actual_transformer=LagTransformer([1]))
         target_forecaster = PointReductionForecaster(LinearRegression())
 
         forecaster = ForecastedFeatureForecaster(
@@ -743,7 +743,7 @@ class TestObservePropagation:
 
         forecaster = PointReductionForecaster(
             LinearRegression(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag1", LagTransformer(lag=[1])),
                 ("lag2", LagTransformer(lag=[2])),
             ]),
@@ -863,7 +863,7 @@ class TestRewindPropagation:
 
         forecaster = PointReductionForecaster(
             LinearRegression(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(lag=[3])),
                 ("roll", RollingStatisticsTransformer(window_size=5, statistics=["mean"])),
             ]),

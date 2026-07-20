@@ -472,7 +472,7 @@ class TestIntegration:
             ("diff", SeasonalDifferencing(seasonality=3)),
         ])
 
-        forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=feature_pipeline)
+        forecaster = PointReductionForecaster(estimator=Ridge(), actual_transformer=feature_pipeline)
 
         search = GridSearchCV(
             forecaster=forecaster,
@@ -497,7 +497,7 @@ class TestIntegration:
             ("diff2", SeasonalDifferencing(seasonality=2)),
         ])
 
-        forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=feature_union)
+        forecaster = PointReductionForecaster(estimator=Ridge(), actual_transformer=feature_union)
 
         forecaster.fit(y, X_actual, forecasting_horizon=3)
 
@@ -521,7 +521,7 @@ class TestIntegration:
             remainder="passthrough",
         )
 
-        forecaster = PointReductionForecaster(estimator=Ridge(), feature_transformer=ct)
+        forecaster = PointReductionForecaster(estimator=Ridge(), actual_transformer=ct)
 
         forecaster.fit(y, X_actual, forecasting_horizon=3)
 
@@ -537,7 +537,7 @@ class TestIntegration:
             ("diff", SeasonalDifferencing(seasonality=3)),
         ])
 
-        forecaster = PointReductionForecaster(estimator=estimator, feature_transformer=feature_pipeline)
+        forecaster = PointReductionForecaster(estimator=estimator, actual_transformer=feature_pipeline)
 
         forecaster.fit(y, X_actual, forecasting_horizon=3)
 

@@ -19,7 +19,8 @@
 *[reduction strategy]: Converting a time series forecasting problem into a tabular supervised learning problem.
 *[step feature alignment]: Controls which step-indexed columns each direct estimator receives in a direct or dir-rec reduction strategy.
 *[target transformer]: A transformer applied to the target series before tabularization.
-*[feature transformer]: A transformer applied to the feature matrix before tabularization.
+*[actual transformer]: A transformer applied to the X_actual feature frame before tabularization.
+*[forecast transformer]: A transformer applied to the X_forecast frame before step columns are derived.
 *[stateful transformer]: A transformer that maintains an internal observation window and updates it during observe().
 *[stateless transformer]: A transformer whose output depends only on its fitted parameters and the current input.
 *[transformer kind]: Which frame shape a transformer consumes: "actual" (single-axis) or "forecast" (vintage-indexed).

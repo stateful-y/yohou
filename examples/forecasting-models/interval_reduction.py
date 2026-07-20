@@ -115,7 +115,7 @@ def _(
     coverage_rates = [0.5, 0.9]
 
     interval_fc = IntervalReductionForecaster(
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     interval_fc.fit(
@@ -199,7 +199,7 @@ def _(
     many_rates = [0.5, 0.8, 0.9, 0.95]
 
     interval_fc_many = IntervalReductionForecaster(
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     interval_fc_many.fit(
         y_train,

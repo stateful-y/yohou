@@ -5,7 +5,7 @@ This guide shows you how to derive calendar, holiday, Fourier, and trend feature
 ## Prerequisites
 
 - yohou installed ([Installation](installation.md))
-- Familiarity with transformers and `feature_transformer` ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
+- Familiarity with transformers and `actual_transformer` ([How to Use Preprocessing Transformers](use-preprocessing-transformers.md))
 - Background on time features ([Preprocessing](../explanation/preprocessing.md#time-features))
 
 <!-- COMPANION_NOTEBOOKS -->
@@ -85,7 +85,7 @@ With `degree=1` (the default), the transformer produces a single `time_index` co
 
 ## Combine Multiple Time Features
 
-Use [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) to run multiple time feature transformers in parallel and concatenate their outputs, then pass the result as `feature_transformer` to any forecaster:
+Use [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) to run multiple time feature transformers in parallel and concatenate their outputs, then pass the result as `actual_transformer` to any forecaster:
 
 ```python
 from yohou.compose import FeatureUnion
@@ -105,7 +105,7 @@ features = FeatureUnion([
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=features,
+    actual_transformer=features,
 )
 forecaster.fit(y, forecasting_horizon=24)
 predictions = forecaster.predict()
@@ -113,8 +113,8 @@ predictions = forecaster.predict()
 
 For more complex compositions (sequential chaining, nesting), see [How to Compose Feature Pipelines](compose-feature-pipelines.md).
 
-!!! info "feature_transformer vs X_future"
-    When time features are passed via `feature_transformer`, the forecaster generates them automatically at both fit and predict time. If you generate calendar or Fourier features externally (outside `feature_transformer`), pass them via `X_future` at both `fit()` and `predict()` time, since they are deterministic and known in advance. See [Exogenous Features](exogenous-features.md) for details.
+!!! info "actual_transformer vs X_future"
+    When time features are passed via `actual_transformer`, the forecaster generates them automatically at both fit and predict time. If you generate calendar or Fourier features externally (outside `actual_transformer`), pass them via `X_future` at both `fit()` and `predict()` time, since they are deterministic and known in advance. See [Exogenous Features](exogenous-features.md) for details.
 
 ## See Also
 

@@ -21,20 +21,30 @@ the full conceptual model.
 | Question | Yes | No |
 |---|---|---|
 | Is it a measurement that can only be known after it happens? | `X_actual` | Continue |
-| Can you compute it from the timestamp alone, with no external table? | `feature_transformer` | Continue |
+| Can you compute it from the timestamp alone, with no external table? | `actual_transformer` | Continue |
 | Does it come from an external model with an issuance time? | `X_forecast` | `X_future` |
 
 The second question is the one that catches people. Day-of-week, hour of day,
 and Fourier terms are all deterministic and all knowable for any future date,
 which makes `X_future` look like the answer. It is not. Their value at the
 observation point already determines their value at every horizon, so
-`feature_transformer` hands the estimator the same information in a fraction of
+`actual_transformer` hands the estimator the same information in a fraction of
 the columns. Ask whether you need a *lookup table*, not whether the value is
 *knowable*: a holiday calendar needs one, a day-of-week indicator does not.
 
 If a feature is uncertain but has no vintage (a single "best guess"),
 treat it as `X_future`. If you need multiple versions of that guess at
 predict time, wrap it with a `vintage_time` column and use `X_forecast`.
+
+The table routes the raw data. Features *derived* from that data are a separate
+question, answered by the channel it landed in. A feature derived from an
+`X_forecast` column (a wind-adjusted load, a scaled temperature, a ramp between
+consecutive steps of one vintage) belongs in the forecaster's
+`forecast_transformer` slot, not in caller code that transforms the frame before
+passing it in. The slot makes the transform tunable through a search path, keeps
+it attached across `clone`, and re-applies it on every `observe` and `rewind`
+for you. See
+[How to Transform Forecast Features](transform-forecast-features.md).
 
 ### Clock Features Versus Event Features
 
@@ -48,7 +58,7 @@ from yohou.preprocessing import FourierFeatureTransformer, LagTransformer
 forecaster = PointReductionForecaster(
     # Clock feature: weekly seasonality on hourly data. Computable from the
     # timestamp, so it belongs here and never touches X_future.
-    feature_transformer=FeatureUnion([
+    actual_transformer=FeatureUnion([
         ("lags", LagTransformer([1, 2, 3])),
         ("weekly", FourierFeatureTransformer(seasonality=168.0, harmonics=[1, 2])),
     ]),
@@ -82,7 +92,7 @@ from yohou.preprocessing import LagTransformer
 
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(),
-    feature_transformer=LagTransformer([1, 2, 3]),
+    actual_transformer=LagTransformer([1, 2, 3]),
     reduction_strategy="direct",
 )
 
@@ -109,7 +119,7 @@ controls which step columns each horizon's estimator sees:
 ```python
 forecaster = PointReductionForecaster(
     estimator=HistGradientBoostingRegressor(),
-    feature_transformer=LagTransformer([1, 2, 3]),
+    actual_transformer=LagTransformer([1, 2, 3]),
     reduction_strategy="direct",
     step_feature_alignment="matched",
 )
@@ -163,7 +173,7 @@ pipeline = DecompositionPipeline(
         ("trend", PolynomialTrendForecaster(degree=1)),
         ("residual", PointReductionForecaster(
             estimator=HistGradientBoostingRegressor(),
-            feature_transformer=LagTransformer([1, 2, 3]),
+            actual_transformer=LagTransformer([1, 2, 3]),
             reduction_strategy="direct",
         )),
     ],

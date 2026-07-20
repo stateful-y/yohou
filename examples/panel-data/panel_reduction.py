@@ -156,7 +156,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 24]),
+        actual_transformer=LagTransformer(lag=[1, 24]),
         panel_strategy="global",  # default, shown explicitly for clarity
     )
     fc_global.fit(y_train, forecasting_horizon=horizon)
@@ -205,7 +205,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge, horizon, y_train):
     fc_multivariate = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 24]),
+        actual_transformer=LagTransformer(lag=[1, 24]),
         panel_strategy="multivariate",
     )
     fc_multivariate.fit(y_train, forecasting_horizon=horizon)
@@ -258,7 +258,7 @@ def _(
     fc_local = LocalPanelForecaster(
         forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            actual_transformer=LagTransformer(lag=[1, 24]),
         ),
     )
     fc_local.fit(y_train, forecasting_horizon=horizon)
@@ -383,7 +383,7 @@ def _(
     for _strat in ["multi-output", "direct"]:
         _fc = PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 24]),
+            actual_transformer=LagTransformer(lag=[1, 24]),
             panel_strategy="global",
             reduction_strategy=_strat,
         )

@@ -136,7 +136,7 @@ def _(
     fc_multi = PointReductionForecaster(
         estimator=RandomForestRegressor(n_estimators=20),
         reduction_strategy="multi-output",
-        feature_transformer=LagTransformer(lag=list(range(1, 25))),
+        actual_transformer=LagTransformer(lag=list(range(1, 25))),
     )
     fc_multi.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_multi = fc_multi.predict(forecasting_horizon=len(y_test))
@@ -173,7 +173,7 @@ def _(
     fc_direct = PointReductionForecaster(
         estimator=RandomForestRegressor(n_estimators=20),
         reduction_strategy="direct",
-        feature_transformer=LagTransformer(lag=list(range(1, 25))),
+        actual_transformer=LagTransformer(lag=list(range(1, 25))),
     )
     fc_direct.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_direct = fc_direct.predict(forecasting_horizon=len(y_test))
@@ -211,7 +211,7 @@ def _(
     fc_dirrec = PointReductionForecaster(
         estimator=RandomForestRegressor(n_estimators=20),
         reduction_strategy="dir-rec",
-        feature_transformer=LagTransformer(lag=list(range(1, 25))),
+        actual_transformer=LagTransformer(lag=list(range(1, 25))),
     )
     fc_dirrec.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_dirrec = fc_dirrec.predict(forecasting_horizon=len(y_test))
@@ -295,7 +295,7 @@ def _(mo):
     ## 7. Feature Construction with `target_as_feature`
 
     The `target_as_feature` parameter controls what enters the feature matrix
-    before `feature_transformer` generates lags:
+    before `actual_transformer` generates lags:
 
     | Value | Features built from | Use case |
     |---|---|---|
@@ -326,7 +326,7 @@ def _(
             estimator=RandomForestRegressor(n_estimators=20),
             reduction_strategy="direct",
             target_as_feature=_taf,
-            feature_transformer=LagTransformer(lag=list(range(1, 25))),
+            actual_transformer=LagTransformer(lag=list(range(1, 25))),
         )
         _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
         _pred = _fc.predict(forecasting_horizon=len(y_test))

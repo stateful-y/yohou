@@ -765,7 +765,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -1678,7 +1678,7 @@ class GridSearchCV(BaseSearchCV):
     >>> # Define parameter grid
     >>> param_grid = {
     ...     "estimator__alpha": [0.1, 1.0, 10.0],
-    ...     "feature_transformer__lags": [[1], [1, 2]],
+    ...     "actual_transformer__lags": [[1], [1, 2]],
     ... }
     >>> # Single-metric search
     >>> search = GridSearchCV(
@@ -1784,7 +1784,7 @@ class RandomizedSearchCV(BaseSearchCV):
             param_distributions = {
                 "estimator__alpha": uniform(0.01, 10.0),
                 "estimator__l1_ratio": uniform(0.0, 1.0),
-                "feature_transformer__lags": [[1], [1, 2], [1, 2, 3]],
+                "actual_transformer__lags": [[1], [1, 2], [1, 2, 3]],
             }
 
             # Alternative: List of dicts (samples dict first, then parameters)
@@ -2093,7 +2093,7 @@ class RandomizedSearchCV(BaseSearchCV):
     >>> # Define parameter distributions
     >>> param_distributions = {
     ...     "estimator__alpha": uniform(0.01, 10.0),
-    ...     "feature_transformer__lags": [[1], [1, 2], [1, 2, 3]],
+    ...     "actual_transformer__lags": [[1], [1, 2], [1, 2, 3]],
     ... }
     >>> # Single-metric search
     >>> search = RandomizedSearchCV(

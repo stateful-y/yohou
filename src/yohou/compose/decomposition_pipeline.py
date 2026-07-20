@@ -14,7 +14,7 @@ from sklearn.utils.metadata_routing import (
 )
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer
+from yohou.base import BaseActualTransformer, BaseForecastTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
@@ -55,10 +55,15 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         Use `target_transformer=LogTransformer()` for multiplicative decomposition
         (additive in log-space).
 
-    feature_transformer : BaseActualTransformer or None, default=None
+    actual_transformer : BaseActualTransformer or None, default=None
         Transformer applied to exogenous features before passing to component
         forecasters. Applied once at DecompositionPipeline level; all components receive
         the same transformed features.
+    forecast_transformer : BaseForecastTransformer or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -172,15 +177,18 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     def __init__(
         self,
         forecasters: list[tuple[str, BasePointForecaster]],
+        *,
         store_residuals: bool = False,
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BasePointForecaster.__init__(
             self,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             target_as_feature=None,
             panel_strategy=panel_strategy,
         )
@@ -301,7 +309,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -309,10 +317,10 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -384,6 +392,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             if drop_cols:
                 X_t_components = X_t.drop(drop_cols)
 
+        # Forward the TRANSFORMED X_forecast to components, so each derives its
+        # step columns from transformed values. _pre_fit fit the forecast_transformer
+        # slot and cached the result as _X_forecast_t_ (byte-for-byte the raw frame
+        # when the slot is unset). Forwarding the raw X_forecast here, while the block
+        # above strips the transformed pipeline-level step columns, would make the
+        # slot inert: components would re-derive from untransformed values.
+        X_forecast_components = self._X_forecast_t_
+
         residuals = y_t
         for name, forecaster in self.forecasters:
             # Clone and fit forecaster on current residuals
@@ -397,7 +413,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_actual=X_t_components,
                 forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_components,
                 **step_params.fit,
             )
             self.forecasters_.append((name, forecaster_clone))
@@ -428,7 +444,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 if X_t_components is not None:
                     X_rewind = X_t_components[:forecaster_observation_horizon]
 
-            forecaster_clone_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast)
+            forecaster_clone_pred.rewind(
+                y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast_components
+            )
 
             # Rolling observe_predict: observe real residuals in stride-
             # sized blocks, predict after each.  The inner join below
@@ -440,7 +458,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_actual=X_remaining,
                 forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_components,
             )
 
             # Align predictions with current residuals on time. The warmup rows
@@ -535,6 +553,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # Process metadata routing
         routed_params = process_routing(self, "predict", **params)
 
+        # Forward the TRANSFORMED X_forecast to components. Resolve the
+        # supplied-vs-cache branch before transforming: a supplied frame is raw
+        # and is transformed here; an omitted one falls back to the fit-time cache,
+        # which is already transformed and must not be transformed again.
+        X_forecast_components = (
+            self._transform_X_forecast(X_forecast) if X_forecast is not None else self._X_forecast_t_
+        )
+
         # Get prediction from first forecaster to initialize
         first_name, first_forecaster = self.forecasters_[0]
         first_params = routed_params[first_name]
@@ -551,7 +577,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             forecasting_horizon=forecasting_horizon,
             predict_transformed=False,
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=X_forecast_components,
             **first_params.predict,
         )
 
@@ -568,7 +594,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 forecasting_horizon=forecasting_horizon,
                 predict_transformed=False,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_components,
                 **step_params.predict,
             )
 
@@ -697,8 +723,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         """Observation horizon for the residual rolling observe-predict warmup.
 
         Returns the component forecaster's own ``observation_horizon``, widened
-        to cover a feature transformer's horizon when present. The ``+1`` over
-        the feature transformer's horizon reserves one extra row so the first
+        to cover a actual transformer's horizon when present. The ``+1`` over
+        the actual transformer's horizon reserves one extra row so the first
         prediction has a fully observed feature window, unlike
         `BaseForecaster.observation_horizon`, which is sized for buffer retention
         rather than for warming up this internal rolling loop.
@@ -715,8 +741,8 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         """
         observation_horizon = forecaster.observation_horizon
-        if forecaster.feature_transformer is not None:
-            ft_ = forecaster.feature_transformer_
+        if forecaster.actual_transformer is not None:
+            ft_ = forecaster.actual_transformer_
             if isinstance(ft_, dict):
                 feature_observation_horizon = max(ft.observation_horizon for ft in ft_.values()) + 1
             else:
@@ -927,6 +953,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             groups=groups,
         )
 
+        # Forward the TRANSFORMED X_forecast to components (see predict): a supplied
+        # frame is transformed here, an omitted one falls back to the fit-time cache.
+        X_forecast_components = (
+            self._transform_X_forecast(X_forecast) if X_forecast is not None else self._X_forecast_t_
+        )
+
         # Observe and transform in one atomic step: observe_transform uses the
         # pre-observe state to transform, then updates the buffer.  A separate
         # observe() then transform() would transform against post-observe state
@@ -944,14 +976,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         else:
             y_t = y
 
-        if X_actual is not None and self.feature_transformer_ is not None:
+        if X_actual is not None and self.actual_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseActualTransformer)
-                X_t = self.feature_transformer_.observe_transform(X_actual)
+                assert isinstance(self.actual_transformer_, BaseActualTransformer)
+                X_t = self.actual_transformer_.observe_transform(X_actual)
             else:
-                assert isinstance(self.feature_transformer_, dict)
+                assert isinstance(self.actual_transformer_, dict)
                 X_t_dict = self._transform_panel(
-                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "observe_transform"
+                    self.actual_transformer_, X_actual, self._panel_X_actual_schema(), "observe_transform"
                 )
                 X_t = dict_to_panel(X_t_dict)
         else:
@@ -969,7 +1001,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_actual=X_t,
                 forecasting_horizon=forecaster.fit_forecasting_horizon_,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_components,
             )
             # Align predictions with current residuals on time. observe_predict
             # ran on the full residual stream, so every residual must match a
@@ -1065,6 +1097,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             groups=groups,
         )
 
+        # Forward the TRANSFORMED X_forecast to components (see predict): a supplied
+        # frame is transformed here, an omitted one falls back to the fit-time cache.
+        X_forecast_components = (
+            self._transform_X_forecast(X_forecast) if X_forecast is not None else self._X_forecast_t_
+        )
+
         # Rewind transformers first
         y_t_dict: dict[str, pl.DataFrame] | None = None
         X_t_dict: dict[str, pl.DataFrame] | None = None
@@ -1079,14 +1117,14 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         else:
             y_t = y
 
-        if X_actual is not None and self.feature_transformer_ is not None:
+        if X_actual is not None and self.actual_transformer_ is not None:
             if self.groups_ is None:
-                assert isinstance(self.feature_transformer_, BaseActualTransformer)
-                X_t = self.feature_transformer_.rewind_transform(X_actual)
+                assert isinstance(self.actual_transformer_, BaseActualTransformer)
+                X_t = self.actual_transformer_.rewind_transform(X_actual)
             else:
-                assert isinstance(self.feature_transformer_, dict)
+                assert isinstance(self.actual_transformer_, dict)
                 X_t_dict = self._transform_panel(
-                    self.feature_transformer_, X_actual, self._panel_X_actual_schema(), "rewind_transform"
+                    self.actual_transformer_, X_actual, self._panel_X_actual_schema(), "rewind_transform"
                 )
                 X_t = dict_to_panel(X_t_dict)
         else:
@@ -1100,7 +1138,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # state, not the observe-predict state.
         residuals = y_t
         for name, forecaster in self.forecasters_:
-            forecaster.rewind(residuals, X_actual=X_t, X_future=X_future, X_forecast=X_forecast)
+            forecaster.rewind(residuals, X_actual=X_t, X_future=X_future, X_forecast=X_forecast_components)
 
             forecaster_pred = deepcopy(forecaster)
             forecaster_observation_horizon = self._effective_observation_horizon(forecaster_pred)
@@ -1121,7 +1159,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 y_rewind = residuals[:forecaster_observation_horizon]
                 X_rewind = X_t[:forecaster_observation_horizon] if X_t is not None else None
 
-            forecaster_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast)
+            forecaster_pred.rewind(y=y_rewind, X_actual=X_rewind, X_future=X_future, X_forecast=X_forecast_components)
 
             residuals_remaining = residuals[forecaster_observation_horizon:]
             X_remaining = X_t[forecaster_observation_horizon:] if X_t is not None else None
@@ -1130,7 +1168,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 X_actual=X_remaining,
                 forecasting_horizon=forecaster.fit_forecasting_horizon_,
                 X_future=X_future,
-                X_forecast=X_forecast,
+                X_forecast=X_forecast_components,
             )
 
             aligned = residuals.join(
@@ -1184,9 +1222,21 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 .add(caller="predict", callee="transform"),
             )
 
-        if self.feature_transformer is not None:
+        if self.actual_transformer is not None:
             router.add(
-                feature_transformer=self.feature_transformer,
+                actual_transformer=self.actual_transformer,
+                method_mapping=MethodMapping()
+                .add(caller="fit", callee="fit")
+                .add(caller="fit", callee="transform")
+                .add(caller="predict", callee="transform"),
+            )
+
+        # The same three mappings the two actual slots already register here, which
+        # this class needs because it applies its transformers at predict too. No
+        # observe or rewind mapping: BaseForecastTransformer has neither method.
+        if self.forecast_transformer is not None:
+            router.add(
+                forecast_transformer=self.forecast_transformer,
                 method_mapping=MethodMapping()
                 .add(caller="fit", callee="fit")
                 .add(caller="fit", callee="transform")

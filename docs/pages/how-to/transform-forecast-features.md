@@ -100,13 +100,47 @@ PerVintageActualTransformer(FeatureUnion([
 
 ## Feed the Result to a Forecaster
 
-Pass the transformed frame through a forecaster's `X_forecast` channel:
+Put the transformer in the forecaster's `forecast_transformer` slot and pass the raw frame:
 
 ```python
+forecaster = PointReductionForecaster(
+    Ridge(),
+    forecast_transformer=PerVintageActualTransformer(StandardScaler()),
+)
+forecaster.fit(y_train, X_forecast=X_forecast, forecasting_horizon=24)
+```
+
+The slot fits the transformer on `X_forecast` and applies it before the step columns are derived, so the columns reaching the estimator are built from transformed values. Prefer this to transforming outside the forecaster:
+
+```python
+# Works, but the transform is invisible to the forecaster.
 forecaster.fit(y_train, X_forecast=features.fit_transform(X_forecast))
 ```
 
-Forecast transformers are for the `X_forecast` channel only. Passing one as a forecaster's `feature_transformer` (which processes the single-axis `X_actual`) raises an error, because that slot requires an actual-kind transformer.
+Transforming outside costs three things. The transform is not tunable, because there is no nested `__` path for a search to reach; it is not carried by `clone`, so cross-validation and search never see it; and it must be re-applied by hand on every `observe` and `rewind` in a walk-forward loop. In the slot, `forecast_transformer__transformer__lag` is a search parameter like any other, and the lifecycle is handled for you.
+
+Each slot takes the kind it is named for. A forecast-kind transformer belongs in `forecast_transformer`, which applies it to the vintage-indexed `X_forecast`. Passing one as `actual_transformer` or `target_transformer` raises a `ValueError`, because those slots process single-axis frames. The reverse also raises: an actual-kind transformer in `forecast_transformer` is rejected, and the message points you at lifting it with `PerVintageActualTransformer`.
+
+!!! warning "The horizon must reach the transformer's minimum vintage length"
+
+    A served vintage spans `forecasting_horizon` rows, so a transformer that needs
+    more rows than that emits nothing for it. The forecaster checks this at fit and
+    raises rather than letting it degrade at serve time. A lifted `LagTransformer(lag=2)`
+    reports a minimum of 3, so it needs `forecasting_horizon >= 3`. A stateless
+    transformer reports 2, because a vintage still needs two rows to be fitted on
+    its own.
+
+!!! warning "A lifted lag empties its nearest-term step columns"
+
+    A stateful inner consumes `observation_horizon` rows from the start of every
+    vintage, and those are the nearest-term steps. The lost steps are padded back
+    as nulls, and because *every* vintage loses them, those step columns are null
+    for every row rather than for some. An entirely null column defeats
+    `nan_handling="drop"` (every row carries a null, so every row is dropped) and
+    breaks estimators that otherwise tolerate NaN. The fit-time horizon check does
+    not catch this, because the transform does still produce rows. If you tune
+    `forecast_transformer__transformer__lag` in a search, the nearest-term steps
+    are what you trade away.
 
 ## Related
 

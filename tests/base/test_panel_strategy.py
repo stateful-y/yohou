@@ -30,7 +30,7 @@ def _make_forecaster(panel_strategy):
     """Create a concrete PointReductionForecaster with given strategy."""
     return PointReductionForecaster(
         estimator=LinearRegression(),
-        feature_transformer=LagTransformer(lag=[1, 2]),
+        actual_transformer=LagTransformer(lag=[1, 2]),
         panel_strategy=panel_strategy,
     )
 
@@ -52,9 +52,9 @@ class TestDispatchAttributes:
         # target_transformer_ is a dict
         if forecaster.target_transformer_ is not None:
             assert isinstance(forecaster.target_transformer_, dict)
-        # feature_transformer_ is a dict
-        assert isinstance(forecaster.feature_transformer_, dict)
-        assert set(forecaster.feature_transformer_.keys()) == {"group_0", "group_1"}
+        # actual_transformer_ is a dict
+        assert isinstance(forecaster.actual_transformer_, dict)
+        assert set(forecaster.actual_transformer_.keys()) == {"group_0", "group_1"}
 
     def test_multivariate_skips_panel_detection(self, panel_y_X):
         """Multivariate strategy skips panel detection on __-prefixed data."""
@@ -67,7 +67,7 @@ class TestDispatchAttributes:
         assert "group_0__y_0" in forecaster.local_y_schema_
         assert "group_1__y_1" in forecaster.local_y_schema_
         # Transformer is a single instance, not a dict
-        assert not isinstance(forecaster.feature_transformer_, dict)
+        assert not isinstance(forecaster.actual_transformer_, dict)
 
     def test_global_on_standard_data_falls_through(self, standard_y_X):
         """Global strategy on non-panel data takes the standard path."""
@@ -77,7 +77,7 @@ class TestDispatchAttributes:
 
         assert forecaster.groups_ is None
         assert "y_0" in forecaster.local_y_schema_
-        assert not isinstance(forecaster.feature_transformer_, dict)
+        assert not isinstance(forecaster.actual_transformer_, dict)
 
     def test_multivariate_on_standard_data(self, standard_y_X):
         """Multivariate strategy on standard data also takes the standard path."""
@@ -197,7 +197,7 @@ class TestPanelInverseTransform:
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=LogTransformer(offset=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
             panel_strategy="global",
         )
         forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
@@ -221,7 +221,7 @@ class TestPanelInverseTransform:
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=SeasonalDifferencing(seasonality=7),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
             panel_strategy="global",
         )
         forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
@@ -238,7 +238,7 @@ class TestPanelInverseTransform:
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=LogTransformer(offset=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
             panel_strategy="global",
         )
         forecaster.fit(y[:60], X[:60], forecasting_horizon=3)
@@ -280,7 +280,7 @@ class TestGlobalOnlyExogenous:
         y, X = panel_y_global_X
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
@@ -301,7 +301,7 @@ class TestGlobalOnlyExogenous:
         y, X = panel_y_global_X
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
@@ -328,7 +328,7 @@ class TestGlobalOnlyExogenous:
         f = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(lag=[1, 2]),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
             calibration_size=20,
         )
@@ -344,12 +344,12 @@ class TestGlobalOnlyExogenous:
         y, X = panel_y_global_X
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         cv = ExpandingWindowSplitter(n_splits=2, test_size=5)
         search = GridSearchCV(
             forecaster=f,
-            param_grid={"feature_transformer__lag": [[1, 2], [1, 2, 3]]},
+            param_grid={"actual_transformer__lag": [[1, 2], [1, 2, 3]]},
             scoring=MeanAbsoluteError(),
             cv=cv,
         )
@@ -364,7 +364,7 @@ class TestGlobalOnlyExogenous:
         f = LocalPanelForecaster(
             forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(lag=[1, 2]),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
@@ -388,7 +388,7 @@ class TestGlobalOnlyExogenous:
         y, X = panel_y_mixed_X
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
 
@@ -408,7 +408,7 @@ class TestGlobalOnlyExogenous:
         f = PointReductionForecaster(
             estimator=LinearRegression(),
             target_transformer=LogTransformer(offset=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
         assert isinstance(f.target_transformer_, dict)
@@ -442,7 +442,7 @@ class TestGlobalOnlyExogenous:
         })
         f = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=[1, 2]),
+            actual_transformer=LagTransformer(lag=[1, 2]),
         )
         with pytest.raises(ValueError, match="do not have the same column suffixes"):
             f.fit(y[:80], X[:80], forecasting_horizon=5)

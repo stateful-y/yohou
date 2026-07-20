@@ -144,7 +144,7 @@ def _(
             loss_function="MultiQuantile:alpha=0.5",  # placeholder
             verbose=0,
         ),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     t0 = time.perf_counter()
@@ -207,7 +207,7 @@ def _(
     y_train,
 ):
     standard_fc = IntervalReductionForecaster(
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
 
     t0_std = time.perf_counter()

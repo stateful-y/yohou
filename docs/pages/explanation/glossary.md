@@ -177,10 +177,17 @@ Target transformer { #target-transformer .autolink }
     applied to the target series `y` before tabularization. Used for operations like
     differencing or scaling that should be inverted after prediction.
 
-Feature transformer { #feature-transformer .autolink }
+Actual transformer { #actual-transformer .autolink }
 :   A [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/)
-    applied to the feature matrix `X` before tabularization. Used for creating
-    lag features, rolling statistics, or other derived inputs.
+    applied to the `X_actual` feature frame before tabularization, held in a
+    forecaster's `actual_transformer` slot. Used for creating lag features, rolling
+    statistics, or other derived inputs.
+
+Forecast transformer { #forecast-transformer .autolink }
+:   A [`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/)
+    (or forecast-kind composition) applied to the `X_forecast` frame before step
+    columns are derived, held in a forecaster's `forecast_transformer` slot, so the
+    step columns reaching the estimator are built from transformed values.
 
 Transformer kind { #transformer-kind }
 :   Which frame shape a transformer consumes and produces, carried as a `kind` tag

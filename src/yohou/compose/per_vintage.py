@@ -6,6 +6,7 @@ import warnings
 
 import polars as pl
 from sklearn.base import clone
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTransformer
 from yohou.base.transformer import BaseActualTransformer
@@ -123,6 +124,40 @@ class PerVintageActualTransformer(BaseForecastTransformer):
 
     def __init__(self, transformer: BaseActualTransformer):
         self.transformer = transformer
+
+    @property
+    def min_vintage_rows(self) -> int:
+        """Get the smallest vintage length that survives both of this wrapper's constraints.
+
+        The wrapper enforces two independent constraints on vintage length, and
+        neither implies the other:
+
+        - A vintage shorter than ``_MIN_VINTAGE_ROWS`` cannot be fitted on its own
+          rows (two timestamps are the minimum to infer a series interval) and is
+          dropped with a warning.
+        - A vintage no longer than the inner's ``observation_horizon`` is consumed
+          entirely, leaving no rows, and raises.
+
+        So the smallest surviving vintage is ``max(_MIN_VINTAGE_ROWS, k + 1)``
+        where ``k`` is the inner's horizon, and this reports the stricter of the
+        two. Reporting only the horizon term would let a stateless inner (``k =
+        0``) pass a caller's check at a vintage length of one, and then have that
+        single-row vintage silently dropped by the first constraint.
+
+        Returns
+        -------
+        int
+            Smallest vintage length yielding non-empty output, at least ``2``.
+
+        Raises
+        ------
+        NotFittedError
+            If the transformer has not been fitted yet, consistent with the
+            inner's own ``observation_horizon``.
+
+        """
+        check_is_fitted(self, "transformer_")
+        return max(_MIN_VINTAGE_ROWS, self.transformer_.observation_horizon + 1)
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit a representative clone for feature names and the horizon.

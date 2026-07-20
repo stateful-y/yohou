@@ -118,7 +118,7 @@ def _(
     ridge = PointReductionForecaster(
         estimator=Ridge(),
         target_transformer=SeasonalDifferencing(seasonality=132),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12]),
     )
     ridge.fit(y_train, forecasting_horizon=forecasting_horizon)
 

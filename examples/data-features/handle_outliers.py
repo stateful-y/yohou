@@ -162,7 +162,7 @@ def _(
 
     forecaster = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=pipeline,
+        actual_transformer=pipeline,
     )
     forecaster.fit(y_train, forecasting_horizon=24)
     y_pred = forecaster.predict(forecasting_horizon=24)
@@ -201,7 +201,7 @@ def _(
     forecaster_raw = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 6, 12]),
+            actual_transformer=LagTransformer(lag=[1, 6, 12]),
         ),
     )
     forecaster_raw.fit(y_train2, forecasting_horizon=24)
@@ -211,7 +211,7 @@ def _(
     forecaster_clean = SplitConformalForecaster(
         point_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("outlier_clip", OutlierPercentileHandler(low=1, high=99)),
                 ("lags", LagTransformer(lag=[1, 6, 12])),
             ]),

@@ -108,6 +108,42 @@ class BaseForecastTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
 
     _tags: dict = {"kind": "forecast"}
 
+    @property
+    def min_vintage_rows(self) -> int:
+        """Get the smallest vintage length that yields non-empty output.
+
+        A vintage shorter than this contributes no rows to ``transform`` output.
+        The default is ``1``: a transformer imposing no per-vintage minimum emits
+        output for any non-empty vintage. Implementations that consume rows within
+        a vintage, or that need a minimum number of rows to fit on, report their
+        own larger value.
+
+        This is deliberately not named ``observation_horizon``. On
+        [`BaseActualTransformer`][yohou.base.transformer.BaseActualTransformer]
+        that name means a buffer carried *between* calls, sized so the next
+        ``transform`` has enough history behind it. A forecast transformer keeps
+        no such buffer: each vintage is self-contained, so this quantity is a
+        length requirement *within* one vintage rather than a memory depth across
+        calls.
+
+        A forecaster holding this transformer in its ``forecast_transformer`` slot
+        asserts ``forecasting_horizon >= min_vintage_rows`` at fit, because a
+        served vintage spans the forecasting horizon.
+
+        Returns
+        -------
+        int
+            Smallest vintage length yielding non-empty output, at least ``1``.
+
+        Raises
+        ------
+        NotFittedError
+            If the transformer has not been fitted yet.
+
+        """
+        check_is_fitted(self, ["X_schema_", "feature_names_in_", "n_features_in_"])
+        return 1
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "BaseForecastTransformer":
         """Fit the transformer to an ``X_forecast`` frame.

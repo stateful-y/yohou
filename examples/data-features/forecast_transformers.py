@@ -262,14 +262,14 @@ def _(mo):
         ## 7. Feed the Result to a Forecaster
 
         Derived forecast features enter through the `X_forecast` channel. They cannot
-        be passed as `feature_transformer`, which processes single-axis `X_actual` data
+        be passed as `actual_transformer`, which processes single-axis `X_actual` data
         and accepts actual-kind transformers only.
         """
     )
 
 
 @app.cell
-def _(H, X_actual, X_forecast_t, y):
+def _(FunctionTransformer, H, PerVintageActualTransformer, X_actual, X_forecast, pl, y):
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     from yohou.model_selection import train_test_split
@@ -279,18 +279,31 @@ def _(H, X_actual, X_forecast_t, y):
         y, X_actual, test_size=20
     )
 
+    # Put the transformer in the slot and pass the raw frame. The forecaster fits
+    # it on X_forecast and applies it before deriving step columns, so the columns
+    # reaching the estimator are built from wx_anomaly rather than wx_temp.
     forecaster = PointReductionForecaster(
         estimator=HistGradientBoostingRegressor(max_iter=30, max_depth=3, random_state=0),
         reduction_strategy="direct",
+        forecast_transformer=PerVintageActualTransformer(
+            FunctionTransformer(
+                func=lambda df: df.select(
+                    (pl.col("wx_temp") - pl.col("wx_temp").mean()).alias("wx_anomaly")
+                ),
+                feature_names_out=lambda self, names: ["wx_anomaly"],
+            )
+        ),
     )
     forecaster.fit(
         y=y_train,
         X_actual=X_actual_train,
         forecasting_horizon=H,
-        X_forecast=X_forecast_t,
+        X_forecast=X_forecast,
     )
-    y_pred = forecaster.predict(forecasting_horizon=H, X_forecast=X_forecast_t)
+    # predict takes the raw frame too: the slot transforms it on the way in.
+    y_pred = forecaster.predict(forecasting_horizon=H, X_forecast=X_forecast)
 
+    print("step columns built from:", sorted(forecaster._step_column_names_)[:3])
     print(y_pred.head())
 
     return (

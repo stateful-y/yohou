@@ -124,7 +124,7 @@ def _(
 
     ridge_fc = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=list(range(1, 13))),
+        actual_transformer=LagTransformer(lag=list(range(1, 13))),
     )
     ridge_fc.fit(y_train, forecasting_horizon=fh)
     y_pred_ridge = ridge_fc.predict(forecasting_horizon=fh)
@@ -465,7 +465,7 @@ def _(
 
     cls_forecaster = ClassProbaReductionForecaster(
         estimator=DecisionTreeClassifier(random_state=42),
-        feature_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
+        actual_transformer=LagTransformer(lag=[1, 2, 3, 6, 12, 24]),
     )
     cls_forecaster.fit(cls_y_train, cls_X_train, forecasting_horizon=cls_fh)
 

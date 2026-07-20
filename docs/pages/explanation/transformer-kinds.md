@@ -41,7 +41,9 @@ Lifting is therefore the normal way to transform an `X_forecast` frame, not a st
 
 The composition classes are polymorphic in kind rather than fixed to one. A [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) of forecast-kind branches is itself forecast-kind, and one of actual-kind branches is actual-kind. A composition must be homogeneous: mixing the two in a single container is rejected, because the container would have to align a one-axis frame against a two-axis one and there is no sensible answer. [Feature Pipelines](feature-pipelines.md) covers how composition derives its kind, aligns its branches, and reports the mismatch.
 
-Kind also determines where a transformer may be attached. A forecaster's `feature_transformer` and `target_transformer` slots process single-axis data, so they accept actual-kind transformers only. Frames on the forecast channel are transformed before they are handed to the forecaster.
+Kind also determines where a transformer may be attached, because the forecaster's slots are named for the kinds they take. `target_transformer` and `actual_transformer` process single-axis data, so they accept actual-kind transformers only. `forecast_transformer` takes the vintage-indexed `X_forecast` frame, so it accepts forecast-kind transformers only, and applies them before the step columns are derived.
+
+The constructor surface therefore reads as the taxonomy does: one slot per kind, plus `target_transformer`, which shares the actual kind with `actual_transformer` and is distinguished from it by role instead. Putting a transformer in the wrong slot raises a `ValueError` naming the slot, and the message points at the one that would take it. The check reads the kind tag rather than the base class, because a composition declares its kind by tag: a `FeatureUnion` of forecast transformers is structurally a `BaseActualTransformer` while reporting `kind="forecast"`, and it belongs in `forecast_transformer` all the same.
 
 ## Connections
 

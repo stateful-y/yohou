@@ -59,7 +59,7 @@ class TestForecasterFitChecks:
         """Test check validates transformer attributes are set."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         forecaster = PointReductionForecaster(
-            target_transformer=LogTransformer(), feature_transformer=LagTransformer(lag=3)
+            target_transformer=LogTransformer(), actual_transformer=LagTransformer(lag=3)
         )
 
         # Should not raise - validates transformer_ attributes
@@ -129,7 +129,7 @@ class TestForecasterObserveRewindChecks:
         """Test check_rewind_propagates_to_transformers passes for valid forecaster."""
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42, panel=False)
         forecaster = PointReductionForecaster(
-            target_transformer=LogTransformer(), feature_transformer=LagTransformer(lag=3)
+            target_transformer=LogTransformer(), actual_transformer=LagTransformer(lag=3)
         )
         forecaster.fit(y[:30], X[:30], forecasting_horizon=3)
 
@@ -150,7 +150,7 @@ class TestForecasterCloneAndTagChecks:
     def test_clone_preserves_params_with_transformers(self):
         """Test check validates transformer parameters are preserved."""
         forecaster = PointReductionForecaster(
-            target_transformer=LogTransformer(offset=1.0), feature_transformer=LagTransformer(lag=3)
+            target_transformer=LogTransformer(offset=1.0), actual_transformer=LagTransformer(lag=3)
         )
 
         # Should not raise
@@ -281,7 +281,7 @@ class TestForecasterTagsWithTransformers:
         y, X = y_X_factory(length=50, n_targets=1, n_features=2, seed=42)
         forecaster = PointReductionForecaster(
             target_transformer=LogTransformer(),
-            feature_transformer=LagTransformer(lag=3),
+            actual_transformer=LagTransformer(lag=3),
         )
         forecaster.fit(y[:40], X[:40], forecasting_horizon=3)
         check_forecaster_tags_match_capabilities(forecaster)

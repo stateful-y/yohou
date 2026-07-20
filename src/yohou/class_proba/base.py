@@ -24,7 +24,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     ----------
     target_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the target time series into the new target.
-    feature_transformer : instance of `BaseActualTransformer` or None, default=None
+    actual_transformer : instance of `BaseActualTransformer` or None, default=None
         Transformer used to transform the feature time series (``X_actual``) into features.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
@@ -83,7 +83,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             or more categorical value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -91,10 +91,10 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -491,7 +491,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             or more categorical value columns.
         X_actual : pl.DataFrame or None, default=None
             New actual feature observations with a ``"time"`` column
-            aligned with ``y``. Passed through the feature transformer
+            aligned with ``y``. Passed through the actual transformer
             to update the internal observation state.
         groups : list of str or None, default=None
             Panel group prefixes to operate on. If ``None``, all groups

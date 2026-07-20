@@ -62,7 +62,7 @@ class TestStateMachineProtocol:
             pytest.param(
                 lambda: PointReductionForecaster(
                     estimator=LinearRegression(),
-                    feature_transformer=LagTransformer(lag=1),
+                    actual_transformer=LagTransformer(lag=1),
                 ),
                 id="point_reduction",
             ),
@@ -73,7 +73,7 @@ class TestStateMachineProtocol:
                             "target",
                             PointReductionForecaster(
                                 estimator=LinearRegression(),
-                                feature_transformer=LagTransformer(lag=1),
+                                actual_transformer=LagTransformer(lag=1),
                             ),
                             ["value"],
                         )
@@ -89,7 +89,7 @@ class TestStateMachineProtocol:
                             "residual",
                             PointReductionForecaster(
                                 estimator=LinearRegression(),
-                                feature_transformer=LagTransformer(lag=1),
+                                actual_transformer=LagTransformer(lag=1),
                             ),
                         ),
                     ]
@@ -100,11 +100,11 @@ class TestStateMachineProtocol:
                 lambda: ForecastedFeatureForecaster(
                     target_forecaster=PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                     feature_forecaster=PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                 ),
                 id="forecasted_feature_forecaster",
@@ -113,7 +113,7 @@ class TestStateMachineProtocol:
                 lambda: SplitConformalForecaster(
                     point_forecaster=PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                     calibration_size=30,
                 ),
@@ -217,12 +217,12 @@ class TestStateMachineProtocol:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=2),
+            actual_transformer=LagTransformer(lag=2),
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=LagTransformer(lag=2)
+        # PointReductionForecaster with actual_transformer=LagTransformer(lag=2)
         # observation_horizon = max(0, 0, 2) = 2
         assert obs_horizon == 2
 
@@ -255,7 +255,7 @@ class TestStateMachineProtocol:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -283,7 +283,7 @@ class TestStateMachineProtocol:
         # Create two identical forecasters
         forecaster_1 = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster_2 = clone(forecaster_1)
 
@@ -313,7 +313,7 @@ class TestStateMachineProtocol:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -356,7 +356,7 @@ class TestStateMachineProtocol:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=2),
+            actual_transformer=LagTransformer(lag=2),
         )
         forecaster.fit(y[:50], forecasting_horizon=3)
         assert forecaster.groups_ == ["group_0", "group_1"]
@@ -399,7 +399,7 @@ class TestIdempotency:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -419,7 +419,7 @@ class TestIdempotency:
         forecaster = SplitConformalForecaster(
             point_forecaster=PointReductionForecaster(
                 estimator=LinearRegression(),
-                feature_transformer=LagTransformer(lag=1),
+                actual_transformer=LagTransformer(lag=1),
             ),
             calibration_size=30,
         )
@@ -436,7 +436,7 @@ class TestIdempotency:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
 
         forecaster.fit(y_train, forecasting_horizon=5)
@@ -467,7 +467,7 @@ class TestMemoryBounds:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=pipeline,
+            actual_transformer=pipeline,
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -499,7 +499,7 @@ class TestMemoryBounds:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=union,
+            actual_transformer=union,
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -532,7 +532,7 @@ class TestMemoryBounds:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=ct,
+            actual_transformer=ct,
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -573,7 +573,7 @@ class TestMemoryBounds:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=outer_pipeline,
+            actual_transformer=outer_pipeline,
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -602,7 +602,7 @@ class TestMemoryBounds:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -644,7 +644,7 @@ class TestCloneAndSerialization:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train_1, forecasting_horizon=5)
         pred_original = forecaster.predict(forecasting_horizon=5)
@@ -668,7 +668,7 @@ class TestCloneAndSerialization:
             pytest.param(
                 lambda: PointReductionForecaster(
                     estimator=LinearRegression(),
-                    feature_transformer=LagTransformer(lag=1),
+                    actual_transformer=LagTransformer(lag=1),
                 ),
                 id="point_reduction",
             ),
@@ -679,7 +679,7 @@ class TestCloneAndSerialization:
                             "target",
                             PointReductionForecaster(
                                 estimator=LinearRegression(),
-                                feature_transformer=LagTransformer(lag=1),
+                                actual_transformer=LagTransformer(lag=1),
                             ),
                             ["value"],
                         )
@@ -695,7 +695,7 @@ class TestCloneAndSerialization:
                             "residual",
                             PointReductionForecaster(
                                 estimator=LinearRegression(),
-                                feature_transformer=LagTransformer(lag=1),
+                                actual_transformer=LagTransformer(lag=1),
                             ),
                         ),
                     ]
@@ -706,11 +706,11 @@ class TestCloneAndSerialization:
                 lambda: ForecastedFeatureForecaster(
                     target_forecaster=PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                     feature_forecaster=PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                 ),
                 id="forecasted_feature",
@@ -786,7 +786,7 @@ class TestConvergence:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=1)
 
@@ -842,7 +842,7 @@ class TestCompositionStateIsolation:
                     "f1",
                     PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=1),
+                        actual_transformer=LagTransformer(lag=1),
                     ),
                     ["col_a"],
                 ),
@@ -850,7 +850,7 @@ class TestCompositionStateIsolation:
                     "f2",
                     PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=3),
+                        actual_transformer=LagTransformer(lag=3),
                     ),
                     ["col_b"],
                 ),
@@ -876,8 +876,8 @@ class TestCompositionStateIsolation:
         f2 = forecaster.forecasters_[1][1]
 
         # Each should maintain its own observation horizon
-        # f1: feature_transformer=LagTransformer(lag=1) → obs_horizon=1
-        # f2: feature_transformer=LagTransformer(lag=3) → obs_horizon=3
+        # f1: actual_transformer=LagTransformer(lag=1) → obs_horizon=1
+        # f2: actual_transformer=LagTransformer(lag=3) → obs_horizon=3
         assert f1.observation_horizon == 1
         assert f2.observation_horizon == 3
 
@@ -892,7 +892,7 @@ class TestCompositionStateIsolation:
                     "residual",
                     PointReductionForecaster(
                         estimator=LinearRegression(),
-                        feature_transformer=LagTransformer(lag=2),
+                        actual_transformer=LagTransformer(lag=2),
                     ),
                 ),
             ]
@@ -939,7 +939,7 @@ class TestStateRobustness:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=5)
 
@@ -965,7 +965,7 @@ class TestStateRobustness:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -995,7 +995,7 @@ class TestStateRobustness:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
@@ -1019,12 +1019,12 @@ class TestStateRobustness:
 
         forecaster = PointReductionForecaster(
             estimator=LinearRegression(),
-            feature_transformer=LagTransformer(lag=3),
+            actual_transformer=LagTransformer(lag=3),
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 
         obs_horizon = forecaster.observation_horizon
-        # PointReductionForecaster with feature_transformer=LagTransformer(lag=3)
+        # PointReductionForecaster with actual_transformer=LagTransformer(lag=3)
         # observation_horizon = max(0, 0, 3) = 3
         assert obs_horizon == 3
 

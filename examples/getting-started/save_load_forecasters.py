@@ -66,7 +66,7 @@ def _():
 
     forecaster = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     forecaster.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred = forecaster.predict(forecasting_horizon=forecasting_horizon)

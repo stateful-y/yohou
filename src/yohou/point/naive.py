@@ -142,7 +142,7 @@ class SeasonalNaive(BasePointForecaster):
     ):
         BasePointForecaster.__init__(
             self,
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
             panel_strategy=panel_strategy,
@@ -294,7 +294,7 @@ class MeanSeasonalNaive(BasePointForecaster):
     ):
         BasePointForecaster.__init__(
             self,
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
             panel_strategy=panel_strategy,

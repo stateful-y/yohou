@@ -135,7 +135,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 12]),
                 ),
             ),
         ],
@@ -195,7 +195,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 12]),
                 ),
             ),
         ],
@@ -252,7 +252,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 12]),
                 ),
             ),
         ],
@@ -342,7 +342,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 4]),
+                    actual_transformer=LagTransformer(lag=[1, 4]),
                 ),
             ),
         ],
@@ -376,7 +376,7 @@ def _(mo):
 def _(LagTransformer, PointReductionForecaster, Ridge, deepcopy, horizon, y_test, y_train):
     _fc_v = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 12]),
+        actual_transformer=LagTransformer(lag=[1, 12]),
     )
     _fc_v.fit(y_train, forecasting_horizon=horizon)
     _vintage_model = deepcopy(_fc_v)

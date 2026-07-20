@@ -288,7 +288,7 @@ def _(
     reduction = PointReductionForecaster(
         estimator=Ridge(alpha=10),
         target_transformer=pipeline_target,
-        feature_transformer=pipeline_feature,
+        actual_transformer=pipeline_feature,
     )
     reduction.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_reduction = reduction.predict(forecasting_horizon=forecasting_horizon)
@@ -346,7 +346,7 @@ def _(
                 "residual",
                 PointReductionForecaster(
                     estimator=Ridge(alpha=1.0),
-                    feature_transformer=LagTransformer(lag=[1, 2, 3, 12]),
+                    actual_transformer=LagTransformer(lag=[1, 2, 3, 12]),
                 ),
             ),
         ],
@@ -502,7 +502,7 @@ def _(
         forecaster=clone(reduction),
         param_distributions={
             "estimator__alpha": uniform(0.01, 10.0),
-            "feature_transformer__lag__lag": randint(1, 7),
+            "actual_transformer__lag__lag": randint(1, 7),
         },
         scoring=MeanAbsoluteError(),
         cv=cv,
@@ -541,7 +541,7 @@ def _(
         forecaster=clone(reduction),
         param_grid={
             "estimator__alpha": [0.001, 0.01, 0.1],
-            "feature_transformer__lag__lag": [1, 2, 3],
+            "actual_transformer__lag__lag": [1, 2, 3],
         },
         scoring=MeanAbsoluteError(),
         cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
@@ -750,7 +750,7 @@ def _(
                 ("log", LogTransformer(offset=1.0)),
                 ("diff", SeasonalDifferencing(seasonality=12)),
             ]),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(lag=[1, 2, 3])),
             ]),
         ),
@@ -987,7 +987,7 @@ def _(
             ("log", LogTransformer(offset=1.0)),
             ("diff", SeasonalDifferencing(seasonality=12)),
         ]),
-        feature_transformer=FeaturePipeline([
+        actual_transformer=FeaturePipeline([
             ("lag", LagTransformer(lag=[1, 2, 3])),
         ]),
         time_weighter=_tw,
@@ -1122,7 +1122,7 @@ def _(
     # One Ridge model is trained on the pooled tabularised data from all groups.
     global_forecaster = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=FeaturePipeline([
+        actual_transformer=FeaturePipeline([
             ("lag", LagTransformer(lag=[1, 2, 3, 4])),
         ]),
         panel_strategy="global",  # default: pool groups into one model
@@ -1160,7 +1160,7 @@ def _(
     local_forecaster = LocalPanelForecaster(
         forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=FeaturePipeline([
+            actual_transformer=FeaturePipeline([
                 ("lag", LagTransformer(lag=[1, 2, 3, 4])),
             ]),
         ),

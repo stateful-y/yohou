@@ -88,13 +88,13 @@ def _(Ridge, data):
 
     # Full history
     pipe_full = FeaturePipeline([("lags", LagTransformer(lag=[1, 6, 12]))])
-    fc_full = PointReductionForecaster(estimator=Ridge(), feature_transformer=pipe_full)
+    fc_full = PointReductionForecaster(estimator=Ridge(), actual_transformer=pipe_full)
     fc_full.fit(y_train, forecasting_horizon=24)
     pred_full = fc_full.predict(forecasting_horizon=24)
 
     # Limited history: keep only the last 120 observations
     pipe_limited = FeaturePipeline([("lags", LagTransformer(lag=[1, 6, 12]))])
-    fc_limited = PointReductionForecaster(estimator=Ridge(), feature_transformer=pipe_limited)
+    fc_limited = PointReductionForecaster(estimator=Ridge(), actual_transformer=pipe_limited)
     fc_limited.fit(y_train.tail(120), forecasting_horizon=24)
     pred_limited = fc_limited.predict(forecasting_horizon=24)
 

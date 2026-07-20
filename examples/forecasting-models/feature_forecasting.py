@@ -147,11 +147,11 @@ def _(
     ff_actual = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         ),
         strategy="actual",
     )
@@ -208,11 +208,11 @@ def _(
         ff = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
                 estimator=Ridge(),
-                feature_transformer=LagTransformer(lag=[1, 2, 3]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3]),
             ),
             feature_forecaster=PointReductionForecaster(
                 estimator=Ridge(),
-                feature_transformer=LagTransformer(lag=[1, 2, 3]),
+                actual_transformer=LagTransformer(lag=[1, 2, 3]),
             ),
             strategy=strategy,
             split_ratio=0.6,  # only used for "predicted"
@@ -278,11 +278,11 @@ def _(
     ff_rolling = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         ),
         feature_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         ),
         strategy="actual",
     )
@@ -346,7 +346,7 @@ def _(
     ff_known = ForecastedFeatureForecaster(
         target_forecaster=PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=[1, 2, 3]),
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
         ),
         feature_forecaster=ColumnForecaster(
             forecasters=[
@@ -354,7 +354,7 @@ def _(
                     "nsw",
                     PointReductionForecaster(
                         estimator=Ridge(),
-                        feature_transformer=LagTransformer(lag=[1, 2, 3]),
+                        actual_transformer=LagTransformer(lag=[1, 2, 3]),
                     ),
                     "nsw_demand",
                 ),

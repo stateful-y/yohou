@@ -444,6 +444,48 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
         """
         return sklearn_FeatureUnion._sk_visual_block_(self)  # ty: ignore[invalid-argument-type]
 
+    @property
+    def min_vintage_rows(self) -> int:
+        """Get the smallest vintage length that yields non-empty output.
+
+        The strictest child binds: every branch sees the same vintage, so a vintage
+        long enough for the composition is one long enough for its most demanding
+        branch. This mirrors how ``observation_horizon`` aggregates here.
+
+        Only forecast-kind children report a minimum. On an actual-kind composition
+        this reports ``1`` and is never consulted, because a forecaster's
+        ``forecast_transformer`` slot rejects actual-kind objects by tag before
+        reading it.
+
+        Returns
+        -------
+        int
+            Smallest vintage length yielding non-empty output, at least ``1``.
+
+        Raises
+        ------
+        NotFittedError
+            If the composition has not been fitted yet.
+
+        """
+        check_is_fitted(self)
+        return max(self._get_min_vintage_rows(), default=1)
+
+    def _get_min_vintage_rows(self) -> list[int]:
+        """Get the reported vintage minimum from every child that has one.
+
+        Returns
+        -------
+        list[int]
+            One entry per child reporting ``min_vintage_rows``.
+
+        """
+        minimums = []
+        for _, t, _ in self._iter():
+            if hasattr(t, "min_vintage_rows"):
+                minimums.append(t.min_vintage_rows)
+        return minimums
+
     def _get_observation_horizons(self) -> list[int]:
         """Get observation horizons from all transformers.
 

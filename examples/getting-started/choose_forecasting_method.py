@@ -120,7 +120,7 @@ def _(PointReductionForecaster, Ridge, forecasting_horizon, scorer, y_test, y_tr
 
     linear = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
     )
     linear.fit(y_train, forecasting_horizon=forecasting_horizon)
     y_pred_linear = linear.predict(forecasting_horizon=forecasting_horizon)
@@ -142,7 +142,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, scor
 
     stationary = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=LagTransformer(lag=[1, 6, 12]),
+        actual_transformer=LagTransformer(lag=[1, 6, 12]),
         target_transformer=SeasonalDifferencing(seasonality=12),
     )
     stationary.fit(y_train, forecasting_horizon=forecasting_horizon)
@@ -164,7 +164,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, SeasonalDifferencing, for
     from yohou.compose import FeatureUnion
     from yohou.preprocessing import RollingStatisticsTransformer
 
-    feature_transformer = FeatureUnion(
+    actual_transformer = FeatureUnion(
         transformer_list=[
             ("lags", LagTransformer(lag=[1, 3, 6, 12])),
             ("rolling", RollingStatisticsTransformer(window_size=6)),
@@ -173,7 +173,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, SeasonalDifferencing, for
 
     enriched = PointReductionForecaster(
         estimator=Ridge(),
-        feature_transformer=feature_transformer,
+        actual_transformer=actual_transformer,
         target_transformer=SeasonalDifferencing(seasonality=12),
     )
     enriched.fit(y_train, forecasting_horizon=forecasting_horizon)
@@ -182,7 +182,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, SeasonalDifferencing, for
     score_enriched = scorer.score(y_test, y_pred_enriched)
     print(f"Ridge + Features + SeasonalDiff MAE: {score_enriched:.2f}")
 
-    return FeatureUnion, RollingStatisticsTransformer, enriched, feature_transformer, score_enriched, y_pred_enriched
+    return FeatureUnion, RollingStatisticsTransformer, enriched, actual_transformer, score_enriched, y_pred_enriched
 
 
 @app.cell(hide_code=True)
@@ -191,12 +191,12 @@ def _(mo):
 
 
 @app.cell
-def _(PointReductionForecaster, SeasonalDifferencing, feature_transformer, forecasting_horizon, scorer, y_test, y_train):
+def _(PointReductionForecaster, SeasonalDifferencing, actual_transformer, forecasting_horizon, scorer, y_test, y_train):
     from sklearn.ensemble import HistGradientBoostingRegressor
 
     nonlinear = PointReductionForecaster(
         estimator=HistGradientBoostingRegressor(max_iter=100, random_state=42),
-        feature_transformer=feature_transformer,
+        actual_transformer=actual_transformer,
         target_transformer=SeasonalDifferencing(seasonality=12),
         reduction_strategy="direct",
     )
@@ -223,7 +223,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, forecasting_horizon, scor
         forecasters=[
             ("trend", PolynomialTrendForecaster(degree=1)),
             ("seasonality", FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2, 3])),
-            ("residual", PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2, 3]))),
+            ("residual", PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2, 3]))),
         ]
     )
     decomp.fit(y_train, forecasting_horizon=forecasting_horizon)

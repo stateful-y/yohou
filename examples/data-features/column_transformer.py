@@ -159,7 +159,7 @@ def _(mo):
     mo.md(r"""
     ## 3. ColumnTransformer Inside a Forecaster
 
-    Pass the [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) as `feature_transformer` to
+    Pass the [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) as `actual_transformer` to
     [`PointReductionForecaster`](/pages/api/generated/yohou.point.reduction.PointReductionForecaster/). The forecaster calls `.fit_transform()` on `X_actual`
     at fit time and `.transform()` on `X_actual` at predict time.
     """)
@@ -169,7 +169,7 @@ def _(mo):
 def _(PointReductionForecaster, Ridge, X_actual_train, ct, y_test, y_train):
     forecaster_ct = PointReductionForecaster(
         estimator=Ridge(alpha=1e-3),
-        feature_transformer=ct,
+        actual_transformer=ct,
     )
 
     forecasting_horizon = len(y_test)
@@ -265,7 +265,7 @@ def _(mo):
     mo.md(r"""
     ## 6. With Panel Data
 
-    When a [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) is used as the `feature_transformer` inside a
+    When a [`ColumnTransformer`](/pages/api/generated/yohou.compose.column_transformer.ColumnTransformer/) is used as the `actual_transformer` inside a
     panel-aware forecaster, _yohou automatically applies it per group_.
     The forecaster decomposes the panel into individual groups, applies the
     transformer to each group's unprefixed columns, and reassembles the result.
@@ -310,7 +310,7 @@ def _(
 ):
     forecaster_panel = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 7]),
+        actual_transformer=LagTransformer(lag=[1, 7]),
     )
 
     _horizon = min(len(y_test_panel), 14)

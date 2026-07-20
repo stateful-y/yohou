@@ -31,7 +31,7 @@ class _TagMergingForecaster(BasePointForecaster):
 
     def __init__(self):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_transformer=None,
             target_as_feature=None,
         )
@@ -107,7 +107,7 @@ class TestForecasterTagMerging:
 
             def __init__(self):
                 super().__init__(
-                    feature_transformer=None,
+                    actual_transformer=None,
                     target_transformer=None,
                     target_as_feature=None,
                 )
@@ -151,7 +151,7 @@ class TestObservationHorizonPreFit:
 
             def __init__(self):
                 super().__init__(
-                    feature_transformer=None,
+                    actual_transformer=None,
                     target_transformer=None,
                     target_as_feature=None,
                 )
@@ -217,7 +217,7 @@ class _MinimalIntervalForecaster(BaseIntervalForecaster):
 
     def __init__(self):
         super().__init__(
-            feature_transformer=None,
+            actual_transformer=None,
             target_as_feature=None,
         )
 

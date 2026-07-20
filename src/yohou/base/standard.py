@@ -38,7 +38,7 @@ class BaseStandardForecaster:
 
     # Type hints for attributes set by BaseForecaster
     target_transformer: "BaseActualTransformer | None"
-    feature_transformer: "BaseActualTransformer | None"
+    actual_transformer: "BaseActualTransformer | None"
     target_as_feature: str | None
     groups_: None
     local_y_schema_: dict[str, pl.DataType]
@@ -95,16 +95,16 @@ class BaseStandardForecaster:
         if X_actual is not None and self.local_X_actual_schema_ is not None:
             X_actual = X_actual.select(["time"] + list(self.local_X_actual_schema_.keys()))
 
-        y_t, X_t, target_transformer, feature_transformer = _fit_transform_transformers_one(
+        y_t, X_t, target_transformer, actual_transformer = _fit_transform_transformers_one(
             y=y,
             X_actual=X_actual,
             target_transformer=self.target_transformer,
-            feature_transformer=self.feature_transformer,
+            actual_transformer=self.actual_transformer,
             target_as_feature=self.target_as_feature,
         )
 
         self.target_transformer_ = target_transformer
-        self.feature_transformer_ = feature_transformer
+        self.actual_transformer_ = actual_transformer
 
         return y_t, X_t
 
@@ -228,10 +228,15 @@ class BaseStandardForecaster:
         self._set_input_attributes_standard(y, X_actual)
         y_t, X_t = self._fit_transform_inputs_standard(y, X_actual)
 
+        # Fit the forecast_transformer and apply it before deriving step columns,
+        # so the step columns are built from transformed values. Returns X_forecast
+        # unchanged when the slot is unset.
+        X_forecast_t = self._fit_forecast_transformer(X_forecast, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+
         # Inject step columns from X_future / X_forecast
         X_step = _derive_step_columns(
             X_future=X_future,
-            X_forecast=X_forecast,
+            X_forecast=X_forecast_t,
             observation_times=y_t["time"],
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
@@ -241,7 +246,11 @@ class BaseStandardForecaster:
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future
+            # Raw: backs the recursive-predict presence sentinel, and keeping it raw
+            # holds X_forecast_eff type-consistent across its two branches.
             self._X_forecast_raw_ = X_forecast
+            # Transformed: what _derive_step_columns consumes on the fallback path.
+            self._X_forecast_t_ = X_forecast_t
             self._X_future_schema_ = dict(X_future.select(~cs.by_name("time")).schema) if X_future is not None else None
             self._X_forecast_schema_ = (
                 dict(X_forecast.select(~cs.by_name("time", "vintage_time")).schema) if X_forecast is not None else None
@@ -254,6 +263,7 @@ class BaseStandardForecaster:
             self._step_column_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
+            self._X_forecast_t_ = None
             self._X_future_schema_ = None
             self._X_forecast_schema_ = None
 
@@ -292,7 +302,7 @@ class BaseStandardForecaster:
             y,
             X_actual,
             self.target_transformer_,
-            self.feature_transformer_,
+            self.actual_transformer_,
             self.observation_horizon,
             self.target_as_feature,
         )
@@ -341,7 +351,7 @@ class BaseStandardForecaster:
         """
         # Update transformers with only new data (X_actual only, no step columns)
         X_t_updated = _observe_transformers_one(
-            y, X_actual, self.target_transformer_, self.feature_transformer_, self.target_as_feature
+            y, X_actual, self.target_transformer_, self.actual_transformer_, self.target_as_feature
         )
 
         # Prepare full y for state update (needs history to maintain observation_horizon)
@@ -375,7 +385,15 @@ class BaseStandardForecaster:
             return
 
         X_future_eff = X_future if X_future is not None else self._X_future_raw_
-        X_forecast_eff = X_forecast if X_forecast is not None else self._X_forecast_raw_
+        # The branch resolves before the transform: a supplied frame is raw and is
+        # transformed here, an omitted one falls back to the cache, which was
+        # transformed at fit. Transforming after the ternary would double-transform
+        # the fallback.
+        X_forecast_eff = (
+            self._transform_X_forecast(X_forecast)  # ty: ignore[unresolved-attribute]
+            if X_forecast is not None
+            else self._X_forecast_t_
+        )
 
         X_step = _derive_step_columns(
             X_future_eff,
@@ -403,6 +421,16 @@ class BaseStandardForecaster:
                 self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
             else:
                 self._X_forecast_raw_ = X_forecast.clear()
+            # Narrow the transformed cache the same way, reusing the transform
+            # already applied above rather than re-running it. Narrowing the
+            # transformed frame also avoids handing the transformer a lone vintage,
+            # which is the shape min_vintage_rows can drop.
+            if X_forecast_eff is not None:  # pragma: no branch - non-None whenever X_forecast is provided
+                self._X_forecast_t_ = (
+                    X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
+                    if latest_vintage is not None
+                    else X_forecast_eff.clear()
+                )
 
     def _observe_with_precomputed_steps_standard(
         self,
@@ -427,7 +455,7 @@ class BaseStandardForecaster:
 
         """
         X_t_updated = _observe_transformers_one(
-            y, X_actual, self.target_transformer_, self.feature_transformer_, self.target_as_feature
+            y, X_actual, self.target_transformer_, self.actual_transformer_, self.target_as_feature
         )
 
         y_updated = y

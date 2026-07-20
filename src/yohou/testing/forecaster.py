@@ -11,6 +11,9 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.compose import PerVintageActualTransformer
+from yohou.preprocessing import FunctionTransformer
+
 from .contract import _safe_equal, check_clone_preserves_params
 
 __all__ = [
@@ -164,9 +167,9 @@ def check_fit_sets_forecaster_attributes(
             "fit() must set target_transformer_ when target_transformer provided"
         )
 
-    if forecaster_clone.feature_transformer is not None:
-        assert hasattr(forecaster_clone, "feature_transformer_"), (
-            "fit() must set feature_transformer_ when feature_transformer provided"
+    if forecaster_clone.actual_transformer is not None:
+        assert hasattr(forecaster_clone, "actual_transformer_"), (
+            "fit() must set actual_transformer_ when actual_transformer provided"
         )
 
     # Check step column attributes when X_future/X_forecast provided
@@ -488,8 +491,10 @@ def check_rewind_propagates_to_transformers(
         If transformers are not properly reset
 
     """
-    # Check if forecaster has transformers (target_transformer or feature_transformer)
-    if not hasattr(forecaster, "target_transformer_") and not hasattr(forecaster, "feature_transformer_"):
+    # Check if forecaster has transformers (target_transformer or actual_transformer)
+    if not hasattr(forecaster, "target_transformer_") and not hasattr(
+        forecaster, "actual_transformer_"
+    ):  # pragma: no branch - the generator only yields this check for transformer-using forecasters
         return  # Nothing to check
 
     # Rewind the forecaster
@@ -519,27 +524,27 @@ def check_rewind_propagates_to_transformers(
                 "Target transformer should have observations after rewind"
             )
 
-    # Check feature transformer is reset (if exists)
-    if hasattr(forecaster, "feature_transformer_") and forecaster.feature_transformer_ is not None:
-        if isinstance(forecaster.feature_transformer_, dict):
+    # Check actual transformer is reset (if exists)
+    if hasattr(forecaster, "actual_transformer_") and forecaster.actual_transformer_ is not None:
+        if isinstance(forecaster.actual_transformer_, dict):
             # Panel data - check each transformer
-            for group_name, transformer in forecaster.feature_transformer_.items():
+            for group_name, transformer in forecaster.actual_transformer_.items():
                 if (
                     hasattr(transformer, "_X_observed")
                     and transformer._X_observed is not None
                     and getattr(transformer, "observation_horizon", 0) > 0
                 ):
                     assert len(transformer._X_observed) > 0, (
-                        f"Feature transformer for group '{group_name}' should have observations after rewind"
+                        f"Actual transformer for group '{group_name}' should have observations after rewind"
                     )
         # Non-panel data
         elif (
-            hasattr(forecaster.feature_transformer_, "_X_observed")
-            and forecaster.feature_transformer_._X_observed is not None
-            and getattr(forecaster.feature_transformer_, "observation_horizon", 0) > 0
+            hasattr(forecaster.actual_transformer_, "_X_observed")
+            and forecaster.actual_transformer_._X_observed is not None
+            and getattr(forecaster.actual_transformer_, "observation_horizon", 0) > 0
         ):
-            assert len(forecaster.feature_transformer_._X_observed) > 0, (
-                "Feature transformer should have observations after rewind"
+            assert len(forecaster.actual_transformer_._X_observed) > 0, (
+                "Actual transformer should have observations after rewind"
             )
 
 
@@ -777,7 +782,8 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
       (a no-op for standard forecasters, which do not)
     - uses_reduction tag matches estimator attribute
     - uses_target_transformer matches target_transformer parameter
-    - uses_feature_transformer matches feature_transformer parameter
+    - uses_actual_transformer matches actual_transformer parameter
+    - uses_forecast_transformer matches forecast_transformer parameter
 
     Parameters
     ----------
@@ -832,15 +838,26 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
                 f"doesn't match uses_target_transformer tag ({uses_target_transformer})"
             )
 
-    # Check uses_feature_transformer matches parameter
-    if hasattr(forecaster, "feature_transformer"):
-        has_feature_transformer = forecaster.feature_transformer is not None
-        uses_feature_transformer = tags.forecaster_tags.uses_feature_transformer
+    # Check uses_actual_transformer matches parameter
+    if hasattr(forecaster, "actual_transformer"):  # pragma: no branch - every forecaster declares the slot
+        has_actual_transformer = forecaster.actual_transformer is not None
+        uses_actual_transformer = tags.forecaster_tags.uses_actual_transformer
 
-        if has_feature_transformer != uses_feature_transformer:
+        if has_actual_transformer != uses_actual_transformer:
             raise AssertionError(
-                f"{forecaster.__class__.__name__} feature_transformer parameter ({has_feature_transformer}) "
-                f"doesn't match uses_feature_transformer tag ({uses_feature_transformer})"
+                f"{forecaster.__class__.__name__} actual_transformer parameter ({has_actual_transformer}) "
+                f"doesn't match uses_actual_transformer tag ({uses_actual_transformer})"
+            )
+
+    # Check uses_forecast_transformer matches parameter
+    if hasattr(forecaster, "forecast_transformer"):  # pragma: no branch - every forecaster declares the slot
+        has_forecast_transformer = forecaster.forecast_transformer is not None
+        uses_forecast_transformer = tags.forecaster_tags.uses_forecast_transformer
+
+        if has_forecast_transformer != uses_forecast_transformer:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} forecast_transformer parameter ({has_forecast_transformer}) "
+                f"doesn't match uses_forecast_transformer tag ({uses_forecast_transformer})"
             )
 
 
@@ -1141,6 +1158,56 @@ def check_predict_X_forecast_override(
         assert forecaster._X_forecast_raw_.equals(original_raw), (
             "predict() with X_forecast override must not mutate _X_forecast_raw_"
         )
+
+
+def check_forecast_transformer_slot(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    X_forecast: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check the ``forecast_transformer`` slot fits and reports its usage tag.
+
+    Sets an identity forecast-kind transformer on a slot-bearing forecaster, fits
+    with ``X_forecast``, and asserts the fitted attribute and tag follow. Runs for
+    every forecaster family that exposes the slot, not only point reduction.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance exposing ``forecast_transformer``.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    X_forecast : pl.DataFrame
+        External forecasts in tidy format.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    slot = PerVintageActualTransformer(FunctionTransformer())
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.set_params(forecast_transformer=slot)
+
+    assert forecaster_clone.__sklearn_tags__().forecaster_tags.uses_forecast_transformer, (
+        "uses_forecast_transformer tag must be True when a forecast_transformer is set"
+    )
+
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_forecast=X_forecast,
+    )
+
+    assert hasattr(forecaster_clone, "forecast_transformer_"), (
+        "fit() with X_forecast must set forecast_transformer_ when forecast_transformer provided"
+    )
+    assert forecaster_clone.forecast_transformer_ is not None, (
+        "forecast_transformer_ should not be None when the slot is set and X_forecast is provided"
+    )
 
 
 def check_observe_auto_rederives_step_columns(

@@ -673,6 +673,36 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
         self.verbose = verbose
         self.verbose_feature_names_out = verbose_feature_names_out
 
+    @property
+    def min_vintage_rows(self) -> int:
+        """Get the smallest vintage length that yields non-empty output.
+
+        The strictest child binds: every column group sees the same vintage, so a
+        vintage long enough for the composition is one long enough for its most
+        demanding child. This mirrors how ``observation_horizon`` aggregates here.
+
+        Only forecast-kind children report a minimum. On an actual-kind composition
+        this reports ``1`` and is never consulted, because a forecaster's
+        ``forecast_transformer`` slot rejects actual-kind objects by tag first.
+
+        Returns
+        -------
+        int
+            Smallest vintage length yielding non-empty output, at least ``1``.
+
+        Raises
+        ------
+        NotFittedError
+            If the composition has not been fitted yet.
+
+        """
+        check_is_fitted(self)
+        minimums = []
+        for _, t, _, _ in self._iter(fitted=True, column_as_labels=True, skip_drop=True, skip_empty_columns=True):
+            if hasattr(t, "min_vintage_rows"):
+                minimums.append(t.min_vintage_rows)
+        return max(minimums, default=1)
+
     def _get_observation_horizons(self) -> list[int]:
         """Get observation horizons from all fitted transformers.
 

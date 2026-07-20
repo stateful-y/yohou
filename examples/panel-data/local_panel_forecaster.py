@@ -130,7 +130,7 @@ def _(LagTransformer, LocalPanelForecaster, PointReductionForecaster, Ridge, hor
     fc_local = LocalPanelForecaster(
         forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2, 4]),
+            actual_transformer=LagTransformer(lag=[1, 2, 4]),
         ),
     )
     fc_local.fit(y_train, forecasting_horizon=horizon)
@@ -249,7 +249,7 @@ def _(LagTransformer, PointReductionForecaster, Ridge, horizon, fetch_tourism_qu
 
     fc_global = PointReductionForecaster(
         estimator=Ridge(alpha=1.0),
-        feature_transformer=LagTransformer(lag=[1, 2, 4]),
+        actual_transformer=LagTransformer(lag=[1, 2, 4]),
         panel_strategy="global",
     )
     fc_global.fit(y_train2, forecasting_horizon=horizon)
@@ -269,7 +269,7 @@ def _(
     fc_local2 = LocalPanelForecaster(
         forecaster=PointReductionForecaster(
             estimator=Ridge(alpha=1.0),
-            feature_transformer=LagTransformer(lag=[1, 2, 4]),
+            actual_transformer=LagTransformer(lag=[1, 2, 4]),
         ),
     )
     fc_local2.fit(y_train2, forecasting_horizon=horizon)

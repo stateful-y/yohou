@@ -120,7 +120,7 @@ def _(
 ):
     forecaster = ClassProbaReductionForecaster(
         estimator=RandomForestClassifier(n_estimators=50, random_state=42),
-        feature_transformer=FeaturePipeline([
+        actual_transformer=FeaturePipeline([
             ("lags", LagTransformer(lag=[1, 2, 3, 24])),
         ]),
     )

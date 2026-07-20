@@ -35,6 +35,7 @@ from .forecaster import (
     check_fit_predict_with_X_future,
     check_fit_predict_without_exogenous,
     check_fit_sets_forecaster_attributes,
+    check_forecast_transformer_slot,
     check_forecaster_methods_call_check_is_fitted,
     check_forecaster_not_fitted_error,
     check_forecaster_tags_accessible_before_fit,
@@ -423,7 +424,8 @@ def _yield_yohou_forecaster_checks(
         - uses_reduction: bool
         - supports_panel_data: bool
         - uses_target_transformer: bool
-        - uses_feature_transformer: bool
+        - uses_actual_transformer: bool
+        - uses_forecast_transformer: bool
         - requires_exogenous: bool
         - tracks_observations: bool
 
@@ -445,7 +447,10 @@ def _yield_yohou_forecaster_checks(
             "uses_target_transformer": sklearn_tags.forecaster_tags.uses_target_transformer
             if sklearn_tags.forecaster_tags
             else False,
-            "uses_feature_transformer": sklearn_tags.forecaster_tags.uses_feature_transformer
+            "uses_actual_transformer": sklearn_tags.forecaster_tags.uses_actual_transformer
+            if sklearn_tags.forecaster_tags
+            else False,
+            "uses_forecast_transformer": sklearn_tags.forecaster_tags.uses_forecast_transformer
             if sklearn_tags.forecaster_tags
             else False,
             "tracks_observations": sklearn_tags.forecaster_tags.tracks_observations
@@ -561,7 +566,7 @@ def _yield_yohou_forecaster_checks(
         )
 
     # Transformer composition checks
-    if (tags.get("uses_target_transformer", False) or tags.get("uses_feature_transformer", False)) and len(y_test) >= 5:
+    if (tags.get("uses_target_transformer", False) or tags.get("uses_actual_transformer", False)) and len(y_test) >= 5:
         y_reset = y_test[:10] if len(y_test) >= 10 else y_test
         X_actual_reset = X_actual_test[:10] if X_actual_test is not None and len(X_actual_test) >= 10 else X_actual_test
         yield (
@@ -695,6 +700,21 @@ def _yield_yohou_forecaster_checks(
                     "forecasting_horizon": 3,
                 },
             )
+
+            # Exercise the forecast_transformer slot for every family that exposes
+            # it (point, interval, and class-probability reduction forecasters, plus
+            # DecompositionPipeline), rather than only in ad-hoc single-class tests.
+            if "forecast_transformer" in forecaster.get_params():
+                yield (
+                    "check_forecast_transformer_slot",
+                    check_forecast_transformer_slot,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_forecast": X_forecast_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
 
         if len(y_test) >= 3 and tags.get("tracks_observations", True):
             y_update = y_test[:3]

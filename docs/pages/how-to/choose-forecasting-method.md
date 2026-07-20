@@ -83,7 +83,7 @@ Add feature transformers one group at a time. Combine [`LagTransformer`](/pages/
 from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
 from yohou.compose import FeatureUnion
 
-feature_transformer = FeatureUnion(
+actual_transformer = FeatureUnion(
     transformer_list=[
         ("lags", LagTransformer(lag=[1, 7, 14])),
         ("rolling_7", RollingStatisticsTransformer(window_size=7)),
@@ -93,7 +93,7 @@ feature_transformer = FeatureUnion(
 
 forecaster = PointReductionForecaster(
     estimator=Ridge(),
-    feature_transformer=feature_transformer,
+    actual_transformer=actual_transformer,
 )
 ```
 
@@ -109,7 +109,7 @@ from sklearn.ensemble import GradientBoostingRegressor
 forecaster = PointReductionForecaster(
     estimator=GradientBoostingRegressor(n_estimators=200),
     target_transformer=SeasonalDifferencing(seasonality=7),
-    feature_transformer=feature_transformer,
+    actual_transformer=actual_transformer,
 )
 ```
 

@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseActualTransformer, BaseReductionForecaster
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -38,8 +38,13 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Transformer applied to the target before tabularization. Interval
         bounds are produced in the transformed space and inverse-transformed
         back to the original target scale before being returned.
-    feature_transformer : BaseActualTransformer or None, default=None
+    actual_transformer : BaseActualTransformer or None, default=None
         Transformer used to transform the feature time series into features.
+    forecast_transformer : BaseForecastTransformer or None, default=None
+        Transformer applied to ``X_forecast`` before step columns are derived,
+        so the step columns reaching the estimator are built from transformed
+        values. Must be forecast-kind (vintage-indexed); an actual-kind
+        transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     nan_handling : {"drop", "pass"}, default="pass"
@@ -167,10 +172,12 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
     def __init__(
         self,
         estimator: BaseEstimator = MultiOutputRegressor(QuantileRegressor()),
+        *,
         reduction_strategy: Literal["direct", "dir-rec", "multi-output"] = "multi-output",
-        target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         target_transformer: BaseActualTransformer | None = None,
-        feature_transformer: BaseActualTransformer | None = None,
+        actual_transformer: BaseActualTransformer | None = None,
+        forecast_transformer: BaseForecastTransformer | None = None,
+        target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
@@ -180,7 +187,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         sample_weight_alignment: str = "first_step",
     ):
         # Delegate to the reduction machinery, which threads target_transformer,
-        # feature_transformer, target_as_feature, and panel_strategy down to
+        # actual_transformer, target_as_feature, and panel_strategy down to
         # BaseForecaster. The reduction pipeline applies the target transformer in
         # transformed space and inverts it before emitting interval bounds, so the
         # bounds are returned on the original target scale.
@@ -190,7 +197,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             reduction_strategy=reduction_strategy,
             target_as_feature=target_as_feature,
             target_transformer=target_transformer,
-            feature_transformer=feature_transformer,
+            actual_transformer=actual_transformer,
+            forecast_transformer=forecast_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
@@ -279,7 +287,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             or more numeric value columns.
         X_actual : pl.DataFrame or None, default=None
             Actual feature observations with a ``"time"`` column aligned
-            with ``y``. Processed by the feature transformer to produce
+            with ``y``. Processed by the actual transformer to produce
             lags, rolling statistics, and other derived features. If
             ``None``, only target-derived features are used.
         forecasting_horizon : int, default=1
@@ -291,10 +299,10 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column. Deterministic
             values available for past and future dates. Bypasses the
-            feature transformer.
+            actual transformer.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns. Bypasses the feature transformer.
+            columns. Bypasses the actual transformer.
         **params : dict
             Metadata to route to nested estimators.
 

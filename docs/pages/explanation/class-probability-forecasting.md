@@ -47,7 +47,7 @@ same mechanics as [`PointReductionForecaster`](/pages/api/generated/yohou.point.
 At prediction time, the classifier's `predict_proba()` output is mapped back to
 columns named after the original class labels.
 
-All reduction concepts (target and feature transformers, `target_as_feature`,
+All reduction concepts (target and actual transformers, `target_as_feature`,
 `step_feature_alignment`, sample weighting) work the same way as for point
 forecasters. See [Reduction Forecasting](reduction-forecasting.md) for the full
 treatment.

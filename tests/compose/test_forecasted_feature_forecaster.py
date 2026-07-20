@@ -570,7 +570,7 @@ class TestTags:
 
         target = PointReductionForecaster(
             estimator=Ridge(),
-            feature_transformer=LagTransformer(lag=1),
+            actual_transformer=LagTransformer(lag=1),
         )
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=target,
@@ -578,7 +578,7 @@ class TestTags:
         )
         tags = forecaster.__sklearn_tags__()
         target_tags = target.__sklearn_tags__().forecaster_tags
-        assert tags.forecaster_tags.uses_feature_transformer == target_tags.uses_feature_transformer
+        assert tags.forecaster_tags.uses_actual_transformer == target_tags.uses_actual_transformer
         assert tags.forecaster_tags.uses_target_transformer == target_tags.uses_target_transformer
 
 
@@ -796,10 +796,10 @@ class TestHardening:
         y, X = _make_panel_contemporaneous_data()
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             feature_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             strategy="actual",
         )
@@ -823,10 +823,10 @@ class TestHardening:
         y, X = _make_panel_contemporaneous_data()
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             feature_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             strategy="predicted",
             split_ratio=0.6,
@@ -958,8 +958,8 @@ def _reduction_fff(strategy="rewind", feature_stride=1):
     from yohou.preprocessing import LagTransformer
 
     return ForecastedFeatureForecaster(
-        target_forecaster=PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
-        feature_forecaster=PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])),
+        target_forecaster=PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])),
+        feature_forecaster=PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])),
         strategy=strategy,
         feature_stride=feature_stride,
         split_ratio=0.5,
@@ -1039,10 +1039,10 @@ class TestFeatureStride:
         y, X = _make_panel_contemporaneous_data()
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             feature_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             strategy="rewind",
             feature_stride=3,
@@ -1087,13 +1087,13 @@ class TestFeatureStride:
 
         y, X = _make_fs_data()
         if variant == "observe_predict":
-            target = PointReductionForecaster(estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2]))
+            target = PointReductionForecaster(estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2]))
         else:
-            target = IntervalReductionForecaster(feature_transformer=LagTransformer(lag=[1, 2]))
+            target = IntervalReductionForecaster(actual_transformer=LagTransformer(lag=[1, 2]))
         forecaster = ForecastedFeatureForecaster(
             target_forecaster=target,
             feature_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             strategy="rewind",
         )
@@ -1114,9 +1114,9 @@ class TestFeatureStride:
 
         y, X = _make_fs_data()
         forecaster = ForecastedFeatureForecaster(
-            target_forecaster=IntervalReductionForecaster(feature_transformer=LagTransformer(lag=[1, 2])),
+            target_forecaster=IntervalReductionForecaster(actual_transformer=LagTransformer(lag=[1, 2])),
             feature_forecaster=PointReductionForecaster(
-                estimator=Ridge(), feature_transformer=LagTransformer(lag=[1, 2])
+                estimator=Ridge(), actual_transformer=LagTransformer(lag=[1, 2])
             ),
             strategy="rewind",
         )
