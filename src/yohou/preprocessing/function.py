@@ -221,8 +221,13 @@ class FunctionTransformer(BaseActualTransformer):
         # Auto-detect observation_horizon from NaN rows at the beginning
         data_cols = X_t.select(~cs.by_name("time"))
 
-        # Find rows where all values are NaN
-        all_nan_mask = data_cols.select(pl.all_horizontal(pl.all().is_null() | pl.all().is_nan())).to_series()
+        # Find rows where all values are NaN. `is_nan` is defined for floats only, so
+        # cast first: a Decimal column (a Postgres NUMERIC round-tripped through
+        # parquet, say) otherwise raises InvalidOperationError. Nulls are already
+        # caught by `is_null`, and a column that will not cast yields a null from
+        # `is_nan`, so those fill to False rather than poisoning the row's mask.
+        nan_mask = pl.all().cast(pl.Float64, strict=False).is_nan().fill_null(False)
+        all_nan_mask = data_cols.select(pl.all_horizontal(pl.all().is_null() | nan_mask)).to_series()
 
         # Count consecutive NaN rows at the beginning: the first non-NaN row
         # index is the leading NaN count.
