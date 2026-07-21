@@ -292,9 +292,21 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             # Drop vintage_time if present (conformity scorer expects time + value cols)
             y_pred_step = y_pred_step.drop("vintage_time", strict=False)
 
-            similarity_step.observe(y=y, y_pred=y_pred_step)
-
             conformity_scores_step = conformity_scorer_step.score(y, y_pred_step)
+
+            # Observe the similarity on the scored subset, the same alignment ``fit``
+            # performs. Scoring aligns y and y_pred by an inner join on time, so it
+            # can return fewer rows than it was given, and none at all for a step
+            # whose prediction reaches past the observed truth. Observing the full
+            # y_pred_step then grew the similarity's state faster than the conformity
+            # scores, and predict_interval later paired an N-weight array with fewer
+            # than N scores. A step that scored nothing observes nothing, so the two
+            # stay in step.
+            if conformity_scores_step.height > 0:
+                scored_times = conformity_scores_step.select("time")
+                y_pred_for_sim = y_pred_step.join(scored_times, on="time", how="semi")
+                similarity_step.observe(y=y, y_pred=y_pred_for_sim)
+
             conformity_scores_step = conformity_scores_step.with_columns(step=step)
             self.conformity_scores_ = pl.concat([self.conformity_scores_, conformity_scores_step])
 
