@@ -468,19 +468,43 @@ class TestSplitConformalSystematicChecks:
 
     @pytest.mark.slow
     def test_split_conformal_systematic_checks(self, y_X_factory):
-        """Run all standard forecaster checks on SplitConformalForecaster."""
-        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        """Run all standard forecaster checks on SplitConformalForecaster.
+
+        ``X_forecast`` is supplied because the generator gates a block of checks on
+        its presence. Passing ``None`` yields a strictly smaller suite and reports
+        nothing, so the run would pass while the checks covering this forecaster's
+        heaviest input channel never executed.
+        """
+        y, _, _, X_forecast = y_X_factory(
+            length=200,
+            n_targets=1,
+            n_features=0,
+            seed=42,
+            n_forecast_features=2,
+            return_exogenous=True,
+        )
         y_train, y_test = y[:180], y[180:]
 
         forecaster = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=7),
             calibration_size=50,
         )
-        forecaster.fit(y_train, forecasting_horizon=5)
+        # Fit with X_forecast: the step-column checks require a forecaster that
+        # derived step columns at fit, as check_observe_auto_rederives_step_columns
+        # documents in its parameter description.
+        forecaster.fit(y_train, forecasting_horizon=5, X_forecast=X_forecast)
 
         run_checks(
             forecaster,
-            _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None),
+            _yield_yohou_forecaster_checks(
+                forecaster,
+                y_train,
+                None,
+                y_test,
+                None,
+                X_forecast_train=X_forecast,
+                X_forecast_test=X_forecast,
+            ),
             expected_failures=set(),
         )
 
@@ -875,3 +899,110 @@ class TestSimilarityStaysAlignedWithConformityScores:
             scf.observe(y_rest[i : i + 1])
 
         scf.predict_interval(forecasting_horizon=horizon, coverage_rates=[0.9])
+
+
+class TestSplitConformalTransformerRouting:
+    """Configuration reaches this forecaster through its inner, not through slots of its own.
+
+    These assertions are deliberately ad-hoc rather than generic checks: they name
+    ``point_forecaster__``, which the shared suite cannot express because it knows
+    nothing about a meta's parameter names.
+    """
+
+    @staticmethod
+    def _x_forecast(n: int = 60, n_steps: int = 3) -> pl.DataFrame:
+        rows = []
+        for i in range(n):
+            vintage = datetime(2024, 1, 1) + timedelta(days=i)
+            for step in range(1, n_steps + 1):
+                rows.append({
+                    "vintage_time": vintage,
+                    "time": vintage + timedelta(days=step),
+                    "load": float(i + step),
+                })
+        return pl.DataFrame(rows)
+
+    @staticmethod
+    def _y(n: int = 60) -> pl.DataFrame:
+        times = [datetime(2024, 1, 1) + timedelta(days=i) for i in range(n)]
+        return pl.DataFrame({"time": times, "value": [float(i % 7) + i * 0.1 for i in range(n)]})
+
+    def test_predict_returns_the_inner_forecasters_frame(self):
+        """The meta's point prediction is the inner's.
+
+        Asserted on the returned frames rather than by counting calls, so the test
+        pins the delegation itself and survives any refactor that preserves it.
+        Interval bounds are excluded on purpose: those are computed on the meta from
+        its conformity scorers, so the meta is not a pure pass-through.
+        """
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=20,
+        )
+        forecaster.fit(self._y(), forecasting_horizon=3)
+
+        from_meta = forecaster.predict(forecasting_horizon=3)
+        from_inner = forecaster.point_forecaster_.predict(forecasting_horizon=3)
+
+        assert from_meta.equals(from_inner)
+
+    def test_slots_are_reachable_only_through_the_inner(self):
+        """The meta declares no slot; the inner's are reachable by nested path.
+
+        The default ``SeasonalNaive`` fixes both slots to ``None`` without exposing
+        them, so a slot-declaring inner is required for the nested paths to resolve.
+        """
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.point import PointReductionForecaster
+
+        forecaster = SplitConformalForecaster(
+            point_forecaster=PointReductionForecaster(LinearRegression()),
+            calibration_size=20,
+        )
+        params = forecaster.get_params()
+
+        assert "point_forecaster__forecast_transformer" in params
+        assert "point_forecaster__actual_transformer" in params
+        assert "forecast_transformer" not in params
+        assert "actual_transformer" not in params
+
+    def test_nested_forecast_transformer_path_is_tunable(self):
+        """A search reaches the inner's slot through the nested path.
+
+        ``cv_results_`` carries the grid and ``best_forecaster_`` the refit winner;
+        it exposes no fitted forecaster per candidate, since only the best estimator
+        is refitted.
+        """
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.compose import PerVintageActualTransformer
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import FunctionTransformer
+
+        def _scaled(factor: float) -> PerVintageActualTransformer:
+            # Stateless on purpose. A lifted lag consumes rows from the start of
+            # every vintage, which leaves the nearest step columns null for every
+            # row and fails the estimator before the grid can be compared. That
+            # hazard is real but belongs to the transformer tests, not here.
+            return PerVintageActualTransformer(
+                FunctionTransformer(
+                    func=lambda df, f=factor: df.select((pl.col("load") * f).alias("scaled")),
+                    feature_names_out=lambda self, names: ["scaled"],
+                )
+            )
+
+        inner = PointReductionForecaster(LinearRegression(), reduction_strategy="direct")
+        search = GridSearchCV(
+            forecaster=SplitConformalForecaster(point_forecaster=inner, calibration_size=15),
+            param_grid={"point_forecaster__forecast_transformer": [_scaled(1.0), _scaled(2.0)]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        search.fit(self._y(), forecasting_horizon=3, X_forecast=self._x_forecast())
+
+        assert len(search.cv_results_["params"]) == 2
+        best_slot = search.best_forecaster_.point_forecaster_.forecast_transformer_
+        assert best_slot is not None

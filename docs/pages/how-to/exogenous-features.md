@@ -363,13 +363,29 @@ pred = restored.predict(X_forecast=new_vintage)
   present at `predict()` time with the same names.
 
 **Problem: `UserWarning` about X_forecast covering fewer steps than the horizon**
-: The forecast vintage covers fewer future timestamps than `forecasting_horizon`.
-  This is normal for short-range forecasts or when the observation point has
-  advanced past some forecast timestamps (e.g., after `observe()`). The missing
-  step columns are filled with null. Tree-based estimators (XGBoost, LightGBM,
-  HistGradientBoosting) handle null features natively. For estimators that do
-  not support nulls, set `nan_handling="drop"` so null rows are excluded from
-  training, or provide forecasts with full horizon coverage.
+: The forecast vintage covers fewer future timestamps than `forecasting_horizon`,
+  so the uncovered step columns are filled with null. This arises for short-range
+  forecasts, and after `observe()` when the observation point has advanced past
+  some forecast timestamps. If the covered steps are the ones your model relies
+  on, this is workable: for estimators that do not accept nulls, set
+  `nan_handling="drop"` to exclude null rows from training, or supply forecasts
+  that reach the full horizon.
+
+**Problem: `UserWarning` that X_forecast covers 0 steps**
+: A different condition, and not a degree of the one above. No step column derived
+  from `X_forecast` carries a value, so a model fitted on those features is
+  predicting without them.
+
+  A vintage covers only the `forecasting_horizon` timestamps after its own
+  `vintage_time`, and step columns come from the newest vintage at or before each
+  observation point, so coverage falls by one step per interval of age and reaches
+  zero once the newest usable vintage is a full horizon old.
+
+  The usual cause is a cached frame that has been outrun: omitting `X_forecast` at
+  `observe()` or `predict()` reuses the frame cached at `fit()`, which works until
+  serving passes the vintages it holds. Supply a current `X_forecast` rather than
+  reaching for a null-tolerant estimator; tolerating the nulls removes the error
+  without restoring the information.
 
 ## See Also
 
