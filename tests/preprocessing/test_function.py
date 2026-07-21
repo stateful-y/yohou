@@ -5,6 +5,7 @@ and transformer-specific tests.
 """
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 import numpy as np
 import polars as pl
@@ -365,6 +366,44 @@ class TestFunctionTransformerStatelessness:
 
         # Stateless transformers should have empty _X_observed
         assert len(transformer._X_observed) == 0
+
+
+class TestFunctionTransformerDecimalColumns:
+    """Warmup detection must tolerate dtypes `is_nan` is not defined for."""
+
+    @staticmethod
+    def _decimal_frame() -> pl.DataFrame:
+        """Build a frame whose value columns mix Decimal and Float64."""
+        return pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2026, 1, 1), datetime(2026, 1, 1) + timedelta(hours=5), "1h", eager=True
+            ),
+            "capacity": pl.Series([Decimal(f"{i}.5") for i in range(6)], dtype=pl.Decimal(38, 9)),
+            "load": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        })
+
+    def test_fit_accepts_decimal_columns(self):
+        """A Decimal column must not break leading-NaN detection.
+
+        `is_nan` is defined for floats only, so probing every column with it raised
+        InvalidOperationError on a Decimal column. A Postgres NUMERIC round-tripped
+        through parquet arrives as decimal[38,9], so this reached any caller reading
+        such a column back from storage.
+        """
+        X = self._decimal_frame()
+        assert X["capacity"].dtype == pl.Decimal(38, 9)
+
+        transformer = FunctionTransformer(func=lambda frame: frame).fit(X)
+
+        assert transformer.observation_horizon == 0
+
+    def test_leading_nan_still_detected_alongside_a_decimal_column(self):
+        """The cast must not cost the detection it guards: warmup is still counted."""
+        X = self._decimal_frame()
+
+        transformer = FunctionTransformer(func=_diff_func).fit(X)
+
+        assert transformer.observation_horizon == 1
 
 
 def _diff_func(X):

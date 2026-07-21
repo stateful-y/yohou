@@ -849,6 +849,58 @@ class TestSplitConformalObservePredict:
         assert len(y_pred) >= 1
 
 
+class TestSimilarityStaysAlignedWithConformityScores:
+    """Similarity state and conformity scores must grow together across observe.
+
+    ``fit`` deliberately fits the similarity on the scored subset, because scoring
+    aligns y and y_pred by an inner join on time and so can return fewer rows than
+    it was given. ``observe`` did not repeat that alignment, so the similarity grew
+    faster than the scores and ``predict_interval`` later paired an N-weight array
+    with N-1 scores, raising "x and weights must have the same length".
+    """
+
+    @staticmethod
+    def _fitted(horizon: int):
+        n = 260
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        rng = np.random.default_rng(7)
+        values = [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + rng.normal(0, 0.5) for i in range(n)]
+        y = pl.DataFrame({"time": dates, "value": values})
+
+        scf = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            similarity=DistanceSimilarity(metric="euclidean"),
+        )
+        scf.fit(y[:200], forecasting_horizon=horizon, coverage_rates=[0.9])
+        return scf, y[200:]
+
+    @pytest.mark.parametrize("horizon", [1, 2])
+    def test_state_lengths_track_each_other(self, horizon):
+        scf, y_rest = self._fitted(horizon)
+
+        for i in range(10):
+            scf.observe(y_rest[i : i + 1])
+
+        for step in range(1, 1 + horizon):
+            n_weights = len(scf.similarities_[f"step_{step}"]._X_observed)
+            n_scores = scf.conformity_scores_.filter(pl.col("step") == step).height
+            assert n_weights == n_scores, (
+                f"step {step}: similarity holds {n_weights} observations but "
+                f"{n_scores} conformity scores exist; predict_interval pairs these"
+            )
+
+    @pytest.mark.parametrize("horizon", [1, 2])
+    def test_predict_interval_after_observe_does_not_raise(self, horizon):
+        scf, y_rest = self._fitted(horizon)
+
+        for i in range(10):
+            scf.observe(y_rest[i : i + 1])
+
+        scf.predict_interval(forecasting_horizon=horizon, coverage_rates=[0.9])
+
+
 class TestSplitConformalTransformerRouting:
     """Configuration reaches this forecaster through its inner, not through slots of its own.
 
