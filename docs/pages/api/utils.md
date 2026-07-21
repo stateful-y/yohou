@@ -37,12 +37,12 @@ Utility functions for data manipulation, validation, and tabularization.
 | [`get_categorical_columns`](generated/yohou.utils.get_categorical_columns.md) | Get list of categorical column names from a DataFrame. |
 | [`get_numeric_columns`](generated/yohou.utils.get_numeric_columns.md) | Get list of numeric column names from a DataFrame. |
 | [`tabularize`](generated/yohou.utils.tabularize.md) | Convert time series to tabular format using lags. |
-| [`validate_forecaster_data`](generated/yohou.utils.validate_forecaster_data.md) |  |
+| [`validate_forecaster_data`](generated/yohou.utils.validate_forecaster_data.md) | Validate and prepare input data for forecasters. |
 | [`validate_plotting_data`](generated/yohou.utils.validate_plotting_data.md) | Validate a DataFrame for plotting and resolve columns. |
 | [`validate_plotting_params`](generated/yohou.utils.validate_plotting_params.md) | Validate common plotting function parameters. |
-| [`validate_scorer_data`](generated/yohou.utils.validate_scorer_data.md) |  |
-| [`validate_splitter_data`](generated/yohou.utils.validate_splitter_data.md) |  |
-| [`validate_transformer_data`](generated/yohou.utils.validate_transformer_data.md) |  |
+| [`validate_scorer_data`](generated/yohou.utils.validate_scorer_data.md) | Validate and prepare scorer input data. |
+| [`validate_splitter_data`](generated/yohou.utils.validate_splitter_data.md) | Validate and prepare input data for time series splitters. |
+| [`validate_transformer_data`](generated/yohou.utils.validate_transformer_data.md) | Validate data for transformers. |
 | [`add_interval`](generated/yohou.utils.add_interval.md) | Add n intervals to a datetime (handles variable-length intervals). |
 | [`check_continuity`](generated/yohou.utils.check_continuity.md) | Validate temporal continuity between consecutive DataFrames. |
 | [`check_forecasting_horizon_positive`](generated/yohou.utils.check_forecasting_horizon_positive.md) | Validate forecasting horizon is positive. |
