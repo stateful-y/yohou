@@ -697,14 +697,31 @@ def _derive_step_columns(
                 if null_count < n_rows:
                     per_col_max[base] = max(per_col_max[base], int(m.group(2)))
             max_covered = min(per_col_max.values(), default=0)
-            if max_covered < forecasting_horizon:
+            if max_covered == 0:
+                # Distinct from partial coverage rather than its extreme: nothing
+                # derived from X_forecast carries a value here, so a model relying
+                # on that channel is predicting without it. Reachable from ordinary
+                # use, because a vintage covers only the forecasting_horizon
+                # timestamps after its own vintage_time, so as-of selection yields
+                # zero coverage once the observation point is a full horizon past
+                # the newest available vintage. Stated as a measurement rather than
+                # an error: a caller may reach this deliberately.
+                warnings.warn(
+                    f"X_forecast covers 0 of {forecasting_horizon} forecast steps for this "
+                    f"observation, so every step feature derived from it is null. A model "
+                    f"fitted on those features is predicting without them here. This happens "
+                    f"when the newest usable vintage is at least {forecasting_horizon} "
+                    f"intervals older than the observation point, which a cached frame "
+                    f"reaches once serving advances past the vintages it holds.",
+                    UserWarning,
+                    stacklevel=_caller_stacklevel(),
+                )
+            elif max_covered < forecasting_horizon:
                 warnings.warn(
                     f"X_forecast covers {max_covered} of {forecasting_horizon} "
                     f"forecast steps. The remaining step features will be null. "
-                    f"This is normal for short-range forecasts or when the "
-                    f"observation point has advanced past some forecast "
-                    f"timestamps. Tree-based estimators (e.g. XGBoost, LightGBM, "
-                    f"HistGradientBoosting) handle null features natively.",
+                    f"This arises for short-range forecasts and when the "
+                    f"observation point has advanced past some forecast timestamps.",
                     UserWarning,
                     stacklevel=_caller_stacklevel(),
                 )

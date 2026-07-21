@@ -220,3 +220,151 @@ class TestDiagnosticDoesNotMutate:
         for col in ("f_sin", "f_cos"):
             for step in range(1, H + 1):
                 assert f"{col}_step_{step}" in forecaster._step_column_names_
+
+
+def _zero_coverage_warnings(record):
+    """Select the dead-channel warnings out of a warning record."""
+    return [w for w in record if "covers 0 of" in str(w.message)]
+
+
+def _partial_coverage_warnings(record):
+    """Select the partial-coverage warnings, excluding the dead-channel ones."""
+    return [w for w in record if "X_forecast covers" in str(w.message) and "covers 0 of" not in str(w.message)]
+
+
+class TestForecastCoverageDiagnostic:
+    """A dead forecast channel reads differently from a short-range one.
+
+    Zero coverage is not the extreme of partial coverage. Under partial coverage
+    some step features carry values; at zero every one is null and a model fitted
+    on them is predicting without them. Sharing a message would train readers to
+    ignore both.
+    """
+
+    HORIZON = 3
+
+    @staticmethod
+    def _y(n: int = 40) -> pl.DataFrame:
+        time = pl.datetime_range(
+            datetime(2021, 1, 1), datetime(2021, 1, 1) + timedelta(days=n - 1), interval="1d", eager=True
+        )
+        return pl.DataFrame({"time": time, "value": np.arange(n, dtype=float)})
+
+    @classmethod
+    def _forecast(cls, n_vintages: int, span: int | None = None) -> pl.DataFrame:
+        """Vintages issued daily, each carrying ``span`` steps of its own future."""
+        span = cls.HORIZON if span is None else span
+        rows = []
+        for i in range(n_vintages):
+            vintage = datetime(2021, 1, 1) + timedelta(days=i)
+            for step in range(1, span + 1):
+                rows.append({
+                    "vintage_time": vintage,
+                    "time": vintage + timedelta(days=step),
+                    "temp": float(i + step),
+                })
+        return pl.DataFrame(rows)
+
+    def _fitted(self, n_vintages: int, span: int | None = None):
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings():
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(n_vintages, span))
+        return forecaster
+
+    def test_exhausted_cache_reports_a_dead_channel(self):
+        """Driven the way a caller reaches it: serving past the vintages held.
+
+        No ``X_forecast`` is passed at observe, so the forecaster falls back to its
+        cached frame. Once the observation point is a full horizon past the newest
+        cached vintage, as-of selection resolves to a vintage that covers nothing.
+        """
+        forecaster = self._fitted(n_vintages=20)
+
+        later = pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON),
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON + 1),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.arange(2, dtype=float),
+        })
+        with _captured_warnings() as record:
+            forecaster.observe(y=later)
+
+        assert _zero_coverage_warnings(record), "expected the dead-channel warning"
+        assert not _partial_coverage_warnings(record)
+
+    def test_partial_coverage_keeps_its_own_message(self):
+        """A vintage that carries fewer steps than the horizon is short-range, not dead."""
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings() as record:
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(20, span=2))
+
+        assert _partial_coverage_warnings(record), "expected the partial-coverage warning"
+        assert not _zero_coverage_warnings(record)
+
+    def test_full_coverage_is_silent(self):
+        """Neither message fires when every step is covered."""
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings() as record:
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(20))
+
+        assert not _zero_coverage_warnings(record)
+        assert not _partial_coverage_warnings(record)
+
+    @pytest.mark.parametrize("span", [2, 3])
+    def test_no_coverage_message_recommends_an_estimator_or_asserts_normality(self, span):
+        """The message reports a measurement; it does not prescribe a remedy.
+
+        A null-tolerant estimator makes a dead channel survivable rather than
+        correct, so naming one directs a reader from a visible failure toward an
+        invisible one. And the same measurement has several causes, only some of
+        which are routine, so the warn site cannot call it normal.
+        """
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings() as record:
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(20, span=span))
+            later = pl.DataFrame({
+                "time": pl.datetime_range(datetime(2021, 2, 1), datetime(2021, 2, 2), interval="1d", eager=True),
+                "value": np.arange(2, dtype=float),
+            })
+            forecaster.observe(y=later)
+
+        messages = [str(w.message) for w in record if "X_forecast covers" in str(w.message)]
+        assert messages, "expected at least one coverage warning to inspect"
+        for message in messages:
+            for estimator in ("XGBoost", "LightGBM", "HistGradientBoosting", "estimator"):
+                assert estimator not in message, f"message recommends {estimator}: {message}"
+            assert "is normal" not in message, f"message asserts normality: {message}"
+
+    @pytest.mark.parametrize("age", [1, 2, 3, 4])
+    def test_coverage_falls_one_step_per_interval_of_age(self, age):
+        """The bound this change relies on: coverage reaches zero at age == horizon.
+
+        A vintage carries the ``forecasting_horizon`` timestamps after its own
+        ``vintage_time``, so an observation ``age`` intervals later retains
+        ``horizon - age`` of them. That is why no staleness parameter is needed.
+        """
+        forecaster = self._fitted(n_vintages=20)
+        newest_vintage = datetime(2021, 1, 1) + timedelta(days=19)
+
+        later = pl.DataFrame({
+            "time": pl.datetime_range(
+                newest_vintage + timedelta(days=age),
+                newest_vintage + timedelta(days=age),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.zeros(1),
+        })
+        with _captured_warnings() as record:
+            forecaster.observe(y=later)
+
+        expected_covered = max(self.HORIZON - age, 0)
+        if expected_covered == 0:
+            assert _zero_coverage_warnings(record), f"age={age} should exhaust coverage"
+        else:
+            partial = _partial_coverage_warnings(record)
+            assert partial, f"age={age} should report partial coverage"
+            assert f"covers {expected_covered} of {self.HORIZON}" in str(partial[0].message)
