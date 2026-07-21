@@ -141,7 +141,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             values available for past and future dates.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            columns. Passed to the wrapped ``point_forecaster_``; any
+            feature transformation is the responsibility of that inner
+            estimator, reachable as ``point_forecaster__forecast_transformer``.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -375,7 +377,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
-            columns.
+            columns. Passed to the wrapped ``point_forecaster_``; any
+            feature transformation is the responsibility of that inner
+            estimator, reachable as ``point_forecaster__forecast_transformer``.
 
         Returns
         -------

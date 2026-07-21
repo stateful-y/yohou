@@ -363,7 +363,12 @@ All composition forecasters propagate the three parameters to their children:
   each pass all three parameters to every ensemble member.
 
 - [**`SplitConformalForecaster`**](/pages/api/generated/yohou.interval.SplitConformalForecaster/) forwards all parameters to the wrapped point
-  forecaster.
+  forecaster. It declares no transformer slots of its own, so the inner
+  forecaster's slots are the configuration surface: reach them through the nested
+  path, as in `point_forecaster__forecast_transformer`. Configuring the transform
+  there rather than outside the forecaster keeps it tunable through search and
+  applied consistently across fit, calibration, and prediction, since all three go
+  through the same inner.
 
 ## Connections
 
