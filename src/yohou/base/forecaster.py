@@ -18,7 +18,7 @@ from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTra
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
 from yohou.base.transformer import BaseActualTransformer
-from yohou.base.utils import _derive_step_columns, _require_forecast_transformer
+from yohou.base.utils import _densify_forecast_vintages, _derive_step_columns, _require_forecast_transformer
 from yohou.utils import (
     Tags,
     cast,
@@ -299,6 +299,16 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         """
         self.forecast_transformer_ = None
+        # Densify the vintage axis unconditionally, before the slot check and
+        # before fitting the transformer, so every forecaster that consumes
+        # X_forecast resolves each channel per column, with or without a
+        # forecast_transformer, and a transformer that is present fits and
+        # transforms the dense frame. Placing this after the None early return
+        # would skip it for the common case (no transformer), collapsing
+        # mixed cadence for a plain or panel forecaster.
+        if X_forecast is not None:
+            X_forecast = _densify_forecast_vintages(X_forecast)
+
         if self.forecast_transformer is None:
             return X_forecast
 
@@ -477,6 +487,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             or the input is ``None``.
 
         """
+        # Densify before transforming, so a provided frame reaches derivation
+        # dense on the serve path exactly as it does at fit. Idempotent, so a
+        # frame already densified at fit is unchanged; a no-op on uniform cadence.
+        if X_forecast is not None:
+            X_forecast = _densify_forecast_vintages(X_forecast)
+
         transformer = getattr(self, "forecast_transformer_", None)
         if transformer is None or X_forecast is None:
             return X_forecast

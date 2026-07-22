@@ -42,6 +42,7 @@ from .forecaster import (
     check_forecaster_tags_match_capabilities,
     check_forecaster_tags_static_after_fit,
     check_forecasting_horizon_validation,
+    check_mixed_cadence_X_forecast_resolves,
     check_observe_auto_rederives_step_columns,
     check_observe_extends_observations,
     check_observe_predict_interval_with_step_columns,
@@ -697,6 +698,17 @@ def _yield_yohou_forecaster_checks(
                 check_predict_X_forecast_override,
                 {
                     "X_forecast": X_forecast_test if X_forecast_test is not None else X_forecast_train,
+                    "forecasting_horizon": 3,
+                },
+            )
+
+            yield (
+                "check_mixed_cadence_X_forecast_resolves",
+                check_mixed_cadence_X_forecast_resolves,
+                {
+                    "y_train": y_train,
+                    "X_actual_train": X_actual_train,
+                    "X_forecast": X_forecast_train,
                     "forecasting_horizon": 3,
                 },
             )

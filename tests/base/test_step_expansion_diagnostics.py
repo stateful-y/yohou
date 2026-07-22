@@ -203,7 +203,10 @@ class TestWarningsPointAtTheCaller:
         }
         with _captured_warnings() as record:
             calls[phase]()
-        coverage = [w for w in record if "X_forecast covers" in str(w.message)]
+        # Fit reports coverage per column ("X_forecast column '...'"); observe and
+        # predict use the per-call warning ("X_forecast covers ..."). Both must
+        # blame the caller.
+        coverage = [w for w in record if "X_forecast covers" in str(w.message) or "X_forecast column" in str(w.message)]
         assert coverage, f"expected a coverage warning from {phase}"
         assert coverage[0].filename == __file__
 
@@ -223,13 +226,20 @@ class TestDiagnosticDoesNotMutate:
 
 
 def _zero_coverage_warnings(record):
-    """Select the dead-channel warnings out of a warning record."""
-    return [w for w in record if "covers 0 of" in str(w.message)]
+    """Select the serve-path dead-channel warnings out of a warning record."""
+    return [w for w in record if "X_forecast covers 0 of" in str(w.message)]
 
 
 def _partial_coverage_warnings(record):
-    """Select the partial-coverage warnings, excluding the dead-channel ones."""
-    return [w for w in record if "X_forecast covers" in str(w.message) and "covers 0 of" not in str(w.message)]
+    """Select the serve-path partial-coverage warnings, excluding dead-channel ones."""
+    return [
+        w for w in record if "X_forecast covers" in str(w.message) and "X_forecast covers 0 of" not in str(w.message)
+    ]
+
+
+def _fit_coverage_warnings(record):
+    """Select the fit-path per-column coverage warnings out of a warning record."""
+    return [w for w in record if "X_forecast column" in str(w.message)]
 
 
 class TestForecastCoverageDiagnostic:
@@ -295,21 +305,35 @@ class TestForecastCoverageDiagnostic:
         assert _zero_coverage_warnings(record), "expected the dead-channel warning"
         assert not _partial_coverage_warnings(record)
 
-    def test_partial_coverage_keeps_its_own_message(self):
-        """A vintage that carries fewer steps than the horizon is short-range, not dead."""
+    def test_partial_coverage_reports_the_column_at_fit(self):
+        """A vintage carrying fewer steps than the horizon is short-range, not dead.
+
+        Every observation is covered to the same depth (< H), so the fit-path
+        per-column diagnostic names the column and reports its worst depth, and
+        the serve-path zero/partial warning stays silent at fit.
+        """
         forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
         with _captured_warnings() as record:
-            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(20, span=2))
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(40, span=2))
 
-        assert _partial_coverage_warnings(record), "expected the partial-coverage warning"
+        fit_warnings = _fit_coverage_warnings(record)
+        assert fit_warnings, "expected the fit-path per-column warning"
+        assert any(f"covers 2 of {self.HORIZON}" in str(w.message) and "'temp'" in str(w.message) for w in fit_warnings)
         assert not _zero_coverage_warnings(record)
+        assert not _partial_coverage_warnings(record)
 
     def test_full_coverage_is_silent(self):
-        """Neither message fires when every step is covered."""
+        """No message fires when every observation is fully covered.
+
+        The forecast archive spans every observation time (one vintage per
+        observation, each carrying the full horizon), so no observation is
+        under-covered and neither diagnostic fires.
+        """
         forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
         with _captured_warnings() as record:
-            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(20))
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._forecast(40))
 
+        assert not _fit_coverage_warnings(record)
         assert not _zero_coverage_warnings(record)
         assert not _partial_coverage_warnings(record)
 
@@ -368,3 +392,113 @@ class TestForecastCoverageDiagnostic:
             partial = _partial_coverage_warnings(record)
             assert partial, f"age={age} should report partial coverage"
             assert f"covers {expected_covered} of {self.HORIZON}" in str(partial[0].message)
+
+
+class TestFitCoverageIsPerObservationPerColumn:
+    """Fit measures coverage per observation, not existentially across the batch.
+
+    The batch-wide test it replaces answered "was this column ever covered?", so a
+    channel null in all but one training row read as fully covered and nothing
+    warned. The fit-path diagnostic names each under-covered column and reports how
+    many observations it fails, so a channel dead for most of the batch is caught.
+    """
+
+    HORIZON = 3
+    N = 60
+
+    def _y(self) -> pl.DataFrame:
+        time = pl.datetime_range(
+            datetime(2021, 1, 1), datetime(2021, 1, 1) + timedelta(days=self.N - 1), interval="1d", eager=True
+        )
+        return pl.DataFrame({"time": time, "value": np.arange(self.N, dtype=float)})
+
+    def _two_channel_forecast(self) -> pl.DataFrame:
+        """``fast`` issued at every vintage; ``slow`` only at the first.
+
+        ``slow`` covers only observations near the first vintage and is null for
+        the rest, which is the batch the old existential test could not see.
+        """
+        rows = []
+        for i in range(self.N):
+            vintage = datetime(2021, 1, 1) + timedelta(days=i)
+            for step in range(1, self.HORIZON + 1):
+                rows.append({
+                    "vintage_time": vintage,
+                    "time": vintage + timedelta(days=step),
+                    "fast": float(i + step),
+                    "slow": float(step) if i == 0 else None,
+                })
+        return pl.DataFrame(rows)
+
+    def test_channel_dead_for_most_of_the_batch_is_named_at_fit(self):
+        """The reproduction as a test: ``slow`` is named, ``fast`` is not."""
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings() as record:
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._two_channel_forecast())
+
+        fit_warnings = [str(w.message) for w in _fit_coverage_warnings(record)]
+        assert any("'slow'" in m for m in fit_warnings), "expected 'slow' to be named at fit"
+        assert not any("'fast'" in m for m in fit_warnings), "'fast' is fully covered and must not warn"
+        # The message reports how many observations the channel fails to cover.
+        slow = next(m for m in fit_warnings if "'slow'" in m)
+        assert f"of {self.N} training observations" in slow
+
+    def test_no_serve_warning_fires_at_fit(self):
+        """The per-call zero/partial warning is suppressed on the fit path."""
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings() as record:
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._two_channel_forecast())
+        assert not _zero_coverage_warnings(record)
+        assert not _partial_coverage_warnings(record)
+
+    def test_fit_diagnostic_does_not_repeat_in_walk_forward(self):
+        """The fit-path warning is said once; walk-forward uses the serve path.
+
+        The condition the fit diagnostic reports is a property of the training
+        assembly, so it must not re-fire per stride. The serve-path warning still
+        fires when a stride resolves a dead channel, which is a runtime condition.
+        """
+        forecaster = PointReductionForecaster(estimator=DummyRegressor(), nan_handling="pass")
+        with _captured_warnings():
+            forecaster.fit(y=self._y(), forecasting_horizon=self.HORIZON, X_forecast=self._two_channel_forecast())
+
+        later = pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2021, 1, 1) + timedelta(days=self.N),
+                datetime(2021, 1, 1) + timedelta(days=self.N + self.HORIZON),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.arange(self.HORIZON + 1, dtype=float),
+        })
+        with _captured_warnings() as record:
+            forecaster.observe_predict(y=later, stride=1)
+
+        assert not _fit_coverage_warnings(record), "the fit diagnostic must not repeat during walk-forward"
+
+
+class TestCoverageMeasurementDoesNotAlterDerivation:
+    """Changing how coverage is measured changes what is reported, never derived."""
+
+    def test_warn_flag_does_not_change_derived_step_columns(self):
+        """``warn_coverage`` gates the warning only; the frame is identical."""
+        from yohou.base.utils import _derive_step_columns
+
+        rows = []
+        for i in range(20):
+            vintage = datetime(2021, 1, 1) + timedelta(days=i)
+            for step in range(1, 3):  # span 2 of horizon 3: guarantees under-coverage
+                rows.append({
+                    "vintage_time": vintage,
+                    "time": vintage + timedelta(days=step),
+                    "wx": float(i + step),
+                })
+        forecast = pl.DataFrame(rows)
+        obs = pl.Series([datetime(2021, 1, 1) + timedelta(days=i) for i in range(20)])
+
+        with _captured_warnings():
+            warned = _derive_step_columns(None, forecast, obs, 3, "1d", warn_coverage=True)
+            silent = _derive_step_columns(None, forecast, obs, 3, "1d", warn_coverage=False)
+
+        assert warned is not None and silent is not None
+        assert warned.equals(silent)

@@ -8,6 +8,7 @@ import warnings
 
 import polars as pl
 from sklearn.base import clone
+from sklearn.dummy import DummyRegressor
 from sklearn.exceptions import NotFittedError
 from sklearn.utils.validation import check_is_fitted
 
@@ -1109,7 +1110,7 @@ def check_fit_predict_with_X_forecast(
         "_step_column_names_ should be non-empty after fit with X_forecast"
     )
 
-    # Raw stored (filtered to single vintage)
+    # Raw stored (the full frame at fit; observe/rewind retain per channel)
     assert forecaster_clone._X_forecast_raw_ is not None, "fit() with X_forecast must store _X_forecast_raw_"
 
     # Predict works
@@ -1157,6 +1158,94 @@ def check_predict_X_forecast_override(
     if original_raw is not None:
         assert forecaster._X_forecast_raw_.equals(original_raw), (
             "predict() with X_forecast override must not mutate _X_forecast_raw_"
+        )
+
+
+def check_mixed_cadence_X_forecast_resolves(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    X_forecast: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check that a channel on a slower schedule survives step-column derivation.
+
+    A single ``X_forecast`` frame may carry channels issued on different
+    schedules. Each base column resolves against its own newest applicable
+    vintage, densified before derivation, so a slower channel is not collapsed
+    to null by the frame-wide as-of. This check drives every ``X_forecast``
+    consuming forecaster with a mixed-cadence frame and confirms the slower
+    channel reaches the dense cache rather than being dropped.
+
+    The frame is made mixed by issuing the last base column at only its earliest
+    vintage while the rest stay at every vintage. That leaves the slow channel
+    null for later observations, so the check runs on a clone using a
+    null-tolerant estimator (``DummyRegressor`` with ``nan_handling="pass"``
+    where those params exist): the resolution path is what is under test, not the
+    estimator's response to nulls, which the fully-covered checks already carry.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance that consumes ``X_forecast``.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    X_forecast : pl.DataFrame
+        External forecasts in tidy format, used as the uniform baseline from
+        which a mixed-cadence variant is derived.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    value_cols = [c for c in X_forecast.columns if c not in ("vintage_time", "time")]
+    vintages = X_forecast.select("vintage_time").unique().sort("vintage_time")["vintage_time"].to_list()
+    if len(value_cols) < 2 or len(vintages) < 2:
+        return  # need at least two channels and two vintages to express mixed cadence
+
+    slow_col = value_cols[-1]
+    earliest = vintages[0]
+    mixed = X_forecast.with_columns(
+        pl.when(pl.col("vintage_time") == earliest).then(pl.col(slow_col)).otherwise(None).alias(slow_col)
+    )
+
+    forecaster_clone = clone(forecaster)
+    params = forecaster_clone.get_params()
+    overrides = {}
+    if "nan_handling" in params:
+        overrides["nan_handling"] = "pass"
+    if "estimator" in params:
+        overrides["estimator"] = DummyRegressor()
+    if overrides:
+        forecaster_clone.set_params(**overrides)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        forecaster_clone.fit(
+            y_train,
+            X_actual_train,
+            forecasting_horizon=forecasting_horizon,
+            X_forecast=mixed,
+        )
+        y_pred = forecaster_clone.predict(forecasting_horizon=forecasting_horizon)
+
+    assert isinstance(y_pred, pl.DataFrame), "predict() on a mixed-cadence frame must return pl.DataFrame"
+
+    # Where the dense cache is observable, densification must have carried the
+    # slow channel forward onto vintages beyond its single issue vintage. The raw
+    # mixed frame carries it at exactly one vintage; a dense frame that still does
+    # is one where the frame-wide as-of would collapse the channel. Comparing
+    # against the raw count (rather than asserting non-null) keeps this from
+    # passing vacuously on the channel's own issue rows.
+    raw_slow_vintages = mixed.filter(pl.col(slow_col).is_not_null())["vintage_time"].n_unique()
+    dense = getattr(forecaster_clone, "_X_forecast_t_", None)
+    if dense is not None and slow_col in dense.columns and raw_slow_vintages >= 1:
+        dense_slow_vintages = dense.filter(pl.col(slow_col).is_not_null())["vintage_time"].n_unique()
+        assert dense_slow_vintages > raw_slow_vintages, (
+            f"the slower '{slow_col}' channel was not resolved per column: it reaches "
+            f"{dense_slow_vintages} vintage(s) after densification, no more than the "
+            f"{raw_slow_vintages} it was issued at, so the frame-wide as-of would drop it"
         )
 
 

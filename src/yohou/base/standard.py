@@ -10,7 +10,9 @@ from yohou.base.utils import (
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_one,
+    _retained_forecast_vintages,
     _rewind_transformers_one,
+    _warn_forecast_coverage_at_fit,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval
@@ -233,16 +235,19 @@ class BaseStandardForecaster:
         # unchanged when the slot is unset.
         X_forecast_t = self._fit_forecast_transformer(X_forecast, forecasting_horizon)  # ty: ignore[unresolved-attribute]
 
-        # Inject step columns from X_future / X_forecast
+        # Inject step columns from X_future / X_forecast. Coverage is reported at
+        # fit per column (below), so the per-call warning is suppressed here.
         X_step = _derive_step_columns(
             X_future=X_future,
             X_forecast=X_forecast_t,
             observation_times=y_t["time"],
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
+            warn_coverage=False,
             existing_columns=set(X_t.columns) - {"time"} if X_t is not None else None,
         )
         _warn_rank_deficient_step_columns(X_step, X_future, forecasting_horizon)
+        _warn_forecast_coverage_at_fit(X_step, X_forecast_t, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future
@@ -415,21 +420,22 @@ class BaseStandardForecaster:
         if X_future is not None:
             self._X_future_raw_ = X_future
         if X_forecast is not None:
-            # Select the latest vintage at or before observed_time_ (as-of selection)
-            latest_vintage = X_forecast.filter(pl.col("vintage_time") <= self.observed_time_)["vintage_time"].max()
-            if latest_vintage is not None:
-                self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
-            else:
-                self._X_forecast_raw_ = X_forecast.clear()
-            # Narrow the transformed cache the same way, reusing the transform
-            # already applied above rather than re-running it. Narrowing the
-            # transformed frame also avoids handing the transformer a lone vintage,
-            # which is the shape min_vintage_rows can drop.
+            # Retain, per base column, the newest vintage still covering the
+            # observation point, so channels on different schedules each survive
+            # rather than the frame collapsing to a single vintage. The retained
+            # set is keyed on the raw frame and both caches are filtered by it, so
+            # the override and fallback paths cannot drift.
+            keep = _retained_forecast_vintages(X_forecast, self.observed_time_)
+            self._X_forecast_raw_ = (
+                X_forecast.filter(pl.col("vintage_time").is_in(keep)) if keep else X_forecast.clear()
+            )
+            # Filter the transformed cache to the same vintages, reusing the
+            # transform already applied above rather than re-running it. Filtering
+            # the already-transformed frame also avoids handing the transformer a
+            # lone vintage, which is the shape min_vintage_rows can drop.
             if X_forecast_eff is not None:  # pragma: no branch - non-None whenever X_forecast is provided
                 self._X_forecast_t_ = (
-                    X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
-                    if latest_vintage is not None
-                    else X_forecast_eff.clear()
+                    X_forecast_eff.filter(pl.col("vintage_time").is_in(keep)) if keep else X_forecast_eff.clear()
                 )
 
     def _observe_with_precomputed_steps_standard(

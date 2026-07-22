@@ -296,6 +296,67 @@ preventing spurious `step_(H+1)` columns from appearing in the feature
 matrix. If clipping leaves fewer than $H$ timestamps, the missing step
 columns are padded with null and a `UserWarning` is emitted.
 
+Coverage is measured per observation and per base column. At fit, a column
+that fails to cover some training observations is named in a per-column
+`UserWarning`, with the count of observations it misses, so a channel that is
+dead for most of the batch is visible rather than hidden behind a single
+covered row. On the observe and predict paths the per-call warning reports the
+worst-covered observation, distinguishing zero coverage (the channel
+contributes nothing) from partial coverage (a short-range forecast).
+
+## Heterogeneous Vintage Cadence
+
+A single `X_forecast` frame can carry channels issued on different schedules: a
+weather forecast refreshed daily next to a demand projection refreshed weekly.
+Each base column resolves against its own newest applicable vintage. The daily
+channel resolves from its daily vintage; the weekly channel resolves from its
+own most recent vintage, even when newer vintages carrying only the daily
+channel exist.
+
+This resolution is realized by densifying the vintage axis before step columns
+are derived. For each vintage and each base column, the values come from the
+newest vintage at or before it that carries that column, so every vintage row
+carries a value for every column. All of a column's steps therefore originate
+in a single source vintage: a forecast trajectory is never spliced across
+vintages, and where a source vintage does not reach a target time the value
+stays null. A frame where every vintage already carries every column (uniform
+cadence) is unchanged, so this is transparent to the common case.
+
+Densification runs for every forecaster that consumes `X_forecast`, whether or
+not a `forecast_transformer` is set. That matters for two reasons. A plain
+forecaster (including an ordinary panel forecaster) has no forecast transformer,
+and without densification its slower channels would collapse to null under the
+frame-wide as-of. And when a `forecast_transformer` is present, it operates
+row-wise on the vintage-indexed frame, so a transformer that combines columns
+from differently-scheduled sources (summing several series, then deriving a
+further quantity from that sum and two others) needs all of its inputs on one
+row. The dense frame is the contract that makes such cross-source transformers
+work; a downstream consumer can rely on the frame reaching its
+`forecast_transformer` being dense.
+
+### Bounded Retention Across Observations
+
+`observe` and `rewind` retain, for each base column, the newest vintage still
+covering the observation point, rather than collapsing the frame to a single
+vintage. This keeps channels on different schedules alive in the cache the
+fallback path reads, while retained state stays bounded by the number of base
+columns (at most one vintage per channel). A vintage a full horizon old covers
+nothing (a vintage carries only the `forecasting_horizon` timestamps after its
+own vintage time), so it is evicted, at which point that channel's step
+features become null and the coverage diagnostic fires. The bound is therefore
+`forecasting_horizon` itself; no staleness parameter is introduced.
+
+### Expressing a Publication Lag
+
+A forecast whose issuance boundary differs from its label (for example a
+day-ahead product available some fixed number of hours before the target
+boundary) is expressed by shifting the emitted `vintage_time`, not through a new
+API parameter. As-of selection reads whatever labels the frame carries, per
+column, and horizon steps are measured from the label. Because resolution is
+per column, sources with different lags compose naturally: shift each source's
+`vintage_time` by its own amount and each still resolves against its own
+vintages.
+
 ## The Observe-Predict Loop
 
 The `observe()` method accepts `X_actual`, `X_future`, and `X_forecast`,
