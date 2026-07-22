@@ -843,12 +843,13 @@ def _derive_step_columns(
         values that are windowed forward from each observation time.
     X_forecast : pl.DataFrame or None
         External forecasts with ``"vintage_time"`` and ``"time"`` columns.
-        Before pivoting, each vintage is filtered to timestamps within
-        ``(vintage_time, vintage_time + H * interval]``. Timestamps outside
-        this window are discarded. The remaining timestamps are pivoted by
-        ordinal rank within each vintage group. If filtering produces fewer
-        than H step columns, the missing columns are padded with null and
-        a ``UserWarning`` is emitted.
+        For each observation time ``T`` the newest vintage at or before ``T``
+        is selected (as-of), and step columns are taken at ``T + 1..H`` steps,
+        anchored to the observation time rather than the vintage time. Vintages
+        are not clipped: a value at a target time beyond one observation's
+        horizon simply serves an earlier observation instead. Where the
+        resolved vintage carries no value at a step's target time, that step
+        column is null and a ``UserWarning`` is emitted.
     observation_times : pl.Series
         Observation timestamps to derive step columns from.
     forecasting_horizon : int

@@ -144,10 +144,13 @@ Each slot takes the kind it is named for. A forecast-kind transformer belongs in
 
 !!! warning "A stale frame stops covering any step at all"
 
-    A vintage carries only the `forecasting_horizon` timestamps that follow its own
-    `vintage_time`, and step columns are derived by taking the newest vintage at or
-    before each observation point. So a vintage loses one usable step per interval
-    of age, and covers nothing once it is a full horizon old.
+    Step columns are anchored to the observation point: step `k` is the forecast
+    for the observation time plus `k` intervals, taken from the newest vintage at
+    or before that point. A vintage issued to cover the `forecasting_horizon`
+    periods after its own `vintage_time`, which is the usual shape, therefore
+    loses one usable step per interval of age and covers nothing once it is a full
+    horizon old. A longer-range vintage degrades more slowly, staying useful until
+    its own reach runs out.
 
     This is reachable without passing a bad frame. If you omit `X_forecast` at
     `observe` or `predict`, the forecaster reuses the frame it cached at fit, which

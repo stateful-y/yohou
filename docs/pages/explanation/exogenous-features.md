@@ -288,13 +288,14 @@ Similarly, `X_forecast` may not cover all training observation times. Rows
 without matching forecast data produce null step columns. This is common when
 forecast archives start later than the target series.
 
-Conversely, a vintage whose timestamps extend beyond the forecasting horizon
-is clipped before pivoting. Each vintage keeps only timestamps in
-$(T_v,\; T_v + H \cdot \Delta t]$ where $T_v$ is the vintage time. This
-guarantees that step columns always span exactly `1..H` per value column,
-preventing spurious `step_(H+1)` columns from appearing in the feature
-matrix. If clipping leaves fewer than $H$ timestamps, the missing step
-columns are padded with null and a `UserWarning` is emitted.
+Step columns always span exactly `1..H` per value column because derivation
+extracts $H$ steps per observation, anchored to the observation time: step $k$
+is the value at $T + k \cdot \Delta t$, taken from the newest vintage at or
+before $T$. Vintages are not trimmed to a fixed window. A value at a target
+time beyond one observation's horizon is not discarded; it simply serves an
+earlier observation whose horizon does reach it. Where the resolved vintage
+carries no value at a step's target time, that step column is padded with null
+and a `UserWarning` is emitted.
 
 Coverage is measured per observation and per base column. At fit, a column
 that fails to cover some training observations is named in a per-column
@@ -340,11 +341,14 @@ work; a downstream consumer can rely on the frame reaching its
 covering the observation point, rather than collapsing the frame to a single
 vintage. This keeps channels on different schedules alive in the cache the
 fallback path reads, while retained state stays bounded by the number of base
-columns (at most one vintage per channel). A vintage a full horizon old covers
-nothing (a vintage carries only the `forecasting_horizon` timestamps after its
-own vintage time), so it is evicted, at which point that channel's step
-features become null and the coverage diagnostic fires. The bound is therefore
-`forecasting_horizon` itself; no staleness parameter is introduced.
+columns (at most one vintage per channel). A vintage is evicted once its own
+latest target no longer reaches past the observation point, so it covers
+nothing; that channel's step features then become null and the coverage
+diagnostic fires. For a vintage issued to cover the `forecasting_horizon`
+periods after its own vintage time, the common case, that happens once the
+vintage is a full horizon old; a longer-range vintage survives proportionally
+longer. Either way, eviction reads the vintage's own reach rather than a
+tunable age, so no staleness parameter is introduced.
 
 ### Expressing a Publication Lag
 
