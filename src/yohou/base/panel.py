@@ -11,7 +11,9 @@ from yohou.base.utils import (
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_one,
+    _retained_forecast_vintages,
     _rewind_transformers_one,
+    _warn_forecast_coverage_at_fit,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval, get_group_df, inspect_panel
@@ -388,9 +390,11 @@ class BasePanelForecaster:
             observation_times=observation_times,
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
+            warn_coverage=False,
             existing_columns=existing_columns,
         )
         _warn_rank_deficient_step_columns(X_step, X_future, forecasting_horizon)
+        _warn_forecast_coverage_at_fit(X_step, X_forecast_t, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future
@@ -655,18 +659,19 @@ class BasePanelForecaster:
         if X_future is not None:
             self._X_future_raw_ = X_future
         if X_forecast is not None:
-            # Select the latest vintage at or before observed_time_ (as-of selection)
-            latest_vintage = X_forecast.filter(pl.col("vintage_time") <= obs_time)["vintage_time"].max()
-            if latest_vintage is not None:
-                self._X_forecast_raw_ = X_forecast.filter(pl.col("vintage_time") == latest_vintage)
-            else:
-                self._X_forecast_raw_ = X_forecast.clear()
-            # Narrow the transformed cache identically, reusing the transform above.
+            # Retain the newest vintage still covering the observation point per
+            # base column, so mixed-cadence channels each survive. Keys on the
+            # wide frame's columns: each group__column is its own channel, so
+            # retention stays bounded and per-group cadence is preserved. Both
+            # caches are filtered by the same set, keeping them in lockstep.
+            keep = _retained_forecast_vintages(X_forecast, obs_time)
+            self._X_forecast_raw_ = (
+                X_forecast.filter(pl.col("vintage_time").is_in(keep)) if keep else X_forecast.clear()
+            )
+            # Filter the transformed cache to the same vintages, reusing the transform above.
             if X_forecast_eff is not None:  # pragma: no branch - non-None whenever X_forecast is provided
                 self._X_forecast_t_ = (
-                    X_forecast_eff.filter(pl.col("vintage_time") == latest_vintage)
-                    if latest_vintage is not None
-                    else X_forecast_eff.clear()
+                    X_forecast_eff.filter(pl.col("vintage_time").is_in(keep)) if keep else X_forecast_eff.clear()
                 )
 
     def _observe_with_precomputed_steps_panel(

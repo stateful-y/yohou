@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import inspect
-import re
 import warnings
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -595,6 +594,232 @@ def _warn_rank_deficient_step_columns(
         )
 
 
+def _forecast_step_coverage(
+    frame: pl.DataFrame,
+    value_cols: list[str],
+    forecasting_horizon: int,
+) -> dict[str, list[int]]:
+    """Count covered forecast steps per observation row, per base column.
+
+    For each base column in ``value_cols`` and each row of ``frame``, the
+    covered-step count is the number of its ``_step_1..H`` columns carrying a
+    value. Coverage from a single as-of vintage is a contiguous prefix, so the
+    count equals the depth reached for that observation.
+
+    Parameters
+    ----------
+    frame : pl.DataFrame
+        A frame carrying ``{base}_step_{h}`` columns (the forecast-pivoted frame
+        or the combined step frame). One row per observation.
+    value_cols : list of str
+        Base column names to measure. Names not present as step columns in
+        ``frame`` are skipped.
+    forecasting_horizon : int
+        Number of forward steps (H) per observation.
+
+    Returns
+    -------
+    dict[str, list[int]]
+        Base column name to a per-row list of covered-step counts. Base columns
+        with no step columns in ``frame`` are omitted.
+
+    """
+    coverage: dict[str, list[int]] = {}
+    for base in value_cols:
+        step_names = [f"{base}_step_{h}" for h in range(1, forecasting_horizon + 1)]
+        present = [c for c in step_names if c in frame.columns]
+        if not present:
+            continue
+        counts = frame.select(pl.sum_horizontal(pl.col(c).is_not_null().cast(pl.Int32) for c in present).alias("_n"))[
+            "_n"
+        ].to_list()
+        coverage[base] = counts
+    return coverage
+
+
+def _warn_forecast_coverage_at_fit(
+    X_step: pl.DataFrame | None,
+    X_forecast: pl.DataFrame | None,
+    forecasting_horizon: int,
+) -> None:
+    """Warn per X_forecast base column that under-covers the training batch.
+
+    Call from the fit path only, alongside
+    :func:`_warn_rank_deficient_step_columns`. Fit-time coverage is a property
+    of how the training frame was assembled (a forecast archive that starts
+    later than the target series, or a channel issued on a slower cadence than
+    others in the frame), so it is stated once per column rather than once per
+    stride of a walk-forward loop. The per-call zero/partial warning inside
+    :func:`_derive_step_columns` carries the observe and predict paths instead.
+
+    Measurement, not diagnosis: the message reports how many of the training
+    observations a column fails to fully cover and the worst depth it reaches.
+    It recommends no estimator and asserts no normality, mirroring the rank
+    diagnostic, because the same measurement has more than one cause.
+
+    Parameters
+    ----------
+    X_step : pl.DataFrame or None
+        The combined step frame returned by :func:`_derive_step_columns`.
+    X_forecast : pl.DataFrame or None
+        The raw ``X_forecast`` frame, used only for its base column names.
+    forecasting_horizon : int
+        Number of forward steps (H) per observation.
+
+    """
+    if X_step is None or X_forecast is None:
+        return
+
+    value_cols = [c for c in X_forecast.columns if c not in ("vintage_time", "time")]
+    coverage = _forecast_step_coverage(X_step, value_cols, forecasting_horizon)
+    n_obs = len(X_step)
+    for base, counts in coverage.items():
+        worst = min(counts, default=forecasting_horizon)
+        if worst >= forecasting_horizon:
+            continue
+        n_under = sum(1 for c in counts if c < forecasting_horizon)
+        warnings.warn(
+            f"X_forecast column '{base}' covers {worst} of {forecasting_horizon} forecast steps "
+            f"at its worst across {n_under} of {n_obs} training observations, and those "
+            f"observations get null step features for this channel. A model fitted on them "
+            f"is trained without '{base}' where it is null. This is what a forecast archive "
+            f"that starts later than the target series looks like, and what a channel issued "
+            f"on a slower cadence than others in the same X_forecast frame looks like.",
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+
+
+def _densify_forecast_vintages(X_forecast: pl.DataFrame) -> pl.DataFrame:
+    """Fill each vintage row so every base column carries its own newest value.
+
+    For a given vintage ``V`` and base column ``c``, the values come from the
+    newest vintage at or before ``V`` that carries ``c`` (has a non-null value).
+    All of ``V``'s rows for ``c`` therefore originate in a single source vintage,
+    so a column's forecast trajectory is never spliced across vintages. Where
+    that source vintage does not reach a target time, the value stays null.
+
+    The wide ``X_forecast`` shape implicitly assumes every column is issued at
+    every vintage. When sources publish on different schedules that assumption
+    fails, and the frame-wide as-of in windowing resolves the slower channel to
+    null. Densifying first lets each channel resolve against its own newest
+    vintage while a single as-of still serves the whole row, so windowing and
+    any row-wise ``forecast_transformer`` both see a dense frame.
+
+    Densification is a no-op on a uniform-cadence frame (every vintage already
+    carries every column, so each column's source vintage is the vintage itself)
+    and is idempotent (a dense frame densifies to itself). Rows are filled in
+    place: the frame's own ``(vintage_time, time)`` index is preserved, so a
+    sparse-but-uniform vintage schedule (one coarse cadence, finer observations)
+    is unaffected. Because windowing picks the frame-wide newest vintage at or
+    before an observation, no carrying vintage can sit between it and the
+    observation, so filling per vintage reproduces per-column as-of exactly.
+
+    Parameters
+    ----------
+    X_forecast : pl.DataFrame
+        A raw ``X_forecast`` frame with ``vintage_time`` and ``time`` columns.
+
+    Returns
+    -------
+    pl.DataFrame
+        A frame with the same ``(vintage_time, time)`` rows, every base column
+        filled from its own newest applicable vintage.
+
+    """
+    value_cols = [c for c in X_forecast.columns if c not in ("vintage_time", "time")]
+    if not value_cols or X_forecast.is_empty():
+        return X_forecast
+
+    vintages = X_forecast.select("vintage_time").unique().sort("vintage_time")
+    result = X_forecast.select("vintage_time", "time")
+    for col in value_cols:
+        dtype = X_forecast.schema[col]
+        carrying = (
+            X_forecast
+            .filter(pl.col(col).is_not_null())
+            .select(pl.col("vintage_time").alias("_src_vintage"))
+            .unique()
+            .sort("_src_vintage")
+        )
+        if carrying.is_empty():
+            result = result.with_columns(pl.lit(None).cast(dtype).alias(col))
+            continue
+        # For each vintage, the newest source vintage carrying this column.
+        vmap = vintages.join_asof(
+            carrying, left_on="vintage_time", right_on="_src_vintage", strategy="backward"
+        ).select("vintage_time", "_src_vintage")
+        src = X_forecast.filter(pl.col(col).is_not_null()).select(
+            pl.col("vintage_time").alias("_src_vintage"), "time", col
+        )
+        result = (
+            result
+            .join(vmap, on="vintage_time", how="left")
+            .join(src, on=["_src_vintage", "time"], how="left")
+            .drop("_src_vintage")
+        )
+    return result.select("vintage_time", "time", *value_cols)
+
+
+def _retained_forecast_vintages(X_forecast: pl.DataFrame, observed_time: datetime) -> list:
+    """Return the ``vintage_time`` values to retain after an observe or rewind.
+
+    For each base column, the newest vintage at or before ``observed_time`` that
+    both carries the column (has a non-null value) and still reaches a target
+    beyond ``observed_time``. The union of those per-column vintages is retained.
+
+    Keying per column, rather than keeping the single newest vintage in the
+    frame, is what lets channels issued on different schedules each survive: a
+    vintage carrying only the fast channel does not evict the slow channel's
+    older but still-current vintage. The retained set is bounded by the number
+    of base columns, holding at most one vintage per column.
+
+    A vintage is dropped once it is a full horizon old, detected without any
+    interval arithmetic: its rows carry its own target times, so a vintage whose
+    latest target is at or before ``observed_time`` covers no future step and is
+    evicted. This also drops a channel whose only surviving vintage has gone
+    stale, so its step features become null and the coverage diagnostic fires.
+
+    Parameters
+    ----------
+    X_forecast : pl.DataFrame
+        A raw ``X_forecast`` frame with ``vintage_time`` and ``time`` columns.
+        Channel membership is read from this frame's columns.
+    observed_time : object
+        The observation point (a scalar datetime). Only vintages at or before
+        it are eligible.
+
+    Returns
+    -------
+    list
+        The ``vintage_time`` values to retain, possibly empty. Filter both the
+        raw and the transformed cache by this set to keep them in lockstep.
+
+    """
+    value_cols = [c for c in X_forecast.columns if c not in ("vintage_time", "time")]
+    eligible = X_forecast.filter(pl.col("vintage_time") <= observed_time)
+    if eligible.is_empty():
+        return []
+
+    keep: list = []
+    seen: set = set()
+    for col in value_cols:
+        live = (
+            eligible
+            .filter(pl.col(col).is_not_null())
+            .group_by("vintage_time")
+            .agg(pl.col("time").max().alias("_max_target"))
+            .filter(pl.col("_max_target") > observed_time)
+        )
+        if live.is_empty():
+            continue
+        newest = live["vintage_time"].max()
+        if newest not in seen:
+            seen.add(newest)
+            keep.append(newest)
+    return keep
+
+
 def _derive_step_columns(
     X_future: pl.DataFrame | None,
     X_forecast: pl.DataFrame | None,
@@ -602,6 +827,7 @@ def _derive_step_columns(
     forecasting_horizon: int,
     interval: str | timedelta,
     *,
+    warn_coverage: bool = True,
     existing_columns: set[str] | None = None,
 ) -> pl.DataFrame | None:
     """Derive step-indexed columns from X_future and X_forecast.
@@ -617,18 +843,24 @@ def _derive_step_columns(
         values that are windowed forward from each observation time.
     X_forecast : pl.DataFrame or None
         External forecasts with ``"vintage_time"`` and ``"time"`` columns.
-        Before pivoting, each vintage is filtered to timestamps within
-        ``(vintage_time, vintage_time + H * interval]``. Timestamps outside
-        this window are discarded. The remaining timestamps are pivoted by
-        ordinal rank within each vintage group. If filtering produces fewer
-        than H step columns, the missing columns are padded with null and
-        a ``UserWarning`` is emitted.
+        For each observation time ``T`` the newest vintage at or before ``T``
+        is selected (as-of), and step columns are taken at ``T + 1..H`` steps,
+        anchored to the observation time rather than the vintage time. Vintages
+        are not clipped: a value at a target time beyond one observation's
+        horizon simply serves an earlier observation instead. Where the
+        resolved vintage carries no value at a step's target time, that step
+        column is null and a ``UserWarning`` is emitted.
     observation_times : pl.Series
         Observation timestamps to derive step columns from.
     forecasting_horizon : int
         Number of forward steps (H) per observation time.
     interval : str or timedelta
         Time frequency between consecutive steps.
+    warn_coverage : bool, default=True
+        Whether to emit the per-call zero/partial coverage warning for
+        ``X_forecast``. The fit path passes ``False`` and reports coverage
+        per column instead via :func:`_warn_forecast_coverage_at_fit`, so the
+        per-call warning carries the observe and predict paths only.
     existing_columns : set of str or None, default=None
         Column names already present (e.g., X_actual columns). Used for
         collision detection against generated step column names.
@@ -677,48 +909,38 @@ def _derive_step_columns(
         # Determine value columns and their dtypes for padding
         value_cols_info = {c: X_forecast[c].dtype for c in X_forecast.columns if c not in ("vintage_time", "time")}
 
-        # Warn if any value column has step columns that are entirely null,
-        # indicating the matched vintage(s) don't cover the full horizon.
-        step_cols_forecast = [c for c in forecast_pivoted.columns if c != "time" and re.search(r"_step_\d+$", c)]
-        if step_cols_forecast:
-            # Coverage is per value column: a column whose later steps are all
-            # null is under-covered even if another column reaches the horizon.
-            # Track the highest covered step per base column and take the worst
-            # (minimum) so a single under-covered column still warns.
-            n_rows = len(forecast_pivoted)
-            null_counts = forecast_pivoted.select(step_cols_forecast).null_count().row(0)
-            per_col_max: dict[str, int] = {}
-            for c, null_count in zip(step_cols_forecast, null_counts, strict=True):
-                m = re.search(r"^(.*)_step_(\d+)$", c)
-                if m is None:  # pragma: no cover - step_cols_forecast is pre-filtered by `_step_\d+$`
-                    continue
-                base = m.group(1)
-                per_col_max.setdefault(base, 0)
-                if null_count < n_rows:
-                    per_col_max[base] = max(per_col_max[base], int(m.group(2)))
-            max_covered = min(per_col_max.values(), default=0)
-            if max_covered == 0:
+        # Per-call coverage warning for the observe and predict paths. Coverage
+        # is measured per observation and per base column: for each row, how many
+        # forecast steps of each base column carry a value. The worst (minimum)
+        # over rows and columns drives the warning, so a column dead for even one
+        # observation is not hidden by another that happens to cover it. This
+        # replaces a batch-wide existential test that answered "covered for any
+        # observation?" and so missed a channel null in all but one row. The fit
+        # path passes warn_coverage=False and reports per column instead.
+        if warn_coverage:
+            coverage = _forecast_step_coverage(forecast_pivoted, list(value_cols_info), forecasting_horizon)
+            worst = min((min(counts) for counts in coverage.values()), default=forecasting_horizon)
+            if coverage and worst == 0:
                 # Distinct from partial coverage rather than its extreme: nothing
-                # derived from X_forecast carries a value here, so a model relying
-                # on that channel is predicting without it. Reachable from ordinary
+                # derived from X_forecast carries a value, so a model relying on
+                # that channel is predicting without it. Reachable from ordinary
                 # use, because a vintage covers only the forecasting_horizon
                 # timestamps after its own vintage_time, so as-of selection yields
                 # zero coverage once the observation point is a full horizon past
                 # the newest available vintage. Stated as a measurement rather than
                 # an error: a caller may reach this deliberately.
                 warnings.warn(
-                    f"X_forecast covers 0 of {forecasting_horizon} forecast steps for this "
-                    f"observation, so every step feature derived from it is null. A model "
-                    f"fitted on those features is predicting without them here. This happens "
-                    f"when the newest usable vintage is at least {forecasting_horizon} "
-                    f"intervals older than the observation point, which a cached frame "
-                    f"reaches once serving advances past the vintages it holds.",
+                    f"X_forecast covers 0 of {forecasting_horizon} forecast steps, so every "
+                    f"step feature derived from it is null and a model relying on that channel "
+                    f"is predicting without it. This happens when the newest usable vintage is "
+                    f"at least {forecasting_horizon} intervals older than the observation point, "
+                    f"which a cached frame reaches once serving advances past the vintages it holds.",
                     UserWarning,
                     stacklevel=_caller_stacklevel(),
                 )
-            elif max_covered < forecasting_horizon:
+            elif coverage and worst < forecasting_horizon:
                 warnings.warn(
-                    f"X_forecast covers {max_covered} of {forecasting_horizon} "
+                    f"X_forecast covers {worst} of {forecasting_horizon} "
                     f"forecast steps. The remaining step features will be null. "
                     f"This arises for short-range forecasts and when the "
                     f"observation point has advanced past some forecast timestamps.",

@@ -288,13 +288,78 @@ Similarly, `X_forecast` may not cover all training observation times. Rows
 without matching forecast data produce null step columns. This is common when
 forecast archives start later than the target series.
 
-Conversely, a vintage whose timestamps extend beyond the forecasting horizon
-is clipped before pivoting. Each vintage keeps only timestamps in
-$(T_v,\; T_v + H \cdot \Delta t]$ where $T_v$ is the vintage time. This
-guarantees that step columns always span exactly `1..H` per value column,
-preventing spurious `step_(H+1)` columns from appearing in the feature
-matrix. If clipping leaves fewer than $H$ timestamps, the missing step
-columns are padded with null and a `UserWarning` is emitted.
+Step columns always span exactly `1..H` per value column because derivation
+extracts $H$ steps per observation, anchored to the observation time: step $k$
+is the value at $T + k \cdot \Delta t$, taken from the newest vintage at or
+before $T$. Vintages are not trimmed to a fixed window. A value at a target
+time beyond one observation's horizon is not discarded; it simply serves an
+earlier observation whose horizon does reach it. Where the resolved vintage
+carries no value at a step's target time, that step column is padded with null
+and a `UserWarning` is emitted.
+
+Coverage is measured per observation and per base column. At fit, a column
+that fails to cover some training observations is named in a per-column
+`UserWarning`, with the count of observations it misses, so a channel that is
+dead for most of the batch is visible rather than hidden behind a single
+covered row. On the observe and predict paths the per-call warning reports the
+worst-covered observation, distinguishing zero coverage (the channel
+contributes nothing) from partial coverage (a short-range forecast).
+
+## Heterogeneous Vintage Cadence
+
+A single `X_forecast` frame can carry channels issued on different schedules: a
+weather forecast refreshed daily next to a demand projection refreshed weekly.
+Each base column resolves against its own newest applicable vintage. The daily
+channel resolves from its daily vintage; the weekly channel resolves from its
+own most recent vintage, even when newer vintages carrying only the daily
+channel exist.
+
+This resolution is realized by densifying the vintage axis before step columns
+are derived. For each vintage and each base column, the values come from the
+newest vintage at or before it that carries that column, so every vintage row
+carries a value for every column. All of a column's steps therefore originate
+in a single source vintage: a forecast trajectory is never spliced across
+vintages, and where a source vintage does not reach a target time the value
+stays null. A frame where every vintage already carries every column (uniform
+cadence) is unchanged, so this is transparent to the common case.
+
+Densification runs for every forecaster that consumes `X_forecast`, whether or
+not a `forecast_transformer` is set. That matters for two reasons. A plain
+forecaster (including an ordinary panel forecaster) has no forecast transformer,
+and without densification its slower channels would collapse to null under the
+frame-wide as-of. And when a `forecast_transformer` is present, it operates
+row-wise on the vintage-indexed frame, so a transformer that combines columns
+from differently-scheduled sources (summing several series, then deriving a
+further quantity from that sum and two others) needs all of its inputs on one
+row. The dense frame is the contract that makes such cross-source transformers
+work; a downstream consumer can rely on the frame reaching its
+`forecast_transformer` being dense.
+
+### Bounded Retention Across Observations
+
+`observe` and `rewind` retain, for each base column, the newest vintage still
+covering the observation point, rather than collapsing the frame to a single
+vintage. This keeps channels on different schedules alive in the cache the
+fallback path reads, while retained state stays bounded by the number of base
+columns (at most one vintage per channel). A vintage is evicted once its own
+latest target no longer reaches past the observation point, so it covers
+nothing; that channel's step features then become null and the coverage
+diagnostic fires. For a vintage issued to cover the `forecasting_horizon`
+periods after its own vintage time, the common case, that happens once the
+vintage is a full horizon old; a longer-range vintage survives proportionally
+longer. Either way, eviction reads the vintage's own reach rather than a
+tunable age, so no staleness parameter is introduced.
+
+### Expressing a Publication Lag
+
+A forecast whose issuance boundary differs from its label (for example a
+day-ahead product available some fixed number of hours before the target
+boundary) is expressed by shifting the emitted `vintage_time`, not through a new
+API parameter. As-of selection reads whatever labels the frame carries, per
+column, and horizon steps are measured from the label. Because resolution is
+per column, sources with different lags compose naturally: shift each source's
+`vintage_time` by its own amount and each still resolves against its own
+vintages.
 
 ## The Observe-Predict Loop
 
