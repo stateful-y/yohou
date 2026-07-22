@@ -32,10 +32,10 @@ cd yohou
 uv sync --group dev
 ```
 
-4. Install pre-commit hooks:
+4. Install the git hooks:
 
 ```bash
-uv run pre-commit install
+uv run prek install -f
 ```
 
 ## Development Workflow
@@ -99,7 +99,7 @@ git add .
 git commit -m "feat: add my feature"
 ```
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages. The commit message format is enforced by commitizen pre-commit hooks, which will validate your commit messages automatically. See [Commit Message Convention](#commit-message-convention) below for the full list of types and examples.
+We follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages. The commit message format is enforced by commitizen's commit-msg hook, which will validate your commit messages automatically. See [Commit Message Convention](#commit-message-convention) below for the full list of types and examples.
 
 ### Running Tests
 
@@ -237,7 +237,7 @@ Run all quality checks by combining the fix and test steps above:
 === "uv run"
 
     ```bash
-    uvx pre-commit run --all-files --show-diff-on-failure && uv run pytest
+    uv run prek run --all-files --show-diff-on-failure && uv run pytest
     ```
 
 ### Docstring Standards
@@ -515,7 +515,7 @@ feat: redesign authentication system
 BREAKING CHANGE: authentication now requires API keys instead of passwords
 ```
 
-The pre-commit hook will validate your commit messages and prevent commits that don't follow the convention.
+The commit-msg hook will validate your commit messages and prevent commits that don't follow the convention.
 
 ## Release Process
 

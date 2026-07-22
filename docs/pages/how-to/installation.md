@@ -77,7 +77,7 @@ To contribute to Yohou or install from source:
     ```bash
     git clone https://github.com/stateful-y/yohou.git
     cd yohou
-    just install  # Installs dev dependencies + pre-commit hooks
+    just install  # Installs dev dependencies + git hooks
     ```
 
 === "uv"
@@ -86,7 +86,7 @@ To contribute to Yohou or install from source:
     git clone https://github.com/stateful-y/yohou.git
     cd yohou
     uv sync --group dev
-    uv run pre-commit install
+    uv run prek install -f
     ```
 
 ## Optional Packages
