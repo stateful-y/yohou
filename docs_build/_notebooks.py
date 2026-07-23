@@ -103,7 +103,7 @@ def export(project_root):
 
     # Allow skipping slow notebook export during development
     if os.environ.get("MKDOCS_SKIP_NOTEBOOKS"):
-        print("[hooks] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
+        print("[docs] MKDOCS_SKIP_NOTEBOOKS set, skipping notebook export")
         return
 
     docs_examples = project_root / "docs" / "examples"
@@ -119,7 +119,7 @@ def export(project_root):
         # Skip the ones whose source has not changed since their last export.
         content_hash = _notebook_content_hash(notebook)
         if _is_cached(output_dir, content_hash):
-            print(f"[hooks] unchanged, reusing export: {rel_path}")
+            print(f"[docs] unchanged, reusing export: {rel_path}")
             continue
 
         # Clean previous export artifacts before re-exporting
@@ -148,23 +148,23 @@ def export(project_root):
                 capture_output=True,
                 text=True,
             )
-            print(f"[hooks] exported html {rel_path} -> {static_file.relative_to(project_root)}")
+            print(f"[docs] exported html {rel_path} -> {static_file.relative_to(project_root)}")
             # Stamp the source hash only after a successful export, so a failed
             # or interrupted run re-exports next time instead of caching a
             # half-written page.
             (output_dir / _SOURCE_HASH_FILE).write_text(content_hash, encoding="utf-8")
         except subprocess.CalledProcessError as e:
             failed.append(str(rel_path))
-            print(f"[hooks] FAILED html {rel_path}: {e}", file=sys.stderr)
+            print(f"[docs] FAILED html {rel_path}: {e}", file=sys.stderr)
             if e.stderr:
                 print(e.stderr, file=sys.stderr)
             continue
         except FileNotFoundError:
-            print("[hooks] marimo not found, skipping notebook export", file=sys.stderr)
+            print("[docs] marimo not found, skipping notebook export", file=sys.stderr)
             break
 
     if failed:
-        msg = f"[hooks] {len(failed)} notebook(s) had cell execution errors:\n"
+        msg = f"[docs] {len(failed)} notebook(s) had cell execution errors:\n"
         msg += "\n".join(f"  - {f}" for f in failed)
         raise RuntimeError(msg)
 
