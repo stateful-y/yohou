@@ -3290,6 +3290,7 @@ dev = [
     { name = "rumdl" },
     { name = "statsmodels" },
     { name = "ty" },
+    { name = "watchdog" },
 ]
 docs = [
     { name = "catboost" },
@@ -3302,6 +3303,7 @@ docs = [
     { name = "pymdown-extensions" },
     { name = "pyyaml" },
     { name = "statsmodels" },
+    { name = "watchdog" },
 ]
 examples = [
     { name = "catboost" },
@@ -3365,6 +3367,7 @@ dev = [
     { name = "rumdl", specifier = ">=0.1.33" },
     { name = "statsmodels", specifier = ">=0.14" },
     { name = "ty", specifier = ">=0.0.29" },
+    { name = "watchdog", specifier = ">=4.0" },
 ]
 docs = [
     { name = "catboost", specifier = ">=1.2" },
@@ -3377,6 +3380,7 @@ docs = [
     { name = "pymdown-extensions", specifier = ">=10.20.1" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "statsmodels", specifier = ">=0.14" },
+    { name = "watchdog", specifier = ">=4.0" },
 ]
 examples = [
     { name = "catboost", specifier = ">=1.2" },
