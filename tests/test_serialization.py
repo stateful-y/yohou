@@ -19,6 +19,7 @@ from yohou.utils.discovery import all_estimators
 
 # Estimators that need explicit constructor arguments.
 _ESTIMATOR_KWARGS: dict[str, dict] = {
+    "AdditiveForecaster": {"terms": []},
     "ColumnForecaster": {"forecasters": []},
     "ColumnTransformer": {"transformers": []},
     "DecompositionPipeline": {"forecasters": []},

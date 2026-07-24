@@ -1,14 +1,15 @@
 # Forecaster Composition
 
-Yohou provides four classes that compose forecasters into larger forecasting
+Yohou provides five classes that compose forecasters into larger forecasting
 structures. Each component is itself a full forecaster with
 `fit`/`predict`/`observe`/`rewind` lifecycle, not a transformer or preprocessing
 step. They address situations where a single forecaster cannot handle the full
-problem: additive components in the data, target columns with different dynamics,
-features that must be forecast before the target, or panel groups with
-fundamentally different patterns.
+problem: additive components in the data (whether latent or known and separately
+observable), target columns with different dynamics, features that must be
+forecast before the target, or panel groups with fundamentally different
+patterns.
 
-All four classes support panel data, integrate with hyperparameter search and
+All five classes support panel data, integrate with hyperparameter search and
 cross-validation, and can be nested inside each other or wrapped by ensemble
 voters.
 
@@ -65,6 +66,73 @@ component in `pipeline.residuals_`, a dictionary mapping forecaster name to a
 Polars DataFrame. This is useful for inspecting whether a component successfully
 captured its intended pattern or whether signal remains for downstream
 components to model.
+
+## AdditiveForecaster
+
+[`AdditiveForecaster`](/pages/api/generated/yohou.compose.AdditiveForecaster/) is the observed-term, parallel-fit dual of `DecompositionPipeline`. It emits the
+same additive sum, but the components are known, separately observable terms
+rather than latent residuals, and they are fitted independently rather than in
+sequence:
+
+$$\hat{y}_t = \hat{y}_{1,t} + \hat{y}_{2,t} + \cdots + \hat{y}_{k,t} + \hat{\varepsilon}_t$$
+
+Where `DecompositionPipeline` is handed only the aggregate and lets each component
+invent its term from the leftover, `AdditiveForecaster` is told how to build each
+term's ground truth. The `terms` parameter takes a list of
+`(name, extractor, forecaster)` triples, and all forecasters must be point
+forecasters:
+
+```python
+import polars as pl
+from yohou.compose import AdditiveForecaster
+from yohou.preprocessing import FunctionTransformer
+from yohou.point import SeasonalNaive
+
+# The extractor selects the posted System Lambda feed as the anchor term target.
+anchor = FunctionTransformer(func=lambda df: df.select(pl.col("system_lambda_dam").alias("lambda")))
+
+# spp = System Lambda anchor + locational basis (congestion + loss).
+# The anchor is forecast on its own; the entire basis falls into the residual.
+forecaster = AdditiveForecaster(
+    terms=[("lambda", anchor, SeasonalNaive(seasonality=24))],
+    residual_forecaster=SeasonalNaive(seasonality=24),
+)
+```
+
+This is the coarse day-ahead energy split: the System Lambda is a posted feed
+forecast by its own model, and the entire locational basis falls into the
+residual. Splitting the basis further later is additive, add more terms and the
+residual shrinks toward noise.
+
+### Extractors build labels, not features
+
+Each term's `extractor` is a stateless `BaseActualTransformer` applied at fit time
+to the target `y` joined with `X_actual`. It manufactures the term's training
+target so the term forecaster has something to learn from. The extractor is the
+answer key used to train the term, and it is gone at exam time: it runs at `fit`,
+`observe`, and `rewind`, but never at `predict`, where each term forecaster
+predicts from its own features. An extractor reading the contemporaneous target
+to build a label (for example `spp - system_lambda_dam`) is therefore not
+leakage; the term forecaster's own feature discipline is a separate concern.
+
+### Granularity and broadcasting
+
+Term granularity is inferred from the extractor output. A single unprefixed series
+is a global term, and a `{group}__{column}` panel output is a per-group term. When
+the aggregate is a panel, a global term (such as a system-wide System Lambda) is
+broadcast to every panel group, while a panel term aligns to its own group. A
+group present in the aggregate but missing from a panel term's forecast raises
+rather than being silently treated as zero.
+
+### Residual closure
+
+The optional `residual_forecaster` models `eps = y - sum_i y_i`, computed from the
+observed extracted terms. This one slot serves two roles: leave the last piece
+unextracted and the residual carries a whole component (an exact split); extract
+every real term and the residual mops up the small structural gap (an approximate
+split). With `residual_forecaster=None`, the prediction is the plain bottom-up
+sum. The additive identity holds in level space, so there is no pipeline-level
+`target_transformer`; per-term scaling lives inside each term forecaster.
 
 ## ColumnForecaster
 
@@ -240,6 +308,14 @@ decomposition: calling `observe()` then `predict()` produces the same result as
 re-fitting on the extended data, as long as the components remain stable. The
 `observe_predict()` method handles this residual decomposition internally,
 ensuring rolling evaluation produces correct multi-component predictions.
+
+**[`AdditiveForecaster`](/pages/api/generated/yohou.compose.AdditiveForecaster/)** re-extracts each term's target from the incoming
+window and forwards it to that term's forecaster independently, with no residual
+threading between terms. When a residual forecaster is present, the residual
+`eps = y - sum_i y_i` is recomputed from the freshly extracted terms and observed on
+its own. Because the terms are observed rather than latent, `observe()` then
+`predict()` matches a refit on the extended window without the ordering sensitivity
+the sequential decomposition carries.
 
 **[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/)** routes each target column to its assigned forecaster.
 All forecasters receive the full exogenous data, but each observes only its own
