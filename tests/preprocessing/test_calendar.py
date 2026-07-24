@@ -685,3 +685,73 @@ class TestDaylightSavingFeatureTransformerContract:
         )
         out = union.fit_transform(spring_frame)
         assert any("dst_in_effect" in c for c in out.columns)
+
+
+class TestCalendarFeatureTransformerTimeZone:
+    """The time_zone parameter: ephemeral conversion, output time unchanged."""
+
+    def _utc_hourly(self) -> pl.DataFrame:
+        return pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2026, 7, 1, 17, tzinfo=UTC), datetime(2026, 7, 1, 20, tzinfo=UTC), interval="1h", eager=True
+            ),
+            "value": [1, 2, 3, 4],
+        })
+
+    def test_local_hour_with_time_zone(self):
+        """cal_hour reflects the target zone when time_zone is set."""
+        out = CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit_transform(
+            self._utc_hourly()
+        )
+        assert out["cal_hour"].to_list() == [12, 13, 14, 15]  # UTC 17..20 -> CDT 12..15
+
+    def test_default_is_utc_hour(self):
+        """Without time_zone, cal_hour is the stored (UTC) hour, unchanged behavior."""
+        out = CalendarFeatureTransformer(features=["hour"]).fit_transform(self._utc_hourly())
+        assert out["cal_hour"].to_list() == [17, 18, 19, 20]
+
+    def test_output_time_is_unchanged(self):
+        """Only feature values localize; the output time column is identical to the input."""
+        X = self._utc_hourly()
+        out = CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit_transform(X)
+        assert out.schema["time"] == X.schema["time"]
+        assert out["time"].to_list() == X["time"].to_list()
+
+    def test_output_time_still_joins_on_original_zone(self):
+        """The unchanged output time still joins to a UTC-keyed frame (no alignment break)."""
+        X = self._utc_hourly()
+        out = CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit_transform(X)
+        y = X.select("time").with_columns(pl.Series("target", [10, 20, 30, 40]))
+        joined = out.join(y, on="time", how="inner")
+        assert joined.height == X.height
+        assert joined["target"].to_list() == [10, 20, 30, 40]
+
+    def test_tz_naive_rejected_when_localizing(self):
+        """A tz-naive time column raises only when time_zone is set."""
+        naive = self._utc_hourly().with_columns(pl.col("time").dt.replace_time_zone(None))
+        with pytest.raises(ValueError, match="timezone-aware"):
+            CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit(naive)
+
+    def test_date_dtype_rejected_when_localizing(self):
+        """A pl.Date time column raises when time_zone is set."""
+        dates = pl.DataFrame({
+            "time": pl.date_range(date(2026, 3, 1), date(2026, 3, 20), interval="1d", eager=True),
+            "value": range(20),
+        })
+        with pytest.raises(ValueError, match="timezone-aware"):
+            CalendarFeatureTransformer(features=["month"], time_zone="America/Chicago").fit(dates)
+
+    def test_tz_naive_accepted_without_time_zone(self):
+        """A tz-naive time column is accepted when time_zone is None (unchanged contract)."""
+        naive = self._utc_hourly().with_columns(pl.col("time").dt.replace_time_zone(None))
+        out = CalendarFeatureTransformer(features=["hour"]).fit_transform(naive)
+        assert out["cal_hour"].to_list() == [17, 18, 19, 20]
+
+    def test_interval_gating_unaffected(self):
+        """Interval applicability still holds under localization (hour needs sub-daily)."""
+        time = pl.datetime_range(
+            datetime(2026, 3, 1, tzinfo=UTC), datetime(2026, 3, 20, tzinfo=UTC), interval="1d", eager=True
+        )
+        daily = pl.DataFrame({"time": time, "value": range(len(time))})
+        with pytest.raises(ValueError, match="not applicable"):
+            CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit(daily)

@@ -31,6 +31,17 @@ Available features include `"year"`, `"month"`, `"quarter"`, `"week"`, `"day_of_
 !!! info "Frequency aware"
     Sub-daily features (`"hour"`, `"minute"`) are only applicable to sub-daily data. When `features=None`, the transformer inspects the data interval and extracts only what makes sense. After fitting, check `transformer.applicable_features_` to see which features were selected.
 
+On a UTC-indexed frame, `cal_hour` is a UTC hour, so the local daily cycle drifts by an hour across a daylight-saving boundary. Pass `time_zone` to compute the features from local wall-clock time instead:
+
+```python
+# "time" is timezone-aware UTC; features are read in America/Chicago.
+transformer = CalendarFeatureTransformer(features=["hour", "day_of_week"], time_zone="America/Chicago")
+X = transformer.fit_transform(y)
+# cal_hour is now the local hour
+```
+
+The conversion is applied only when extracting feature values: the output `time` column is returned unchanged, so it stays a valid join key against your target and other feature frames (which are typically UTC-indexed). `time_zone` requires a timezone-aware `time` column.
+
 ## Mark Holidays
 
 [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/) creates a binary indicator column and optional proximity features showing distance to the nearest holiday:

@@ -66,13 +66,17 @@ def _interval_supports_feature(interval: str, feature: str) -> bool:
     return interval in required
 
 
-def _extract_feature(feature: str) -> pl.Expr:
+def _extract_feature(feature: str, time_zone: str | None = None) -> pl.Expr:
     """Build a polars expression that extracts a calendar feature from the time column.
 
     Parameters
     ----------
     feature : str
         Calendar feature name.
+    time_zone : str or None, default=None
+        If set, the ``"time"`` column is converted into this zone before the feature is
+        read, so wall-clock features are local. This conversion is ephemeral: it affects
+        only the extracted value, never the output ``"time"`` column.
 
     Returns
     -------
@@ -81,6 +85,8 @@ def _extract_feature(feature: str) -> pl.Expr:
 
     """
     col = pl.col("time")
+    if time_zone is not None:
+        col = col.dt.convert_time_zone(time_zone)
     if feature == "year":
         return col.dt.year().cast(pl.Int32).alias("cal_year")
     if feature == "month":
@@ -145,6 +151,13 @@ class CalendarFeatureTransformer(BaseActualTransformer):
         ``"quarter"``, ``"is_weekend"``, ``"is_month_start"``,
         ``"is_month_end"``, ``"is_quarter_start"``, ``"is_quarter_end"``,
         ``"is_year_start"``, ``"is_year_end"``.
+    time_zone : str or None, default=None
+        If set to an IANA zone, features are computed from the ``"time"`` column
+        converted into that zone, so wall-clock features (``cal_hour``,
+        ``cal_day_of_week``, ...) are local. The conversion is ephemeral: the output
+        ``"time"`` column is returned unchanged, so it stays a valid join key against
+        frames in its original zone. Requires a timezone-aware ``"time"`` column. If
+        ``None`` (the default), features are read from ``"time"`` as-is.
 
     Attributes
     ----------
@@ -156,8 +169,9 @@ class CalendarFeatureTransformer(BaseActualTransformer):
     ValueError
         At fit time if any requested feature name is not a valid calendar
         feature; if a requested feature is not applicable to the detected time
-        interval (e.g. ``"hour"`` on daily data); or if any generated ``cal_*``
-        column name conflicts with an existing column in ``X``.
+        interval (e.g. ``"hour"`` on daily data); if any generated ``cal_*``
+        column name conflicts with an existing column in ``X``; or if
+        ``time_zone`` is set and the ``"time"`` column is not timezone-aware.
 
     See Also
     --------
@@ -182,20 +196,49 @@ class CalendarFeatureTransformer(BaseActualTransformer):
     >>> "cal_month" in X_t.columns
     True
 
+    With ``time_zone`` set, ``cal_hour`` is local while the output ``"time"`` stays put:
+
+    >>> from datetime import timezone
+    >>> t = pl.datetime_range(
+    ...     datetime(2026, 7, 1, 17, tzinfo=timezone.utc),
+    ...     datetime(2026, 7, 1, 18, tzinfo=timezone.utc),
+    ...     interval="1h",
+    ...     eager=True,
+    ... )
+    >>> Xz = pl.DataFrame({"time": t})
+    >>> out = CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit_transform(Xz)
+    >>> out["cal_hour"].to_list()  # UTC 17, 18 -> Central 12, 13
+    [12, 13]
+    >>> out["time"].to_list() == Xz["time"].to_list()  # output time unchanged
+    True
+
     """
 
     _parameter_constraints: dict = {
         "features": [list, None],
+        "time_zone": [str, None],
     }
 
     def __init__(
         self,
         features: list[str] | None = None,
+        time_zone: str | None = None,
     ):
         self.features = features
+        self.time_zone = time_zone
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
+        if self.time_zone is not None:
+            dtype = X.schema["time"]
+            source_zone = dtype.time_zone if isinstance(dtype, pl.Datetime) else None
+            if source_zone is None:
+                raise ValueError(
+                    "CalendarFeatureTransformer with time_zone set requires a timezone-aware "
+                    "'time' column (a zone conversion is undefined without an instant and a "
+                    f"source zone); got dtype {dtype}. Localize the source first, e.g. "
+                    "dt.replace_time_zone('UTC')."
+                )
         if self.features is not None:
             invalid = set(self.features) - set(ALL_FEATURES)
             if invalid:
@@ -235,8 +278,10 @@ class CalendarFeatureTransformer(BaseActualTransformer):
             DataFrame with ``"time"`` column and extracted calendar features.
 
         """
-        feature_exprs = [_extract_feature(f) for f in self.applicable_features_]
+        feature_exprs = [_extract_feature(f, self.time_zone) for f in self.applicable_features_]
 
+        # The output "time" is the original column, never rezoned: only the feature values
+        # above are computed in ``time_zone``, so ``time`` stays a valid join key.
         return X.select(pl.col("time"), *feature_exprs)
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
