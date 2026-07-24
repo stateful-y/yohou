@@ -67,9 +67,9 @@ Polars DataFrame. This is useful for inspecting whether a component successfully
 captured its intended pattern or whether signal remains for downstream
 components to model.
 
-## AdditiveForecaster
+## CombiningForecaster
 
-[`AdditiveForecaster`](/pages/api/generated/yohou.compose.AdditiveForecaster/) is the observed-term, parallel-fit dual of `DecompositionPipeline`. It emits the
+[`CombiningForecaster`](/pages/api/generated/yohou.compose.CombiningForecaster/) is the observed-term, parallel-fit dual of `DecompositionPipeline`. It emits the
 same additive sum, but the components are known, separately observable terms
 rather than latent residuals, and they are fitted independently rather than in
 sequence:
@@ -77,14 +77,14 @@ sequence:
 $$\hat{y}_t = \hat{y}_{1,t} + \hat{y}_{2,t} + \cdots + \hat{y}_{k,t} + \hat{\varepsilon}_t$$
 
 Where `DecompositionPipeline` is handed only the aggregate and lets each component
-invent its term from the leftover, `AdditiveForecaster` is told how to build each
+invent its term from the leftover, `CombiningForecaster` is told how to build each
 term's ground truth. The `terms` parameter takes a list of
 `(name, extractor, forecaster)` triples, and all forecasters must be point
 forecasters:
 
 ```python
 import polars as pl
-from yohou.compose import AdditiveForecaster
+from yohou.compose import CombiningForecaster
 from yohou.preprocessing import FunctionTransformer
 from yohou.point import SeasonalNaive
 
@@ -93,7 +93,7 @@ anchor = FunctionTransformer(func=lambda df: df.select(pl.col("system_lambda_dam
 
 # spp = System Lambda anchor + locational basis (congestion + loss).
 # The anchor is forecast on its own; the entire basis falls into the residual.
-forecaster = AdditiveForecaster(
+forecaster = CombiningForecaster(
     terms=[("lambda", anchor, SeasonalNaive(seasonality=24))],
     residual_forecaster=SeasonalNaive(seasonality=24),
 )
@@ -103,6 +103,22 @@ This is the coarse day-ahead energy split: the System Lambda is a posted feed
 forecast by its own model, and the entire locational basis falls into the
 residual. Splitting the basis further later is additive, add more terms and the
 residual shrinks toward noise.
+
+### Sum or product: the `combine` group
+
+The combination is an abelian-group operation chosen by `combine`. The default
+`"sum"` reconstructs the additive identity above. `"product"` reconstructs the
+aggregate as the product of the term forecasts, with a multiplicative residual:
+
+$$\hat{y}_t = \hat{y}_{1,t} \times \hat{y}_{2,t} \times \cdots \times \hat{y}_{k,t} \times \hat{\varepsilon}_t, \qquad \varepsilon_t = y_t \big/ \textstyle\prod_i y_{i,t}$$
+
+Use `combine="product"` when the target factors into strictly positive multiplicative
+drivers (for example a price as `gas x heat_rate x scarcity_multiplier`). The
+multiplicative group lives on the positive reals, so `CombiningForecaster` rejects a
+non-positive term or target at fit; model in log space (an additive `combine="sum"`
+of logs) when signs vary. Extract-side arithmetic pairs with the combiner:
+[`ArithmeticTransformer`](/pages/api/generated/yohou.preprocessing.ArithmeticTransformer/)
+with `op="sub"` builds an additive term, `op="div"` a multiplicative one.
 
 ### Extractors build labels, not features
 
@@ -309,7 +325,7 @@ re-fitting on the extended data, as long as the components remain stable. The
 `observe_predict()` method handles this residual decomposition internally,
 ensuring rolling evaluation produces correct multi-component predictions.
 
-**[`AdditiveForecaster`](/pages/api/generated/yohou.compose.AdditiveForecaster/)** re-extracts each term's target from the incoming
+**[`CombiningForecaster`](/pages/api/generated/yohou.compose.CombiningForecaster/)** re-extracts each term's target from the incoming
 window and forwards it to that term's forecaster independently, with no residual
 threading between terms. When a residual forecaster is present, the residual
 `eps = y - sum_i y_i` is recomputed from the freshly extracted terms and observed on

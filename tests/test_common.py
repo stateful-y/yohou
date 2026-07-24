@@ -35,7 +35,7 @@ from yohou.weighting import BaseWeighter
 # generic common-test sweep.
 _SKIP_COMMON = {
     # Composition / meta forecasters (tested in tests/compose/)
-    "AdditiveForecaster",
+    "CombiningForecaster",
     "ColumnForecaster",
     "ColumnTransformer",
     "DecompositionPipeline",
@@ -496,12 +496,12 @@ def _composition_descriptors() -> dict[str, dict]:
     class _ParamlessExtractor(BaseActualTransformer):
         """Param-free identity extractor (its ``get_params`` is empty).
 
-        AdditiveForecaster terms are ``(name, extractor, forecaster)`` and expose
+        CombiningForecaster terms are ``(name, extractor, forecaster)`` and expose
         the forecaster (index 2) as the addressable nested estimator, while the
         generic composition contract addresses the index-1 component. A param-free
         extractor keeps ``check_composition_nested_param_addressable`` vacuously
         satisfied; the forecaster's nested addressability is covered directly in
-        tests/compose/test_additive_forecaster.py.
+        tests/compose/test_combining_forecaster.py.
         """
 
         def __init__(self):
@@ -526,7 +526,7 @@ def _composition_descriptors() -> dict[str, dict]:
             return self.feature_names_in_
 
     return {
-        "AdditiveForecaster": {
+        "CombiningForecaster": {
             "attr": "terms",
             "components": [("a", _ParamlessExtractor(), SeasonalNaive(seasonality=1))],
         },

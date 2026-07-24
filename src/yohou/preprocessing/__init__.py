@@ -1,5 +1,6 @@
 """Preprocessing transformers for stationarization and feature engineering."""
 
+from .arithmetic import ArithmeticTransformer, ReduceTransformer
 from .calendar import CalendarFeatureTransformer, HolidayFeatureTransformer
 from .function import FunctionTransformer
 from .imputation import (
@@ -46,6 +47,9 @@ from .window import (
 )
 
 __all__ = [
+    # Arithmetic
+    "ArithmeticTransformer",
+    "ReduceTransformer",
     # Function transformers
     "FunctionTransformer",
     "SlidingWindowFunctionTransformer",

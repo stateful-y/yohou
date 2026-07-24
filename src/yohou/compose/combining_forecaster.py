@@ -1,4 +1,4 @@
-"""AdditiveForecaster meta-forecaster for parallel observed-term additive composition."""
+"""CombiningForecaster meta-forecaster for parallel observed-term composition (sum or product)."""
 
 import polars as pl
 from pydantic import StrictInt
@@ -14,17 +14,20 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base import BaseActualTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, inspect_panel, validate_forecaster_data
-from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
+from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _raise_for_params
 
-__all__ = ["AdditiveForecaster"]
+__all__ = ["CombiningForecaster"]
 
 
-class AdditiveForecaster(BasePointForecaster, _BaseComposition):
-    """Point meta-forecaster that sums independently fitted per-term forecasts.
+class CombiningForecaster(BasePointForecaster, _BaseComposition):
+    """Point meta-forecaster that combines independently fitted per-term forecasts.
 
-    AdditiveForecaster forecasts an aggregate target ``y`` as the sum of
-    independently fitted "term" forecasters, in level space:
-    ``y = sum_i y_i (+ eps)``. It is the observed-term, parallel-fit dual of
+    CombiningForecaster forecasts an aggregate target ``y`` as the group
+    combination of independently fitted "term" forecasters, in level space. The
+    combination is selected by ``combine``: ``"sum"`` reconstructs
+    ``y = sum_i y_i (+ eps)`` (additive group), ``"product"`` reconstructs
+    ``y = prod_i y_i (* eps)`` (multiplicative group, strictly positive terms).
+    It is the observed-term, parallel-fit dual of
     [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline],
     which emits the same output algebra but by sequential residual decomposition.
 
@@ -58,10 +61,16 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         forecaster : BasePointForecaster
             Point forecaster fitted on the extracted term target.
 
+    combine : {"sum", "product"}, default="sum"
+        The group combination used to reconstruct the aggregate from the term
+        forecasts. ``"sum"`` combines with ``+`` (residual ``eps = y - sum_i y_i``);
+        ``"product"`` combines with ``×`` (residual ``eps = y / prod_i y_i``) and
+        requires strictly positive terms and target.
     residual_forecaster : BasePointForecaster or None, default=None
-        Optional point forecaster fitted on the residual
-        ``eps = y - sum_i y_i``. When ``None``, the prediction is the plain
-        bottom-up sum of the term forecasts.
+        Optional point forecaster fitted on the residual (``eps = y - sum_i y_i``
+        for ``combine="sum"``, ``eps = y / prod_i y_i`` for ``combine="product"``).
+        When ``None``, the prediction is the plain bottom-up combination of the
+        term forecasts.
 
     Attributes
     ----------
@@ -113,7 +122,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
     --------
     >>> import polars as pl
     >>> from datetime import datetime
-    >>> from yohou.compose import AdditiveForecaster
+    >>> from yohou.compose import CombiningForecaster
     >>> from yohou.preprocessing import FunctionTransformer
     >>> from yohou.point import SeasonalNaive
     >>>
@@ -124,18 +133,19 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
     >>>
     >>> # An extractor manufactures each term's target at fit time.
     >>> anchor = FunctionTransformer(func=lambda df: df.select((pl.col("spp") * 0.5).alias("anchor")))
-    >>> forecaster = AdditiveForecaster(
+    >>> forecaster = CombiningForecaster(
     ...     terms=[("anchor", anchor, SeasonalNaive(seasonality=7))],
     ...     residual_forecaster=SeasonalNaive(seasonality=7),
     ... )
     >>> forecaster.fit(y, forecasting_horizon=7)  # doctest: +ELLIPSIS
-    AdditiveForecaster(...)
+    CombiningForecaster(...)
     >>> y_pred = forecaster.predict(forecasting_horizon=7)
 
     """
 
     _parameter_constraints: dict = {
         "terms": [list],
+        "combine": [StrOptions({"sum", "product"})],
         "residual_forecaster": [BasePointForecaster, None],
     }
 
@@ -143,6 +153,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         self,
         terms: list[tuple[str, BaseActualTransformer, BasePointForecaster]],
         *,
+        combine: str = "sum",
         residual_forecaster: BasePointForecaster | None = None,
     ):
         BasePointForecaster.__init__(
@@ -154,7 +165,28 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
             panel_strategy="global",
         )
         self.terms = terms
+        self.combine = combine
         self.residual_forecaster = residual_forecaster
+
+    def _check_positive(self, frame: pl.DataFrame, what: str) -> None:
+        """Raise when ``combine='product'`` and ``frame`` has a non-positive value.
+
+        The multiplicative group is ``(ℝ₊, ×)``: a product reconstruction and its
+        ``y / Π`` residual are only well defined on strictly positive values, so a
+        non-positive term or target is rejected rather than producing an undefined
+        or sign-flipped aggregate.
+        """
+        if self.combine != "product":
+            return
+        value_cols = [c for c in frame.columns if c not in ("time", "vintage_time") and frame.schema[c].is_numeric()]
+        for col in value_cols:
+            # Detect any non-positive value with a Polars expression: comparing the
+            # Python-level ``Series.min()`` (a broad union type) against 0 is not type-safe.
+            if frame.select((pl.col(col) <= 0).any()).item():
+                raise ValueError(
+                    f"combine='product' requires strictly positive values, but {what} column "
+                    f"'{col}' has a value <= 0. Use combine='sum', or model in log space."
+                )
 
     @property
     def _terms(self) -> list[tuple[str, BasePointForecaster]]:
@@ -210,7 +242,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         """
         return self._get_params("_terms", deep=deep)
 
-    def set_params(self, **params) -> "AdditiveForecaster":
+    def set_params(self, **params) -> "CombiningForecaster":
         """Set the parameters of this estimator.
 
         Valid parameter keys can be listed with ``get_params()``. Nested term
@@ -292,7 +324,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         **params,
-    ) -> "AdditiveForecaster":
+    ) -> "CombiningForecaster":
         """Fit each term forecaster on its extracted target, then the residual.
 
         Parameters
@@ -318,7 +350,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         Returns
         -------
         self
-            The fitted AdditiveForecaster instance.
+            The fitted CombiningForecaster instance.
 
         Raises
         ------
@@ -332,7 +364,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         _raise_for_params(params, self, "fit")
 
         if not self.terms:
-            raise ValueError("AdditiveForecaster requires at least one term, but `terms` is empty.")
+            raise ValueError("CombiningForecaster requires at least one term, but `terms` is empty.")
 
         # Validate term names are unique (and routing-safe).
         self._validate_names([name for name, _, _ in self.terms])  # ty: ignore[invalid-assignment]
@@ -364,6 +396,9 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
 
         routed_params = process_routing(self, "fit", **params)
 
+        # combine='product' lives on (ℝ₊, ×): reject a non-positive target up front.
+        self._check_positive(y, "target")
+
         # The extractor sees "time" + y columns + X columns. A left join keeps
         # every y row even when X_actual omits some timestamps.
         frame = y if X_actual is None else y.join(X_actual, on="time", how="left")
@@ -381,11 +416,13 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
             y_i = extractor_.fit_transform(frame)
             if extractor_.observation_horizon > 0:
                 raise ValueError(
-                    f"AdditiveForecaster supports extractors without observation state (v1). "
+                    f"CombiningForecaster supports extractors without observation state (v1). "
                     f"Term '{name}' has an extractor that consumes {extractor_.observation_horizon} "
                     f"past row(s) (observation_horizon > 0); a term extractor manufactures fit-time "
                     f"labels and must not require past rows. Extractor type: {type(extractor).__name__}."
                 )
+
+            self._check_positive(y_i, f"term '{name}'")
 
             _, panel_groups = inspect_panel(y_i)
             granularity = "panel" if panel_groups else "global"
@@ -444,14 +481,19 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         horizon = self.observation_horizon
         return y.tail(horizon) if horizon else y
 
-    def _broadcast_sum(
+    def _broadcast_combine(
         self,
         contributions: list[tuple[str, pl.DataFrame]],
         index_cols: tuple[str, ...],
         groups: list[str] | None,
         residual: pl.DataFrame | None = None,
     ) -> pl.DataFrame:
-        """Sum term contributions into the aggregate target, broadcasting globals.
+        """Combine term contributions into the aggregate target, broadcasting globals.
+
+        The combination is the abelian-group operation selected by ``combine``:
+        ``sum`` reduces terms with ``+`` (identity ``0``); ``product`` reduces them
+        with ``×`` (identity ``1``). The residual, when provided, is combined by the
+        same operation.
 
         Every frame is aligned on the ``index_cols`` pair (never ``"time"``
         alone, which would fan rows across vintages sharing a timestamp). A
@@ -507,7 +549,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
                     if not matched:
                         raise ValueError(
                             f"A panel term forecast is missing group '{group_name}', which is present "
-                            f"in the aggregate target. AdditiveForecaster does not zero-fill a dropped group."
+                            f"in the aggregate target. CombiningForecaster does not zero-fill a dropped group."
                         )
                     panel_group_cols[group_name].extend(matched)
             else:
@@ -520,44 +562,52 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
             wide = wide.join(residual.rename(residual_rename), on=index_list, how="left")
             residual_prefix = "__residual__"
 
-        def _sum_expr(cols: list[str]) -> pl.Expr:
-            """Sum the named columns, defaulting to a float zero when empty.
+        is_product = self.combine == "product"
+        identity = 1.0 if is_product else 0.0
+
+        def _combine(a: pl.Expr, b: pl.Expr) -> pl.Expr:
+            """Combine two expressions with the group operation (``×`` or ``+``)."""
+            return a * b if is_product else a + b
+
+        def _reduce_expr(cols: list[str]) -> pl.Expr:
+            """Reduce the named columns with the group operation, defaulting to identity.
 
             Parameters
             ----------
             cols : list of str
-                Column names to add together.
+                Column names to combine.
 
             Returns
             -------
             pl.Expr
-                The polars expression summing ``cols``.
+                The polars expression combining ``cols`` (``0``/empty sum,
+                ``1``/empty product).
 
             """
-            expr = pl.lit(0.0)
+            expr = pl.lit(identity)
             for col in cols:
-                expr = expr + pl.col(col)
+                expr = _combine(expr, pl.col(col))
             return expr
 
-        global_sum = _sum_expr(global_cols)
+        global_reduced = _reduce_expr(global_cols)
 
         agg_exprs: list[pl.Expr] = []
         if groups is None:
             for suffix in suffixes:
-                expr = global_sum
+                expr = global_reduced
                 residual_col = f"{residual_prefix}{suffix}" if residual_prefix is not None else None
                 if residual_col is not None and residual_col in wide.columns:
-                    expr = expr + pl.col(residual_col)
+                    expr = _combine(expr, pl.col(residual_col))
                 agg_exprs.append(expr.alias(suffix))
         else:
             for group_name in groups:
-                group_sum = global_sum + _sum_expr(panel_group_cols[group_name])
+                group_reduced = _combine(global_reduced, _reduce_expr(panel_group_cols[group_name]))
                 for suffix in suffixes:
                     agg_col = f"{group_name}__{suffix}"
-                    expr = group_sum
+                    expr = group_reduced
                     residual_col = f"{residual_prefix}{agg_col}" if residual_prefix is not None else None
                     if residual_col is not None and residual_col in wide.columns:
-                        expr = expr + pl.col(residual_col)
+                        expr = _combine(expr, pl.col(residual_col))
                     agg_exprs.append(expr.alias(agg_col))
 
         return wide.select([pl.col(col) for col in index_list] + agg_exprs)
@@ -586,12 +636,16 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
             The residual frame with the same target schema as ``y``.
 
         """
-        sum_frame = self._broadcast_sum(observed_contributions, ("time",), self.groups_)
+        combined_frame = self._broadcast_combine(observed_contributions, ("time",), self.groups_)
         agg_cols = [c for c in y.columns if c != "time"]
-        joined = y.join(sum_frame, on="time", how="inner", suffix="__additive_sum")
-        return joined.select(
-            [pl.col("time")] + [(pl.col(col) - pl.col(f"{col}__additive_sum")).alias(col) for col in agg_cols]
-        )
+        joined = y.join(combined_frame, on="time", how="inner", suffix="__combined")
+        if self.combine == "product":
+            # eps = y / Π y_i, the multiplicative residual.
+            residual_exprs = [(pl.col(col) / pl.col(f"{col}__combined")).alias(col) for col in agg_cols]
+        else:
+            # eps = y - Σ y_i, the additive residual.
+            residual_exprs = [(pl.col(col) - pl.col(f"{col}__combined")).alias(col) for col in agg_cols]
+        return joined.select([pl.col("time"), *residual_exprs])
 
     def predict(  # ty: ignore[invalid-method-override]
         self,
@@ -675,7 +729,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
                 **residual_params.predict,
             )
 
-        return self._broadcast_sum(contributions, ("vintage_time", "time"), groups, residual=residual_pred)
+        return self._broadcast_combine(contributions, ("vintage_time", "time"), groups, residual=residual_pred)
 
     def observe(
         self,
@@ -684,7 +738,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-    ) -> "AdditiveForecaster":
+    ) -> "CombiningForecaster":
         """Observe new data, re-extracting each term target and forwarding it.
 
         Each term's stored extractor re-manufactures the term target from the
@@ -754,7 +808,7 @@ class AdditiveForecaster(BasePointForecaster, _BaseComposition):
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-    ) -> "AdditiveForecaster":
+    ) -> "CombiningForecaster":
         """Rewind each term forecaster to the end of the provided window.
 
         Like ``observe``, but each term forecaster and the residual are rewound

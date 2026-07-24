@@ -1,4 +1,4 @@
-"""Tests for the AdditiveForecaster meta-forecaster."""
+"""Tests for the CombiningForecaster meta-forecaster."""
 
 from datetime import datetime, timedelta
 
@@ -9,7 +9,7 @@ from sklearn.base import clone
 
 from conftest import run_checks
 from yohou.base import BaseActualTransformer
-from yohou.compose import AdditiveForecaster
+from yohou.compose import CombiningForecaster
 from yohou.point import SeasonalNaive
 from yohou.stationarity import PolynomialTrendForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
@@ -17,7 +17,7 @@ from yohou.testing import _yield_yohou_forecaster_checks
 # ``check_clone_preserves_forecaster_params`` asserts that the trailing element of
 # every 3-tuple parameter survives clone unchanged (``_safe_equal``). That assertion
 # was written for ``ColumnForecaster``'s ``(name, forecaster, columns)`` shape, whose
-# trailing ``columns`` is a clone-stable string/list. ``AdditiveForecaster``'s term is
+# trailing ``columns`` is a clone-stable string/list. ``CombiningForecaster``'s term is
 # ``(name, extractor, forecaster)``: its trailing element is an estimator, which
 # ``clone`` correctly freshens into a new instance, so ``_safe_equal`` (identity-based
 # for estimators) returns False. The clone is otherwise faithful (verified by the
@@ -199,7 +199,7 @@ class _SpyExtractor(BaseActualTransformer):
 
 
 class _StatefulExtractor(BaseActualTransformer):
-    """Extractor tagged stateful, used to verify AdditiveForecaster rejects it."""
+    """Extractor tagged stateful, used to verify CombiningForecaster rejects it."""
 
     _tags = {"stateful": True}
 
@@ -259,18 +259,18 @@ def _panel_y(n: int = 60) -> pl.DataFrame:
 
 
 class TestSystematicChecks:
-    """Systematic validation of AdditiveForecaster via the shared check generators."""
+    """Systematic validation of CombiningForecaster via the shared check generators."""
 
     @pytest.mark.parametrize(
         "forecaster",
         [
-            AdditiveForecaster(
+            CombiningForecaster(
                 terms=[
                     ("season", _SelectColumn("y_0", "season_part"), SeasonalNaive(seasonality=7)),
                     ("trend", _SelectColumn("y_0", "trend_part"), PolynomialTrendForecaster(degree=1)),
                 ]
             ),
-            AdditiveForecaster(
+            CombiningForecaster(
                 terms=[("trend", _SelectColumn("y_0", "trend_part"), PolynomialTrendForecaster(degree=1))],
                 residual_forecaster=SeasonalNaive(seasonality=7),
             ),
@@ -278,7 +278,7 @@ class TestSystematicChecks:
     )
     @pytest.mark.slow
     def test_checks(self, forecaster, y_X_factory):
-        """Run the systematic forecaster checks on AdditiveForecaster configs.
+        """Run the systematic forecaster checks on CombiningForecaster configs.
 
         ``check_clone_preserves_forecaster_params`` is expected-failing because the
         term layout is ``(name, extractor, forecaster)`` whose trailing element is an
@@ -312,7 +312,7 @@ class TestGlobalSum:
         y = _global_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 ("season", _SelectColumn("total", "season_part"), SeasonalNaive(seasonality=7)),
                 ("trend", _SelectColumn("total", "trend_part"), PolynomialTrendForecaster(degree=1)),
@@ -350,7 +350,7 @@ class TestValidation:
             """A stand-in object that is not a BasePointForecaster."""
 
         y = _global_y()[:30]
-        forecaster = AdditiveForecaster(terms=[("bad", _SelectColumn("total", "part"), _NotAForecaster())])
+        forecaster = CombiningForecaster(terms=[("bad", _SelectColumn("total", "part"), _NotAForecaster())])
         with pytest.raises(ValueError, match="Term 'bad'"):
             forecaster.fit(y, forecasting_horizon=3)
 
@@ -361,7 +361,7 @@ class TestValidation:
             """A stand-in object that is not a BasePointForecaster."""
 
         y = _global_y()[:30]
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("a", _SelectColumn("total", "part"), SeasonalNaive(seasonality=7))],
             residual_forecaster=_NotAForecaster(),
         )
@@ -371,7 +371,7 @@ class TestValidation:
     def test_duplicate_term_names_rejected(self):
         """Two terms sharing a name raise ValueError."""
         y = _global_y()[:30]
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 ("dup", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7)),
                 ("dup", _SelectColumn("total", "b"), PolynomialTrendForecaster(degree=1)),
@@ -383,7 +383,7 @@ class TestValidation:
     def test_stateful_extractor_rejected(self):
         """A stateful extractor is rejected at fit, naming the term."""
         y = _global_y()[:30]
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("stateful", _StatefulExtractor("total", "part"), SeasonalNaive(seasonality=7))]
         )
         with pytest.raises(ValueError, match="Term 'stateful'"):
@@ -405,7 +405,7 @@ class TestExtractorSemantics:
         y = pl.DataFrame({"time": time, "spp": [30.0 + i for i in range(n)]})
         X_actual = pl.DataFrame({"time": time, "system_lambda_dam": [10.0 + 0.5 * i for i in range(n)]})
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 (
                     "basis",
@@ -432,7 +432,7 @@ class TestExtractorSemantics:
         y = _global_y()[:40]
 
         _SpyExtractor.n_transform_calls = 0
-        forecaster = AdditiveForecaster(terms=[("spy", _SpyExtractor("total", "part"), SeasonalNaive(seasonality=7))])
+        forecaster = CombiningForecaster(terms=[("spy", _SpyExtractor("total", "part"), SeasonalNaive(seasonality=7))])
         forecaster.fit(y[:30], forecasting_horizon=3)
         calls_after_fit = _SpyExtractor.n_transform_calls
         assert calls_after_fit >= 1, "extractor must run at fit"
@@ -463,7 +463,7 @@ class TestResidualClosure:
         y = _global_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("part", _ScaleColumn("total", 0.3, "part"), SeasonalNaive(seasonality=7))],
             residual_forecaster=SeasonalNaive(seasonality=7),
         )
@@ -480,7 +480,7 @@ class TestResidualClosure:
         y_train = y[:45]
 
         term_extractor = _ScaleColumn("total", 0.5, "part")
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("part", term_extractor, PolynomialTrendForecaster(degree=1))],
             residual_forecaster=SeasonalNaive(seasonality=7),
         )
@@ -500,7 +500,7 @@ class TestResidualClosure:
         assert np.allclose(pred_with_residual["total"].to_numpy(), term_pred + residual_pred)
 
         # Without the residual, the prediction is only the term forecast (a real gap).
-        forecaster_no_residual = AdditiveForecaster(
+        forecaster_no_residual = CombiningForecaster(
             terms=[("part", _ScaleColumn("total", 0.5, "part"), PolynomialTrendForecaster(degree=1))]
         )
         forecaster_no_residual.fit(y_train, forecasting_horizon=3)
@@ -513,7 +513,7 @@ class TestResidualClosure:
         y = _global_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 ("a", _ScaleColumn("total", 0.4, "a"), SeasonalNaive(seasonality=7)),
                 ("b", _ScaleColumn("total", 0.6, "b"), SeasonalNaive(seasonality=7)),
@@ -543,7 +543,7 @@ class TestPanel:
         y = _panel_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7))]
         )
         forecaster.fit(y_train, forecasting_horizon=3)
@@ -562,7 +562,7 @@ class TestPanel:
         y = _panel_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("basis", _PanelIdentity(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7))]
         )
         forecaster.fit(y_train, forecasting_horizon=3)
@@ -580,7 +580,7 @@ class TestPanel:
         y = _panel_y()
         y_train = y[:45]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("anchor", _PanelMean(["p0__spp", "p1__spp"]), PolynomialTrendForecaster(degree=1))],
             residual_forecaster=SeasonalNaive(seasonality=7),
         )
@@ -631,7 +631,7 @@ class TestPanel:
                 return ["p0__spp"]
 
         y = _panel_y()
-        forecaster = AdditiveForecaster(terms=[("drop", _DropGroup(), SeasonalNaive(seasonality=7))])
+        forecaster = CombiningForecaster(terms=[("drop", _DropGroup(), SeasonalNaive(seasonality=7))])
         forecaster.fit(y[:45], forecasting_horizon=3)
         with pytest.raises(ValueError, match="p1"):
             forecaster.predict(forecasting_horizon=3)
@@ -639,7 +639,7 @@ class TestPanel:
     def test_group_subselection_filters_output(self):
         """Predicting a single group returns only that group's column."""
         y = _panel_y()
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7))],
             residual_forecaster=SeasonalNaive(seasonality=7),
         )
@@ -661,7 +661,7 @@ class TestObserveRewind:
         y = _global_y()
         y_train, y_new = y[:45], y[45:51]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 ("a", _ScaleColumn("total", 0.5, "a"), SeasonalNaive(seasonality=7)),
                 ("b", _ScaleColumn("total", 0.5, "b"), SeasonalNaive(seasonality=1)),
@@ -680,7 +680,7 @@ class TestObserveRewind:
         y = _panel_y()
         y_train, y_new = y[:45], y[45:51]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7))],
             residual_forecaster=SeasonalNaive(seasonality=7),
         )
@@ -699,20 +699,20 @@ class TestObserveRewind:
         y = _global_y()
         y_train, y_new = y[:45], y[45:51]
 
-        forecaster = AdditiveForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
+        forecaster = CombiningForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
         forecaster.fit(y_train, forecasting_horizon=3)
         forecaster.observe(y_new)
         forecaster.rewind(y_train)
         rewound = forecaster.predict(forecasting_horizon=3)
 
-        base = AdditiveForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
+        base = CombiningForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
         base.fit(y_train, forecasting_horizon=3)
         assert np.allclose(rewound["total"].to_numpy(), base.predict(forecasting_horizon=3)["total"].to_numpy())
 
     def test_observe_predict_runs(self):
         """observe_predict produces stacked vintages via the custom observe."""
         y = _global_y()
-        forecaster = AdditiveForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
+        forecaster = CombiningForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
         forecaster.fit(y[:30], forecasting_horizon=3)
         pred = forecaster.observe_predict(y[30:39], forecasting_horizon=3)
         assert "vintage_time" in pred.columns
@@ -729,7 +729,7 @@ class TestParams:
 
     def test_nested_params_round_trip(self):
         """A nested term parameter is exposed and settable."""
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("trend", _SelectColumn("total", "part"), PolynomialTrendForecaster(degree=1))]
         )
         params = forecaster.get_params()
@@ -758,7 +758,7 @@ class TestStateAndEmptyValidation:
 
         y = _global_y()[:45]
         anchor = FunctionTransformer(func=lambda df: df.select((pl.col("total") * 0.5).alias("anchor")))
-        forecaster = AdditiveForecaster(terms=[("anchor", anchor, SeasonalNaive(seasonality=7))])
+        forecaster = CombiningForecaster(terms=[("anchor", anchor, SeasonalNaive(seasonality=7))])
         forecaster.fit(y, forecasting_horizon=3)  # must not raise
         pred = forecaster.predict(forecasting_horizon=3)
         assert pred.columns == ["vintage_time", "time", "total"]
@@ -766,7 +766,7 @@ class TestStateAndEmptyValidation:
     def test_empty_terms_rejected(self):
         """An empty terms list raises at fit rather than crashing later at predict."""
         y = _global_y()[:30]
-        forecaster = AdditiveForecaster(terms=[])
+        forecaster = CombiningForecaster(terms=[])
         with pytest.raises(ValueError, match="at least one term"):
             forecaster.fit(y, forecasting_horizon=3)
 
@@ -788,7 +788,7 @@ class TestExogenousForwarding:
         y, X_actual = y_X_factory(length=100, n_targets=1, n_features=2, seed=3)
         y_train, X_train = y[:80], X_actual[:80]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("t", _SelectColumn("y_0", "y_0"), PointReductionForecaster(estimator=Ridge()))]
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3)
@@ -818,7 +818,7 @@ class TestExogenousForwarding:
         )
         y_train, X_train = y[:80], X_actual[:80]
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[("t", _SelectColumn("y_0", "y_0"), PointReductionForecaster(estimator=Ridge()))]
         )
         forecaster.fit(y_train, X_train, forecasting_horizon=3, X_forecast=X_forecast)
@@ -843,7 +843,7 @@ class TestRouting:
         """get_metadata_routing routes fit to every named term and the residual."""
         from sklearn.utils.metadata_routing import MetadataRouter
 
-        forecaster = AdditiveForecaster(
+        forecaster = CombiningForecaster(
             terms=[
                 ("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7)),
                 ("b", _SelectColumn("total", "b"), SeasonalNaive(seasonality=1)),
@@ -855,3 +855,76 @@ class TestRouting:
 
         routed = router.route_params(caller="fit", params={})
         assert {"a", "b", "residual_forecaster"} <= set(routed)
+
+
+# --------------------------------------------------------------------------------------
+# Multiplicative combination (combine="product")
+# --------------------------------------------------------------------------------------
+
+
+class TestProductCombine:
+    """Group-parameterized reconstruction with combine='product'."""
+
+    def test_two_global_terms_product(self):
+        """The prediction equals the elementwise product of the two terms' forecasts."""
+        y = _global_y()  # strictly positive
+        y_train = y[:45]
+
+        forecaster = CombiningForecaster(
+            terms=[
+                ("a", _ScaleColumn("total", 0.5, "a_part"), SeasonalNaive(seasonality=7)),
+                ("b", _ScaleColumn("total", 2.0, "b_part"), SeasonalNaive(seasonality=7)),
+            ],
+            combine="product",
+        )
+        forecaster.fit(y_train, forecasting_horizon=3)
+        pred = forecaster.predict(forecasting_horizon=3)
+
+        assert pred.columns == ["vintage_time", "time", "total"]
+
+        fa = SeasonalNaive(seasonality=7)
+        fa.fit(y_train.select("time", (pl.col("total") * 0.5).alias("a_part")), forecasting_horizon=3)
+        fb = SeasonalNaive(seasonality=7)
+        fb.fit(y_train.select("time", (pl.col("total") * 2.0).alias("b_part")), forecasting_horizon=3)
+        expected = (
+            fa.predict(forecasting_horizon=3)["a_part"].to_numpy()
+            * fb.predict(forecasting_horizon=3)["b_part"].to_numpy()
+        )
+        assert np.allclose(pred["total"].to_numpy(), expected)
+
+    def test_product_residual_reconstructs_exact_split(self):
+        """With a multiplicative residual eps = y / prod, the split reconstructs the target."""
+        y = _global_y()
+        y_train = y[:45]
+        forecaster = CombiningForecaster(
+            terms=[("part", _ScaleColumn("total", 0.5, "part"), SeasonalNaive(seasonality=7))],
+            combine="product",
+            residual_forecaster=SeasonalNaive(seasonality=7),
+        )
+        forecaster.fit(y_train, forecasting_horizon=3)
+        pred = forecaster.predict(forecasting_horizon=3)
+        # SeasonalNaive on both the 0.5*y term and the y/(0.5*y)=2 residual is exact here,
+        # so the product reconstructs the SeasonalNaive forecast of the target itself.
+        direct = SeasonalNaive(seasonality=7)
+        direct.fit(y_train, forecasting_horizon=3)
+        assert np.allclose(pred["total"].to_numpy(), direct.predict(forecasting_horizon=3)["total"].to_numpy())
+
+    def test_non_positive_target_rejected(self):
+        """combine='product' rejects a non-positive target at fit."""
+        y = _global_y()[:30].with_columns(pl.col("total") - 100.0)  # now <= 0
+        forecaster = CombiningForecaster(
+            terms=[("a", _SelectColumn("total", "part"), SeasonalNaive(seasonality=7))],
+            combine="product",
+        )
+        with pytest.raises(ValueError, match="positive.*target"):
+            forecaster.fit(y, forecasting_horizon=3)
+
+    def test_non_positive_term_rejected(self):
+        """combine='product' rejects a non-positive term target, naming the term."""
+        y = _global_y()[:30]  # positive target
+        forecaster = CombiningForecaster(
+            terms=[("neg", _ScaleColumn("total", -1.0, "part"), SeasonalNaive(seasonality=7))],
+            combine="product",
+        )
+        with pytest.raises(ValueError, match="term 'neg'"):
+            forecaster.fit(y, forecasting_horizon=3)
