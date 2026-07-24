@@ -31,12 +31,7 @@ jobs:
         run: timeout 120 uv run python docs/precache_datasets.py || echo "Dataset precache timed out"
 
       - name: Export notebooks
-        run: |
-          uv run python -c "
-          import sys; sys.path.insert(0, 'docs')
-          from hooks import on_pre_build
-          on_pre_build(None)
-          "
+        run: uv run python docs_build/_notebooks.py
 
       - name: Package notebook cache
         run: tar czf notebook-exports.tar.gz -C docs/examples .
