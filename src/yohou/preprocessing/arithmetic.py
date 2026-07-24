@@ -216,7 +216,9 @@ class ReduceTransformer(BaseActualTransformer):
     >>> from yohou.preprocessing import ReduceTransformer
     >>> time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 2), interval="1d", eager=True)
     >>> X = pl.DataFrame({"time": time, "a": [1.0, 2.0], "b": [3.0, 4.0], "c": [5.0, 6.0]})
-    >>> t = ReduceTransformer(["a", "b", "c"], op="sum", output_name="total", keep_inputs=True, invert_col="a")
+    >>> t = ReduceTransformer(
+    ...     ["a", "b", "c"], op="sum", output_name="total", keep_inputs=True, invert_col="a"
+    ... )
     >>> X_t = t.fit_transform(X)
     >>> X_t["total"].to_list()
     [9.0, 12.0]
