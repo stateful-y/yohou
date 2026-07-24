@@ -24,7 +24,7 @@ dependencies = [
     "scikit-learn>=1.6.0",
     "sklearn-wrap",
     "scipy>=1.13",
-    "polars>=0.20",
+    "polars>=1.39.2",
     "pydantic>=2.6",
 ]
 
