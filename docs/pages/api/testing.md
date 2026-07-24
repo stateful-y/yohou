@@ -37,7 +37,6 @@ Testing utilities for Yohou estimators.
 | [`check_forecaster_tags_match_capabilities`](generated/yohou.testing.check_forecaster_tags_match_capabilities.md) | Check forecaster tags accurately reflect capabilities. |
 | [`check_forecaster_tags_static_after_fit`](generated/yohou.testing.check_forecaster_tags_static_after_fit.md) | Check forecaster tags remain static after fit(). |
 | [`check_forecasting_horizon_validation`](generated/yohou.testing.check_forecasting_horizon_validation.md) | Check forecasting_horizon < 1 raises ValueError. |
-| [`check_mixed_cadence_X_forecast_resolves`](generated/yohou.testing.check_mixed_cadence_X_forecast_resolves.md) | Check that a channel on a slower schedule survives step-column derivation. |
 | [`check_observe_auto_rederives_step_columns`](generated/yohou.testing.check_observe_auto_rederives_step_columns.md) | Check observe() re-derives step columns from stored raws. |
 | [`check_observe_extends_observations`](generated/yohou.testing.check_observe_extends_observations.md) | Check observe() extends observation buffers correctly. |
 | [`check_observe_predict_interval_with_step_columns`](generated/yohou.testing.check_observe_predict_interval_with_step_columns.md) | Check observe_predict_interval works with step columns (lightweight). |
