@@ -1,17 +1,22 @@
 """Tests for calendar and holiday feature transformers.
 
-Tests CalendarFeatureTransformer and HolidayFeatureTransformer using both
-the systematic check generator pattern and transformer-specific tests.
+Tests CalendarFeatureTransformer, HolidayFeatureTransformer, and
+DaylightSavingFeatureTransformer using both the systematic check generator
+pattern and transformer-specific tests.
 """
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import polars as pl
 import pytest
 from sklearn.base import clone
 
 from conftest import run_checks
-from yohou.preprocessing.calendar import CalendarFeatureTransformer, HolidayFeatureTransformer
+from yohou.preprocessing.calendar import (
+    CalendarFeatureTransformer,
+    DaylightSavingFeatureTransformer,
+    HolidayFeatureTransformer,
+)
 from yohou.testing import _yield_yohou_transformer_checks
 
 
@@ -506,3 +511,177 @@ class TestHolidayFeatureTransformerEdgeCases:
 
         names = transformer.get_feature_names_out()
         assert names == ["holiday_indicator"]
+
+
+@pytest.fixture
+def spring_frame() -> pl.DataFrame:
+    """Hourly UTC frame spanning the 2026-03-08 US spring-forward (02:00 CST -> 03:00 CDT)."""
+    return pl.DataFrame({
+        "time": pl.datetime_range(
+            datetime(2026, 3, 6, tzinfo=UTC), datetime(2026, 3, 10, tzinfo=UTC), interval="1h", eager=True
+        )
+    })
+
+
+@pytest.fixture
+def fall_frame() -> pl.DataFrame:
+    """Hourly UTC frame spanning the 2026-11-01 US fall-back (02:00 CDT -> 01:00 CST)."""
+    return pl.DataFrame({
+        "time": pl.datetime_range(
+            datetime(2026, 10, 30, tzinfo=UTC), datetime(2026, 11, 3, tzinfo=UTC), interval="1h", eager=True
+        )
+    })
+
+
+def _row_at(out: pl.DataFrame, *cols: str, y: int, m: int, d: int, h: int) -> tuple:
+    return out.filter(pl.col("time") == datetime(y, m, d, h, tzinfo=UTC)).select(*cols).row(0)
+
+
+class TestDaylightSavingFeatureTransformerSystematic:
+    """Systematic check generator tests for DaylightSavingFeatureTransformer."""
+
+    @pytest.mark.parametrize(
+        "transformer,expected_failures",
+        [
+            (DaylightSavingFeatureTransformer(), []),
+            (DaylightSavingFeatureTransformer(features=["in_effect", "transition_day", "transition_type"]), []),
+        ],
+        ids=["default", "all_features"],
+    )
+    def test_systematic_checks(self, transformer, expected_failures, time_series_train_test_factory):
+        """Run all applicable checks for DaylightSavingFeatureTransformer."""
+        X_train, X_test = time_series_train_test_factory(train_length=60, test_length=30)
+        # The transformer requires a timezone-aware "time" column; the factory is tz-naive.
+        X_train = X_train.with_columns(pl.col("time").dt.replace_time_zone("UTC"))
+        X_test = X_test.with_columns(pl.col("time").dt.replace_time_zone("UTC"))
+
+        transformer_fitted = clone(transformer)
+        transformer_fitted.fit(X_train)
+
+        run_checks(
+            transformer_fitted,
+            _yield_yohou_transformer_checks(transformer_fitted, X_train, None, X_test),
+            expected_failures=set(expected_failures),
+        )
+
+
+class TestDaylightSavingFeatureTransformerFeatures:
+    """Feature-value tests for DaylightSavingFeatureTransformer."""
+
+    def test_in_effect_across_spring_forward(self):
+        """DST turns on at 03:00 CDT (08:00 UTC); the 02:00 local hour is skipped."""
+        times = pl.datetime_range(
+            datetime(2026, 3, 8, 6, tzinfo=UTC), datetime(2026, 3, 8, 10, tzinfo=UTC), interval="1h", eager=True
+        )
+        out = DaylightSavingFeatureTransformer(features=["in_effect"]).fit_transform(pl.DataFrame({"time": times}))
+        assert out["dst_in_effect"].to_list() == [0, 0, 1, 1, 1]
+
+    def test_transition_day_and_type_spring(self, spring_frame):
+        """The spring-forward local date is flagged (+1); neighbouring dates are not."""
+        out = DaylightSavingFeatureTransformer(features=["transition_day", "transition_type"]).fit_transform(
+            spring_frame
+        )
+        assert _row_at(out, "dst_transition_day", "dst_transition_type", y=2026, m=3, d=8, h=12) == (1, 1)
+        assert _row_at(out, "dst_transition_day", "dst_transition_type", y=2026, m=3, d=7, h=12) == (0, 0)
+        assert _row_at(out, "dst_transition_day", "dst_transition_type", y=2026, m=3, d=9, h=12) == (0, 0)
+
+    def test_transition_type_fall(self, fall_frame):
+        """The fall-back local date is flagged (-1); by noon UTC the clock has already fallen back to CST."""
+        out = DaylightSavingFeatureTransformer(
+            features=["in_effect", "transition_day", "transition_type"]
+        ).fit_transform(fall_frame)
+        assert _row_at(out, "dst_in_effect", "dst_transition_day", "dst_transition_type", y=2026, m=11, d=1, h=12) == (
+            0,
+            1,
+            -1,
+        )
+
+    def test_transition_day_equals_type_nonzero(self, spring_frame, fall_frame):
+        """dst_transition_day is exactly dst_transition_type != 0."""
+        for frame in (spring_frame, fall_frame):
+            out = DaylightSavingFeatureTransformer(features=["transition_day", "transition_type"]).fit_transform(frame)
+            expected = (out["dst_transition_type"] != 0).cast(pl.Int32)
+            assert out["dst_transition_day"].to_list() == expected.to_list()
+
+    def test_evaluation_zone_independent_of_input_zone(self):
+        """The same instants give the same features whether the input is UTC or Central."""
+        utc = pl.datetime_range(
+            datetime(2026, 3, 8, 6, tzinfo=UTC), datetime(2026, 3, 8, 10, tzinfo=UTC), interval="1h", eager=True
+        )
+        X_utc = pl.DataFrame({"time": utc})
+        X_central = pl.DataFrame({"time": utc.dt.convert_time_zone("America/Chicago")})
+        tx = DaylightSavingFeatureTransformer(features=["in_effect"])
+        assert (
+            tx.fit_transform(X_utc)["dst_in_effect"].to_list() == tx.fit_transform(X_central)["dst_in_effect"].to_list()
+        )
+
+    def test_default_features_and_contract(self, spring_frame):
+        """Default emits time + in_effect + transition_day, dropping input columns."""
+        tx = DaylightSavingFeatureTransformer()
+        out = tx.fit_transform(spring_frame)
+        assert out.columns == ["time", "dst_in_effect", "dst_transition_day"]
+        assert tx.applicable_features_ == ["in_effect", "transition_day"]
+        assert tx.get_feature_names_out() == ["dst_in_effect", "dst_transition_day"]
+
+
+class TestDaylightSavingFeatureTransformerContract:
+    """Input-contract and gating tests for DaylightSavingFeatureTransformer."""
+
+    def test_tz_naive_rejected(self):
+        """A timezone-naive time column raises at fit time."""
+        naive = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2026, 3, 6), datetime(2026, 3, 10), interval="1h", eager=True)
+        })
+        with pytest.raises(ValueError, match="timezone-aware"):
+            DaylightSavingFeatureTransformer().fit(naive)
+
+    def test_date_dtype_rejected(self):
+        """A pl.Date time column raises at fit time (cannot be timezone-aware)."""
+        dates = pl.DataFrame({"time": pl.date_range(date(2026, 3, 1), date(2026, 3, 20), interval="1d", eager=True)})
+        with pytest.raises(ValueError, match="timezone-aware"):
+            DaylightSavingFeatureTransformer().fit(dates)
+
+    def test_in_effect_gated_on_daily_data(self):
+        """Explicit in_effect on daily data raises; the default drops it silently."""
+        daily = pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2026, 3, 1, tzinfo=UTC), datetime(2026, 3, 20, tzinfo=UTC), interval="1d", eager=True
+            )
+        })
+        with pytest.raises(ValueError, match="sub-daily"):
+            DaylightSavingFeatureTransformer(features=["in_effect"]).fit(daily)
+
+        tx = DaylightSavingFeatureTransformer().fit(daily)
+        assert tx.applicable_features_ == ["transition_day"]
+        assert "dst_in_effect" not in tx.transform(daily).columns
+
+    def test_unknown_feature_raises(self, spring_frame):
+        """An unrecognized feature name raises at fit time."""
+        with pytest.raises(ValueError, match="Unknown DST features"):
+            DaylightSavingFeatureTransformer(features=["nope"]).fit(spring_frame)
+
+    def test_output_conflict_raises(self, spring_frame):
+        """A generated dst_* name colliding with an input column raises."""
+        clash = spring_frame.with_columns(pl.lit(0).alias("dst_in_effect"))
+        with pytest.raises(ValueError, match="conflict"):
+            DaylightSavingFeatureTransformer().fit(clash)
+
+    def test_feature_names_out_requires_fit(self):
+        """get_feature_names_out raises before fit."""
+        from sklearn.exceptions import NotFittedError
+
+        with pytest.raises(NotFittedError):
+            DaylightSavingFeatureTransformer().get_feature_names_out()
+
+    def test_composes_in_feature_union(self, spring_frame):
+        """The transformer composes inside a FeatureUnion alongside calendar features."""
+        from yohou.compose import FeatureUnion
+
+        union = FeatureUnion(
+            transformer_list=[
+                ("cal", CalendarFeatureTransformer(features=["hour"])),
+                ("dst", DaylightSavingFeatureTransformer(features=["in_effect"])),
+            ]
+        )
+        out = union.fit_transform(spring_frame)
+        assert any("dst_in_effect" in c for c in out.columns)

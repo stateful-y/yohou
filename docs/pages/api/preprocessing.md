@@ -11,6 +11,7 @@ Preprocessing transformers for stationarization and feature engineering.
 | Name | Description |
 |------|-------------|
 | [`CalendarFeatureTransformer`](generated/yohou.preprocessing.CalendarFeatureTransformer.md) | Extract calendar-based features from the time column. |
+| [`DaylightSavingFeatureTransformer`](generated/yohou.preprocessing.DaylightSavingFeatureTransformer.md) | Deterministic daylight-saving-time features from the time column. |
 | [`HolidayFeatureTransformer`](generated/yohou.preprocessing.HolidayFeatureTransformer.md) | Extract holiday indicator features from a user-provided holiday calendar. |
 | [`FunctionTransformer`](generated/yohou.preprocessing.FunctionTransformer.md) | Constructs a transformer from an arbitrary callable. |
 | [`SeasonalImputer`](generated/yohou.preprocessing.SeasonalImputer.md) | Seasonal decomposition-based imputation for missing values. |

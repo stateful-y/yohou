@@ -69,6 +69,22 @@ X = transformer.fit_transform(y)
 
 Set `seasonality` to the period length in time steps (e.g., `24` for daily cycles in hourly data, `365.25` for yearly cycles in daily data). Use more harmonics for sharper seasonal shapes, fewer for smoother patterns. Harmonics must satisfy the Nyquist limit: each harmonic $k$ must be at most $S/2$ where $S$ is the seasonality.
 
+## Flag Daylight-Saving Transitions
+
+[`DaylightSavingFeatureTransformer`](/pages/api/generated/yohou.preprocessing.DaylightSavingFeatureTransformer/) captures the two daylight-saving effects a UTC-indexed frame cannot see: the summer/winter clock offset (which shifts the local diurnal cycle by an hour) and the 23- or 25-hour transition days:
+
+```python
+from yohou.preprocessing import DaylightSavingFeatureTransformer
+
+# The "time" column must be timezone-aware; time_zone is the zone whose
+# daylight-saving regime is evaluated (any input zone is converted into it).
+transformer = DaylightSavingFeatureTransformer(time_zone="America/Chicago")
+X = transformer.fit_transform(y)
+# Output columns: dst_in_effect, dst_transition_day
+```
+
+The `time_zone` parameter names the zone whose daylight-saving regime is evaluated, not the input's zone. Pass `features=["in_effect", "transition_day", "transition_type"]` to also emit a signed flag (`+1` on a spring-forward date, `-1` on a fall-back date). `in_effect` requires sub-daily data and is dropped on daily-or-coarser frequencies; `transition_day`/`transition_type` apply at any frequency. The `"time"` column must be timezone-aware (a naive datetime or a `Date` is rejected at fit, since an offset needs both an instant and a zone).
+
 ## Create a Trend Index
 
 [`TimeIndexTransformer`](/pages/api/generated/yohou.preprocessing.TimeIndexTransformer/) converts timestamps to a numeric index, useful for capturing linear or polynomial trends:

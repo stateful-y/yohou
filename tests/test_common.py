@@ -55,6 +55,11 @@ _SKIP_COMMON = {
     "DistanceSimilarity",
     # Meta-forecasters requiring inner estimator (tested in tests/interval/)
     "SplitConformalForecaster",
+    # Requires a timezone-aware "time" column, which the common sweep's tz-naive
+    # fixture cannot provide (fit would just silently skip). The systematic
+    # check-generator sweep runs on tz-aware data in
+    # tests/preprocessing/test_calendar.py::TestDaylightSavingFeatureTransformerSystematic.
+    "DaylightSavingFeatureTransformer",
 }
 
 # Known check failures per estimator, covered by dedicated test files.
