@@ -83,7 +83,7 @@ X = transformer.fit_transform(y)
 # Output columns: dst_in_effect, dst_transition_day
 ```
 
-The `time_zone` parameter names the market/observing zone, not the input's zone. Pass `features=["in_effect", "transition_day", "transition_type"]` to also emit a signed flag (`+1` on a spring-forward date, `-1` on a fall-back date). `in_effect` requires sub-daily data and is dropped on daily-or-coarser frequencies; `transition_day`/`transition_type` apply at any frequency. The `"time"` column must be timezone-aware (a naive datetime or a `Date` is rejected at fit, since an offset needs both an instant and a zone).
+The `time_zone` parameter names the zone whose daylight-saving regime is evaluated, not the input's zone. Pass `features=["in_effect", "transition_day", "transition_type"]` to also emit a signed flag (`+1` on a spring-forward date, `-1` on a fall-back date). `in_effect` requires sub-daily data and is dropped on daily-or-coarser frequencies; `transition_day`/`transition_type` apply at any frequency. The `"time"` column must be timezone-aware (a naive datetime or a `Date` is rejected at fit, since an offset needs both an instant and a zone).
 
 ## Create a Trend Index
 

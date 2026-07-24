@@ -522,10 +522,10 @@ def _extract_dst_feature(feature: str, time_zone: str) -> pl.Expr:
 class DaylightSavingFeatureTransformer(BaseActualTransformer):
     r"""Deterministic daylight-saving-time features from the time column.
 
-    Markets that run on wall-clock time cross two kinds of daylight-saving boundary that a
+    A series whose local time observes daylight saving crosses two kinds of boundary that a
     UTC-indexed frame cannot see directly: the summer/winter clock offset, which shifts the
     UTC hour of the local diurnal cycle by one hour, and the two transition days a year,
-    which are 23- or 25-hour operating days with a skipped or repeated hour. Both are
+    which are 23- or 25-hour local days with a skipped or repeated hour. Both are
     deterministic and known for any future date, so they enter a model as unlagged,
     known-future features alongside the calendar terms. Output columns are prefixed with
     ``dst_``.
