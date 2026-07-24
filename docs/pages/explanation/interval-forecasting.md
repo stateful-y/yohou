@@ -241,6 +241,41 @@ a few nearby calibration points reduces variance but can increase bias if the lo
 neighborhood is too small. Larger calibration sets help by providing more data points
 in each local region.
 
+## Adaptive Conformal Inference
+
+Similarity weighting adapts *which* residuals count. Adaptive conformal
+inference adapts something orthogonal: the *quantile level* itself. A static
+calibration set fixes the miscoverage level once, so if the series drifts, the
+realized coverage drifts away from the target and never corrects. The adaptive
+conformal inference update (Gibbs and Candes, 2021) closes that loop. After each
+observation it compares the target miscoverage to the realized miscoverage and
+shifts the effective level accordingly:
+
+$$\alpha_{t+1} = \alpha_t + \gamma\,(\alpha^{*} - \mathrm{err}_t)$$
+
+where $\alpha^{*} = 1 - \text{coverage rate}$ is the target, $\mathrm{err}_t$ is 1
+when the truth fell outside the interval, and $\gamma$ (the `step_size`) sets how
+fast the level reacts. A run of misses lowers $\alpha_t$ and widens the interval;
+a run of covers raises it and narrows the interval.
+
+In Yohou this is an optional
+[`AdaptiveConformalInference`](/pages/api/generated/yohou.interval.AdaptiveConformalInference/)
+adapter passed to `SplitConformalForecaster`. It lives in the same
+`observe` / `predict_interval` / `rewind` lifecycle as the rest of the library,
+so a backtest and a production stream restore coverage identically. Because the
+two mechanisms are orthogonal, the adapter composes with similarity weighting:
+the similarity sets the weights, the adapter sets the level. The two axes are
+summarized below.
+
+| Mechanism | What it adapts | Set by |
+| --- | --- | --- |
+| Similarity weighting | which residuals count | `similarity` |
+| Adaptive conformal inference | how far into their tail to reach | `adapter` |
+
+The adapter tracks one level per horizon step (or a single shared level with
+`alpha_pooling="shared"`), and one level per tail for asymmetric conformity
+scorers so a lopsided error distribution corrects each side separately.
+
 ## Quantile Reduction Intervals
 
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)

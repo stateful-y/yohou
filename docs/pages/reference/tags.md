@@ -79,6 +79,14 @@ These apply to all estimator types.
 | `requires_predictions` | `bool` | `True` | Whether predictions (`y_pred`) are needed in addition to actuals |
 | `produces_weights` | `bool` | `True` | Whether the measure produces weights for conformity scores |
 
+## Conformal Adapter Tags (`conformal_adapter_tags`)
+
+| Tag | Type | Default | Description |
+|-----|------|---------|-------------|
+| `online` | `bool` | `True` | Whether the adapter updates its effective level online via `observe()` |
+| `requires_coverage_rates` | `bool` | `True` | Whether `fit()` must be told the tracked coverage rates |
+| `tail_aware` | `bool` | `True` | Whether the adapter tracks one level for symmetric scorers and two (lower, upper) for asymmetric ones |
+
 ## Dynamic Tags
 
 Some tags are computed at runtime rather than declared in `_tags`. Override

@@ -108,6 +108,38 @@ interval columns using the same `{component}_lower_{rate}` /
 `{component}_upper_{rate}` naming as the conformal path. Use this route when
 the estimator's own quantile loss is preferable to post-hoc calibration.
 
+## 5. Adapt Coverage Online Under Drift
+
+A static calibration set fixes the interval width once. When the series
+drifts, realized coverage drifts with it and the intervals become too wide or
+too narrow. Pass an
+[`AdaptiveConformalInference`](/pages/api/generated/yohou.interval.AdaptiveConformalInference/)
+adapter to nudge the effective miscoverage level up or down from the coverage
+actually observed, restoring the target rate as you walk forward:
+
+```python
+from yohou.interval import AdaptiveConformalInference, SplitConformalForecaster
+from yohou.point import SeasonalNaive
+
+forecaster = SplitConformalForecaster(
+    point_forecaster=SeasonalNaive(seasonality=7),
+    calibration_size=100,
+    adapter=AdaptiveConformalInference(step_size=0.05),
+)
+forecaster.fit(y_train, forecasting_horizon=3, coverage_rates=[0.9])
+
+# Walk forward: each observe() updates the level, each predict reflects it.
+y_pred = forecaster.observe_predict_interval(y_stream, stride=1, coverage_rates=[0.9])
+```
+
+The output columns keep their nominal labels (`..._lower_0.9`), so a "90%
+interval" stays a 90% interval; only its width is adapted. `step_size` is the
+learning rate: larger values react faster but track more noisily. Leave
+`adapter=None` (the default) for the static behavior. The adapter composes
+with `similarity`: the similarity sets which residuals count, the adapter sets
+how far into their tail to reach. A coverage rate the adapter never tracked
+falls back to the static level with a warning.
+
 ## See Also
 
 - [About Interval Forecasting](../explanation/interval-forecasting.md): conformal theory, coverage guarantees, and when to prefer quantile regression over conformal wrapping
