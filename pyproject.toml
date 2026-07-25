@@ -328,7 +328,7 @@ exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv", "openspec"]
 # first.children when the first heading is level 1, an empty ToC on the one
 # page that most needs one.
 "docs/pages/reference/changelog.md" = ["MD041"]
-"docs/index.md" = ["MD041", "MD057"]  # Landing page starts with logo; links to generated API files
+"docs/index.md" = ["MD041", "MD057", "MD026"]  # Landing page starts with logo; links to generated API files
 "CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 
