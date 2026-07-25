@@ -24,6 +24,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
 
       - name: Install dependencies
