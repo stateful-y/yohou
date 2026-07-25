@@ -1,6 +1,6 @@
 """Preprocessing transformers for stationarization and feature engineering."""
 
-from .calendar import CalendarFeatureTransformer, HolidayFeatureTransformer
+from .calendar import CalendarFeatureTransformer, DaylightSavingFeatureTransformer, HolidayFeatureTransformer
 from .function import FunctionTransformer
 from .imputation import (
     SeasonalImputer,
@@ -84,6 +84,7 @@ __all__ = [
     "OutlierPercentileHandler",
     # Calendar and time features
     "CalendarFeatureTransformer",
+    "DaylightSavingFeatureTransformer",
     "HolidayFeatureTransformer",
     "FourierFeatureTransformer",
     "TimeIndexTransformer",

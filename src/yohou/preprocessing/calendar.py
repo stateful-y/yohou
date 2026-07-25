@@ -1,10 +1,13 @@
 """Calendar and holiday feature transformers for time series."""
 
+from datetime import timedelta
+
 import numpy as np
 import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
+from yohou.utils.validation import interval_to_timedelta
 
 ALL_FEATURES = (
     "year",
@@ -63,13 +66,17 @@ def _interval_supports_feature(interval: str, feature: str) -> bool:
     return interval in required
 
 
-def _extract_feature(feature: str) -> pl.Expr:
+def _extract_feature(feature: str, time_zone: str | None = None) -> pl.Expr:
     """Build a polars expression that extracts a calendar feature from the time column.
 
     Parameters
     ----------
     feature : str
         Calendar feature name.
+    time_zone : str or None, default=None
+        If set, the ``"time"`` column is converted into this zone before the feature is
+        read, so wall-clock features are local. This conversion is ephemeral: it affects
+        only the extracted value, never the output ``"time"`` column.
 
     Returns
     -------
@@ -78,6 +85,8 @@ def _extract_feature(feature: str) -> pl.Expr:
 
     """
     col = pl.col("time")
+    if time_zone is not None:
+        col = col.dt.convert_time_zone(time_zone)
     if feature == "year":
         return col.dt.year().cast(pl.Int32).alias("cal_year")
     if feature == "month":
@@ -142,6 +151,13 @@ class CalendarFeatureTransformer(BaseActualTransformer):
         ``"quarter"``, ``"is_weekend"``, ``"is_month_start"``,
         ``"is_month_end"``, ``"is_quarter_start"``, ``"is_quarter_end"``,
         ``"is_year_start"``, ``"is_year_end"``.
+    time_zone : str or None, default=None
+        If set to an IANA zone, features are computed from the ``"time"`` column
+        converted into that zone, so wall-clock features (``cal_hour``,
+        ``cal_day_of_week``, ...) are local. The conversion is ephemeral: the output
+        ``"time"`` column is returned unchanged, so it stays a valid join key against
+        frames in its original zone. Requires a timezone-aware ``"time"`` column. If
+        ``None`` (the default), features are read from ``"time"`` as-is.
 
     Attributes
     ----------
@@ -153,12 +169,14 @@ class CalendarFeatureTransformer(BaseActualTransformer):
     ValueError
         At fit time if any requested feature name is not a valid calendar
         feature; if a requested feature is not applicable to the detected time
-        interval (e.g. ``"hour"`` on daily data); or if any generated ``cal_*``
-        column name conflicts with an existing column in ``X``.
+        interval (e.g. ``"hour"`` on daily data); if any generated ``cal_*``
+        column name conflicts with an existing column in ``X``; or if
+        ``time_zone`` is set and the ``"time"`` column is not timezone-aware.
 
     See Also
     --------
     - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator from user-provided dates.
+    - [`DaylightSavingFeatureTransformer`][yohou.preprocessing.calendar.DaylightSavingFeatureTransformer] : Daylight-saving offset and transition-day features.
     - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
     - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
     - [`FunctionTransformer`][yohou.preprocessing.function.FunctionTransformer] : Custom function-based transforms.
@@ -178,20 +196,49 @@ class CalendarFeatureTransformer(BaseActualTransformer):
     >>> "cal_month" in X_t.columns
     True
 
+    With ``time_zone`` set, ``cal_hour`` is local while the output ``"time"`` stays put:
+
+    >>> from datetime import timezone
+    >>> t = pl.datetime_range(
+    ...     datetime(2026, 7, 1, 17, tzinfo=timezone.utc),
+    ...     datetime(2026, 7, 1, 18, tzinfo=timezone.utc),
+    ...     interval="1h",
+    ...     eager=True,
+    ... )
+    >>> Xz = pl.DataFrame({"time": t})
+    >>> out = CalendarFeatureTransformer(features=["hour"], time_zone="America/Chicago").fit_transform(Xz)
+    >>> out["cal_hour"].to_list()  # UTC 17, 18 -> Central 12, 13
+    [12, 13]
+    >>> out["time"].to_list() == Xz["time"].to_list()  # output time unchanged
+    True
+
     """
 
     _parameter_constraints: dict = {
         "features": [list, None],
+        "time_zone": [str, None],
     }
 
     def __init__(
         self,
         features: list[str] | None = None,
+        time_zone: str | None = None,
     ):
         self.features = features
+        self.time_zone = time_zone
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
         """Fit the internal model."""
+        if self.time_zone is not None:
+            dtype = X.schema["time"]
+            source_zone = dtype.time_zone if isinstance(dtype, pl.Datetime) else None
+            if source_zone is None:
+                raise ValueError(
+                    "CalendarFeatureTransformer with time_zone set requires a timezone-aware "
+                    "'time' column (a zone conversion is undefined without an instant and a "
+                    f"source zone); got dtype {dtype}. Localize the source first, e.g. "
+                    "dt.replace_time_zone('UTC')."
+                )
         if self.features is not None:
             invalid = set(self.features) - set(ALL_FEATURES)
             if invalid:
@@ -231,8 +278,10 @@ class CalendarFeatureTransformer(BaseActualTransformer):
             DataFrame with ``"time"`` column and extracted calendar features.
 
         """
-        feature_exprs = [_extract_feature(f) for f in self.applicable_features_]
+        feature_exprs = [_extract_feature(f, self.time_zone) for f in self.applicable_features_]
 
+        # The output "time" is the original column, never rezoned: only the feature values
+        # above are computed in ``time_zone``, so ``time`` stays a valid join key.
         return X.select(pl.col("time"), *feature_exprs)
 
     def get_feature_names_out(self, input_features=None) -> list[str]:
@@ -299,6 +348,7 @@ class HolidayFeatureTransformer(BaseActualTransformer):
     See Also
     --------
     - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
+    - [`DaylightSavingFeatureTransformer`][yohou.preprocessing.calendar.DaylightSavingFeatureTransformer] : Daylight-saving offset and transition-day features.
     - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
     - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
 
@@ -448,3 +498,203 @@ class HolidayFeatureTransformer(BaseActualTransformer):
         if self.days_since_last:
             generated.append(f"{self._PREFIX}_days_since_last")
         return generated
+
+
+DST_ALL_FEATURES = ("in_effect", "transition_day", "transition_type")
+DST_DEFAULT_FEATURES = ("in_effect", "transition_day")
+
+# ``in_effect`` reads the offset at an instant; on daily-or-coarser data there is no
+# single instant (it would be sampled at an arbitrary local midnight), so it is gated to
+# sub-daily data. ``transition_day``/``transition_type`` are date-level and apply at any
+# interval.
+DST_SUBDAILY_FEATURES = frozenset({"in_effect"})
+
+
+def _interval_is_subdaily(interval: str) -> bool:
+    """Return whether a detected time interval is finer than one day.
+
+    Parameters
+    ----------
+    interval : str
+        Detected time interval string (e.g., "1h", "1d", "1mo").
+
+    Returns
+    -------
+    bool
+        True for fixed sub-daily intervals; False for daily-or-coarser and for
+        variable intervals (e.g. "1mo", which has no fixed timedelta).
+
+    """
+    delta = interval_to_timedelta(interval)
+    return delta is not None and delta < timedelta(days=1)
+
+
+def _extract_dst_feature(feature: str, time_zone: str) -> pl.Expr:
+    """Build a polars expression for a daylight-saving feature in ``time_zone``.
+
+    Parameters
+    ----------
+    feature : str
+        Daylight-saving feature name.
+    time_zone : str
+        IANA zone in which the daylight-saving regime is evaluated. The ``"time"``
+        column is converted into it before the offset is read.
+
+    Returns
+    -------
+    pl.Expr
+        Expression that produces the ``dst_<feature>`` column.
+
+    """
+    local = pl.col("time").dt.convert_time_zone(time_zone)
+    if feature == "in_effect":
+        # Minutes of daylight-saving offset in effect: 0 in standard time, > 0 in DST.
+        return (local.dt.dst_offset().dt.total_minutes() != 0).cast(pl.Int32).alias("dst_in_effect")
+    # A local date is a transition date when its offset differs from the next date's,
+    # compared at each date's local midnight.
+    midnight = local.dt.truncate("1d")
+    dst_today = midnight.dt.dst_offset().dt.total_minutes()
+    dst_tomorrow = midnight.dt.offset_by("1d").dt.dst_offset().dt.total_minutes()
+    if feature == "transition_day":
+        return (dst_today != dst_tomorrow).cast(pl.Int32).alias("dst_transition_day")
+    if feature == "transition_type":
+        # Spring-forward gains the offset the next day (+1); fall-back loses it (-1).
+        return (dst_tomorrow - dst_today).sign().cast(pl.Int32).alias("dst_transition_type")
+    msg = f"Unknown feature: {feature}"
+    raise ValueError(msg)
+
+
+class DaylightSavingFeatureTransformer(BaseActualTransformer):
+    r"""Deterministic daylight-saving-time features from the time column.
+
+    A series whose local time observes daylight saving crosses two kinds of boundary that a
+    UTC-indexed frame cannot see directly: the summer/winter clock offset, which shifts the
+    UTC hour of the local diurnal cycle by one hour, and the two transition days a year,
+    which are 23- or 25-hour local days with a skipped or repeated hour. Both are
+    deterministic and known for any future date, so they enter a model as unlagged,
+    known-future features alongside the calendar terms. Output columns are prefixed with
+    ``dst_``.
+
+    Daylight saving is evaluated in ``time_zone``: the ``"time"`` column (which must be
+    timezone-aware) is converted into that zone, then the offset is read there. The
+    parameter names the zone whose daylight-saving regime is evaluated, not an assertion
+    about the input's zone, so a UTC-indexed frame and a Central-indexed frame produce the
+    same features for the same instants.
+
+    For a timestamp $t$ with local daylight-saving offset $\delta(t)$ (in minutes, $0$ in
+    standard time), and $\delta_d$ the offset at the local midnight of date $d$:
+
+    $$\text{in\_effect}(t) = \mathbb{1}[\delta(t) \neq 0], \quad
+      \text{transition\_day}(d) = \mathbb{1}[\delta_d \neq \delta_{d+1}], \quad
+      \text{transition\_type}(d) = \operatorname{sign}(\delta_{d+1} - \delta_d)$$
+
+    Note that ``dst_transition_day`` is exactly ``dst_transition_type != 0``; both are
+    provided because a tree splits on them differently (the binary is a cleaner root split,
+    the signed carries the spring/fall direction).
+
+    Parameters
+    ----------
+    time_zone : str, default="America/Chicago"
+        IANA time zone in which daylight saving time is evaluated.
+    features : list of str or None, default=None
+        Which daylight-saving features to emit. If ``None``, emits every default feature
+        applicable to the detected time interval (``["in_effect", "transition_day"]``).
+        Valid options: ``"in_effect"``, ``"transition_day"``, ``"transition_type"``.
+
+    Attributes
+    ----------
+    applicable_features_ : list of str
+        The resolved feature list emitted during ``transform`` (after interval gating).
+
+    Raises
+    ------
+    ValueError
+        At fit time if the ``"time"`` column is not a timezone-aware ``pl.Datetime`` (a
+        timezone-naive datetime or a ``pl.Date`` has no well-defined offset); if any
+        requested feature name is unknown; if ``"in_effect"`` is explicitly requested on
+        data whose detected interval is daily or coarser; or if a generated ``dst_*``
+        column name conflicts with an existing column in ``X``.
+
+    See Also
+    --------
+    - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
+    - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator from user-provided dates.
+    - [`FourierFeatureTransformer`][yohou.preprocessing.time_features.FourierFeatureTransformer] : Sin/cos harmonics for cyclical encoding.
+
+    Examples
+    --------
+    >>> from datetime import datetime, timezone
+    >>> import polars as pl
+    >>> from yohou.preprocessing import DaylightSavingFeatureTransformer
+    >>> time = pl.datetime_range(
+    ...     datetime(2026, 3, 8, 6, tzinfo=timezone.utc),
+    ...     datetime(2026, 3, 8, 10, tzinfo=timezone.utc),
+    ...     interval="1h",
+    ...     eager=True,
+    ... )
+    >>> X = pl.DataFrame({"time": time})
+    >>> DaylightSavingFeatureTransformer().fit_transform(X)["dst_in_effect"].to_list()
+    [0, 0, 1, 1, 1]
+
+    """
+
+    _parameter_constraints: dict = {
+        "time_zone": [str],
+        "features": [list, None],
+    }
+
+    def __init__(self, time_zone: str = "America/Chicago", features: list[str] | None = None):
+        self.time_zone = time_zone
+        self.features = features
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Validate the input contract, resolve features (with interval gating), and check conflicts."""
+        dtype = X.schema["time"]
+        time_zone = dtype.time_zone if isinstance(dtype, pl.Datetime) else None
+        if time_zone is None:
+            raise ValueError(
+                "DaylightSavingFeatureTransformer requires a timezone-aware 'time' column "
+                "(a daylight-saving offset is undefined without an instant and a zone); "
+                f"got dtype {dtype}. Localize it first, e.g. dt.replace_time_zone('UTC')."
+            )
+
+        requested = list(self.features) if self.features is not None else list(DST_DEFAULT_FEATURES)
+        invalid = set(requested) - set(DST_ALL_FEATURES)
+        if invalid:
+            raise ValueError(f"Unknown DST features: {sorted(invalid)}. Valid features: {list(DST_ALL_FEATURES)}")
+
+        subdaily = _interval_is_subdaily(self.interval_)
+        gated = [f for f in requested if f in DST_SUBDAILY_FEATURES and not subdaily]
+        if self.features is not None and gated:
+            raise ValueError(
+                f"Features {gated} require sub-daily data, but the detected interval is "
+                f"'{self.interval_}'. These features need an instant, not just a date."
+            )
+        self.applicable_features_ = [f for f in requested if f not in gated]
+
+        generated = [f"dst_{f}" for f in self.applicable_features_]
+        conflicts = set(generated) & (set(X.columns) - {"time"})
+        if conflicts:
+            raise ValueError(f"Generated column names {sorted(conflicts)} conflict with existing columns in X.")
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Emit ``time`` plus the selected ``dst_*`` feature columns."""
+        exprs = [_extract_dst_feature(f, self.time_zone) for f in self.applicable_features_]
+        return X.select(pl.col("time"), *exprs)
+
+    def get_feature_names_out(self, input_features=None) -> list[str]:
+        """Return the selected ``dst_*`` feature-column names.
+
+        Parameters
+        ----------
+        input_features : array-like of str or None, default=None
+            Input feature names (unused, for API compatibility).
+
+        Returns
+        -------
+        list of str
+            Generated daylight-saving feature column names.
+
+        """
+        check_is_fitted(self, ["applicable_features_"])
+        return [f"dst_{f}" for f in self.applicable_features_]
