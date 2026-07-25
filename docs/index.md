@@ -1,6 +1,8 @@
 ![Yohou](assets/logo_dark.png#only-dark){width=800}
 ![Yohou](assets/logo_light.png#only-light){width=800}
 
+# Welcome to Yohou's documentation!
+
 Yohou is a time series forecasting framework built on top of Scikit-Learn's ecosystem. It provides a unified interface for building, extending, and comparing any forecasting model, from sklearn-native reductions to statistical models or deep learning integrations and hyperparameter optimization workflows. All models share a consistent API with native DataFrame support, Scikit-Learn-based compositions, and first-class cross-validation.
 
 <div class="grid cards" markdown>

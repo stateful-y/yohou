@@ -58,13 +58,13 @@ fix:
 # Build documentation (prebuild generates API pages + notebooks; postbuild exports LLM markdown)
 build:
     uv run python docs_build/build.py prebuild
-    uv run mkdocs build --clean
+    uv run zensical build
     uv run python docs_build/build.py postbuild site
 
 # Build documentation without exporting notebooks
 build-fast:
     MKDOCS_SKIP_NOTEBOOKS=1 uv run python docs_build/build.py prebuild
-    MKDOCS_SKIP_NOTEBOOKS=1 uv run mkdocs build --clean
+    MKDOCS_SKIP_NOTEBOOKS=1 uv run zensical build
     uv run python docs_build/build.py postbuild site
 
 # Export all marimo notebooks to HTML (cached, only re-exports changed ones)
@@ -83,7 +83,7 @@ serve-fast:
 
 # Check built docs for dead links (build first with 'just build' or 'just build-fast')
 link:
-    uvx linkchecker site/index.html --no-status --no-warnings --ignore-url 'material/overrides'
+    uvx linkchecker site/index.html --no-status --no-warnings
 
 # Clean build artifacts
 clean:
