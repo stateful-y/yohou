@@ -314,6 +314,7 @@ nav:
     - Visualization: pages/explanation/visualization.md
     - Metadata Routing: pages/explanation/metadata-routing.md
     - Extending Yohou: pages/explanation/extending-yohou.md
+    - Security: pages/explanation/security.md
   - Reference:
     - pages/reference/index.md
     - API Reference:

@@ -187,6 +187,7 @@ select = [
     "ARG", # flake8-unused-arguments
     "SIM", # flake8-simplify
     "PL",  # Pylint
+    "S",   # flake8-bandit (security)
     "T10", # flake8-debugger
     "T201", # Print statement
     "D",   # pydocstyle (numpy convention, scoped to plotting)
@@ -203,21 +204,29 @@ ignore = [
     "ARG001", # unused function argument
     "ARG002", # unused method argument (common in sklearn-style APIs)
     "PLR0911", # too many return statements
+    # flake8-bandit S101: `assert` is used pervasively across this codebase as a
+    # type-narrowing / internal-invariant idiom (`assert x is not None`,
+    # `assert isinstance(...)`), and the whole `yohou.testing` contract-test-helper
+    # subtree is built on asserts. Converting hundreds of these to explicit raises is
+    # a semantic change out of scope for a template sync. Only S101 is ignored -- every
+    # other flake8-bandit rule (subprocess, pickle, hashing, network, exec, ...) stays
+    # active so genuine security findings still surface.
+    "S101", # assert used as invariant/type-narrowing idiom (not a security concern here)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*" = ["ARG", "S101", "T201", "PLR2004", "PLC0415", "D"]  # Allow assert statements, prints, magic values, imports not at the top, and no docstrings
+"tests/**/*" = ["ARG", "S101", "S104", "S105", "S106", "S107", "S108", "S110", "S112", "S301", "S311", "S603", "S607", "T201", "PLR2004", "PLC0415", "D"]  # Insecure-looking patterns that are legitimate in tests: asserts; bind-all-interfaces; hardcoded passwords/temp paths; try/except pass/continue; pickle; non-crypto random; subprocess; prints; magic values; plus lazy imports and no docstrings (repo-specific)
 # The template's documentation build tooling lives in docs_build/. Every script
 # there prints build progress and may hold per-build caches.
 #
 # Deliberately `docs_build/*.py`, NOT `docs_build/_*.py`: the narrower glob would
 # silently drop coverage for any un-underscored script, which is the failure
 # shape this fleet specialises in. The pattern matches what the directory is for.
-"docs_build/*.py" = ["T201", "PLW0603"]  # Allow prints and per-build cache globals in every build script
+"docs_build/*.py" = ["T201", "PLW0603", "S506", "S603", "S112"]  # Build tooling: prints, per-build cache globals, mkdocs.yml full-loader, subprocess to run notebooks, and skip-on-error loops over controlled input
 # `docs/*.py` is kept too, for a project's OWN scripts under docs/ (yohou has
 # docs/precache_datasets.py) -- the template ships none there any more, but a
 # project script prints progress the same way and should not lose its exemption.
-"docs/*.py" = ["T201", "PLW0603"]
+"docs/*.py" = ["T201", "PLW0603", "S506", "S603", "S112"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
