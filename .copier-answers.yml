@@ -1,10 +1,11 @@
 # This file is used by Copier to track the template version
 # and enable template updates in generated projects
 
-_commit: 9cd26f32e22938cc5e14f3f5582276791f546230
+_commit: 8dd0779e406f8abe2bdc740ce2f2fe8adbfa1031
 _src_path: gh:stateful-y/python-package-copier
 author_email: gtauzin@stateful-y.io
 author_name: Guillaume Tauzin
+code_owner: '@gtauzin'
 description: A time series forecasting package based on Scikit-Learn and Polars
 github_username: stateful-y
 include_actions: True

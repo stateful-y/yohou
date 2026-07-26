@@ -1,6 +1,6 @@
 # Code owners for Yohou.
 #
 # Each line maps a path pattern to the owner(s) requested for review on changes.
-# For an organization repo, replace the owner below with a team (e.g. @stateful-y/maintainers),
-# since an org name alone is not a valid code owner.
-* @stateful-y
+# `code_owner` is a GitHub username (@user) or a team (@org/team); a bare
+# organization name is not a valid code owner.
+* @gtauzin

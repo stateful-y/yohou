@@ -90,6 +90,7 @@ justfile
 docs/index.md
 docs/pages/reference/api.md
 docs/pages/how-to/contribute.md
+docs/pages/explanation/security.md
 .github/workflows/tests.yml        # conditional: include_actions
 .github/workflows/pr-title.yml     # conditional: include_actions
 .github/workflows/publish-release.yml  # conditional: include_actions
