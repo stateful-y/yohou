@@ -81,6 +81,13 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
     extractors_ : dict of str to BaseActualTransformer
         Fitted extractors keyed by term name, reused at ``observe``/``rewind``.
 
+    contribution_members_ : dict of str to (str or None)
+        Per-term contribution member, read from each term forecaster's
+        ``target_transformer.target_output_name``. ``None`` means every column the term
+        emits is a contribution. A term whose target transform retains operands (to make
+        its inverse well defined) emits those operands too, and they are excluded from
+        the combination by this mapping.
+
     residual_forecaster_ : BasePointForecaster or None
         The fitted residual forecaster, or ``None`` when ``residual_forecaster``
         is ``None``.
@@ -168,6 +175,65 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         self.terms = terms
         self.combine = combine
         self.residual_forecaster = residual_forecaster
+
+    @staticmethod
+    def _contribution_member(forecaster: BasePointForecaster) -> str | None:
+        """Return the member of a term's output that is its contribution, if declared.
+
+        A term whose ``target_transformer`` retains operands so its inverse is defined
+        emits more columns than the term has targets: the recovered value plus the
+        siblings that recovered it. The transformer names the value via
+        ``target_output_name``; everything else it emits is scaffolding and must not be
+        combined into the aggregate.
+
+        Parameters
+        ----------
+        forecaster : BasePointForecaster
+            A term forecaster.
+
+        Returns
+        -------
+        str or None
+            The declared contribution member, or ``None`` when the term's output is all
+            value (the common case).
+
+        """
+        transformer = getattr(forecaster, "target_transformer", None)
+        return None if transformer is None else getattr(transformer, "target_output_name", None)
+
+    @staticmethod
+    def _narrow_to_contribution(frame: pl.DataFrame, member: str | None) -> pl.DataFrame:
+        """Drop a term's scaffolding columns, keeping the index and the contribution.
+
+        Parameters
+        ----------
+        frame : pl.DataFrame
+            A term's observed target or forecast.
+        member : str or None
+            The declared contribution member; ``None`` leaves the frame untouched.
+
+        Returns
+        -------
+        pl.DataFrame
+            The frame reduced to its index columns plus the contribution columns.
+
+        Raises
+        ------
+        ValueError
+            If the declared member matches none of the frame's columns.
+
+        """
+        if member is None:
+            return frame
+        index_cols = [c for c in ("vintage_time", "time") if c in frame.columns]
+        keep = [c for c in frame.columns if c not in index_cols and (c == member or c.endswith(f"__{member}"))]
+        if not keep:
+            raise ValueError(
+                f"A term's target transformer declares '{member}' as its contribution, but the term "
+                f"emitted none of it (columns: {[c for c in frame.columns if c not in index_cols]}). "
+                f"Check that target_output_name names a column the transform actually produces."
+            )
+        return frame.select([*index_cols, *keep])
 
     def _check_positive(self, frame: pl.DataFrame, what: str) -> None:
         """Raise when ``combine='product'`` and ``frame`` has a non-positive value.
@@ -406,6 +472,7 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
 
         self.forecasters_ = []
         self.extractors_ = {}
+        self.contribution_members_ = {}
         observed_contributions: list[tuple[str, pl.DataFrame]] = []
         for name, extractor, forecaster in self.terms:  # ty: ignore[invalid-assignment]
             extractor_ = clone(extractor)
@@ -440,7 +507,14 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             )
             self.forecasters_.append((name, forecaster_, granularity))
             self.extractors_[name] = extractor_
-            observed_contributions.append((granularity, y_i))
+            # A term whose target transform retains operands emits them alongside the
+            # value. Only the value is this term's contribution; the residual and the
+            # aggregate must not pick up the scaffolding.
+            self.contribution_members_[name] = self._contribution_member(forecaster_)
+            observed_contributions.append((
+                granularity,
+                self._narrow_to_contribution(y_i, self.contribution_members_[name]),
+            ))
 
         self.residual_forecaster_ = None
         if self.residual_forecaster is not None:
@@ -716,7 +790,10 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
                 X_forecast=X_forecast,
                 **step_params.predict,
             )
-            contributions.append((granularity, y_hat_i))
+            contributions.append((
+                granularity,
+                self._narrow_to_contribution(y_hat_i, self.contribution_members_.get(name)),
+            ))
 
         residual_pred = None
         if self.residual_forecaster_ is not None:
@@ -790,7 +867,10 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             y_i = self.extractors_[name].transform(frame)
             term_groups = groups if granularity == "panel" else None
             forecaster.observe(y_i, X_actual=X_actual, groups=term_groups, X_future=X_future, X_forecast=X_forecast)
-            observed_contributions.append((granularity, y_i))
+            observed_contributions.append((
+                granularity,
+                self._narrow_to_contribution(y_i, self.contribution_members_.get(name)),
+            ))
 
         if self.residual_forecaster_ is not None:
             eps = self._compute_residual(y, observed_contributions)
@@ -856,7 +936,10 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             y_i = self.extractors_[name].transform(frame)
             term_groups = groups if granularity == "panel" else None
             forecaster.rewind(y_i, X_actual=X_actual, groups=term_groups, X_future=X_future, X_forecast=X_forecast)
-            observed_contributions.append((granularity, y_i))
+            observed_contributions.append((
+                granularity,
+                self._narrow_to_contribution(y_i, self.contribution_members_.get(name)),
+            ))
 
         if self.residual_forecaster_ is not None:
             eps = self._compute_residual(y, observed_contributions)

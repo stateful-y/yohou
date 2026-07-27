@@ -928,3 +928,73 @@ class TestProductCombine:
         )
         with pytest.raises(ValueError, match="term 'neg'"):
             forecaster.fit(y, forecasting_horizon=3)
+
+
+class TestRetainedOperandsAreNotCombined:
+    """A term whose target transform keeps operands must contribute only its target.
+
+    ``ArithmeticTransformer(keep_inputs=True)`` retains the sibling operand so its
+    inverse is defined, which makes the term forecaster emit two columns per group: the
+    recovered value and the sibling. Only the first is the term's contribution. Before
+    ``target_output_name`` existed, the sibling was summed into the aggregate too, which
+    is silent numerical corruption: the aggregate came out wrong with no error raised.
+    """
+
+    @staticmethod
+    def _frame(n: int = 60) -> pl.DataFrame:
+        time = pl.datetime_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 1) + timedelta(hours=n - 1), interval="1h", eager=True
+        )
+        return pl.DataFrame({
+            "time": time,
+            "total": [40.0 + (i % 5) for i in range(n)],
+            "gas": [3.0 + (i % 3) * 0.1 for i in range(n)],
+        })
+
+    def _fitted(self):
+        from yohou.preprocessing import ArithmeticTransformer, FunctionTransformer
+
+        y = self._frame().select("time", "total")
+        x_actual = self._frame().select("time", "gas")
+        # The term's target is `anchor`; `gas_ref` rides along only so `anchor` can be
+        # rebuilt as heat_rate * gas_ref at predict.
+        extractor = FunctionTransformer(
+            func=lambda df: df.select(pl.col("total").alias("anchor"), pl.col("gas").alias("gas_ref")),
+            check_inverse=False,
+        )
+        term = PolynomialTrendForecaster(
+            degree=1,
+            target_transformer=ArithmeticTransformer(
+                "anchor",
+                "gas_ref",
+                op="div",
+                output_name="heat_rate",
+                keep_inputs=True,
+                invert_wrt="left",
+            ),
+        )
+        forecaster = CombiningForecaster(terms=[("anchor", extractor, term)], combine="sum")
+        return forecaster.fit(y, X_actual=x_actual, forecasting_horizon=4), y
+
+    def test_declared_contribution_member_is_recorded(self):
+        forecaster, _ = self._fitted()
+        assert forecaster.contribution_members_["anchor"] == "anchor"
+
+    def test_aggregate_excludes_the_retained_operand(self):
+        forecaster, _ = self._fitted()
+        term = {n: f for n, f, _ in forecaster.forecasters_}["anchor"]
+        term_pred = term.predict(forecasting_horizon=4)
+        assert {"anchor", "gas_ref"} <= set(term_pred.columns), "the term emits both, by design"
+
+        agg = forecaster.predict(forecasting_horizon=4)
+        # The aggregate must equal the target alone. Summing the operand too would add
+        # roughly the gas level (~3) to every prediction.
+        assert agg["total"].to_list() == pytest.approx(term_pred["anchor"].to_list(), abs=1e-9)
+        gas_polluted = [a + g for a, g in zip(term_pred["anchor"], term_pred["gas_ref"], strict=True)]
+        assert agg["total"].to_list() != pytest.approx(gas_polluted, abs=1e-9)
+
+    def test_value_preserving_transform_declares_nothing(self):
+        from yohou.stationarity import LogTransformer
+
+        assert LogTransformer().target_output_name is None
+        assert _SelectColumn("a", "out").target_output_name is None

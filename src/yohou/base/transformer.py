@@ -263,6 +263,32 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         check_is_fitted(self, "_observation_horizon")
         return self._observation_horizon
 
+    @property
+    def target_output_name(self) -> str | None:
+        """Name of the single column ``inverse_transform`` reconstructs, if only one.
+
+        Most transformers are value-preserving: every column they emit is a quantity in
+        its own right, and this is ``None``. A transformer that retains extra operands
+        purely so its inverse is defined (see
+        [`ArithmeticTransformer`][yohou.preprocessing.arithmetic.ArithmeticTransformer]
+        with ``keep_inputs=True``) overrides this to name the one output that is the
+        actual target, so that a consumer can tell the target apart from the scaffolding
+        carried alongside it.
+
+        A meta-estimator that combines several transformed series needs exactly this
+        distinction. Without it, a target transform that retains its operands makes the
+        forecaster emit more columns than the target has, and a consumer summing them
+        adds the operands into the result.
+
+        Returns
+        -------
+        str or None
+            The reconstructed target column, or ``None`` when every emitted column is a
+            value and no such distinction exists.
+
+        """
+        return None
+
     def _update_X_observed(self, X: pl.DataFrame) -> None:
         """Update stored observed data for stateful transformations.
 

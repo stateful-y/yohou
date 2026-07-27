@@ -141,6 +141,17 @@ class ArithmeticTransformer(BaseActualTransformer):
                     kept.append(c)
         return kept
 
+    @property
+    def target_output_name(self) -> str:
+        """The operand ``inverse_transform`` reconstructs, per ``invert_wrt``.
+
+        ``inverse_transform`` emits the recovered operand *and* the retained sibling it
+        needed to recover it. Only the former is the value; the sibling is scaffolding.
+        Naming it here lets a consumer that combines transformed series pick the target
+        out rather than treating the sibling as a second contribution.
+        """
+        return self.left_col if self.invert_wrt == "left" else self.right_col
+
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Emit ``"time"``, the retained operands, and the output column."""
         forward = _BINARY_OPS[self.op](pl.col(self.left_col), pl.col(self.right_col)).alias(self.output_name)
@@ -264,6 +275,16 @@ class ReduceTransformer(BaseActualTransformer):
         if not self.keep_inputs:
             return []
         return [c for c in self.input_cols if c != self.output_name]
+
+    @property
+    def target_output_name(self) -> str | None:
+        """The part ``inverse_transform`` recovers, or ``None`` when not invertible.
+
+        The inverse emits the recovered ``invert_col`` alongside the ``n-1`` siblings it
+        needed; only the former is the value. ``None`` when ``invert_col`` is unset, since
+        there is then no inverse and no designated target.
+        """
+        return self.invert_col
 
     def _forward_expr(self) -> pl.Expr:
         """Row-wise reduction of ``input_cols``."""
