@@ -31,6 +31,17 @@ Available features include `"year"`, `"month"`, `"quarter"`, `"week"`, `"day_of_
 !!! info "Frequency aware"
     Sub-daily features (`"hour"`, `"minute"`) are only applicable to sub-daily data. When `features=None`, the transformer inspects the data interval and extracts only what makes sense. After fitting, check `transformer.applicable_features_` to see which features were selected.
 
+On a UTC-indexed frame, `cal_hour` is a UTC hour, so the local daily cycle drifts by an hour across a daylight-saving boundary. Pass `time_zone` to compute the features from local wall-clock time instead:
+
+```python
+# "time" is timezone-aware UTC; features are read in America/Chicago.
+transformer = CalendarFeatureTransformer(features=["hour", "day_of_week"], time_zone="America/Chicago")
+X = transformer.fit_transform(y)
+# cal_hour is now the local hour
+```
+
+The conversion is applied only when extracting feature values: the output `time` column is returned unchanged, so it stays a valid join key against your target and other feature frames (which are typically UTC-indexed). `time_zone` requires a timezone-aware `time` column.
+
 ## Mark Holidays
 
 [`HolidayFeatureTransformer`](/pages/api/generated/yohou.preprocessing.HolidayFeatureTransformer/) creates a binary indicator column and optional proximity features showing distance to the nearest holiday:
@@ -68,6 +79,22 @@ X = transformer.fit_transform(y)
 ```
 
 Set `seasonality` to the period length in time steps (e.g., `24` for daily cycles in hourly data, `365.25` for yearly cycles in daily data). Use more harmonics for sharper seasonal shapes, fewer for smoother patterns. Harmonics must satisfy the Nyquist limit: each harmonic $k$ must be at most $S/2$ where $S$ is the seasonality.
+
+## Flag Daylight-Saving Transitions
+
+[`DaylightSavingFeatureTransformer`](/pages/api/generated/yohou.preprocessing.DaylightSavingFeatureTransformer/) captures the two daylight-saving effects a UTC-indexed frame cannot see: the summer/winter clock offset (which shifts the local diurnal cycle by an hour) and the 23- or 25-hour transition days:
+
+```python
+from yohou.preprocessing import DaylightSavingFeatureTransformer
+
+# The "time" column must be timezone-aware; time_zone is the zone whose
+# daylight-saving regime is evaluated (any input zone is converted into it).
+transformer = DaylightSavingFeatureTransformer(time_zone="America/Chicago")
+X = transformer.fit_transform(y)
+# Output columns: dst_in_effect, dst_transition_day
+```
+
+The `time_zone` parameter names the zone whose daylight-saving regime is evaluated, not the input's zone. Pass `features=["in_effect", "transition_day", "transition_type"]` to also emit a signed flag (`+1` on a spring-forward date, `-1` on a fall-back date). `in_effect` requires sub-daily data and is dropped on daily-or-coarser frequencies; `transition_day`/`transition_type` apply at any frequency. The `"time"` column must be timezone-aware (a naive datetime or a `Date` is rejected at fit, since an offset needs both an instant and a zone).
 
 ## Create a Trend Index
 

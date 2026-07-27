@@ -61,6 +61,7 @@ class FourierFeatureTransformer(BaseActualTransformer):
     --------
     - [`CalendarFeatureTransformer`][yohou.preprocessing.calendar.CalendarFeatureTransformer] : Calendar features (month, day of week, etc.).
     - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Binary holiday indicator.
+    - [`DaylightSavingFeatureTransformer`][yohou.preprocessing.calendar.DaylightSavingFeatureTransformer] : Daylight-saving offset and transition-day features.
     - [`TimeIndexTransformer`][yohou.preprocessing.time_features.TimeIndexTransformer] : Numeric time index for trend features.
     - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Forecaster-level Fourier seasonality.
 

@@ -1,0 +1,66 @@
+name: Deploy Docs
+
+# Zensical needs ~8.6 GB of RAM to render yohou's docs (~460 pages / ~365 API
+# symbols), which exceeds Read the Docs' ~1 GB build limit and OOM-kills
+# `zensical build` there (exit 137). So the site is built HERE, where there is
+# ample memory, and the rendered result is uploaded to the `docs-site` GitHub
+# release. `.readthedocs.yml` then only downloads and serves it. This mirrors the
+# existing notebook-cache release pattern (see export-notebooks.yml).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
+          version: "0.10.0"
+
+      - name: Build the documentation site (Zensical)
+        run: |
+          uv sync --group docs --extra plotting
+          timeout 120 uv run python docs/precache_datasets.py || echo "Dataset precache timed out; notebooks will download on demand"
+          mkdir -p docs/examples
+          curl -sfL https://github.com/stateful-y/yohou/releases/download/notebook-cache/notebook-exports.tar.gz | tar xz -C docs/examples || echo "No notebook cache; exporting from scratch"
+          uv run python docs_build/build.py prebuild
+          uv run zensical build
+          uv run python docs_build/build.py postbuild site
+          uvx linkchecker site/index.html --no-status --no-warnings || echo "linkcheck reported issues (non-fatal)"
+
+      - name: Package rendered site
+        run: tar czf docs-site.tar.gz -C site .
+
+      - name: Publish the rendered site to the docs-site release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: docs-site
+          name: Rendered Documentation Site
+          body: Auto-generated rendered docs site, downloaded and served by Read the Docs. Built here because `zensical build` OOMs RTD's builder.
+          files: docs-site.tar.gz
+          prerelease: true
+          make_latest: false
+
+      - name: Trigger a Read the Docs build to publish the fresh site
+        env:
+          RTD_TOKEN: ${{ secrets.RTD_TOKEN }}
+        run: |
+          if [ -n "$RTD_TOKEN" ]; then
+            curl -sf -X POST -H "Authorization: Token $RTD_TOKEN" \
+              https://readthedocs.org/api/v3/projects/yohou/versions/latest/builds/ \
+              && echo "Triggered Read the Docs build" || echo "RTD trigger call failed (check the token / project slug)"
+          else
+            echo "RTD_TOKEN secret not set -- RTD will publish this site on its next build. Add the secret for immediate publish."
+          fi

@@ -8,6 +8,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
+# Least-privilege default: read-only token. No job here writes.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -34,6 +38,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -44,7 +49,8 @@ jobs:
         run: echo "$USERPROFILE/.local/bin" >> $GITHUB_PATH
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -70,12 +76,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python
         run: uv python install 3.11
@@ -94,8 +102,10 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
-    env:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    # Codecov upload authenticates via GitHub OIDC (tokenless) -- no stored CODECOV_TOKEN.
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout code
@@ -106,12 +116,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -125,17 +137,17 @@ jobs:
         run: nox -s test --python ${{ matrix.python-version }}
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && matrix.python-version == '3.11' && env.CODECOV_TOKEN != '' }}
+        if: ${{ !cancelled() && matrix.python-version == '3.11' }}
         uses: codecov/test-results-action@v1
         with:
-          token: ${{ env.CODECOV_TOKEN }}
+          use_oidc: true
           file: '${{ github.workspace }}/junit.${{ matrix.python-version }}.xml'
 
       - name: Upload coverage report to Codecov
         uses: codecov/codecov-action@v7
-        if: ${{ matrix.python-version == '3.11' && env.CODECOV_TOKEN != '' }}
+        if: ${{ matrix.python-version == '3.11' }}
         with:
-          token: ${{ env.CODECOV_TOKEN }}
+          use_oidc: true
           files: '${{ github.workspace }}/coverage.${{ matrix.python-version }}.xml'
           env_vars: OS,PYTHON
           fail_ci_if_error: true
@@ -152,12 +164,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python
         run: uv python install 3.11
@@ -180,12 +194,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python
         run: uv python install 3.11
@@ -207,12 +223,14 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python
         run: uv python install 3.11
@@ -234,8 +252,14 @@ jobs:
           if grep -rlE '<!-- (API_TABLE|SUBPAGES|GALLERY|EXAMPLES_FOR|COMPANION_NOTEBOOKS)[^>]*-->' site --include='*.html'; then
             echo "::error::unresolved marker comment(s) in the built site -- a docs_build extension did not run"; exit 1
           fi
-          if find site \( -name '*.py' -o -name '*.jinja' \) -print | grep -q .; then
-            echo "::error::build tooling (.py/.jinja) leaked into the published site"; exit 1
+          # Assert the template's own build tooling did not leak. It lives outside
+          # docs_dir (docs_build/ and docs_theme/), so this guards the relocation:
+          # a botched theme merge would republish these. Deliberately NOT a blanket
+          # `*.py` check -- the successor engine ignores exclude_docs, so a project's
+          # OWN docs/*.py script (e.g. a dataset precache) now publishes as a static
+          # asset, and that is the project's file, not leaked tooling.
+          if find site \( -name '*.jinja' -o -name 'api-submodule.html' -o -path '*/material/*' -o -path '*/docs_theme/*' \) -print | grep -q .; then
+            echo "::error::build tooling (theme templates / API scaffold) leaked into the published site"; exit 1
           fi
           pages="$(find site/pages/api/generated -name index.html 2>/dev/null | wc -l)"
           if [ "$pages" -eq 0 ]; then
@@ -246,6 +270,44 @@ jobs:
             echo "::error::only $anchors anchors in the built site -- content collapsed"; exit 1
           fi
           echo "content OK: $pages generated API pages, $anchors anchors, no leaked markers or tooling"
+
+  # Non-blocking comparison build under Material for MkDocs during the transition
+  # to Zensical (the primary engine, gated by check_docs above). Material reaches
+  # a hard EOL on 2026-11-05; this job exists only to surface engine drift while
+  # both build the same mkdocs.yml, and is expected to be removed once Zensical
+  # has proven itself across the fleet. It never blocks the PR (continue-on-error).
+  #
+  # Note: this whole workflows/ directory is generated only when include_actions
+  # is true, so a project built without CI has no Zensical safety net here at all
+  # and relies on a local build instead.
+  compare_docs_mkdocs:
+    name: Docs build (MkDocs comparison, non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
+          version: "0.10.0"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Build docs under MkDocs (comparison only)
+        env:
+          MKDOCS_SKIP_NOTEBOOKS: "1"
+        run: |
+          uv run python docs_build/build.py prebuild
+          uv run --group docs mkdocs build --clean --strict
 
 
   examples:
@@ -261,15 +323,74 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # renovate: datasource=github-releases depName=astral-sh/uv
           version: "0.10.0"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
       - name: Install nox
-        run: uv tool install nox
+        # renovate: datasource=pypi depName=nox
+        run: uv tool install nox==2026.7.11
 
       - name: Set up Python
         run: uv python install 3.11
 
       - name: Run example notebooks
         run: nox -s test_examples
+
+
+  # Secret scanning. Runs the gitleaks binary directly (not gitleaks-action, which
+  # requires a paid license for private org repos) so it works identically on public
+  # and private repos. This is the CI backstop to the pre-commit gitleaks hook: it
+  # cannot be bypassed with --no-verify, and it is a dependency of the ci-passed
+  # roll-up below, so a detected secret fails the single required merge check.
+  secret-scan:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          # renovate: datasource=github-releases depName=gitleaks/gitleaks
+          GITLEAKS_VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz -C /usr/local/bin gitleaks
+
+      - name: Scan for secrets
+        run: gitleaks detect --source . --redact --verbose
+
+  # Single required status check. The branch ruleset requires this one job, not the
+  # individual jobs above: test-fast is a matrix (its check-run names vary by OS/Python and
+  # differ between draft and ready PRs) and test-full is skipped on draft PRs, so neither
+  # can be named directly in a ruleset. This job depends on every blocking job and passes
+  # only when they all succeeded or were legitimately skipped, giving the ruleset one stable
+  # name that survives matrix and conditional changes. Validate PR Title and Validate Commit
+  # Message live in their own workflows and are required alongside this check.
+  #
+  # `test-compat` is listed even though it ships disabled (`if: false`): a skipped dependency
+  # does not fail an `if: always()` roll-up, so this is a harmless no-op until a project
+  # enables compat pins, at which point that job is gated automatically without touching this.
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs:
+      - test-fast
+      - test-compat
+      - test-full
+      - lint
+      - test_docstrings
+      - check_docs
+      - secret-scan
+      - examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job did not pass
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "::error::a required CI job failed or was cancelled"
+          exit 1
+      - name: All required jobs passed
+        run: echo "All required CI jobs passed or were legitimately skipped."

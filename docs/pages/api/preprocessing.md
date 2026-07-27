@@ -13,6 +13,7 @@ Preprocessing transformers for stationarization and feature engineering.
 | [`ArithmeticTransformer`](generated/yohou.preprocessing.ArithmeticTransformer.md) | Invertible column-wise arithmetic between two columns. |
 | [`ReduceTransformer`](generated/yohou.preprocessing.ReduceTransformer.md) | Invertible n-ary reduction of several columns with ``sum`` or ``product``. |
 | [`CalendarFeatureTransformer`](generated/yohou.preprocessing.CalendarFeatureTransformer.md) | Extract calendar-based features from the time column. |
+| [`DaylightSavingFeatureTransformer`](generated/yohou.preprocessing.DaylightSavingFeatureTransformer.md) | Deterministic daylight-saving-time features from the time column. |
 | [`HolidayFeatureTransformer`](generated/yohou.preprocessing.HolidayFeatureTransformer.md) | Extract holiday indicator features from a user-provided holiday calendar. |
 | [`FunctionTransformer`](generated/yohou.preprocessing.FunctionTransformer.md) | Constructs a transformer from an arbitrary callable. |
 | [`SeasonalImputer`](generated/yohou.preprocessing.SeasonalImputer.md) | Seasonal decomposition-based imputation for missing values. |

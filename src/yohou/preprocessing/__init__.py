@@ -88,6 +88,7 @@ __all__ = [
     "OutlierPercentileHandler",
     # Calendar and time features
     "CalendarFeatureTransformer",
+    "DaylightSavingFeatureTransformer",
     "HolidayFeatureTransformer",
     "FourierFeatureTransformer",
     "TimeIndexTransformer",

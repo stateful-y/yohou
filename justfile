@@ -7,10 +7,11 @@ default:
 # Install dependencies and git hooks
 install:
     uv sync --group dev
-    # -f matters: without it prek finds a pre-v0.27.0 shim, moves it to
-    # `.git/hooks/pre-commit.legacy` and CHAINS it -- both hooks then run on
-    # every commit. `-f` overwrites instead. Measured; the migration notice
-    # prek prints names this flag, and this is the command people actually run.
+    # -f matters twice over. It overwrites an existing shim instead of chaining it:
+    # without it prek finds a pre-v0.27.0 shim, moves it to `.git/hooks/pre-commit.legacy`
+    # and CHAINS it -- both run on every commit. And it re-wires the hook set on an
+    # existing clone, which is how a clone that installed before `pre-push` was added
+    # picks up the pre-push gate instead of leaving it declared-but-never-run.
     uv run prek install -f
 
 # Run tests and doctests with parallel execution
@@ -58,13 +59,13 @@ fix:
 # Build documentation (prebuild generates API pages + notebooks; postbuild exports LLM markdown)
 build:
     uv run python docs_build/build.py prebuild
-    uv run mkdocs build --clean
+    uv run zensical build
     uv run python docs_build/build.py postbuild site
 
 # Build documentation without exporting notebooks
 build-fast:
     MKDOCS_SKIP_NOTEBOOKS=1 uv run python docs_build/build.py prebuild
-    MKDOCS_SKIP_NOTEBOOKS=1 uv run mkdocs build --clean
+    MKDOCS_SKIP_NOTEBOOKS=1 uv run zensical build
     uv run python docs_build/build.py postbuild site
 
 # Export all marimo notebooks to HTML (cached, only re-exports changed ones)
@@ -83,7 +84,7 @@ serve-fast:
 
 # Check built docs for dead links (build first with 'just build' or 'just build-fast')
 link:
-    uvx linkchecker site/index.html --no-status --no-warnings --ignore-url 'material/overrides'
+    uvx linkchecker site/index.html --no-status --no-warnings
 
 # Clean build artifacts
 clean:
