@@ -86,23 +86,23 @@ forecasters:
 import polars as pl
 from yohou.compose import CombiningForecaster
 from yohou.preprocessing import FunctionTransformer
+from yohou.stationarity import PolynomialTrendForecaster
 from yohou.point import SeasonalNaive
 
-# The extractor selects the posted System Lambda feed as the anchor term target.
-anchor = FunctionTransformer(func=lambda df: df.select(pl.col("system_lambda_dam").alias("lambda")))
+# The extractor selects a known, separately observed component as the anchor term.
+anchor = FunctionTransformer(func=lambda df: df.select(pl.col("baseline").alias("baseline")))
 
-# spp = System Lambda anchor + locational basis (congestion + loss).
-# The anchor is forecast on its own; the entire basis falls into the residual.
+# total = baseline anchor + everything else. Each part gets a model suited to it:
+# a trend model for the smooth baseline, a seasonal model for the noisier remainder.
 forecaster = CombiningForecaster(
-    terms=[("lambda", anchor, SeasonalNaive(seasonality=24))],
-    residual_forecaster=SeasonalNaive(seasonality=24),
+    terms=[("baseline", anchor, PolynomialTrendForecaster(degree=1))],
+    residual_forecaster=SeasonalNaive(seasonality=7),
 )
 ```
 
-This is the coarse day-ahead energy split: the System Lambda is a posted feed
-forecast by its own model, and the entire locational basis falls into the
-residual. Splitting the basis further later is additive, add more terms and the
-residual shrinks toward noise.
+This is the coarse split: a known component (the baseline) is forecast by its own
+model, and everything else falls into the residual. Splitting the remainder further
+later is additive, add more terms and the residual shrinks toward noise.
 
 ### Sum or product: the `combine` group
 
@@ -113,7 +113,7 @@ aggregate as the product of the term forecasts, with a multiplicative residual:
 $$\hat{y}_t = \hat{y}_{1,t} \times \hat{y}_{2,t} \times \cdots \times \hat{y}_{k,t} \times \hat{\varepsilon}_t, \qquad \varepsilon_t = y_t \big/ \textstyle\prod_i y_{i,t}$$
 
 Use `combine="product"` when the target factors into strictly positive multiplicative
-drivers (for example a price as `gas x heat_rate x scarcity_multiplier`). The
+drivers (for example a demand as `base_level x weekday_factor x seasonal_factor`). The
 multiplicative group lives on the positive reals, so `CombiningForecaster` rejects a
 non-positive term or target at fit; model in log space (an additive `combine="sum"`
 of logs) when signs vary. Extract-side arithmetic pairs with the combiner:
@@ -128,14 +128,14 @@ target so the term forecaster has something to learn from. The extractor is the
 answer key used to train the term, and it is gone at exam time: it runs at `fit`,
 `observe`, and `rewind`, but never at `predict`, where each term forecaster
 predicts from its own features. An extractor reading the contemporaneous target
-to build a label (for example `spp - system_lambda_dam`) is therefore not
+to build a label (for example `total - baseline`) is therefore not
 leakage; the term forecaster's own feature discipline is a separate concern.
 
 ### Granularity and broadcasting
 
 Term granularity is inferred from the extractor output. A single unprefixed series
 is a global term, and a `{group}__{column}` panel output is a per-group term. When
-the aggregate is a panel, a global term (such as a system-wide System Lambda) is
+the aggregate is a panel, a global term (such as a single driver shared across every group) is
 broadcast to every panel group, while a panel term aligns to its own group. A
 group present in the aggregate but missing from a panel term's forecast raises
 rather than being silently treated as zero.

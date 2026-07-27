@@ -124,17 +124,18 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
     >>> from datetime import datetime
     >>> from yohou.compose import CombiningForecaster
     >>> from yohou.preprocessing import FunctionTransformer
+    >>> from yohou.stationarity import PolynomialTrendForecaster
     >>> from yohou.point import SeasonalNaive
     >>>
     >>> time = pl.datetime_range(
     ...     start=datetime(2020, 1, 1), end=datetime(2020, 2, 29), interval="1d", eager=True
     ... )
-    >>> y = pl.DataFrame({"time": time, "spp": [30.0 + (i % 7) for i in range(len(time))]})
+    >>> y = pl.DataFrame({"time": time, "total": [30.0 + (i % 7) for i in range(len(time))]})
     >>>
     >>> # An extractor manufactures each term's target at fit time.
-    >>> anchor = FunctionTransformer(func=lambda df: df.select((pl.col("spp") * 0.5).alias("anchor")))
+    >>> anchor = FunctionTransformer(func=lambda df: df.select((pl.col("total") * 0.5).alias("anchor")))
     >>> forecaster = CombiningForecaster(
-    ...     terms=[("anchor", anchor, SeasonalNaive(seasonality=7))],
+    ...     terms=[("anchor", anchor, PolynomialTrendForecaster(degree=1))],
     ...     residual_forecaster=SeasonalNaive(seasonality=7),
     ... )
     >>> forecaster.fit(y, forecasting_horizon=7)  # doctest: +ELLIPSIS
