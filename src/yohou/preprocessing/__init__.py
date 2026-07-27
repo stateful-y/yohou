@@ -1,7 +1,7 @@
 """Preprocessing transformers for stationarization and feature engineering."""
 
 from .arithmetic import ArithmeticTransformer, ReduceTransformer
-from .calendar import CalendarFeatureTransformer, HolidayFeatureTransformer
+from .calendar import CalendarFeatureTransformer, DaylightSavingFeatureTransformer, HolidayFeatureTransformer
 from .function import FunctionTransformer
 from .imputation import (
     SeasonalImputer,
