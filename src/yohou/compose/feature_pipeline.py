@@ -495,6 +495,13 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
                     t.__sklearn_tags__().transformer_tags.invertible for t in transformers
                 )
 
+                # Tolerates an irregular time grid only if every step does. Inside the
+                # ``if transformers:`` guard so an empty pipeline keeps the base default
+                # rather than ``all([]) == True``.
+                tags.transformer_tags.accepts_irregular_grid = all(
+                    t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
+                )
+
                 # min_value is the one of the first transformer
                 tags.input_tags.min_value = transformers[0].__sklearn_tags__().input_tags.min_value
 

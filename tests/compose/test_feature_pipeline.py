@@ -17,6 +17,8 @@ from sklearn.utils.validation import check_is_fitted
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import InvertibleTransformer, SimpleTransformer, StatelessTransformer
 from yohou.compose import FeaturePipeline
+from yohou.preprocessing import Downsampler
+from yohou.preprocessing.window import LagTransformer
 
 
 class TestFeaturePipelineFitTransform:
@@ -413,3 +415,25 @@ class TestFeaturePipelineTags:
         tags = pipe.__sklearn_tags__()
         first_min = StatelessTransformer().__sklearn_tags__().input_tags.min_value
         assert tags.input_tags.min_value == first_min
+
+
+class TestFeaturePipelineIrregularGrid:
+    """accepts_irregular_grid aggregates as all(steps)."""
+
+    def test_all_tolerant(self):
+        p = FeaturePipeline([
+            ("d1", Downsampler(interval="1h", aggregation="mean")),
+            ("d2", Downsampler(interval="1h", aggregation="mean")),
+        ])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+
+    def test_one_strict_step(self):
+        p = FeaturePipeline([
+            ("d", Downsampler(interval="1h", aggregation="mean")),
+            ("lag", LagTransformer(lag=[1])),
+        ])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+    def test_empty_keeps_base_default(self):
+        p = FeaturePipeline([("keep", "passthrough")])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False

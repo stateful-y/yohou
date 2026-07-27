@@ -344,6 +344,14 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
                 # since columns may be dropped or reordered
                 tags.transformer_tags.invertible = False
 
+                # Tolerates an irregular time grid only if every child does; a single
+                # interval-dependent child makes the whole tree interval-dependent. Inside
+                # the ``if transformers:`` guard so an empty (all passthrough/drop)
+                # composition keeps the base default rather than ``all([]) == True``.
+                tags.transformer_tags.accepts_irregular_grid = all(
+                    t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
+                )
+
                 # Aggregate min_value: take the maximum (most restrictive)
                 # All transformers receive subsets of the same input
                 min_values = [t.__sklearn_tags__().input_tags.min_value for t in transformers]

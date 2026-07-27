@@ -411,6 +411,13 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
                     len(transformers) == 1 and transformers[0].__sklearn_tags__().transformer_tags.invertible
                 )
 
+                # Tolerates an irregular time grid only if every child does. Inside the
+                # ``if transformers:`` guard so an empty union keeps the base default rather
+                # than ``all([]) == True``.
+                tags.transformer_tags.accepts_irregular_grid = all(
+                    t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
+                )
+
                 # Aggregate min_value: take the maximum (most restrictive)
                 # All transformers receive the same input, so we need to satisfy all constraints
                 min_values = [t.__sklearn_tags__().input_tags.min_value for t in transformers]
