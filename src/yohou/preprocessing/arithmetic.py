@@ -91,12 +91,12 @@ class ArithmeticTransformer(BaseActualTransformer):
     >>> import polars as pl
     >>> from yohou.preprocessing import ArithmeticTransformer
     >>> time = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 3), interval="1d", eager=True)
-    >>> X = pl.DataFrame({"time": time, "spp": [30.0, 40.0, 50.0], "lambda": [25.0, 30.0, 35.0]})
-    >>> t = ArithmeticTransformer("spp", "lambda", op="sub", output_name="basis", keep_inputs=True)
+    >>> X = pl.DataFrame({"time": time, "revenue": [30.0, 40.0, 50.0], "cost": [25.0, 30.0, 35.0]})
+    >>> t = ArithmeticTransformer("revenue", "cost", op="sub", output_name="margin", keep_inputs=True)
     >>> X_t = t.fit_transform(X)
-    >>> X_t["basis"].to_list()
+    >>> X_t["margin"].to_list()
     [5.0, 10.0, 15.0]
-    >>> t.inverse_transform(X_t)["spp"].to_list()
+    >>> t.inverse_transform(X_t)["revenue"].to_list()
     [30.0, 40.0, 50.0]
     """
 

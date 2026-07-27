@@ -129,7 +129,7 @@ X_original = diff.inverse_transform(X_t=X_diff, X_p=past_observations)
 
 When transformers are composed inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), the pipeline handles `inverse_transform` automatically by reversing the steps and passing the necessary context.
 
-Transformers that modify values in existing columns (scaling, differencing, power transforms) are typically invertible, while those that create new derived columns (lags, rolling statistics, calendar features) are not.
+Whether a transformer inverts is a question of information: can the original inputs be reconstructed from what the forward pass leaves behind? Transformers that modify values in existing columns (scaling, differencing, power transforms) keep that information and invert. Most transformers that create new derived columns (lags, rolling statistics, calendar features) discard it and cannot. The exception is a derived-column transformer that retains its inputs: [`ArithmeticTransformer`](/pages/api/generated/yohou.preprocessing.ArithmeticTransformer/) and [`ReduceTransformer`](/pages/api/generated/yohou.preprocessing.ReduceTransformer/) with `keep_inputs=True` keep the operands alongside the result, so the forward operation can be undone for one designated operand through its group inverse.
 
 ## Composing Transformers
 

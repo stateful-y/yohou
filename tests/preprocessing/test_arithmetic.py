@@ -88,13 +88,15 @@ class TestArithmeticInverse:
     def test_inverse_from_output_plus_sibling_only(self):
         """The decomposition shape: output + sibling (aggregate operand absent) reconstructs it."""
         X = _frame()
-        t = ArithmeticTransformer("spp", "lam", op="sub", output_name="basis", keep_inputs=True, invert_wrt="left")
-        frame = X.rename({"a": "spp", "b": "lam"})
+        t = ArithmeticTransformer(
+            "revenue", "cost", op="sub", output_name="margin", keep_inputs=True, invert_wrt="left"
+        )
+        frame = X.rename({"a": "revenue", "b": "cost"})
         X_t = t.fit_transform(frame)
         # Drop the aggregate operand; keep only time + sibling + output, as a forecaster would hold.
-        decomposed = X_t.select("time", "lam", "basis")
+        decomposed = X_t.select("time", "cost", "margin")
         recovered = t.inverse_transform(decomposed)
-        assert np.allclose(recovered["spp"].to_numpy(), frame["spp"].to_numpy())
+        assert np.allclose(recovered["revenue"].to_numpy(), frame["revenue"].to_numpy())
 
     def test_missing_sibling_raises(self):
         """Inverse without the retained sibling raises instead of guessing."""
