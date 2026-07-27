@@ -1134,8 +1134,15 @@ default="first_step"
                 typing_cast(list[BaseEstimator], estimator),
                 groups,
             )
-        assert isinstance(estimator, BaseEstimator)
-        return self._estimator_predict_multi_output(estimator, groups)
+        # `estimator` is constrained by duck typing (``HasMethods(["fit", "predict"])``), so a
+        # sklearn-compatible estimator that does not subclass ``BaseEstimator`` is legal:
+        # CatBoost and XGBoost's native APIs are both in that position. Only the
+        # not-a-list narrowing matters here, matching the two branches above.
+        assert not isinstance(estimator, list), (
+            "the multi-output strategy fits a single estimator, but a list was stored; "
+            "this is an internal inconsistency in the fitted state"
+        )
+        return self._estimator_predict_multi_output(typing_cast(BaseEstimator, estimator), groups)
 
     def _get_predict_features(
         self,

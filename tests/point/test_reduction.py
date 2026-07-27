@@ -1472,3 +1472,49 @@ class TestPipelineSampleWeightRouting:
         # The warning is the assertion under test; the predict round-trip only
         # confirms fit still produced a usable forecaster.
         assert len(y_pred) == 3
+
+
+class TestDuckTypedEstimator:
+    """The estimator is constrained by duck typing, so it need not subclass BaseEstimator.
+
+    `_parameter_constraints` declares ``HasMethods(["fit", "predict"])``, which admits
+    sklearn-compatible libraries that do not inherit from ``BaseEstimator``: CatBoost and
+    XGBoost's native APIs are both in that position. Predict used to assert the nominal
+    type instead, so such an estimator fitted happily and then failed at predict with a
+    bare ``AssertionError``.
+    """
+
+    class _DuckMultiOutput:
+        """Minimal sklearn-shaped multi-output regressor that is NOT a BaseEstimator."""
+
+        def __init__(self, fill: float = 1.5):
+            self.fill = fill
+
+        def get_params(self, deep: bool = True):
+            return {"fill": self.fill}
+
+        def set_params(self, **params):
+            for k, v in params.items():
+                setattr(self, k, v)
+            return self
+
+        def fit(self, X, y):
+            self.n_outputs_ = np.asarray(y).reshape(len(y), -1).shape[1]
+            return self
+
+        def predict(self, X):
+            return np.full((len(X), self.n_outputs_), self.fill)
+
+    @staticmethod
+    def _series() -> pl.DataFrame:
+        time = pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 5, 23), interval="1h", eager=True)
+        return pl.DataFrame({"time": time, "v": [float(i % 24) for i in range(len(time))]})
+
+    def test_not_a_base_estimator_still_predicts(self):
+        est = self._DuckMultiOutput()
+        assert not isinstance(est, BaseEstimator), "the point of this test"
+        fc = PointReductionForecaster(estimator=est, reduction_strategy="multi-output")
+        fc.fit(self._series(), forecasting_horizon=6)
+        pred = fc.predict()
+        assert pred.height == 6
+        assert pred["v"].to_list() == pytest.approx([1.5] * 6)
