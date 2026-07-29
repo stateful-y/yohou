@@ -19,6 +19,7 @@ from typing import Any, Literal
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
+from sklearn.utils import Bunch
 
 from yohou.utils._compat import Interval, StrOptions, _BaseComposition
 
@@ -522,7 +523,9 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
     weighters : list of (str, BaseWeighter) tuples
         Named component weighters to combine, e.g.
         ``[("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))]``.
-        Must be non-empty.
+        Must be non-empty and names must be unique. Reachable by name through
+        ``named_weighters``, which has no trailing underscore because the sub-weighters are
+        used in place rather than cloned.
     combination : {"multiply", "mean"}, default="multiply"
         How to combine the component weight series.
 
@@ -604,6 +607,24 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
         self._set_params("weighters", **params)
         return self
 
+    @property
+    def named_weighters(self) -> Bunch:
+        """Access sub-weighters by name.
+
+        No trailing underscore: `CompositeWeighter` uses its sub-weighters in place rather
+        than cloning them, so the object returned here is the same one passed to the
+        constructor and this is a view over parameters, not fitted state. Compare
+        `FeatureUnion.named_transformers`.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with sub-weighter names as keys.
+
+        """
+        self._check_weighters()
+        return Bunch(**dict(self.weighters))  # ty: ignore[not-iterable]
+
     def _check_weighters(self) -> None:
         """Validate the composition parameters (not the sklearn ``_validate_params``)."""
         if not self.weighters:
@@ -611,6 +632,9 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
         for item in self.weighters:
             if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
                 raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
+        # Same gate the six other named composers use, so a Bunch keyed by these names
+        # cannot silently drop a component.
+        self._validate_names([name for name, _ in self.weighters])  # ty: ignore[not-iterable]
         if self.weights is not None and len(self.weights) != len(self.weighters):
             raise ValueError(
                 f"weights length ({len(self.weights)}) must match weighters length ({len(self.weighters)})"

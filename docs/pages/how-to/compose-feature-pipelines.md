@@ -142,7 +142,10 @@ predictions = forecaster.predict()
 
 ## Access Named Steps
 
-Use `named_steps` on a `FeaturePipeline` and `named_transformers` on a `FeatureUnion` to inspect or retrieve individual components after construction:
+Every yohou composer that takes named components lets you retrieve one by its name. Use
+`named_steps` on a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/)
+and `named_transformers` on a
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/):
 
 ```python
 pipeline = FeaturePipeline([
@@ -161,6 +164,16 @@ pipeline[0]       # first step
 pipeline["diff"]  # same as named_steps["diff"]
 pipeline[0:1]     # slice returns a new FeaturePipeline
 ```
+
+The equivalent on the other composers is `named_transformers_` on
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) and
+`named_forecasters_` on
+[`CombiningForecaster`](/pages/api/generated/yohou.compose.CombiningForecaster/),
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/),
+[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/) and the voting
+ensembles. The trailing underscore marks the accessors that return fitted state and so
+require a fit first; `FeaturePipeline` and `FeatureUnion` fit their components in place,
+which is why theirs has none.
 
 ## Tune Nested Parameters
 

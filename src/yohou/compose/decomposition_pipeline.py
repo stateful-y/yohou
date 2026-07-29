@@ -7,6 +7,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import clone
+from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
@@ -71,6 +72,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     ----------
     forecasters_ : list of (str, BasePointForecaster) tuples
         Fitted forecasters.
+
+    named_forecasters_ : Bunch
+        The same fitted forecasters keyed by component name.
 
     residuals_ : dict of str to pl.DataFrame
         Residuals after each component (only if store_residuals=True).
@@ -231,6 +235,20 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         """
         self._set_params("forecasters", **params)
         return self
+
+    @property
+    def named_forecasters_(self) -> Bunch:
+        """Access fitted component forecasters by name.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with component names as keys and fitted forecaster
+            objects as values.
+
+        """
+        check_is_fitted(self, ["forecasters_"])
+        return Bunch(**dict(self.forecasters_))
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.

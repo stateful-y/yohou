@@ -8,6 +8,7 @@ import numpy as np
 import polars as pl
 from scipy.spatial.distance import cdist
 from sklearn.base import clone
+from sklearn.utils import Bunch
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils._compat import _BaseComposition, _fit_context
@@ -638,6 +639,9 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
     similarities_ : list of (str, BaseSimilarity) tuples
         Fitted copies of the named sub-similarities (set after ``fit``).
 
+    named_similarities_ : Bunch
+        The same fitted sub-similarities keyed by name.
+
     See Also
     --------
     - [`DistanceSimilarity`][yohou.interval.similarity.DistanceSimilarity] : Value-based distance similarity.
@@ -723,6 +727,20 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
         self._set_params("similarities", **params)
         return self
 
+    @property
+    def named_similarities_(self) -> Bunch:
+        """Access fitted sub-similarities by name.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with sub-similarity names as keys and fitted
+            similarity objects as values.
+
+        """
+        check_is_fitted(self, ["similarities_"])
+        return Bunch(**dict(self.similarities_))
+
     def _check_similarities(self) -> None:
         """Validate the composition parameters (not the sklearn ``_validate_params``)."""
         if self.similarities is None or len(self.similarities) < 2:
@@ -733,6 +751,9 @@ class CompositeSimilarity(BaseSimilarity, _BaseComposition):
         for item in self.similarities:
             if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
                 raise ValueError(f"Each entry in `similarities` must be a (name, similarity) tuple, got {item!r}")
+        # Same gate the six other named composers use, so a Bunch keyed by these names
+        # cannot silently drop a component.
+        self._validate_names([name for name, _ in self.similarities])
         if self.combination not in ("multiply", "mean"):
             raise ValueError(f"combination must be 'multiply' or 'mean', got {self.combination!r}")
         if self.weights is not None and len(self.weights) != len(self.similarities):

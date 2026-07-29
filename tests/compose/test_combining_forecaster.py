@@ -998,3 +998,55 @@ class TestRetainedOperandsAreNotCombined:
 
         assert LogTransformer().target_output_name is None
         assert _SelectColumn("a", "out").target_output_name is None
+
+
+class TestNamedForecasters:
+    """Terms are summed, so their position is not a handle; their name is.
+
+    Reaching a term through ``forecasters_[i][1]`` reads a different term the moment
+    anyone reorders ``terms``, and reordering is meant to be free.
+    """
+
+    @staticmethod
+    def _frame(n: int = 40) -> pl.DataFrame:
+        time = pl.datetime_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 1) + timedelta(hours=n - 1), interval="1h", eager=True
+        )
+        return pl.DataFrame({"time": time, "total": [40.0 + (i % 5) for i in range(n)]})
+
+    def _terms(self):
+        return [
+            ("trend", _ScaleColumn("total", 0.6, "trend_part"), PolynomialTrendForecaster(degree=1)),
+            ("season", _ScaleColumn("total", 0.4, "season_part"), SeasonalNaive(seasonality=4)),
+        ]
+
+    def _fitted(self, terms):
+        y = self._frame()
+        return CombiningForecaster(terms=terms, combine="sum").fit(y, forecasting_horizon=3)
+
+    def test_returns_the_fitted_term_under_its_name(self):
+        fitted = self._fitted(self._terms())
+        assert set(fitted.named_forecasters_) == {"trend", "season"}
+        assert isinstance(fitted.named_forecasters_["trend"], PolynomialTrendForecaster)
+        assert isinstance(fitted.named_forecasters_["season"], SeasonalNaive)
+
+    def test_term_order_is_not_a_handle(self):
+        """The same name resolves to the same kind of forecaster in either order."""
+        forward = self._fitted(self._terms())
+        reversed_ = self._fitted(list(reversed(self._terms())))
+        for name in ("trend", "season"):
+            assert type(forward.named_forecasters_[name]) is type(reversed_.named_forecasters_[name])
+        # ...while the positional lookup does not survive the reorder.
+        assert type(forward.forecasters_[0][1]) is not type(reversed_.forecasters_[0][1])
+
+    def test_requires_fit(self):
+        from sklearn.exceptions import NotFittedError
+
+        with pytest.raises(NotFittedError):
+            _ = CombiningForecaster(terms=self._terms()).named_forecasters_
+
+    def test_agrees_with_the_positional_list(self):
+        """The named view is a view, not a copy: same instances, nothing removed."""
+        fitted = self._fitted(self._terms())
+        for name, forecaster, _granularity in fitted.forecasters_:
+            assert fitted.named_forecasters_[name] is forecaster

@@ -78,6 +78,10 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         Fitted term forecasters as ``(name, fitted_forecaster, granularity)``,
         where ``granularity`` is ``"global"`` or ``"panel"``.
 
+    named_forecasters_ : Bunch
+        The same fitted term forecasters keyed by term name. Terms are summed, so their
+        order is not meaningful; prefer this over indexing ``forecasters_`` by position.
+
     extractors_ : dict of str to BaseActualTransformer
         Fitted extractors keyed by term name, reused at ``observe``/``rewind``.
 
@@ -175,6 +179,25 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         self.terms = terms
         self.combine = combine
         self.residual_forecaster = residual_forecaster
+
+    @property
+    def named_forecasters_(self) -> Bunch:
+        """Access fitted term forecasters by name.
+
+        The name a term was given is its stable handle. Terms are summed, so their order
+        in ``terms`` carries no meaning and indexing into ``forecasters_`` by position
+        silently reads a different term as soon as anyone reorders them.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with term names as keys and fitted forecaster objects
+            as values. The granularity carried alongside each entry in ``forecasters_``
+            is dropped; ``extractors_`` is already keyed by the same names.
+
+        """
+        check_is_fitted(self, ["forecasters_"])
+        return Bunch(**{name: forecaster for name, forecaster, _ in self.forecasters_})
 
     @staticmethod
     def _contribution_member(forecaster: BasePointForecaster) -> str | None:

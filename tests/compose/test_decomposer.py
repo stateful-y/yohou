@@ -1195,3 +1195,36 @@ class TestForecastTransformerReachesComponents:
         component = pipe.forecasters_[0][1]
         assert any(name.startswith("load_step_") for name in component.feature_names_in_)
         assert pipe.predict().height == horizon
+
+
+class TestNamedForecasters:
+    """Fitted components are reachable by the name they were given."""
+
+    @staticmethod
+    def _y(n: int = 40) -> pl.DataFrame:
+        time = pl.datetime_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 1) + timedelta(days=n - 1), interval="1d", eager=True
+        )
+        return pl.DataFrame({"time": time, "v": [float(i % 7) + 10 for i in range(n)]})
+
+    def _pipeline(self):
+        return DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("seasonality", SeasonalNaive(seasonality=7)),
+        ])
+
+    def test_returns_the_fitted_component_under_its_name(self):
+        fitted = self._pipeline().fit(self._y(), forecasting_horizon=3)
+        assert set(fitted.named_forecasters_) == {"trend", "seasonality"}
+        assert isinstance(fitted.named_forecasters_["trend"], PolynomialTrendForecaster)
+
+    def test_requires_fit(self):
+        from sklearn.exceptions import NotFittedError
+
+        with pytest.raises(NotFittedError):
+            _ = self._pipeline().named_forecasters_
+
+    def test_agrees_with_the_positional_list(self):
+        fitted = self._pipeline().fit(self._y(), forecasting_horizon=3)
+        for name, forecaster in fitted.forecasters_:
+            assert fitted.named_forecasters_[name] is forecaster

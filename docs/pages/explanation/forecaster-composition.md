@@ -150,6 +150,33 @@ split). With `residual_forecaster=None`, the prediction is the plain bottom-up
 sum. The additive identity holds in level space, so there is no pipeline-level
 `target_transformer`; per-term scaling lives inside each term forecaster.
 
+### Reaching a fitted term
+
+The name you give a term is its handle. After fitting, `named_forecasters_` maps each
+term name to its fitted forecaster:
+
+```python
+fitted.named_forecasters_["baseline"]   # the trend model
+fitted.extractors_["baseline"]          # the extractor that built its label
+```
+
+Prefer this over indexing `forecasters_` by position. Terms are summed, so their order
+in `terms` carries no meaning, and `forecasters_[0][1]` reads a different term as soon
+as anyone reorders them. The same accessor is available on every composer that takes
+named components: `named_forecasters_` on
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/),
+[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/) and the
+voting ensembles, `named_transformers_` on
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/),
+`named_steps` on [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/),
+and `named_transformers` on
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/).
+
+The trailing underscore is not decoration. It marks accessors that return fitted state,
+which requires a fit first. `FeaturePipeline` and `FeatureUnion` fit their components in
+place, so what they return is the object you constructed and the name carries no
+underscore.
+
 ## ColumnForecaster
 
 [`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/) assigns different forecasters to different target columns, then concatenates
