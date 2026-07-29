@@ -326,6 +326,32 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
         return sklearn_Pipeline._fit(self, X, y, routed_params, **kwargs)  # ty: ignore[invalid-argument-type]
 
     @property
+    def target_output_name(self) -> str | None:
+        """Delegate to the first step that designates a target column.
+
+        ``inverse_transform`` runs the steps in reverse, so the frame it finally returns
+        is whatever the *first* step's inverse emitted, and that step's declaration is
+        the one that describes it. Scanning forward for the first non-``None`` keeps a
+        pipeline honest when only a later step retains operands. Without this delegation
+        the property inherits the ``None`` default, and wrapping a target transform in a
+        pipeline silently drops the distinction between the target and the scaffolding
+        retained beside it.
+
+        Returns
+        -------
+        str or None
+            The reconstructed target column, or ``None`` when no step designates one.
+
+        """
+        for _, transformer in self.steps:
+            if transformer is None or transformer == "passthrough":
+                continue
+            name = getattr(transformer, "target_output_name", None)
+            if name is not None:
+                return name
+        return None
+
+    @property
     def named_steps(self) -> Bunch:
         """Access the steps by name.
 

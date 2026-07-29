@@ -437,3 +437,37 @@ class TestFeaturePipelineIrregularGrid:
     def test_empty_keeps_base_default(self):
         p = FeaturePipeline([("keep", "passthrough")])
         assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+
+class TestFeaturePipelineTargetOutputName:
+    """A pipeline must not swallow a step's target/scaffolding distinction.
+
+    A target transform that retains operands so its inverse is defined names the one
+    output that is the real value. If wrapping it in a pipeline reports ``None``, a
+    consumer summing contributions adds the retained operands into the result.
+    """
+
+    def _pipe(self):
+        from yohou.preprocessing import ArithmeticTransformer
+        from yohou.stationarity import ASinhTransformer
+
+        return FeaturePipeline([
+            ("ratio", ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)),
+            ("compress", ASinhTransformer()),
+        ])
+
+    def test_delegates_to_the_designating_step(self):
+        assert self._pipe().target_output_name == "a"
+
+    def test_none_when_no_step_designates_one(self):
+        pipe = FeaturePipeline([("a", SimpleTransformer(observation_horizon=0))])
+        assert pipe.target_output_name is None
+
+    def test_skips_passthrough_steps(self):
+        from yohou.preprocessing import ArithmeticTransformer
+
+        pipe = FeaturePipeline([
+            ("skip", "passthrough"),
+            ("ratio", ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)),
+        ])
+        assert pipe.target_output_name == "a"
