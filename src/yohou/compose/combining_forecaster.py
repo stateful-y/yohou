@@ -405,6 +405,34 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
 
         return tags
 
+    @staticmethod
+    def _narrow_for_granularity(X_actual: pl.DataFrame | None, granularity: str) -> pl.DataFrame | None:
+        """Drop per-group columns for a global term.
+
+        A global term forecasts one series that is broadcast across every group, so the
+        per-group feature columns are not its to read. Passing the whole frame is not merely
+        untidy: `_validate_pre_fit` compares the term's panel groups against `X_actual`'s, and
+        a global target paired with a panel `X_actual` raises "Panel groups mismatch" before
+        the term's own feature routing runs. A decomposition combining a global term with a
+        panel one could therefore not fit at all whenever `X_actual` carried group columns,
+        which it must whenever a panel term's extractor reads its target from there.
+
+        Parameters
+        ----------
+        X_actual : pl.DataFrame or None
+            The frame every term is handed.
+        granularity : str
+            ``"global"`` or ``"panel"``, inferred from the term's extracted target.
+
+        Returns
+        -------
+        pl.DataFrame or None
+            ``X_actual`` unchanged for a panel term, or its unprefixed columns for a global one.
+        """
+        if granularity != "global" or X_actual is None:
+            return X_actual
+        return X_actual.select([c for c in X_actual.columns if "__" not in c])
+
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
         self,
@@ -518,11 +546,13 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             _, panel_groups = inspect_panel(y_i)
             granularity = "panel" if panel_groups else "global"
 
+            X_term = self._narrow_for_granularity(X_actual, granularity)
+
             forecaster_ = clone(forecaster)
             step_params = routed_params.get(name, Bunch(fit={}))
             forecaster_.fit(
                 y=y_i,
-                X_actual=X_actual,
+                X_actual=X_term,
                 forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -889,7 +919,13 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         for name, forecaster, granularity in self.forecasters_:
             y_i = self.extractors_[name].transform(frame)
             term_groups = groups if granularity == "panel" else None
-            forecaster.observe(y_i, X_actual=X_actual, groups=term_groups, X_future=X_future, X_forecast=X_forecast)
+            forecaster.observe(
+                y_i,
+                X_actual=self._narrow_for_granularity(X_actual, granularity),
+                groups=term_groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
+            )
             observed_contributions.append((
                 granularity,
                 self._narrow_to_contribution(y_i, self.contribution_members_.get(name)),
@@ -958,7 +994,13 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         for name, forecaster, granularity in self.forecasters_:
             y_i = self.extractors_[name].transform(frame)
             term_groups = groups if granularity == "panel" else None
-            forecaster.rewind(y_i, X_actual=X_actual, groups=term_groups, X_future=X_future, X_forecast=X_forecast)
+            forecaster.rewind(
+                y_i,
+                X_actual=self._narrow_for_granularity(X_actual, granularity),
+                groups=term_groups,
+                X_future=X_future,
+                X_forecast=X_forecast,
+            )
             observed_contributions.append((
                 granularity,
                 self._narrow_to_contribution(y_i, self.contribution_members_.get(name)),

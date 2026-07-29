@@ -1050,3 +1050,92 @@ class TestNamedForecasters:
         fitted = self._fitted(self._terms())
         for name, forecaster, _granularity in fitted.forecasters_:
             assert fitted.named_forecasters_[name] is forecaster
+
+
+class TestGlobalTermWithPanelExogenous:
+    """A global term must not be handed the panel columns it cannot use.
+
+    Every term receives the same ``X_actual``. ``_validate_pre_fit`` compares a term's panel
+    groups against ``X_actual``'s, so a global target paired with a panel ``X_actual`` raised
+    "Panel groups mismatch" before the term's own feature routing ran. That made a
+    decomposition combining a global term with a panel one unfittable whenever ``X_actual``
+    carried group columns, which it must whenever a panel term's extractor reads its target
+    from there. The mix was untested: the broadcast tests pass no ``X_actual`` at all, and the
+    exogenous tests use a global target with a global ``X_actual``.
+    """
+
+    @staticmethod
+    def _panel_x(n: int = 60) -> pl.DataFrame:
+        time = _daily(n)
+        return pl.DataFrame({
+            "time": time,
+            "gas": [3.0 + 0.01 * i for i in range(n)],
+            "p0__basis": [0.5 * i for i in range(n)],
+            "p1__basis": [0.25 * i for i in range(n)],
+        })
+
+    def test_a_global_term_fits_beside_a_panel_one(self):
+        y = _panel_y()
+        x = self._panel_x()
+        forecaster = CombiningForecaster(
+            terms=[
+                ("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7)),
+                ("basis", _PanelIdentity(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7)),
+            ]
+        )
+        forecaster.fit(y[:45], X_actual=x[:45], forecasting_horizon=3)
+
+        granularities = {name: g for name, _fc, g in forecaster.forecasters_}
+        assert granularities == {"anchor": "global", "basis": "panel"}
+
+    def test_the_global_term_predicts_across_every_group(self):
+        y = _panel_y()
+        x = self._panel_x()
+        forecaster = CombiningForecaster(
+            terms=[
+                ("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7)),
+                ("basis", _PanelIdentity(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7)),
+            ]
+        )
+        forecaster.fit(y[:45], X_actual=x[:45], forecasting_horizon=3)
+        pred = forecaster.predict(forecasting_horizon=3)
+
+        assert set(pred.columns) == {"vintage_time", "time", "p0__spp", "p1__spp"}
+        assert pred["p0__spp"].is_finite().all()
+
+    def test_the_panel_term_still_receives_the_group_columns(self):
+        """Narrowing applies to the global term only; a panel term keeps the whole frame."""
+        y = _panel_y()
+        x = self._panel_x()
+        seen: dict[str, list[str]] = {}
+
+        class _Recording(SeasonalNaive):
+            def __init__(self, seasonality: int, label: str = ""):
+                super().__init__(seasonality=seasonality)
+                self.label = label
+
+            def fit(self, y, X_actual=None, **kw):  # noqa: ANN001, ANN003
+                seen[self.label] = [] if X_actual is None else list(X_actual.columns)
+                return super().fit(y, X_actual=X_actual, **kw)
+
+        CombiningForecaster(
+            terms=[
+                ("anchor", _PanelMean(["p0__spp", "p1__spp"]), _Recording(7, "anchor")),
+                ("basis", _PanelIdentity(["p0__spp", "p1__spp"]), _Recording(7, "basis")),
+            ]
+        ).fit(y[:45], X_actual=x[:45], forecasting_horizon=3)
+
+        assert seen["anchor"] == ["time", "gas"], "the global term was handed panel columns"
+        assert "p0__basis" in seen["basis"], "the panel term lost its group columns"
+
+    def test_a_global_only_exogenous_frame_is_untouched(self):
+        """Nothing to narrow, so the global term sees exactly what it was given."""
+        y = _panel_y()
+        time = _daily(60)
+        x = pl.DataFrame({"time": time, "gas": [3.0 + 0.01 * i for i in range(60)]})
+        forecaster = CombiningForecaster(
+            terms=[("anchor", _PanelMean(["p0__spp", "p1__spp"]), SeasonalNaive(seasonality=7))]
+        )
+        forecaster.fit(y[:45], X_actual=x[:45], forecasting_horizon=3)
+
+        assert forecaster.forecasters_[0][2] == "global"
