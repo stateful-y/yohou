@@ -171,3 +171,38 @@ class TestForecastLift:
         # d = a - b holds row-wise within every vintage (here a constant 9.0).
         merged = out.join(X, on=["vintage_time", "time"], how="inner")
         assert np.allclose(merged["d"].to_numpy(), merged["a"].to_numpy() - merged["b"].to_numpy())
+
+
+class TestInvertibleTag:
+    """The ``invertible`` tag must track the constructor, not the class.
+
+    Gates like `FeaturePipeline.inverse_transform` read the tag rather than probing for
+    the method, so a wrong tag hides a working inverse from every composition.
+    """
+
+    def test_arithmetic_tag_follows_keep_inputs(self):
+        kept = ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)
+        lean = ArithmeticTransformer("a", "b", op="div", output_name="c")
+        assert kept.__sklearn_tags__().transformer_tags.invertible is True
+        assert lean.__sklearn_tags__().transformer_tags.invertible is False
+
+    def test_reduce_tag_needs_both_keep_inputs_and_invert_col(self):
+        full = ReduceTransformer(["a", "b"], op="sum", output_name="c", keep_inputs=True, invert_col="a")
+        no_col = ReduceTransformer(["a", "b"], op="sum", output_name="c", keep_inputs=True)
+        no_keep = ReduceTransformer(["a", "b"], op="sum", output_name="c", invert_col="a")
+        assert full.__sklearn_tags__().transformer_tags.invertible is True
+        assert no_col.__sklearn_tags__().transformer_tags.invertible is False
+        assert no_keep.__sklearn_tags__().transformer_tags.invertible is False
+
+    def test_tagged_transformer_is_invertible_inside_a_pipeline(self):
+        from yohou.compose import FeaturePipeline
+        from yohou.stationarity import ASinhTransformer
+
+        X = _frame()
+        pipe = FeaturePipeline([
+            ("ratio", ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)),
+            ("compress", ASinhTransformer()),
+        ]).fit(X)
+        assert hasattr(pipe, "inverse_transform")
+        back = pipe.inverse_transform(X_t=pipe.transform(X), X_p=X)
+        assert np.allclose(back["a"].to_numpy(), X["a"].to_numpy())

@@ -26,6 +26,7 @@ import polars as pl
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
+from yohou.utils import Tags
 from yohou.utils._compat import StrOptions
 
 __all__ = ["ArithmeticTransformer", "ReduceTransformer"]
@@ -140,6 +141,20 @@ class ArithmeticTransformer(BaseActualTransformer):
                 if c not in kept and c != self.output_name:
                     kept.append(c)
         return kept
+
+    def __sklearn_tags__(self) -> Tags:
+        """Mark the transform invertible only when the operands are retained.
+
+        Invertibility is a constructor-time property here, not a class-time one: the
+        inverse needs the sibling operand, so ``keep_inputs=False`` has no inverse. A
+        class-level ``_tags`` dict cannot express that, and leaving the base default of
+        ``False`` hides a working inverse from every ``available_if`` gate that reads the
+        tag rather than probing for the method (`FeaturePipeline.inverse_transform`).
+        """
+        tags = super().__sklearn_tags__()
+        if tags.transformer_tags is not None:
+            tags.transformer_tags.invertible = bool(self.keep_inputs)
+        return tags
 
     @property
     def target_output_name(self) -> str:
@@ -275,6 +290,17 @@ class ReduceTransformer(BaseActualTransformer):
         if not self.keep_inputs:
             return []
         return [c for c in self.input_cols if c != self.output_name]
+
+    def __sklearn_tags__(self) -> Tags:
+        """Mark the transform invertible only when an ``invert_col`` is designated.
+
+        See `ArithmeticTransformer.__sklearn_tags__`; here the inverse additionally needs
+        a nominated column to recover, so both conditions must hold.
+        """
+        tags = super().__sklearn_tags__()
+        if tags.transformer_tags is not None:
+            tags.transformer_tags.invertible = bool(self.keep_inputs and self.invert_col is not None)
+        return tags
 
     @property
     def target_output_name(self) -> str | None:
