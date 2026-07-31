@@ -101,6 +101,13 @@ class ArithmeticTransformer(BaseActualTransformer):
     [30.0, 40.0, 50.0]
     """
 
+    # The binary operation is row-local: each row's output reads only that row's two
+    # operands, never the spacing of the time axis. The strict interval-consistency check
+    # is therefore inapplicable, and a sparse per-vintage forward slice lifted via
+    # `PerVintageActualTransformer` would otherwise be rejected for spacing the
+    # computation never looks at. Merged across the MRO, so subclasses inherit it.
+    _tags = {"accepts_irregular_grid": True}
+
     _parameter_constraints: dict = {
         "left_col": [str],
         "right_col": [str],
@@ -251,6 +258,10 @@ class ReduceTransformer(BaseActualTransformer):
     >>> t.inverse_transform(X_t)["a"].to_list()
     [1.0, 2.0]
     """
+
+    # The reduction is row-local: each row's output reads only that row's `input_cols`,
+    # never the spacing of the time axis. See `ArithmeticTransformer._tags`.
+    _tags = {"accepts_irregular_grid": True}
 
     _parameter_constraints: dict = {
         "input_cols": [list],

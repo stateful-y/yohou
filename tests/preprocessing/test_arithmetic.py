@@ -206,3 +206,107 @@ class TestInvertibleTag:
         assert hasattr(pipe, "inverse_transform")
         back = pipe.inverse_transform(X_t=pipe.transform(X), X_p=X)
         assert np.allclose(back["a"].to_numpy(), X["a"].to_numpy())
+
+
+class TestAcceptsIrregularGrid:
+    """Both transformers are row-local, so the time-axis spacing is inert.
+
+    Each row's output reads only that row's operands. Declaring
+    ``accepts_irregular_grid`` is what lets `validate_data` skip the strict
+    interval-consistency check, so a sparse per-vintage forward slice is not rejected
+    for spacing the computation never looks at.
+    """
+
+    @pytest.mark.parametrize(
+        "tx",
+        [
+            ArithmeticTransformer("a", "b", op="sub", output_name="c"),
+            ArithmeticTransformer("a", "b", op="div", output_name="c"),
+            ReduceTransformer(["a", "b"], op="sum", output_name="c"),
+            ReduceTransformer(["a", "b"], op="product", output_name="c"),
+        ],
+    )
+    def test_reports_the_tag(self, tx):
+        assert tx.__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: ArithmeticTransformer("a", "b", op="sub", output_name="c"),
+            lambda: ReduceTransformer(["a", "b"], op="sum", output_name="c"),
+        ],
+    )
+    def test_irregular_grid_matches_regular(self, make):
+        """Same values, different spacing: a 1d-then-3d gap must not change the output."""
+        vals = {"a": [3.0, 4.0, 5.0], "b": [1.0, 2.0, 3.0]}
+        regular = pl.DataFrame({"time": [datetime(2020, 1, d) for d in (1, 2, 3)], **vals})
+        irregular = pl.DataFrame({"time": [datetime(2020, 1, d) for d in (1, 2, 5)], **vals})
+        out_reg = make().fit_transform(regular)
+        out_irr = make().fit_transform(irregular)
+        assert np.allclose(out_irr["c"].to_numpy(), out_reg["c"].to_numpy())
+
+    def test_sparse_vintages_lift_without_dropping_rows(self):
+        """A per-vintage forward slice with gaps fits and keeps every row."""
+        rows = []
+        for vt in (datetime(2020, 1, 1), datetime(2020, 1, 2)):
+            # Forward steps at +0, +1 and +4 days: a deliberately gapped slice.
+            for h in (0, 1, 4):
+                t = vt + timedelta(days=h)
+                rows.append((vt, t, float(10 + h), float(1 + h)))
+        X = pl.DataFrame(rows, schema=["vintage_time", "time", "a", "b"], orient="row")
+        lifted = PerVintageActualTransformer(ArithmeticTransformer("a", "b", op="sub", output_name="c"))
+        out = lifted.fit(X).transform(X)
+        assert out.height == X.height
+        merged = out.join(X, on=["vintage_time", "time"], how="inner")
+        assert merged.height == X.height
+        assert np.allclose(merged["c"].to_numpy(), merged["a"].to_numpy() - merged["b"].to_numpy())
+
+
+class _FrozenDiv(ArithmeticTransformer):
+    """A specialization freezing ``op`` by narrowing its own constructor."""
+
+    def __init__(self, left_col, right_col, output_name="frozen"):
+        super().__init__(left_col, right_col, op="div", output_name=output_name)
+
+
+class _FrozenSum(ReduceTransformer):
+    """A specialization freezing ``op`` on the n-ary reducer."""
+
+    def __init__(self, input_cols, output_name="frozen"):
+        super().__init__(input_cols, op="sum", output_name=output_name)
+
+
+class TestFrozenOperationSubclass:
+    """A subclass may fix ``op`` by narrowing its ``__init__``.
+
+    ``get_params`` reads the subclass constructor signature, so the frozen parameter
+    leaves the parameter surface entirely: it is absent from ``get_params``, absent from
+    anything serialized from the instance, and rejected by ``set_params``. ``clone``
+    still reconstructs the subclass with the operation intact.
+    """
+
+    def test_frozen_param_absent_from_get_params(self):
+        assert set(_FrozenDiv("a", "b").get_params()) == {"left_col", "right_col", "output_name"}
+        assert set(_FrozenSum(["a", "b"]).get_params()) == {"input_cols", "output_name"}
+
+    def test_frozen_param_rejected_by_set_params(self):
+        with pytest.raises(ValueError):
+            _FrozenDiv("a", "b").set_params(op="mul")
+        with pytest.raises(ValueError):
+            _FrozenSum(["a", "b"]).set_params(op="product")
+
+    def test_clone_preserves_the_freeze(self):
+        from sklearn.base import clone
+
+        X = _frame()
+        original = _FrozenDiv("a", "b", output_name="c")
+        copy = clone(original)
+        assert copy.op == "div"
+        assert np.allclose(
+            copy.fit_transform(X)["c"].to_numpy(),
+            original.fit_transform(X)["c"].to_numpy(),
+        )
+
+    def test_frozen_subclass_inherits_the_irregular_grid_tag(self):
+        assert _FrozenDiv("a", "b").__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+        assert _FrozenSum(["a", "b"]).__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
