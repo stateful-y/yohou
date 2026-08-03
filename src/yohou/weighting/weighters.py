@@ -622,11 +622,13 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
             Dictionary-like object with sub-weighter names as keys.
 
         """
-        self._check_weighters()
-        return Bunch(**dict(self.weighters))  # ty: ignore[not-iterable]
+        return Bunch(**dict(self._check_weighters()))
 
-    def _check_weighters(self) -> None:
-        """Validate the composition parameters (not the sklearn ``_validate_params``)."""
+    def _check_weighters(self) -> list[tuple[str, BaseWeighter]]:
+        """Validate the composition parameters and return the validated weighters.
+
+        Not the sklearn ``_validate_params``.
+        """
         if not self.weighters:
             raise ValueError("CompositeWeighter requires at least one weighter")
         for item in self.weighters:
@@ -634,24 +636,25 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
                 raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
         # Same gate the six other named composers use, so a Bunch keyed by these names
         # cannot silently drop a component.
-        self._validate_names([name for name, _ in self.weighters])  # ty: ignore[not-iterable]
+        self._validate_names([name for name, _ in self.weighters])
         if self.weights is not None and len(self.weights) != len(self.weighters):
             raise ValueError(
                 f"weights length ({len(self.weights)}) must match weighters length ({len(self.weighters)})"
             )
+        return self.weighters
 
-    def _resolved_weights(self) -> list[float]:
+    def _resolved_weights(self, n_weighters: int) -> list[float]:
         """Return per-component weights, defaulting to 1.0 each."""
         if self.weights is not None:
             return self.weights
-        return [1.0] * len(self.weighters)  # ty: ignore[invalid-argument-type]
+        return [1.0] * n_weighters
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Combine all component weights for ``key`` by product or mean."""
         self._validate_params()
-        self._check_weighters()
-        alphas = self._resolved_weights()
-        series = [weighter.compute_weights(key, group_name) for _name, weighter in self.weighters]  # ty: ignore[not-iterable]
+        weighters = self._check_weighters()
+        alphas = self._resolved_weights(len(weighters))
+        series = [weighter.compute_weights(key, group_name) for _name, weighter in weighters]
 
         if self.combination == "multiply":
             result = pl.Series(np.ones(len(key)), dtype=pl.Float64)
