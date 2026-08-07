@@ -421,6 +421,12 @@ class BasePanelForecaster:
                     )
                 local_step_schema[c] = X_step[c].dtype
             self._step_schema_per_group_ = local_step_schema
+            # The local half of the dual-naming contract. Panel-wide frames name a step
+            # column {group}__{col}_step_{h}; the per-group frames below, and the matrix
+            # stacked from them under panel_strategy="global", name the same column
+            # {col}_step_{h}. Consumers that test a tabular column for step-ness must be
+            # able to recognize either spelling, so record both.
+            self._step_column_local_names_ = set(local_step_schema)
 
             # Distribute step columns to per-group X_t dicts
             for group_name in self.groups_:
@@ -434,6 +440,7 @@ class BasePanelForecaster:
                     X_t[group_name] = X_step_local
         else:
             self._step_column_names_ = set()
+            self._step_column_local_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
             self._X_forecast_t_ = None

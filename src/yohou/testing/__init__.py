@@ -97,6 +97,7 @@ from .forecaster import (
     check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
+    check_step_feature_alignment_filters,
 )
 from .generators import (
     _yield_yohou_forecaster_checks as _yield_yohou_forecaster_checks,
@@ -283,6 +284,7 @@ __all__ = [
     "check_prediction_types_property",
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
+    "check_step_feature_alignment_filters",
     "check_point_prediction_structure",
     "check_point_prediction_types",
     "check_coverage_rates_parameter",

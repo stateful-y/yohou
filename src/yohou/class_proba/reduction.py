@@ -66,6 +66,12 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         - ``"all"``: every estimator receives all step columns.
         - ``"matched"``: estimator for step h receives only ``*_step_h``.
         - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
+
+        Filtering applies identically whatever the step columns were derived
+        from and under either panel strategy. A non-default alignment that
+        cannot recognize any step column in the feature matrix raises
+        ``RuntimeError`` rather than falling back to ``"all"``.
+
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that

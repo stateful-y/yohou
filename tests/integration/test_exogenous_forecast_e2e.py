@@ -579,7 +579,12 @@ class TestPickleRoundTrip:
         )
 
     def test_pickle_preserves_step_column_names(self, electricity_data):
-        """Pickle preserves _step_column_names_ and stored raws."""
+        """Pickle preserves both step-name spellings and the stored raws.
+
+        Both halves of the dual-naming contract have to survive: a restored
+        forecaster that kept only the panel-wide names would fail to recognize
+        the step columns of its own stacked feature matrix.
+        """
         d = electricity_data
         f, fh = _build_forecaster()
         f.fit(
@@ -594,6 +599,7 @@ class TestPickleRoundTrip:
         f2 = pickle.loads(buf)  # noqa: S301
 
         assert f2._step_column_names_ == f._step_column_names_
+        assert f2._step_column_local_names_ == f._step_column_local_names_
         assert f2._X_future_raw_ is not None
         assert f2._X_forecast_raw_ is not None
 

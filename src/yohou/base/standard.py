@@ -221,8 +221,9 @@ class BaseStandardForecaster:
         Notes
         -----
         Beyond the return values, this method sets the following fitted
-        attributes on ``self``: ``_step_column_names_``, ``_X_future_raw_``,
-        ``_X_forecast_raw_``, ``_X_future_schema_``, and ``_X_forecast_schema_``
+        attributes on ``self``: ``_step_column_names_``,
+        ``_step_column_local_names_``, ``_X_future_raw_``, ``_X_forecast_raw_``,
+        ``_X_future_schema_``, and ``_X_forecast_schema_``
         (plus those set by ``_set_transformed_attributes_standard`` and
         ``_update_y_X_t_observed_standard``).
 
@@ -250,6 +251,10 @@ class BaseStandardForecaster:
         _warn_forecast_coverage_at_fit(X_step, X_forecast_t, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
+            # Standard data has no panel prefixes, so the local half of the dual-naming
+            # contract coincides with the panel-wide half. Set it all the same: consumers
+            # read the pair unconditionally, and only the panel path makes them differ.
+            self._step_column_local_names_ = set(self._step_column_names_)
             self._X_future_raw_ = X_future
             # Raw: backs the recursive-predict presence sentinel, and keeping it raw
             # holds X_forecast_eff type-consistent across its two branches.
@@ -266,6 +271,7 @@ class BaseStandardForecaster:
                 X_t = X_step.join(y_t.select("time"), on="time", how="semi")
         else:
             self._step_column_names_ = set()
+            self._step_column_local_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
             self._X_forecast_t_ = None

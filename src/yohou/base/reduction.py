@@ -67,6 +67,14 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
 
+        Filtering applies identically whatever the step columns were derived
+        from (``X_future``, ``X_forecast``, or an ``X_forecast`` routed through a
+        ``forecast_transformer``) and under either panel strategy. A non-default
+        alignment that cannot recognize any step column in the feature matrix
+        raises ``RuntimeError`` rather than falling back to ``"all"``, so a
+        filter that fails to apply cannot be mistaken for one that had nothing
+        to filter.
+
         The other strategies are excluded for different reasons.
         ``"multi-output"`` *cannot* filter: one estimator predicts every
         horizon from a single feature vector, reading a different step column
@@ -902,6 +910,14 @@ default="first_step"
         columns from 1 through the given step number. Non-step columns
         are always kept.
 
+        Step columns are recognized through
+        [`_is_step_column`][yohou.base.forecaster.BaseForecaster._is_step_column],
+        which accepts both the panel-wide and the local spelling. ``X_tab`` is a
+        stacked per-group matrix under ``panel_strategy="global"``, so it carries
+        local names while ``_step_column_names_`` holds panel-wide ones; matching
+        against the panel-wide set alone recognizes nothing there and silently
+        degrades ``matched`` and ``cumulative`` to ``all``.
+
         Parameters
         ----------
         X_tab : pl.DataFrame
@@ -915,13 +931,34 @@ default="first_step"
         pl.DataFrame
             Filtered feature matrix.
 
+        Raises
+        ------
+        RuntimeError
+            If a non-default alignment is requested and step columns were derived
+            at fit, but no column of ``X_tab`` is recognized as one.
+
         """
         if self.step_feature_alignment == "all" or not self._step_column_names_:
             return X_tab
 
-        step_cols_in_tab = [c for c in X_tab.columns if c in self._step_column_names_]
+        step_cols_in_tab = [c for c in X_tab.columns if self._is_step_column(c)]
         if not step_cols_in_tab:
-            return X_tab
+            # Unreachable by construction: the fit that derived step columns also
+            # recorded both of their spellings, and X_tab is built from those same
+            # frames. Raising rather than returning X_tab unchanged is the point.
+            # The passthrough that used to stand here is what let a naming drift
+            # between the recorded names and the tabular ones disable filtering in
+            # silence, so every per-step model trained on every step's columns while
+            # the configuration said otherwise. A wrong model that reports itself as
+            # the right one is worse than a failed fit.
+            raise RuntimeError(
+                f"step_feature_alignment={self.step_feature_alignment!r} cannot be applied: "
+                f"{len(self._step_column_names_)} step column(s) were derived at fit, but none "
+                f"of the {X_tab.width} tabularized feature columns is recognized as one. This "
+                f"is an internal naming mismatch between the recorded step column names and the "
+                f"feature matrix; it is not caused by the data or by this parameter. Please "
+                f"report it, with the panel_strategy and the exogenous inputs used."
+            )
 
         if self.step_feature_alignment == "matched":
             keep_suffix = f"_step_{step}"
