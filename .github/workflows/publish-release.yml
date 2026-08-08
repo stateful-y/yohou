@@ -41,17 +41,17 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Checkout the release tag
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ steps.find_tag.outputs.version }}
           lfs: true
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.10.0"
+          version: "0.12.1"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -59,24 +59,31 @@ jobs:
         run: uv build --python 3.11 --python-preference only-managed --sdist --wheel . --out-dir dist
 
       - name: Check distributions
-        run: uvx twine check dist/*
+        # renovate: datasource=pypi depName=twine
+        run: uvx twine==7.0.0 check dist/*
 
       # Software bill of materials (CycloneDX) for the release, generated from the
       # locked dependency set so it enumerates exactly what this release resolves.
       - name: Generate SBOM (CycloneDX)
         run: |
           uv export --frozen --no-emit-project --format requirements-txt -o sbom-requirements.txt
-          uvx --from cyclonedx-bom cyclonedx-py requirements sbom-requirements.txt \
-            --output-format JSON --outfile sbom.cdx.json
+          # The annotation must sit directly above the line carrying the version. The
+          # custom manager matches `depName=<x>` then scans forward within ONE line, so
+          # an annotation above `run: |` lands on that key and can never reach a version
+          # two lines below -- it parses as a comment, is silently read by nothing, and
+          # the pin rots at whatever it was set to.
+          # renovate: datasource=pypi depName=cyclonedx-bom
+          uvx --from cyclonedx-bom==7.3.1 cyclonedx-py requirements sbom-requirements.txt \
+            --output-format JSON --output-file sbom.cdx.json
 
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.dists-artifact-name }}
           path: dist/*
 
       - name: Store the SBOM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ env.sbom-artifact-name }}
           path: sbom.cdx.json
@@ -91,7 +98,7 @@ jobs:
       # Check out main (not the tag): main carries the CHANGELOG entry the merged
       # changelog PR just added, which the tag does not yet have.
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: main
@@ -127,23 +134,28 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Download the distribution packages
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ${{ env.dists-artifact-name }}
           path: dist/
 
       - name: Download the SBOM
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ${{ env.sbom-artifact-name }}
           path: sbom/
 
-      - name: Create GitHub Release
+      # Created as a draft: a draft release is visible to maintainers only, so nothing
+      # is public until the `pypi` environment gate has been approved and the upload
+      # has succeeded. `finalize-release` undrafts it. If the gate is rejected or the
+      # upload fails, the draft is all that exists and can simply be deleted.
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           gh release create "$VERSION" \
+            --draft \
             --title "$VERSION" \
             --notes "${{ steps.release_notes.outputs.notes }}" \
             dist/* sbom/sbom.cdx.json
@@ -161,14 +173,31 @@ jobs:
       id-token: write
     steps:
       - name: Download the distribution packages
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: ${{ env.dists-artifact-name }}
           path: dist/
 
       - name: Publish to PyPI
         # renovate: datasource=github-releases depName=pypa/gh-action-pypi-publish
-        uses: pypa/gh-action-pypi-publish@v1.13.0
+        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
         with:
           attestations: true
           verify-metadata: false
+
+  # Last step in the chain: make the release public only once the artifacts are
+  # actually on PyPI, so the GitHub Release and the PyPI record cannot disagree.
+  finalize-release:
+    name: Publish the GitHub Release
+    needs:
+      - build
+      - pypi-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Undraft the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ needs.build.outputs.version }}" --draft=false

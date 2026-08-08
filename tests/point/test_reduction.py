@@ -6,6 +6,7 @@ import polars as pl
 import polars.selectors as cs
 import pytest
 from sklearn.base import BaseEstimator, clone
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
@@ -1182,6 +1183,236 @@ class TestNJobsParameter:
             y_seq.select(cs.numeric()).to_numpy(),
             y_par.select(cs.numeric()).to_numpy(),
         )
+
+    @pytest.mark.parametrize("panel", [False, True])
+    def test_predict_frames_are_identical_across_n_jobs(self, y_X_factory, panel):
+        """n_jobs selects an execution strategy, never a result.
+
+        Stronger than allclose: the frames must match exactly, including column
+        names, dtypes, row order and vintage_time.
+        """
+        y, X_actual = y_X_factory(length=60, n_targets=1, n_features=2, panel=panel, n_groups=3)
+
+        frames = []
+        for n_jobs in (1, 2):
+            forecaster = PointReductionForecaster(reduction_strategy="direct", n_jobs=n_jobs)
+            forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=4)
+            frames.append(forecaster.predict())
+
+        seq, par = frames
+        assert seq.columns == par.columns
+        assert seq.dtypes == par.dtypes
+        assert seq.equals(par)
+
+    @pytest.mark.parametrize("nan_handling", ["pass", "drop"])
+    def test_nan_handling_is_preserved_across_n_jobs(self, y_X_factory, nan_handling):
+        """Both NaN modes behave the same however the work is dispatched.
+
+        The estimator is NaN-tolerant because ``"pass"`` means exactly that: the nulls
+        reach it untouched, which a ``LinearRegression`` would reject.
+        """
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        y, X_actual = y_X_factory(length=60, n_targets=1, n_features=2)
+        # Null the last observation so the predict-time feature row carries a null.
+        feature = [c for c in X_actual.columns if c != "time"][0]
+        X_actual = X_actual.with_columns(
+            pl
+            .when(pl.arange(0, X_actual.height) == X_actual.height - 1)
+            .then(None)
+            .otherwise(pl.col(feature))
+            .alias(feature)
+        )
+
+        frames = []
+        for n_jobs in (1, 2):
+            forecaster = PointReductionForecaster(
+                estimator=HistGradientBoostingRegressor(max_iter=5, min_samples_leaf=2, random_state=0),
+                reduction_strategy="direct",
+                n_jobs=n_jobs,
+                nan_handling=nan_handling,
+            )
+            forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=4)
+            frames.append(forecaster.predict())
+
+        seq, par = frames
+        assert seq.equals(par)
+
+        values = seq.select(cs.numeric()).to_numpy()
+        assert values.size > 0
+        if nan_handling == "drop":
+            # The null reaches the predict feature row, so every step returns NaN.
+            assert np.isnan(values).all()
+        else:
+            # A NaN-tolerant estimator sees the null and still predicts.
+            assert not np.isnan(values).any()
+
+    def test_dispatched_task_does_not_carry_the_forecaster(self, y_X_factory):
+        """Regression guard for the closure capture.
+
+        `_predict_direct_step` used to be nested inside `_estimator_predict_direct` and
+        to read `self`, so cloudpickle captured the whole fitted forecaster into every
+        dispatched task: for a 48 step horizon, all 48 models shipped to use one.
+
+        This pickles what joblib actually ships, through the same cloudpickle loky uses.
+        Pickling the module-level function directly would prove nothing, because it
+        serializes by name under any implementation.
+        """
+        from joblib.externals import cloudpickle
+        from sklearn.utils.parallel import delayed
+
+        from yohou.base.reduction import _predict_direct_step
+
+        # A re-nested function carries `<locals>` in its qualname and cells in its
+        # closure, and cloudpickle serializes whatever those cells reach.
+        assert "<locals>" not in _predict_direct_step.__qualname__
+        assert _predict_direct_step.__closure__ is None
+
+        y, X_actual = y_X_factory(length=120, n_targets=1, n_features=2)
+        forecaster = PointReductionForecaster(reduction_strategy="direct")
+        forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=24)
+
+        X_tab = forecaster._get_predict_features()
+        task = delayed(_predict_direct_step)(forecaster.estimator_[0], X_tab, 1, np.ones(X_tab.height, dtype=bool))
+        payload = len(cloudpickle.dumps(task))
+        one_model = len(cloudpickle.dumps(forecaster.estimator_[0]))
+        whole_forecaster = len(cloudpickle.dumps(forecaster))
+
+        # The task tracks the one model it needs, not the forecaster holding all 24.
+        assert payload < one_model + 8192
+        assert payload < whole_forecaster / 2
+
+
+def _assert_matches_per_group(batched, reference):
+    """Structure exactly, values to within floating-point reassociation.
+
+    Batching predicts every panel group in one call, so a linear model's inference is a
+    single ``(n_groups, n_features)`` matmul instead of ``n_groups`` separate
+    ``(1, n_features)`` ones. BLAS reassociates and the last bit can differ, measured at
+    1 ULP. Tree models come out bit-identical, but the assertion has to hold for both, so
+    this is the one place the batched path is not exactly the per-group path.
+
+    The small ``atol`` is not slack for the reassociation, which is relative. It covers a
+    reference value of exactly zero, where a relative tolerance admits nothing at all and
+    any nonzero batched value would fail.
+    """
+    assert batched.columns == reference.columns
+    assert batched.dtypes == reference.dtypes
+    np.testing.assert_allclose(batched.to_numpy(), reference.to_numpy(), rtol=1e-12, atol=1e-15)
+
+
+def _reference_predict_per_group(forecaster):
+    """Predict the pre-batching way: one estimator call per (group, step).
+
+    The batched path stacks every panel group's feature row into one call per step.
+    That is only sound if all groups share the step's estimator and see the same step
+    columns, so this reconstructs the per-group algorithm as the thing to match.
+    """
+    from yohou.utils import cast as _cast
+
+    y_cols = list(forecaster.local_y_t_schema_.keys())
+    n_targets = len(y_cols)
+    out = {}
+    for group in forecaster.groups_:
+        X_tab = forecaster._get_predict_features(group)
+        rows = []
+        for step, est in enumerate(forecaster.estimator_):
+            X_step = forecaster._filter_step_features(X_tab, step + 1)
+            if forecaster.nan_handling == "drop" and forecaster._features_have_nan(X_step):
+                rows.append(np.full(n_targets, np.nan))
+            else:
+                rows.append(np.atleast_1d(np.asarray(est.predict(X_step)).ravel())[:n_targets])
+        local = _cast(pl.DataFrame(np.vstack(rows), schema=y_cols), forecaster.local_y_t_schema_)
+        out[group] = local.rename({c: f"{group}__{c}" for c in y_cols})
+    return pl.concat(list(out.values()), how="horizontal")
+
+
+class TestPanelBatchedPredict:
+    """Stacking panel groups into one call per step must not change any number."""
+
+    @pytest.mark.parametrize("alignment", ["all", "matched", "cumulative"])
+    def test_batched_matches_per_group_with_forecast_step_columns(self, y_X_factory, alignment):
+        """Equivalence under every step alignment, with X_forecast step columns.
+
+        Vintage alignment is where a batching bug would hide: each step carries its own
+        `*_step_h` columns, and stacking the groups must keep every group on its own row
+        of the right step's frame.
+        """
+        y, X_actual, _X_future, X_forecast = y_X_factory(
+            length=90,
+            n_targets=1,
+            n_features=2,
+            panel=True,
+            n_groups=3,
+            n_forecast_features=2,
+            forecasting_horizon=4,
+            return_exogenous=True,
+        )
+
+        forecaster = PointReductionForecaster(reduction_strategy="direct", step_feature_alignment=alignment)
+        forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=4, X_forecast=X_forecast)
+
+        # Without step columns the alignment parameter is a no-op and this test would
+        # pass under any implementation, so pin that they exist.
+        assert forecaster._step_column_names_
+
+        batched = forecaster.predict().drop("vintage_time", strict=False)
+        reference = _reference_predict_per_group(forecaster)
+        _assert_matches_per_group(batched.drop("time", strict=False), reference)
+
+    def test_batched_matches_per_group_with_lags(self, y_X_factory):
+        """Equivalence when features come from a lag transformer.
+
+        Lags are rebuilt incrementally as observations arrive, so each group's feature
+        row is its own history. Stacking must not let one group read another's.
+        """
+        from yohou.preprocessing import LagTransformer as _LagTransformer
+
+        y, X_actual = y_X_factory(length=90, n_targets=1, n_features=2, panel=True, n_groups=3)
+
+        forecaster = PointReductionForecaster(
+            reduction_strategy="direct",
+            actual_transformer=_LagTransformer(lag=[1, 2, 3]),
+        )
+        forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=4)
+
+        batched = forecaster.predict().drop("vintage_time", strict=False)
+        reference = _reference_predict_per_group(forecaster)
+        _assert_matches_per_group(batched.drop("time", strict=False), reference)
+
+    def test_batched_isolates_a_single_group_with_null_features(self, y_X_factory):
+        """Under nan_handling="drop", one bad group must not poison the others.
+
+        The per-group path checked nulls a row at a time. Batched, the mask is per row of
+        the stacked frame, so this pins that a null in one group NaNs only that group.
+        """
+        y, X_actual = y_X_factory(length=90, n_targets=1, n_features=2, panel=True, n_groups=3)
+        victim = [c for c in X_actual.columns if c.startswith("group_0__")][0]
+        X_actual = X_actual.with_columns(
+            pl
+            .when(pl.arange(0, X_actual.height) == X_actual.height - 1)
+            .then(None)
+            .otherwise(pl.col(victim))
+            .alias(victim)
+        )
+
+        forecaster = PointReductionForecaster(
+            estimator=HistGradientBoostingRegressor(max_iter=5, min_samples_leaf=2, random_state=0),
+            reduction_strategy="direct",
+            nan_handling="drop",
+        )
+        forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=4)
+
+        batched = forecaster.predict()
+        _assert_matches_per_group(
+            batched.drop("time", "vintage_time", strict=False),
+            _reference_predict_per_group(forecaster),
+        )
+
+        poisoned = [c for c in batched.columns if c.startswith("group_0__")]
+        healthy = [c for c in batched.columns if c not in poisoned and c not in ("time", "vintage_time")]
+        assert np.isnan(batched.select(poisoned).to_numpy()).all()
+        assert not np.isnan(batched.select(healthy).to_numpy()).any()
 
 
 class TestPanelTimeWeight:

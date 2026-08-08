@@ -7,8 +7,12 @@ on:
 
 # Least-privilege default: read-only token unless a job widens it explicitly. The PR
 # is opened with a GitHub App token (below), not GITHUB_TOKEN, so no job needs write.
+# `pull-requests: read` is for git-cliff, which reads merged PRs to attribute entries;
+# it stays on GITHUB_TOKEN rather than borrowing the App token, whose write scope this
+# job needs only for opening the PR.
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   changelog:
@@ -25,24 +29,33 @@ jobs:
       # one without a long-lived personal access token.
       - name: Generate a token from the fleet automation GitHub App
         id: app-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Install git-cliff
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2
         with:
           # renovate: datasource=github-releases depName=orhun/git-cliff
           tool: git-cliff@2.13.1
 
       - name: Generate changelog
         id: changelog
+        env:
+          # `.git-cliff.toml` sets `[remote.github]`, so git-cliff calls the GitHub API
+          # to attach PR links and @usernames to each entry. Without a token those calls
+          # are anonymous, and anonymous means 60 requests/hour shared across every job
+          # on the runner's IP -- so this step used to succeed or 403 depending on who
+          # else was building at the time. git-cliff panics on that 403 (exit 101) rather
+          # than falling back to plain entries, which turned a rate limit into a failed
+          # release. Authenticated, the ceiling is 5000/hour and the flake goes away.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the tag name
           TAG_NAME="${GITHUB_REF#refs/tags/}"
@@ -61,10 +74,10 @@ jobs:
           echo "version=${TAG_NAME}" >> $GITHUB_OUTPUT
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.10.0"
+          version: "0.12.1"
 
       - name: Run hooks on generated CHANGELOG
         run: |
@@ -82,7 +95,7 @@ jobs:
           fi
 
       - name: Create Pull Request for CHANGELOG
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
           add-paths: |

@@ -56,11 +56,18 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         dropped rows. At predict time, returns NaN predictions for any
         time step whose features contain NaN.
     n_jobs : int or None, default=None
-        Number of jobs to run in parallel for the ``"direct"`` strategy
-        (fitting and predicting H independent models). ``None`` means 1
-        unless in a ``joblib.parallel_backend`` context. ``-1`` means
-        using all processors. Has no effect for ``"multi-output"`` or
-        ``"dir-rec"`` strategies.
+        Number of jobs to run in parallel over the H independent models of
+        the ``"direct"`` strategy, at fit and at predict. ``None`` means 1
+        unless in a ``joblib.parallel_backend`` context. ``-1`` means using
+        all processors. Has no effect for ``"multi-output"`` or ``"dir-rec"``
+        strategies.
+
+        Raising it above 1 pays at fit, where a task is a whole estimator
+        training. At predict whether it pays depends on the estimator: a task
+        is one call over the stacked observation rows, so a gradient-boosted
+        model on a wide feature matrix gains from the dispatch while a linear
+        model spends more on dispatch than the inference costs. Left at the
+        default, prediction runs serially and dispatches nothing.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
         Controls which step-indexed feature columns each direct estimator
         sees. Only the ``"direct"`` strategy applies this parameter; a

@@ -28,6 +28,54 @@ from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter
 __all__ = ["BaseReductionForecaster"]
 
 
+def _predict_direct_step(
+    estimator: BaseEstimator,
+    X_tab: pl.DataFrame,
+    n_targets: int,
+    row_ok: np.ndarray,
+) -> np.ndarray:
+    """Predict one horizon step for every observation row given.
+
+    Module level and free of any reference to the forecaster: a task dispatched to a
+    worker carries this function by name, the one estimator for its step, and the feature
+    rows, and nothing else.
+
+    One call covers every panel group. Under ``panel_strategy="global"`` all groups share
+    the estimator for a given step, so their feature rows stack into a single call rather
+    than one call per group.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator
+        Fitted estimator for this horizon step.
+    X_tab : pl.DataFrame
+        Feature rows, one per observation unit (one per panel group, or a single row when
+        the data is not a panel).
+    n_targets : int
+        Target columns to take from the prediction.
+    row_ok : np.ndarray
+        Boolean mask, ``True`` for rows safe to feed to the estimator. Rows masked out
+        yield NaN. Resolved by the caller, so this function needs neither the
+        ``nan_handling`` mode nor the check itself.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape ``(n_rows, n_targets)``, NaN in the rows ``row_ok`` excluded.
+
+    """
+    out = np.full((X_tab.height, n_targets), np.nan)
+    if row_ok.all():
+        kept = X_tab
+    elif row_ok.any():
+        kept = X_tab.filter(pl.Series(row_ok))
+    else:
+        return out
+    pred = np.asarray(estimator.predict(kept))  # ty: ignore[unresolved-attribute]
+    out[row_ok] = pred.reshape(kept.height, -1)[:, :n_targets]
+    return out
+
+
 class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     """Base class for forecasters using reduction to supervised learning.
 
@@ -90,11 +138,18 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         dropped rows. At predict time, returns NaN predictions for any
         time step whose features contain NaN.
     n_jobs : int or None, default=None
-        Number of jobs to run in parallel for the ``"direct"`` strategy
-        (fitting and predicting H independent models). ``None`` means 1
-        unless in a ``joblib.parallel_backend`` context. ``-1`` means
-        using all processors. Has no effect for ``"multi-output"`` or
-        ``"dir-rec"`` strategies.
+        Number of jobs to run in parallel over the H independent models of
+        the ``"direct"`` strategy, at fit and at predict. ``None`` means 1
+        unless in a ``joblib.parallel_backend`` context. ``-1`` means using
+        all processors. Has no effect for ``"multi-output"`` or ``"dir-rec"``
+        strategies.
+
+        Raising it above 1 pays at fit, where a task is a whole estimator
+        training. At predict whether it pays depends on the estimator: a task
+        is one call over the stacked observation rows, so a gradient-boosted
+        model on a wide feature matrix gains from the dispatch while a linear
+        model spends more on dispatch than the inference costs. Left at the
+        default, prediction runs serially and dispatches nothing.
     time_weighter : instance of `BaseWeighter` or None, default=None
         Weighter producing per-timestamp weights for the target time
         axis. Converted to sklearn ``sample_weight`` for training using
@@ -1305,32 +1360,56 @@ default="first_step"
         assert self.local_y_t_schema_ is not None
         y_cols = list(self.local_y_t_schema_.keys())
         n_targets = len(y_cols)
+        drop_nan = self.nan_handling == "drop"
 
-        def _predict_step(est: BaseEstimator, X_tab: pl.DataFrame) -> np.ndarray:
-            """Predict a single horizon step."""
-            if self.nan_handling == "drop" and self._features_have_nan(X_tab):
-                return np.full(n_targets, np.nan)
-            pred = est.predict(X_tab)  # ty: ignore[unresolved-attribute]
-            return np.atleast_1d(pred.ravel())[:n_targets]
+        # One feature row per observation unit: the single row for non-panel data, or one
+        # row per panel group stacked. Under panel_strategy="global" every group shares
+        # `estimators[step]`, so a step is one call over the stacked rows rather than one
+        # call per group. That is the same arithmetic with an order of magnitude fewer
+        # estimator calls, and it removes the per-call validation overhead that dominates
+        # cheap estimators.
+        # `groups_` is populated only under ``panel_strategy="global"``: `_pre_fit` routes
+        # ``"multivariate"`` to the standard path, which leaves it None. That is what makes
+        # one call per step sound, because every group then shares `estimators[step]`. A
+        # future panel strategy that populated `groups_` without that sharing would batch
+        # rows belonging to different models and be wrong in silence, so pin the invariant
+        # rather than leave it implicit.
+        assert self.groups_ is None or self.panel_strategy == "global", (
+            "batched prediction assumes every panel group shares the step's estimator, "
+            f"which panel_strategy={self.panel_strategy!r} does not guarantee"
+        )
 
-        if self.groups_ is None:
-            X_tab = self._get_predict_features()
-            rows: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
-                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
-                for step, est in enumerate(estimators)
-            )
-            y_pred_arr = np.vstack(rows)
-            y_pred = pl.DataFrame(y_pred_arr, schema=y_cols)
+        panel = self.groups_ is not None
+        X_tab = (
+            pl.concat([self._get_predict_features(g) for g in groups], how="vertical")
+            if panel
+            else self._get_predict_features()
+        )
+
+        # Step filtering depends only on column names, which are the local schema's and so
+        # shared across groups: filter once per step, not once per group per step.
+        step_frames = [self._filter_step_features(X_tab, step + 1) for step in range(len(estimators))]
+        row_masks = [
+            (self._compute_x_ok_mask(frame).to_numpy() if drop_nan else np.ones(frame.height, dtype=bool))
+            for frame in step_frames
+        ]
+
+        # `n_jobs` pays off only when a step's inference costs more than dispatching it,
+        # which depends on the estimator: a gradient-boosted model over a wide frame is
+        # milliseconds and gains, a linear model is well under and loses. It defaults to
+        # 1, so dispatch is opt-in.
+        step_preds: list[np.ndarray] = Parallel(n_jobs=self.n_jobs)(
+            delayed(_predict_direct_step)(est, frame, n_targets, mask)
+            for est, frame, mask in zip(estimators, step_frames, row_masks, strict=True)
+        )
+
+        if not panel:
+            y_pred = pl.DataFrame(np.vstack([p[0] for p in step_preds]), schema=y_cols)
             return cast(y_pred, self.local_y_t_schema_)
 
         y_pred_dict = {}
-        for panel_group_name in groups:
-            X_tab = self._get_predict_features(panel_group_name)
-            rows = Parallel(n_jobs=self.n_jobs)(
-                delayed(_predict_step)(est, self._filter_step_features(X_tab, step + 1))
-                for step, est in enumerate(estimators)
-            )
-            y_pred_arr = np.vstack(rows)
+        for row, panel_group_name in enumerate(groups):
+            y_pred_arr = np.vstack([step_pred[row] for step_pred in step_preds])
             y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
             y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
             y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
