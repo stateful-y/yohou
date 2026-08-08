@@ -3,13 +3,17 @@ name: Regenerate Dataset Files
 on:
   workflow_dispatch:
 
+# Least-privilege default: read-only token; the regenerate job widens to contents:write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   regenerate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      # Required to push the regenerated parquet files to the datasets branch.
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

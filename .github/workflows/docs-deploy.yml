@@ -12,13 +12,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least-privilege default: read-only token; the build job widens to contents:write
+# for the release upload.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      # Required to publish the rendered site to the `docs-site` release.
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
