@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import zipfile
 from datetime import datetime
+from urllib.error import HTTPError, URLError
 
 import polars as pl
 import pytest
@@ -36,6 +37,37 @@ ALL_FETCHERS = [
     fetch_hospital,
     fetch_kdd_cup,
 ]
+
+
+# Statuses that mean "the host is having a bad minute", not "the request was wrong":
+# request timeouts, rate limits, and the whole 5xx family Zenodo's gateway emits when
+# it is overloaded.
+_TRANSIENT_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+# Zenodo's outages outlast sklearn's default 3 retries at 1s, so give the download a
+# wider window than a user's interactive call gets before deciding the host is down.
+_INTEGRATION_RETRIES = 5
+_INTEGRATION_DELAY = 5.0
+
+
+def _fetch_or_skip(fetcher, **kwargs):
+    """Call a real-download fetcher, skipping the test if the host is unavailable.
+
+    These tests assert that yohou downloads, parses and caches what Zenodo serves;
+    they are not a monitor for Zenodo's uptime. A gateway timeout there lasting the
+    length of a nightly run once failed the whole matrix and filed a failure issue
+    that no change to this repository could have closed. A transient upstream status
+    is therefore a skip, while a 404, a checksum mismatch or a parse error still
+    fails, because those are ours to fix.
+    """
+    try:
+        return fetcher(n_retries=_INTEGRATION_RETRIES, delay=_INTEGRATION_DELAY, **kwargs)
+    except HTTPError as exc:
+        if exc.code not in _TRANSIENT_HTTP_STATUS:
+            raise
+        pytest.skip(f"{fetcher.__name__}: upstream returned HTTP {exc.code} ({exc.reason})")
+    except (URLError, TimeoutError) as exc:
+        pytest.skip(f"{fetcher.__name__}: upstream unreachable ({exc})")
 
 
 def _make_fake_tsf_zip(directory: str, zip_name: str, tsf_name: str) -> None:
@@ -242,7 +274,7 @@ class TestFetchIntegration:
     )
     def test_real_download(self, fetcher, tmp_path):
         """Real download from Zenodo produces valid Bunch."""
-        bunch = fetcher(data_home=tmp_path)
+        bunch = _fetch_or_skip(fetcher, data_home=tmp_path)
         assert isinstance(bunch.frame, pl.DataFrame)
         assert "time" in bunch.frame.columns
         assert len(bunch.frame) > 0
@@ -252,7 +284,7 @@ class TestFetchIntegration:
     @pytest.mark.integration
     def test_real_download_dominick(self, tmp_path):
         """Real download of the large Dominick dataset (default subset)."""
-        bunch = fetch_dominick(data_home=tmp_path)
+        bunch = _fetch_or_skip(fetch_dominick, data_home=tmp_path)
         assert isinstance(bunch.frame, pl.DataFrame)
         assert "time" in bunch.frame.columns
         assert bunch.n_series == 50
@@ -261,13 +293,72 @@ class TestFetchIntegration:
     @pytest.mark.integration
     def test_real_download_kdd_cup(self, tmp_path):
         """Real download of the KDD Cup 2018 dataset (default subset)."""
-        bunch = fetch_kdd_cup(data_home=tmp_path)
+        bunch = _fetch_or_skip(fetch_kdd_cup, data_home=tmp_path)
         assert isinstance(bunch.frame, pl.DataFrame)
         assert "time" in bunch.frame.columns
         assert bunch.n_series == 30  # default n_groups=5 × 6 measurements
         for col in bunch.feature_names:
             assert "__" in col
             assert not col.endswith("__value")
+
+
+class TestFetchOrSkip:
+    """Tests for the transient-failure guard the integration tests download through."""
+
+    @pytest.mark.parametrize("status", sorted(_TRANSIENT_HTTP_STATUS))
+    def test_transient_status_skips(self, status):
+        """A status meaning the host is overloaded skips instead of failing."""
+
+        def fetcher(**_kwargs):
+            raise HTTPError("https://zenodo.org/x.zip", status, "Gateway Time-out", {}, None)
+
+        with pytest.raises(pytest.skip.Exception, match=f"HTTP {status}"):
+            _fetch_or_skip(fetcher)
+
+    @pytest.mark.parametrize("status", [400, 403, 404, 410])
+    def test_client_error_still_fails(self, status):
+        """A wrong URL or a withdrawn record is our bug, so it propagates."""
+
+        def fetcher(**_kwargs):
+            raise HTTPError("https://zenodo.org/x.zip", status, "Not Found", {}, None)
+
+        with pytest.raises(HTTPError):
+            _fetch_or_skip(fetcher)
+
+    def test_unreachable_host_skips(self):
+        """A connection that never opens skips: there is nothing to assert on."""
+
+        def fetcher(**_kwargs):
+            raise URLError("Name or service not known")
+
+        with pytest.raises(pytest.skip.Exception, match="unreachable"):
+            _fetch_or_skip(fetcher)
+
+    def test_parse_error_still_fails(self):
+        """A failure after the bytes arrive is ours, so it propagates."""
+
+        def fetcher(**_kwargs):
+            msg = "malformed TSF header"
+            raise ValueError(msg)
+
+        with pytest.raises(ValueError, match="malformed TSF header"):
+            _fetch_or_skip(fetcher)
+
+    def test_forwards_retry_settings_and_returns_bunch(self):
+        """The wider retry window reaches the fetcher and the Bunch passes through."""
+        captured = {}
+        expected = Bunch(frame=pl.DataFrame({"time": [datetime(2020, 1, 1)]}))
+
+        def fetcher(**kwargs):
+            captured.update(kwargs)
+            return expected
+
+        assert _fetch_or_skip(fetcher, data_home="/tmp/x") is expected
+        assert captured == {
+            "n_retries": _INTEGRATION_RETRIES,
+            "delay": _INTEGRATION_DELAY,
+            "data_home": "/tmp/x",
+        }
 
 
 class TestRestructureKddCup:
