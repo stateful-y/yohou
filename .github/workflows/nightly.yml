@@ -14,6 +14,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # A nightly exists to report, not to fail fast: cancelling the other
+      # interpreters on the first failure once turned one dataset host's bad
+      # minute into a run that said nothing about 3.12, 3.13 or 3.14.
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
     # Codecov upload authenticates via GitHub OIDC (tokenless) -- no stored CODECOV_TOKEN.
@@ -40,15 +44,26 @@ jobs:
         # renovate: datasource=pypi depName=nox
         run: uv tool install nox==2026.7.11
 
+      # `test_coverage` is a single-version session pinned to the minimum Python,
+      # so `nox -s test_coverage` runs 3.11 whatever the matrix entry says. Asking
+      # for it on every entry ran the same suite four times and tested no other
+      # interpreter; the split below mirrors `test-full` in tests.yml.
       - name: Run tests with coverage
+        if: matrix.python-version == '3.11'
         run: nox -s test_coverage
+
+      - name: Run tests
+        if: matrix.python-version != '3.11'
+        run: nox -s test --python ${{ matrix.python-version }}
 
       - name: Run docstring tests
         run: nox -s test_docstrings-${{ matrix.python-version }}
 
+      # Gated on the entry that produces the report. It was gated on 3.12, which
+      # uploaded a 3.11 run's coverage under a 3.12 label; now only 3.11 measures.
       - name: Upload coverage reports
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
-        if: ${{ matrix.python-version == '3.12' }}
+        if: ${{ matrix.python-version == '3.11' }}
         with:
           use_oidc: true
 
