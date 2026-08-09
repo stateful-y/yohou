@@ -44,21 +44,27 @@ step_transformer = FeatureUnion([
 ])
 ```
 
-The design matrix then carries `temp_step_1 .. temp_step_48` and `temp_step_mean`.
+The design matrix then carries `raw_temp_step_1 .. raw_temp_step_48` and `agg_temp_step_mean`, since `FeatureUnion` prefixes each branch's output with the branch name.
+
+Compose in parallel, not in sequence. Chaining two step transformers in a `FeaturePipeline` does not work, and the library says so rather than failing quietly: the first stage's output is horizon-agnostic by construction, so the second finds no `{base}_step_{h}` blocks left to reduce and raises. If you want two reductions of the same raw block, put them in a `FeatureUnion` as above.
 
 ## Use Different Aggregations per Variable
 
-Route by column name with a [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/). Event indicators usually want a count; weather usually wants extremes:
+Route by column name with a [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/). Event indicators usually want a count; weather usually wants extremes. Each branch takes an explicit list of the step columns it handles:
 
 ```python
-import polars.selectors as cs
 from yohou.compose import ColumnTransformer
 
 step_transformer = ColumnTransformer([
-    ("weather", StepAggregator(aggregations=("min", "max")), cs.starts_with("temp_step_")),
-    ("events", StepAggregator(aggregations=("sum",)), cs.starts_with("holiday_step_")),
+    ("weather", StepAggregator(aggregations=("min", "max")),
+     [f"temp_step_{h}" for h in range(1, 49)]),
+    ("events", StepAggregator(aggregations=("sum",)),
+     [f"holiday_step_{h}" for h in range(1, 49)]),
 ])
+# -> weather_temp_step_min, weather_temp_step_max, events_holiday_step_sum
 ```
+
+Two things to note. Column selection is by name, so the lists must span the horizon you fitted with; a comprehension over `range(1, H + 1)` is the readable way to write that. And `ColumnTransformer` prefixes each branch's output with the branch name, which is why the columns above read `weather_temp_step_min` rather than `temp_step_min`. The prefix does not disturb anything: the name still ends in a non-numeric suffix, so it is still classified as horizon-agnostic.
 
 Step column names are unique across `X_future` and `X_forecast`, because a collision between the two sources is refused at fit, so selecting by name is always unambiguous.
 

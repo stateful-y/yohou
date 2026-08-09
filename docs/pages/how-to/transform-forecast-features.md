@@ -10,7 +10,7 @@ This guide shows you how to apply transformers to an `X_forecast` frame, using [
 <!-- COMPANION_NOTEBOOKS -->
 
 
-An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the two kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).
+An `X_forecast` frame carries two time axes, `vintage_time` and `time`, so an ordinary single-axis transformer cannot consume it. [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) wraps an actual transformer and fits and applies it to each vintage independently. For why the kinds exist, see [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ## Derive a Feature per Vintage
 
@@ -87,7 +87,7 @@ features = FeatureUnion([
 
 Each branch is lifted independently, so a branch may be stateful. A branch computing a ramp (`pl.col("load").diff()`) works, but `FunctionTransformer` measures the `.diff()` as an `observation_horizon` of 1, so that branch drops each vintage's first step, and the union drops it from every other branch too.
 
-A composition must be **homogeneous in kind**: mixing actual and forecast transformers in one `FeatureUnion`, `FeaturePipeline`, or `ColumnTransformer` raises a `ValueError`.
+A composition must be **homogeneous in kind**: mixing kinds in one `FeatureUnion`, `FeaturePipeline`, or `ColumnTransformer` raises a `ValueError`.
 
 Equivalently, you can *compose-then-lift*, building a union of actual transformers and lifting the whole thing once:
 

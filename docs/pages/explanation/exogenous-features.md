@@ -113,24 +113,33 @@ frame. `actual_transformer` operates on single-axis `X_actual` data, and an
 `X_forecast` frame carries a second time axis it cannot read. The frame is still
 transformable, by a transformer built for its shape, and that transformer has a
 slot of its own: `forecast_transformer`. See
-[Transformer Kinds](transformer-kinds.md) for the two transformer kinds and why
+[Transformer Kinds](transformer-kinds.md) for the three transformer kinds and why
 the vintage axis needs its own.
 
-### The Three Transformer Slots
+### The Four Transformer Slots
 
-A forecaster holds three transformer slots, each named for what it consumes:
+A forecaster holds four transformer slots, each named for what it consumes:
 
 | Slot | Consumes | Kind |
 | --- | --- | --- |
 | `target_transformer` | the target series | actual (single-axis) |
 | `actual_transformer` | the feature frame built from `y` and `X_actual` | actual (single-axis) |
-| `forecast_transformer` | `X_forecast` | forecast (vintage-indexed) |
+| `forecast_transformer` | `X_forecast`, before step columns are derived | forecast (vintage-indexed) |
+| `step_transformer` | the derived step frame, before it joins the design matrix | step (single-axis, horizon-blocked) |
 
-The split follows the frame shape rather than the role. An actual-kind
-transformer reads one `time` axis; a forecast-kind transformer reads
-`(vintage_time, time)`. Passing one where the other belongs raises a
-`ValueError` naming the slot, and the message points at the slot that does
-accept it.
+The split follows the frame rather than the role. An actual-kind transformer
+reads one `time` axis; a forecast-kind transformer reads
+`(vintage_time, time)`; a step-kind transformer reads one `time` axis whose
+columns are `{base}_step_1` through `{base}_step_H`, one variable seen at each
+horizon step. Passing one where another belongs raises a `ValueError` naming the
+slot, and the message points at the slot that does accept it.
+
+The last two slots sit on either side of the pivot that builds step columns, and
+that is what makes them distinct rather than redundant. `forecast_transformer`
+sees the vintage-indexed frame and is anchored to `vintage_time`;
+`step_transformer` sees the horizon laid out against each observation time, which
+is the only place a quantity such as "the minimum over the next 48 hours, as of
+now" can be expressed. See [How to Reduce Forecast Step Features](../how-to/reduce-step-features.md).
 
 `X_future` has no slot. It is single-axis, so it needs no new base class, but a
 stateful actual transformer applied to it would hold future rows in its buffer

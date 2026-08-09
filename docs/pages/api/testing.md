@@ -48,6 +48,7 @@ Testing utilities for Yohou estimators.
 | [`check_requires_exogenous_warns_on_X_future_X_forecast`](generated/yohou.testing.check_requires_exogenous_warns_on_X_future_X_forecast.md) | Check that a forecaster with requires_exogenous=False warns when X_future/X_forecast provided. |
 | [`check_rewind_propagates_to_transformers`](generated/yohou.testing.check_rewind_propagates_to_transformers.md) | Check rewind() propagates to transformers in forecaster. |
 | [`check_rewind_replaces_observations`](generated/yohou.testing.check_rewind_replaces_observations.md) | Check rewind() replaces observation buffers correctly. |
+| [`check_step_feature_alignment_filters`](generated/yohou.testing.check_step_feature_alignment_filters.md) | Check ``step_feature_alignment="matched"`` actually narrows the feature set. |
 | [`check_coverage_rates_parameter`](generated/yohou.testing.check_coverage_rates_parameter.md) | Check fit_coverage_rates_ fitted attribute is a non-empty list of floats in [0, 1]. |
 | [`check_coverage_rates_validation`](generated/yohou.testing.check_coverage_rates_validation.md) | Check invalid coverage_rates raise ValueError during fit and predict. |
 | [`check_interval_bounds`](generated/yohou.testing.check_interval_bounds.md) | Check upper >= lower for all coverage rates and time steps. |
@@ -107,6 +108,7 @@ Testing utilities for Yohou estimators.
 | [`check_splitter_tags_accessible_before_fit`](generated/yohou.testing.check_splitter_tags_accessible_before_fit.md) | Check __sklearn_tags__() is callable on splitter instance. |
 | [`check_splitter_tags_match_capabilities`](generated/yohou.testing.check_splitter_tags_match_capabilities.md) | Check tag values match actual splitter behavior. |
 | [`check_splitter_tags_static_after_fit`](generated/yohou.testing.check_splitter_tags_static_after_fit.md) | Check tags remain unchanged after fit. |
+| [`check_batch_invariance`](generated/yohou.testing.check_batch_invariance.md) | Check that a transformer declaring ``batch_invariant`` earns the claim. |
 | [`check_feature_names_out_match`](generated/yohou.testing.check_feature_names_out_match.md) | Check get_feature_names_out() matches transform() output columns. |
 | [`check_fit_idempotent`](generated/yohou.testing.check_fit_idempotent.md) | Check that fit(X).fit(X) equals fit(X). |
 | [`check_fit_sets_attributes`](generated/yohou.testing.check_fit_sets_attributes.md) | Check fit() sets required attributes. |

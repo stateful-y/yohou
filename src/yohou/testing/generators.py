@@ -117,6 +117,15 @@ from .splitter import (
     check_splitter_tags_match_capabilities,
     check_splitter_tags_static_after_fit,
 )
+from .step_transformer import (
+    check_horizon_agnostic_output_naming,
+    check_memory_api_refused,
+    check_min_steps_contract,
+    check_missing_time_index_raises,
+    check_step_kind_tag,
+    check_time_preserved,
+    check_transform_is_stateless,
+)
 from .transformer import (
     check_feature_names_out_match,
     check_fit_idempotent,
@@ -1358,6 +1367,42 @@ def _yield_yohou_search_checks(
                     "X_forecast": X_forecast_test,
                 },
             )
+
+
+def _yield_yohou_step_transformer_checks(
+    step_transformer,
+    X_step: pl.DataFrame,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a step-kind transformer.
+
+    Yields the step-transformer family behavioral checks plus the shared sklearn
+    estimator-contract checks. Every check takes an unfitted transformer and a
+    sample step frame, and clones as needed.
+
+    Parameters
+    ----------
+    step_transformer : BaseStepTransformer
+        Step transformer instance (fitted or unfitted; checks clone as needed).
+    X_step : pl.DataFrame
+        A step frame: a ``"time"`` column plus one or more ``{base}_step_{h}``
+        blocks. At least two steps per block, so the per-step behaviour of a
+        wrapped estimator is observable.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    yield "check_step_kind_tag", check_step_kind_tag, {"X": X_step}
+    yield "check_time_preserved", check_time_preserved, {"X": X_step}
+    yield "check_missing_time_index_raises", check_missing_time_index_raises, {"X": X_step}
+    yield "check_transform_is_stateless", check_transform_is_stateless, {"X": X_step}
+    yield "check_memory_api_refused", check_memory_api_refused, {"X": X_step}
+    yield "check_min_steps_contract", check_min_steps_contract, {"X": X_step}
+    yield "check_horizon_agnostic_output_naming", check_horizon_agnostic_output_naming, {"X": X_step}
+
+    yield from _yield_estimator_contract_checks(step_transformer)
 
 
 def _yield_yohou_weighter_checks(

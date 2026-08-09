@@ -72,6 +72,47 @@ def _step_blocks(columns: list[str]) -> dict[str, list[str]]:
     return blocks
 
 
+def _require_step_blocks(blocks: dict[str, list[str]], transformer: object, columns: list[str]) -> None:
+    """Raise when a step transformer is handed a frame with nothing to reduce.
+
+    Every step transformer reduces ``{base}_step_{h}`` blocks, so a frame carrying
+    none of them leaves it with no work. Returning an empty frame there is worse
+    than failing: the design matrix silently loses every feature the slot was
+    meant to produce, and nothing says so.
+
+    The realistic cause is chaining. A ``FeaturePipeline`` of a reducer followed
+    by an aggregator hands the second stage the first stage's output, which is
+    horizon-agnostic by construction (``temp_step_c0``), so the second stage has
+    nothing to reduce. That is a misconfiguration rather than a data condition,
+    and it is worth reporting as one.
+
+    Parameters
+    ----------
+    blocks : dict
+        Base name to its step columns, as returned by :func:`_step_blocks`.
+    transformer : object
+        The transformer raising, used in the message.
+    columns : list of str
+        The input frame's columns, used to describe what was received.
+
+    Raises
+    ------
+    ValueError
+        If ``blocks`` is empty.
+
+    """
+    if blocks:
+        return
+    received = [c for c in columns if c != "time"]
+    raise ValueError(
+        f"{type(transformer).__name__} received a frame with no step blocks to reduce. "
+        f"It looks for columns named '{{base}}_step_{{h}}' with an integer step, and found "
+        f"none among {received!r}. The usual cause is chaining two step transformers: the "
+        f"first one's output is horizon-agnostic, so the second has nothing left to work "
+        f"on. Put them in a FeatureUnion if you want both applied to the raw block."
+    )
+
+
 def _reject_numeric_name(name: str) -> None:
     """Raise if an output name would collide with a horizon step index.
 
@@ -196,8 +237,9 @@ class StepAggregator(BaseStepTransformer):
         return aggregations
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Validate configuration; the transform itself learns nothing."""
+        """Validate configuration and input; the transform itself learns nothing."""
         self._check_aggregations()
+        _require_step_blocks(_step_blocks(X.columns), self, X.columns)
 
     def _aggregate_expr(self, name: str, members: list[str], base: str) -> pl.Expr:
         """Build the polars expression for one aggregation over one block.
@@ -514,10 +556,7 @@ class StepColumnReducer(_BaseStepReducer):
         """Fit one clone per base column and record the output names."""
         self._check_fixed_width()
         blocks = _step_blocks(X.columns)
-        if not blocks:
-            self.reducers_ = {}
-            self.feature_names_out_ = []
-            return
+        _require_step_blocks(blocks, self, X.columns)
 
         horizon = len(next(iter(blocks.values())))
 
@@ -625,10 +664,7 @@ class StepFrameReducer(_BaseStepReducer):
         self._check_fixed_width()
 
         blocks = _step_blocks(X.columns)
-        if not blocks:
-            self.reducer_ = None
-            self.feature_names_out_ = []
-            return
+        _require_step_blocks(blocks, self, X.columns)
 
         horizon = len(next(iter(blocks.values())))
 
@@ -638,8 +674,6 @@ class StepFrameReducer(_BaseStepReducer):
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Apply the fitted clone to the whole step frame."""
-        if self.reducer_ is None:
-            return X.select(pl.col("time"))
         members = self._ordered_members(X)
         values = np.asarray(self.reducer_.transform(X.select(members).to_numpy()))
         return X.select(pl.col("time")).hstack(

@@ -5,13 +5,14 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.base import BaseEstimator, TransformerMixin, clone
 from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer as SklearnFunctionTransformer
 from sklearn.preprocessing import StandardScaler as SklearnStandardScaler
 
+from yohou.compose import FeaturePipeline
 from yohou.preprocessing import StepAggregator, StepColumnReducer, StepFrameReducer
 from yohou.testing.step_transformer import STEP_TRANSFORMER_CHECKS
 
@@ -54,8 +55,6 @@ TRANSFORMERS = [
 @pytest.mark.parametrize("transformer", TRANSFORMERS, ids=lambda t: type(t).__name__)
 def test_systematic_step_transformer_checks(check, transformer):
     """Every concrete step transformer satisfies the shared contract."""
-    from sklearn.base import clone
-
     check(clone(transformer), _frame())
 
 
@@ -135,6 +134,44 @@ class TestStepAggregator:
         t = StepAggregator(aggregations=("mean", "max"), emit_coverage=True).fit(_frame())
         out = t.transform(_frame())
         assert t.get_feature_names_out() == [c for c in out.columns if c != "time"]
+
+
+class TestNoStepBlocks:
+    """A frame with nothing to reduce is an error, not an empty result."""
+
+    @pytest.fixture
+    def blockless(self) -> pl.DataFrame:
+        """A frame whose columns are all horizon-agnostic."""
+        return pl.DataFrame({
+            "time": [datetime(2024, 1, 1) + timedelta(days=i) for i in range(4)],
+            "temp_step_mean": [1.0, 2.0, 3.0, 4.0],
+            "temp_step_c0": [0.5, 1.5, 2.5, 3.5],
+        })
+
+    @pytest.mark.parametrize("transformer", TRANSFORMERS, ids=lambda t: type(t).__name__)
+    def test_refused_with_a_diagnosis(self, blockless, transformer):
+        """Every step transformer refuses rather than emitting an empty frame."""
+        with pytest.raises(ValueError, match="no step blocks to reduce"):
+            clone(transformer).fit(blockless)
+
+    def test_message_names_what_it_received(self, blockless):
+        """The message shows the columns present, so the mistake is visible."""
+        with pytest.raises(ValueError) as excinfo:
+            StepAggregator().fit(blockless)
+        assert "temp_step_mean" in str(excinfo.value)
+
+    def test_chaining_two_step_transformers_is_caught(self):
+        """The realistic cause: a pipeline whose first stage leaves nothing indexed.
+
+        Silently returning an empty frame here would drop every step feature from
+        the design matrix with nothing to say so.
+        """
+        pipeline = FeaturePipeline([
+            ("reduce", StepColumnReducer(reducer=SklearnStandardScaler())),
+            ("aggregate", StepAggregator()),
+        ])
+        with pytest.raises(ValueError, match="chaining two step transformers"):
+            pipeline.fit(_frame())
 
 
 class TestStepColumnReducer:
