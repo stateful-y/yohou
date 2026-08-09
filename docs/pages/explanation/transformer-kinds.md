@@ -1,14 +1,28 @@
 # Transformer Kinds
 
-Yohou transformers come in two kinds, and the kind is a property of the frame shape a transformer consumes and produces rather than of what it computes. An actual-kind transformer ([`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/)) operates on a single-axis frame: one `"time"` column and one row per timestamp, a single series marching forward. A forecast-kind transformer ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/)) operates on an `X_forecast` frame, which carries two time axes, `vintage_time` (when a forecast was issued) and `time` (what it forecasts).
+Yohou transformers come in three kinds, and the kind is a property of the frame a transformer consumes and produces rather than of what it computes. An actual-kind transformer ([`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/)) operates on a single-axis frame: one `"time"` column and one row per timestamp, a single series marching forward. A forecast-kind transformer ([`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/)) operates on an `X_forecast` frame, which carries two time axes, `vintage_time` (when a forecast was issued) and `time` (what it forecasts). A step-kind transformer ([`BaseStepTransformer`](/pages/api/generated/yohou.base.BaseStepTransformer/)) operates on the derived step frame, the wide frame a forecaster builds internally in which each exogenous column becomes `{base}_step_1` through `{base}_step_H`, holding that column's values over the horizon ahead of each row.
 
-Every transformer declares its kind through a `kind` tag whose value is `"actual"` or `"forecast"`. Leaf transformers stamp the tag statically through their base class; the composition classes derive theirs from their children. Almost everything in Yohou is actual-kind, and that is the default a transformer gets if it says nothing.
+Every transformer declares its kind through a `kind` tag whose value is `"actual"`, `"forecast"`, or `"step"`. Leaf transformers stamp the tag statically through their base class; the composition classes derive theirs from their children. Almost everything in Yohou is actual-kind, and that is the default a transformer gets if it says nothing.
+
+Each kind has its own forecaster slot, and the tag is what keeps them apart: `actual_transformer` takes actual-kind, `forecast_transformer` takes forecast-kind, `step_transformer` takes step-kind. Putting a transformer in the wrong slot raises at fit rather than being quietly accepted.
 
 ## Why Two Kinds
 
 The two axes make an `X_forecast` frame a different object, not merely a wider one. A single-axis frame is one series. An `X_forecast` frame is a stack of short series, one per vintage, each covering its own forecast horizon and each overlapping the others in `time`. The 6:00 AM weather forecast and the 9:30 AM forecast both say something about noon, so `time` alone does not identify a row.
 
 That difference is why a single-axis transformer cannot simply be pointed at an `X_forecast` frame. Consider a transformer that computes a first difference. On one series, "the previous row" is unambiguous and means one timestep back. On a vintage stack, the row above may belong to a different vintage entirely, so the difference would silently subtract one forecast from a neighbouring one and produce a number that corresponds to nothing. The frame would be accepted and the output would be wrong, which is the worst available outcome. The kind tag exists so that the mismatch is caught rather than computed.
+
+## Why the Step Frame Is a Third Kind
+
+The step frame is the odd one out, because unlike the `X_forecast` frame it is not a different *shape*. It carries a single `"time"` index, exactly as a single-axis frame does, and one row per observation. Structurally, an actual-kind transformer could consume it without complaint.
+
+That is precisely why it needs its own kind. What separates a step frame from an ordinary feature frame is not its index but what its columns mean: `temp_step_1` through `temp_step_48` are one variable seen at 48 points along the horizon, not 48 unrelated variables. A transformer written to summarise that block looks for the `_step_h` pattern. Point it at an `X_actual` frame and it finds nothing to summarise, so it emits nothing and the model silently loses features nobody removed. An error message is recoverable; a feature that quietly is not there is the kind of problem found months later in a model that underperforms for no visible reason. The kind tag turns the second into the first.
+
+The step frame is also the only place in the pipeline where "the H values ahead of this observation" exist as one aligned row, which is what makes transformations along the horizon expressible at all. A forecast-kind transformer cannot substitute, because it sees one vintage at a time and is anchored to `vintage_time`, whereas the quantity a modeller usually wants ("the minimum temperature over the next 48 hours, as of now") is anchored to the observation time. Those coincide only when a fresh vintage is issued at every observation. And `X_future`, the deterministic known-future channel, never passes through a forecast transformer at all.
+
+Step transformers are stateless in the `observe`/`rewind` sense, and unavoidably so: the step frame is rebuilt from scratch at every observe and every predict, so there is no buffer for memory to accumulate in. Leaf step transformers therefore do not define the memory API, and a step-kind composition raises if it is called.
+
+[How to Reduce Forecast Step Features](../how-to/reduce-step-features.md) covers what to do with the kind in practice.
 
 ## Kind and Statefulness Are Orthogonal
 
@@ -18,6 +32,7 @@ Statefulness is Yohou's other transformer axis: a stateful transformer keeps a b
 | ------------ | ---------------------------------- | ------------------------------------------- |
 | **Actual**   | scaling, log transforms, calendar features | lags, rolling statistics, filters   |
 | **Forecast** | lifted stateless transformers      | lifted lags and differences, within a vintage |
+| **Step**     | every step transformer             | none; the frame is rebuilt each call        |
 
 The forecast-and-stateful cell rewards a moment's care, because it is easy to talk yourself out of it. State means memory: a buffer of the rows immediately preceding the current one, which is meaningful only where "preceding" is well defined and the history is contiguous. It is tempting to conclude that the vintage axis offers neither, since vintages are separate short series and the rows before a given vintage's first row belong to a different vintage.
 

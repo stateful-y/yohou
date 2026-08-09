@@ -53,6 +53,7 @@ from .forecaster import (
     check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
+    check_step_transformer_slot,
 )
 from .interval import (
     check_coverage_rates_parameter,
@@ -724,6 +725,20 @@ def _yield_yohou_forecaster_checks(
                         "y_train": y_train,
                         "X_actual_train": X_actual_train,
                         "X_forecast": X_forecast_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
+            # Same reasoning for the step_transformer slot: exercise it for every
+            # family that exposes it rather than in ad-hoc single-class tests.
+            if "step_transformer" in forecaster.get_params():
+                yield (
+                    "check_step_transformer_slot",
+                    check_step_transformer_slot,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_future": X_future_train,
                         "forecasting_horizon": 3,
                     },
                 )

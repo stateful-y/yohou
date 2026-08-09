@@ -13,6 +13,7 @@ import numpy as np
 import polars as pl
 import pytest
 from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler as SklearnStandardScaler
 
 from yohou.preprocessing import FunctionTransformer
 from yohou.utils.discovery import all_estimators
@@ -46,6 +47,8 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
     },
     "SeasonalImputer": {"period": 7},
     "SlidingWindowFunctionTransformer": {"func": np.mean},
+    "StepColumnReducer": {"reducer": SklearnStandardScaler()},
+    "StepFrameReducer": {"reducer": SklearnStandardScaler(), "prefix": "wx"},
     "VotingClassProbaForecaster": {"forecasters": []},
     "VotingIntervalForecaster": {"forecasters": []},
     "VotingPointForecaster": {"forecasters": []},
@@ -67,6 +70,8 @@ _NESTED_ESTIMATORS = {
     "RandomizedSearchCV",
     "SimpleImputer",
     "SplitConformalForecaster",
+    "StepColumnReducer",
+    "StepFrameReducer",
     "VotingClassProbaForecaster",
     "VotingIntervalForecaster",
     "VotingPointForecaster",
