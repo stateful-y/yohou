@@ -18,11 +18,11 @@ just test-fast
 
 For the complete contributing guide, including test strategy, code quality standards, commit conventions, and CI/CD details, see:
 
-**[Full Contributing Guide](../docs/pages/how-to/contributing.md)**
+**[Full Contributing Guide](docs/pages/how-to/contributing.md)**
 
 ## Reporting Issues
 
-Found a bug? Have a suggestion? [Open an issue](../../../issues/new/choose) and include:
+Found a bug? Have a suggestion? [Open an issue](../../issues/new/choose) and include:
 
 - Python and uv versions
 - Steps to reproduce

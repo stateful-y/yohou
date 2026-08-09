@@ -125,7 +125,7 @@ We welcome contributions, feedback, and questions:
 
 - **Report issues or request features**: [GitHub Issues](https://github.com/stateful-y/yohou/issues)
 - **Join the discussion**: [GitHub Discussions](https://github.com/stateful-y/yohou/discussions)
-- **Contributing Guide**: [CONTRIBUTING.md](https://github.com/stateful-y/yohou/blob/main/.github/CONTRIBUTING.md)
+- **Contributing Guide**: [CONTRIBUTING.md](https://github.com/stateful-y/yohou/blob/main/CONTRIBUTING.md)
 
 If you are interested in becoming a maintainer or taking a more active role, please reach out to the maintainers at <contact at stateful-y.io>.
 

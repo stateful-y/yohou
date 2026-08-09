@@ -262,23 +262,28 @@ That is the intended behaviour, not a defect: the point is that stale output bec
 
 Watch for it when staging: a plain `git add -A` immediately after the update will otherwise commit a whole built site.
 
-#### A relocated file arrives as a duplicate, not a move
+#### A relocated file destroys local content, silently
 
-`copier update` renders the file at its new path and leaves the old one on disk, so the project ends up with two. Delete the copy at the old path with `git rm`, and confirm it is gone before calling the update complete.
+When the template moves a file it ships, `copier update` writes it at the new path **and deletes the old one for you** — no conflict, no `.rej`, no prompt. Any local edits the old copy carried are gone from the working tree at that moment.
 
-For these files the duplicate is worse than redundant, because the consuming tool reads exactly one of the two and ignores the other silently:
+Measured on a real update: a project's two curated prose edits in `CONTRIBUTING.md` were destroyed by the move and had to be recovered with `git show HEAD:CONTRIBUTING.md`. Nothing in the update's output mentioned it.
+
+So the instruction is **not** "carry the content over before deleting" — there is no delete of yours to precede. It is:
+
+1. After the update, diff the new path against the old file's pre-update content: `git show HEAD:<old-path> | diff - <new-path>`.
+2. Re-apply anything local that the template's copy does not carry.
+3. Only then stage the move.
+
+Copier does not always delete, either — an earlier release left both copies in place. Verify which happened rather than assuming, and if the old copy survived, remove it: for these files the consuming tool reads exactly one of the two and ignores the other without a word.
 
 | Moved to | Read by | The ignored copy |
 |---|---|---|
 | `.github/CODEOWNERS` | GitHub code-owner review | a root `CODEOWNERS` is never consulted |
-| `.github/SECURITY.md` | the Security tab | a root `SECURITY.md` is never shown |
-| `.github/CODE_OF_CONDUCT.md` | the Code of Conduct link | a root copy is never linked |
-| `.github/CONTRIBUTING.md` | the issue/PR banner | a root copy is never shown |
 | `.github/renovate.json` | Renovate | only one config is loaded |
 
-All five are Tier 1 (template-managed) and identical across the fleet, so nothing local is lost by deleting the root copy. The danger is that everything looks right: the new file is present, the tool is configured, CI is green, and the copy the maintainer keeps editing is the one nothing reads.
+Both are Tier 1 (template-managed), but do not assume a project's copy matches the template's — verify before discarding anything. The danger is that everything looks right: the new file is present, the tool is configured, CI is green, and the copy the maintainer keeps editing is the one nothing reads.
 
-Do not trust `git status` to reveal the leftover. If an unresolved `.gitignore` conflict still lists a path, git omits the file from status entirely and copier exits 0 with no `.rej` — the delivery looks clean while the stale file sits there. Grep for the content instead.
+Do not trust `git status` to reveal a leftover. If an unresolved `.gitignore` conflict still lists a path, git omits the file from status entirely and copier exits 0 with no `.rej` — the delivery looks clean while the stale file sits there. Grep for the content instead.
 
 ### Conditional files changing state
 

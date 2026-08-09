@@ -366,7 +366,7 @@ exclude = ["CHANGELOG.md", ".artifacts", ".venv", "openspec"]
 # page that most needs one.
 "docs/pages/reference/changelog.md" = ["MD041"]
 "docs/index.md" = ["MD041", "MD057", "MD026"]  # Landing page starts with logo; links to generated API files; welcome H1 intentionally ends with "!"
-".github/CONTRIBUTING.md" = ["MD057"]  # Relative link up to docs/ is valid at project level
+"CONTRIBUTING.md" = ["MD057"]  # Relative link to docs/ is valid at project level
 
 
 [tool.commitizen]

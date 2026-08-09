@@ -35,8 +35,8 @@ Files where the template is the source of truth. Local edits are rare and should
 .readthedocs.yml
 .git-cliff.toml
 LICENSE
-.github/CODE_OF_CONDUCT.md
-.github/CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
 docs/assets/.gitkeep
 docs/assets/made_by_stateful-y.png   # the "made by stateful-y" mark is template branding
 docs/assets/README.md
@@ -48,6 +48,10 @@ docs_build/_markdown_export.py       # build step imported by build.py; same tie
 docs_build/_notebooks.py             # build step imported by build.py; examples-only
 docs_build/serve.py                  # live-preview supervisor; watches src/ and regenerates API pages
 docs_build/_see_also.py              # griffe extension; rewrites numpydoc See Also into cross-references
+tests/test_artifact_paths.py     # template-owned gate: asserts every throwaway path has one
+                                 # definition. THE EXCEPTION to `tests/**` (Tier 3) below --
+                                 # more specific wins. A project owning this file would keep a
+                                 # stale copy of a check the template maintains.
 docs_build/_references.py            # griffe extension; normalizes numpydoc References into a markdown ordered list
 docs_build/_source_links.py           # griffe extension; attaches View-on-GitHub URLs for the Source Code heading
 docs_build/_markers.py               # python-markdown extension; resolves the docs markers (API_TABLE, SUBPAGES, gallery, companion)
@@ -67,7 +71,7 @@ docs/stylesheets/theme.css
 .github/ISSUE_TEMPLATE/config.yml
 .github/ISSUE_TEMPLATE/feature_request.yml
 .github/PULL_REQUEST_TEMPLATE.md
-.github/SECURITY.md
+SECURITY.md
 .claude/skills/**                   # Skill files managed by template (the tracked copy)
 .github/skills/**                   # Byte-identical Copilot mirror; gitignored, so an
                                     # update never delivers it -- copier works through
