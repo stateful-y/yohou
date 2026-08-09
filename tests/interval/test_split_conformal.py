@@ -1723,3 +1723,57 @@ class TestBulkObserveReplay:
 
         predictions = forecaster.observe_predict_interval(y=later, forecasting_horizon=4, coverage_rates=[0.8])
         assert predictions.height > 0
+
+    def test_the_batched_path_also_leaves_the_block_observed(self):
+        """The third path, which the bulk-versus-rolling comparison does not reach.
+
+        `_observe_predict_batched_origins` captures its saved state inside `assemble`,
+        which runs as the `reduce_fn` after `_observe_predict_loop` has already rolled
+        through the origins, so what it restores is a post-observe state. That is why it
+        was never affected. Asserting it means the invariant covers all three paths
+        rather than the two a bulk-versus-rolling comparison happens to exercise.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25)
+
+        # The batched path is chosen when the stack is not batch invariant but the
+        # forecaster still exposes batched origins, so deny the bulk guard to reach it.
+        cls = type(forecaster.point_forecaster)
+        saved = cls._chains_are_batch_invariant
+        cls._chains_are_batch_invariant = lambda self: False
+        try:
+            fitted = forecaster.fit(y, forecasting_horizon=4)
+        finally:
+            cls._chains_are_batch_invariant = saved
+
+        assert fitted.replay_path_ == "batched"
+        observed = fitted.point_forecaster_.observed_time_
+        stamps = set(observed.values()) if isinstance(observed, dict) else {observed}
+        assert stamps == {y["time"].max()}, (
+            "the batched replay left the forecaster short of the calibration block, so it "
+            "has the defect the bulk path had"
+        )
+
+    def test_a_replay_that_rewinds_the_forecaster_fails_at_fit(self):
+        """The invariant check fires where the state breaks, not four layers later.
+
+        Before this check, a replay that rewound the forecaster surfaced as an
+        inconsistent-interval error from whichever transformer inverted first, describing
+        regular input data as irregular. Attributing that took a cloud step log and a
+        bisect across two submodule bumps.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25).fit(
+            y, forecasting_horizon=4
+        )
+
+        # Rewind the fitted point forecaster by the calibration block, which is exactly
+        # what restoring the pre-replay state used to do.
+        point = forecaster.point_forecaster_
+        rewound = y["time"].max() - timedelta(hours=25)
+        point.observed_time_ = (
+            dict.fromkeys(point.observed_time_, rewound) if isinstance(point.observed_time_, dict) else rewound
+        )
+
+        with pytest.raises(RuntimeError, match="fitted and not predictable"):
+            forecaster._check_replay_left_the_block_observed(y, "bulk")
