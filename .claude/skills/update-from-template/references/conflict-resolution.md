@@ -250,7 +250,35 @@ Files that exist in the new template version but not in the project (template ad
 Files that existed in the previous template version but are removed in the new version:
 - **Flag for user review** — do NOT auto-delete
 - Report: "Template removed `<file>`. Review whether to delete locally."
+- **Exception — a file the template MOVED:** see below.
 - **Exception — a dropped config another tool still reads:** delete it explicitly and confirm it is gone, do not just flag it. `copier update` does not reliably remove such a file, and the leftover keeps working. When `renovate.json` replaced `.github/dependabot.yml`, a surviving `dependabot.yml` runs Dependabot alongside Renovate and opens duplicate PRs. Run `git rm .github/dependabot.yml`; the update is not complete while it remains.
+
+
+#### Old build output stops being ignored
+
+The `.gitignore` entries for `site/`, `htmlcov/`, `coverage.xml`, `.coverage`, `.nox/`, `.pytest_cache/` and `.ruff_cache/` are replaced by a single `.artifacts/`. Anything a previous build already left at the project root therefore stops being ignored and appears as untracked the moment the update lands.
+
+That is the intended behaviour, not a defect: the point is that stale output becomes visible instead of sitting ignored forever. Delete it (`rm -rf site htmlcov coverage.xml .coverage .nox .pytest_cache .ruff_cache`) rather than re-adding ignore entries. New runs write under `.artifacts/`.
+
+Watch for it when staging: a plain `git add -A` immediately after the update will otherwise commit a whole built site.
+
+#### A relocated file arrives as a duplicate, not a move
+
+`copier update` renders the file at its new path and leaves the old one on disk, so the project ends up with two. Delete the copy at the old path with `git rm`, and confirm it is gone before calling the update complete.
+
+For these files the duplicate is worse than redundant, because the consuming tool reads exactly one of the two and ignores the other silently:
+
+| Moved to | Read by | The ignored copy |
+|---|---|---|
+| `.github/CODEOWNERS` | GitHub code-owner review | a root `CODEOWNERS` is never consulted |
+| `.github/SECURITY.md` | the Security tab | a root `SECURITY.md` is never shown |
+| `.github/CODE_OF_CONDUCT.md` | the Code of Conduct link | a root copy is never linked |
+| `.github/CONTRIBUTING.md` | the issue/PR banner | a root copy is never shown |
+| `.github/renovate.json` | Renovate | only one config is loaded |
+
+All five are Tier 1 (template-managed) and identical across the fleet, so nothing local is lost by deleting the root copy. The danger is that everything looks right: the new file is present, the tool is configured, CI is green, and the copy the maintainer keeps editing is the one nothing reads.
+
+Do not trust `git status` to reveal the leftover. If an unresolved `.gitignore` conflict still lists a path, git omits the file from status entirely and copier exits 0 with no `.rej` — the delivery looks clean while the stale file sits there. Grep for the content instead.
 
 ### Conditional files changing state
 

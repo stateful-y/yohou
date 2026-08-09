@@ -35,8 +35,8 @@ Files where the template is the source of truth. Local edits are rare and should
 .readthedocs.yml
 .git-cliff.toml
 LICENSE
-CODE_OF_CONDUCT.md
-CONTRIBUTING.md
+.github/CODE_OF_CONDUCT.md
+.github/CONTRIBUTING.md
 docs/assets/.gitkeep
 docs/assets/made_by_stateful-y.png   # the "made by stateful-y" mark is template branding
 docs/assets/README.md
@@ -55,19 +55,19 @@ docs_build/_glossary.py              # python-markdown extension; links glossary
 docs/pages/reference/changelog.md   # one-line include of the root CHANGELOG.md
 docs/javascripts/mathjax.js
 docs/javascripts/readthedocs.js
-docs_theme/templates/**                     # mkdocstrings template overrides; thin extends over the shipped _base/
-docs_theme/overrides/api-index.html
-docs_theme/overrides/api-page.html
-docs_theme/overrides/api-submodule.html
-docs_theme/overrides/main.html
+docs_build/templates/**                     # mkdocstrings template overrides; thin extends over the shipped _base/
+docs_build/overrides/api-index.html
+docs_build/overrides/api-page.html
+docs_build/overrides/api-submodule.html
+docs_build/overrides/main.html
 docs/stylesheets/gallery.css       # conditional: include_examples
 docs/stylesheets/theme.css
-renovate.json
+.github/renovate.json
 .github/ISSUE_TEMPLATE/bug_report.yml
 .github/ISSUE_TEMPLATE/config.yml
 .github/ISSUE_TEMPLATE/feature_request.yml
 .github/PULL_REQUEST_TEMPLATE.md
-SECURITY.md
+.github/SECURITY.md
 .claude/skills/**                   # Skill files managed by template (the tracked copy)
 .github/skills/**                   # Byte-identical Copilot mirror; gitignored, so an
                                     # update never delivers it -- copier works through
@@ -102,7 +102,7 @@ docs/pages/explanation/security.md
 .github/codeql/codeql-config.yml   # conditional: include_actions + public repo_visibility.
                                    # Scopes the CodeQL scan; a project may add its own
                                    # exclusions, so merge rather than overwrite.
-CODEOWNERS
+.github/CODEOWNERS
 ```
 
 ---

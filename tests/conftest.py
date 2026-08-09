@@ -16,9 +16,19 @@ from typing import Any
 import polars as pl
 import polars.selectors as cs
 import pytest
+from hypothesis import settings
+from hypothesis.database import DirectoryBasedExampleDatabase
 from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseActualTransformer
+
+# Hypothesis remembers failing examples so a rerun replays them first. That store
+# defaults to `.hypothesis/` at the repo root; this puts it under `.artifacts/` with
+# every other piece of throwaway output. Unlike the coverage and cache paths, this
+# one has no config-file key -- registering and loading a profile is the only way to
+# set it, so it lives here rather than in pyproject.toml.
+settings.register_profile("default", database=DirectoryBasedExampleDatabase(".artifacts/hypothesis"))
+settings.load_profile("default")
 
 
 def run_checks(
