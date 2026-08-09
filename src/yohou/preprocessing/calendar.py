@@ -214,6 +214,9 @@ class CalendarFeatureTransformer(BaseActualTransformer):
 
     """
 
+    # Batch invariant: a pure function of each row's timestamp, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _parameter_constraints: dict = {
         "features": [list, None],
         "time_zone": [str, None],
@@ -369,6 +372,9 @@ class HolidayFeatureTransformer(BaseActualTransformer):
     [0, 0, 1, 0, 0]
 
     """
+
+    # Batch invariant: a pure function of each row's timestamp, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _parameter_constraints: dict = {
         "holidays": "no_validation",
@@ -637,6 +643,9 @@ class DaylightSavingFeatureTransformer(BaseActualTransformer):
     [0, 0, 1, 1, 1]
 
     """
+
+    # Batch invariant: a pure function of each row's timestamp, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _parameter_constraints: dict = {
         "time_zone": [str],

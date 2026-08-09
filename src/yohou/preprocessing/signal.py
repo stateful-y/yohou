@@ -111,7 +111,11 @@ class NumericalFilter(BaseActualTransformer):
         "stopband_attenuation": [Interval(numbers.Real, 0.0, None, closed="neither"), None],
     }
 
-    _tags = {"stateful": True}
+    # Batch invariant through carried state rather than through a lookback window.
+    # `lfilter` is an IIR recursion no finite `observation_horizon` could cover, but
+    # `zi_` carries the filter delays across calls, and filtering a block in one pass
+    # is exactly filtering it row by row with the state handed forward.
+    _tags = {"stateful": True, "batch_invariant": True}
 
     def __init__(
         self,
@@ -342,7 +346,10 @@ class NumericalIntegrator(BaseActualTransformer):
         "method": [StrOptions({"cumulative_trapezoid", "cumulative_simpson"})],
     }
 
-    _tags = {"stateful": True, "invertible": True}
+    # Batch invariant through carried state. `_last_X_value_` bridges the interval
+    # between chunks with the trapezoid rule, so the accumulated integral does not
+    # depend on how the input was chunked. Verified by `check_batch_invariance`.
+    _tags = {"stateful": True, "invertible": True, "batch_invariant": True}
 
     def __init__(
         self,

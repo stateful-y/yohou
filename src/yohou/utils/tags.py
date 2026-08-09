@@ -110,6 +110,31 @@ class TransformerTags:
         are correct on jittered or gapped input; left ``False`` for
         order-dependent transformers (lag, difference, rolling, memory-based) that
         require a uniform grid.
+    batch_invariant : bool, default=False
+        Whether observing a block of rows in one ``observe_transform`` call yields the
+        same rows, up to floating point reassociation, as observing them one at a time
+        from the same starting state.
+
+        Two implementations satisfy this. Most are causal with a finite lookback: row
+        ``i`` reads only rows at or before ``i``, and ``observation_horizon`` covers the
+        depth reached (`LagTransformer`, `RollingStatisticsTransformer`,
+        `SeasonalDifferencing`). Others carry their own state instead, which substitutes
+        for a lookback window entirely: `NumericalFilter` hands its IIR filter delays
+        forward in ``zi_``, and no finite horizon could have covered that recursion.
+        Both earn the tag, because the tag is about the observable equivalence and not
+        about how it is achieved.
+
+        Callers use this to replace a rolling observe with a single bulk one. The
+        default is ``False`` so that an undeclared transformer keeps the rolling path:
+        a missing declaration costs a speedup, never a result. A transformer that
+        declares ``True`` must pass
+        [`check_batch_invariance`][yohou.testing.check_batch_invariance], which is
+        wired into the shared transformer checks.
+
+        Note that the rule for composites differs from ``observation_horizon``. Horizons
+        take the maximum across a union and the sum across a pipeline; batch invariance
+        is a conjunction in both cases, because one non-causal member is enough to make
+        the whole output depend on future rows.
 
     """
 
@@ -118,6 +143,7 @@ class TransformerTags:
     preserves_dtype: bool = False
     kind: Literal["actual", "forecast"] = "actual"
     accepts_irregular_grid: bool = False
+    batch_invariant: bool = False
 
 
 @dataclass

@@ -131,7 +131,8 @@ class OutlierThresholdHandler(BaseActualTransformer):
         "strategy": [StrOptions(_valid_strategies)],
     }
 
-    _tags = {"stateful": False, "invertible": False}
+    # Batch invariant: elementwise against fixed thresholds, so chunking cannot change a value.
+    _tags = {"stateful": False, "invertible": False, "batch_invariant": True}
 
     def __init__(
         self,
@@ -266,7 +267,8 @@ class OutlierPercentileHandler(BaseActualTransformer):
         "strategy": [StrOptions(_valid_strategies)],
     }
 
-    _tags = {"stateful": False, "invertible": False}
+    # Batch invariant: elementwise against fit-time percentiles, so chunking cannot change a value.
+    _tags = {"stateful": False, "invertible": False, "batch_invariant": True}
 
     def __init__(
         self,

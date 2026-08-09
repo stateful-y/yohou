@@ -1281,6 +1281,44 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         return y_pred
 
+    def _chains_are_batch_invariant(self) -> bool:
+        """Whether every fitted transformer may be observed in bulk rather than per row.
+
+        True only when both the target and actual chains report
+        ``batch_invariant``. A transformer that does not declare the tag is treated as
+        not invariant, so an unaudited stack keeps the rolling path: a missing
+        declaration costs a speedup and never a result.
+
+        Returns
+        -------
+        bool
+            ``True`` when a bulk observe over a block reproduces, within floating point
+            reassociation, what observing the block one row at a time would produce.
+
+        See Also
+        --------
+        `yohou.testing.check_batch_invariance` : Verifies a transformer's declaration.
+
+        """
+
+        def declared(transformer: Any) -> bool:
+            if transformer is None:
+                return True
+            tags = getattr(transformer, "__sklearn_tags__", None)
+            if tags is None:
+                return False
+            transformer_tags = tags().transformer_tags
+            return transformer_tags is not None and transformer_tags.batch_invariant
+
+        def every(slot: Any) -> bool:
+            if slot is None:
+                return True
+            if isinstance(slot, dict):
+                return all(declared(t) for t in slot.values())
+            return declared(slot)
+
+        return every(getattr(self, "target_transformer_", None)) and every(getattr(self, "actual_transformer_", None))
+
     def _observe_predict_loop(
         self,
         *,
@@ -1292,6 +1330,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         groups: list[str] | None,
         stride: int,
         observe_fn: Callable[..., Any] | None = None,
+        reduce_fn: Callable[[list[Any]], Any] | None = None,
         **predict_kwargs: Any,
     ) -> pl.DataFrame:
         """Shared observe-then-predict rolling loop.
@@ -1331,6 +1370,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Optional callback for meta-forecasters. When provided, called
             as ``observe_fn(y_slice, X_actual=X_obs_slice, X_future=...,
             X_forecast=...)`` instead of using pre-computed step columns.
+        reduce_fn : callable or None, default=None
+            How to combine the per-origin results of ``predict_fn``. ``None``
+            concatenates them, which is the ordinary rolling forecast. A caller
+            that wants to defer work out of the loop passes a ``predict_fn``
+            that records state rather than predicting, and a ``reduce_fn`` that
+            does the deferred work once over every origin.
         **predict_kwargs : dict
             Extra keyword arguments forwarded to ``predict_fn``
             (e.g. ``forecasting_horizon``, ``coverage_rates``).
@@ -1366,9 +1411,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 self.interval_,
             )
 
-        # Initial predict (reads _X_t_observed set during fit/last observe)
-        y_pred_i = predict_fn(groups=groups, **predict_kwargs)
-        y_pred = y_pred_i
+        # Initial predict (reads _X_t_observed set during fit/last observe).
+        # Accumulated into a list rather than concatenated per iteration: a running
+        # `pl.concat` reallocates the whole frame every origin, which is quadratic in
+        # the origin count for a result that is only needed once.
+        outputs: list[Any] = [predict_fn(groups=groups, **predict_kwargs)]
 
         for i in range(0, len(y), stride):
             y_slice = y[i : i + stride]
@@ -1396,10 +1443,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 # No step columns and no observe_fn: fall back to regular observe
                 self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups)
 
-            y_pred_i = predict_fn(groups=groups, **predict_kwargs)
-            y_pred = pl.concat([y_pred, y_pred_i])
+            outputs.append(predict_fn(groups=groups, **predict_kwargs))
 
-        return y_pred
+        return pl.concat(outputs) if reduce_fn is None else reduce_fn(outputs)
 
     def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Add time metadata columns to predictions.
@@ -1446,6 +1492,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     def _predict(
         self,
         groups: list[str],
+        y_pred_step: pl.DataFrame | None = None,
         **predict_one_params,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Generate one-step or multi-step prediction.
@@ -1457,8 +1504,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             - Pass an empty list to predict for non-panel (global) data.
             - If a list of str: predict only for the specified panel groups.
             Parameter is ignored if the forecaster was not fitted on panel data.
+        y_pred_step : pl.DataFrame or None, default=None
+            Predictions in transformed space, already carrying their time columns.
+            When given, ``_predict_one`` is skipped and these are inverse-transformed
+            and assembled instead. This lets a caller holding many origins lift the
+            estimator work out of its loop and run it once, then reuse this method for
+            the per-origin inverse rather than duplicating it.
         **predict_one_params : dict
-            Params to the _predict_one method.
+            Params to the _predict_one method. Ignored when ``y_pred_step`` is given.
 
         Returns
         -------
@@ -1468,7 +1521,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Inverse transformed predicted time series (original scale).
 
         """
-        y_pred_step = self._predict_one(groups=groups, **predict_one_params)
+        if y_pred_step is None:
+            y_pred_step = self._predict_one(groups=groups, **predict_one_params)
 
         if self.target_transformer is None:
             if not groups:

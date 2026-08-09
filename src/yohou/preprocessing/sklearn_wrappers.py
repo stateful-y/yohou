@@ -117,6 +117,9 @@ class StandardScaler(SklearnScaler):
 
     """
 
+    # Batch invariant: elementwise against fit-time statistics, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _estimator_default_class = sklearn_StandardScaler
 
     def __init__(self, with_mean=True, with_std=True, copy=True, **kwargs):
@@ -223,6 +226,9 @@ class MinMaxScaler(SklearnScaler):
     - [`MaxAbsScaler`][yohou.preprocessing.sklearn_wrappers.MaxAbsScaler] : Scale each feature by its maximum absolute value.
 
     """
+
+    # Batch invariant: elementwise against fit-time statistics, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_MinMaxScaler
 
@@ -336,6 +342,9 @@ class RobustScaler(SklearnScaler):
 
     """
 
+    # Batch invariant: elementwise against fit-time statistics, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _estimator_default_class = sklearn_RobustScaler
 
     def __init__(
@@ -428,6 +437,9 @@ class MaxAbsScaler(SklearnScaler):
 
     """
 
+    # Batch invariant: elementwise against fit-time statistics, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _estimator_default_class = sklearn_MaxAbsScaler
 
     def __init__(self, copy=True, clip=False, **kwargs):
@@ -501,6 +513,9 @@ class Normalizer(SklearnTransformer):
     - [`StandardScaler`][yohou.preprocessing.sklearn_wrappers.StandardScaler] : Standardize features by removing mean and scaling to unit variance.
 
     """
+
+    # Batch invariant: elementwise within each row, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_Normalizer
 
@@ -577,6 +592,9 @@ class PolynomialFeatures(SklearnTransformer):
     - [`SplineTransformer`][yohou.preprocessing.sklearn_wrappers.SplineTransformer] : Generate spline basis features.
 
     """
+
+    # Batch invariant: products of each row's own features, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_PolynomialFeatures
 
@@ -666,6 +684,9 @@ class PowerTransformer(SklearnTransformer):
     - [`QuantileTransformer`][yohou.preprocessing.sklearn_wrappers.QuantileTransformer] : Transform features using quantiles information.
 
     """
+
+    # Batch invariant: elementwise power against fit-time parameters, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_PowerTransformer
 
@@ -761,6 +782,9 @@ class QuantileTransformer(SklearnTransformer):
     - [`PowerTransformer`][yohou.preprocessing.sklearn_wrappers.PowerTransformer] : Apply a power transform to make data more Gaussian-like.
 
     """
+
+    # Batch invariant: elementwise against a fit-time quantile map, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_QuantileTransformer
 
@@ -883,6 +907,9 @@ class SplineTransformer(SklearnTransformer):
     - [`PolynomialFeatures`][yohou.preprocessing.sklearn_wrappers.PolynomialFeatures] : Generate polynomial and interaction features.
 
     """
+
+    # Batch invariant: a basis expansion of each row's own features, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _estimator_default_class = sklearn_SplineTransformer
 

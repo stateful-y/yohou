@@ -82,6 +82,9 @@ class FourierFeatureTransformer(BaseActualTransformer):
 
     """
 
+    # Batch invariant: a pure function of each row's timestamp, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _parameter_constraints: dict = {
         "seasonality": [Interval(numbers.Real, 0, None, closed="neither")],
         "harmonics": [list, None],
@@ -263,6 +266,9 @@ class TimeIndexTransformer(BaseActualTransformer):
     True
 
     """
+
+    # Batch invariant: a pure function of each row's timestamp, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
 
     _parameter_constraints: dict = {
         "normalize": ["boolean"],

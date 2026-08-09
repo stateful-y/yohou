@@ -142,7 +142,12 @@ class FunctionTransformer(BaseActualTransformer):
         "feature_names_out": [callable, StrOptions({"one-to-one"}), None],
     }
 
-    _tags = {"stateful": True}
+    # NOT batch invariant. `func` is caller supplied and receives the whole frame, so
+    # it may read rows ahead of the one it writes. The tag is a class level claim and
+    # this class cannot make it for every `func`, even though a row local `func`
+    # would satisfy it. Contrast `SlidingWindowFunctionTransformer`, which can make
+    # the claim because it hands `func` a trailing window rather than the frame.
+    _tags = {"stateful": True, "batch_invariant": False}
 
     def __init__(
         self,

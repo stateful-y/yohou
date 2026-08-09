@@ -159,7 +159,8 @@ class BoxCoxTransformer(BaseActualTransformer):
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
-    _tags = {"invertible": True}
+    # Batch invariant: elementwise power against a fit-time lambda, so chunking cannot change a value.
+    _tags = {"invertible": True, "batch_invariant": True}
 
     def __init__(self, lmbda: StrictFloat = 0.0, offset: StrictFloat = 0.0):
         self.lmbda = lmbda
@@ -311,6 +312,9 @@ class LogTransformer(BoxCoxTransformer):
 
     """
 
+    # Batch invariant: elementwise log, so chunking cannot change a value.
+    _tags = {"batch_invariant": True}
+
     _parameter_constraints: dict = {
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
@@ -404,7 +408,8 @@ class SeasonalDifferencing(BaseActualTransformer):
         "seasonality": [Interval(numbers.Integral, 1, None, closed="left")],
     }
 
-    _tags = {"stateful": True, "invertible": True}
+    # Causal: x[t] - x[t - seasonality], and `observation_horizon` is `seasonality`.
+    _tags = {"stateful": True, "invertible": True, "batch_invariant": True}
 
     def __init__(self, seasonality: StrictInt = 1):
         self.seasonality = seasonality
@@ -668,7 +673,8 @@ class SeasonalReturn(BaseActualTransformer):
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
-    _tags = {"stateful": True, "invertible": True}
+    # Causal: a ratio against x[t - seasonality], same depth as the difference.
+    _tags = {"stateful": True, "invertible": True, "batch_invariant": True}
 
     def __init__(self, seasonality: StrictInt = 1, offset: StrictFloat = 0.0):
         self.seasonality = seasonality
@@ -831,7 +837,9 @@ class AbsoluteSeasonalReturn(SeasonalDifferencing):
         "offset": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
-    _tags = {"stateful": True, "invertible": True}
+    # Causal, as for `SeasonalDifferencing` which it extends. Declared rather than
+    # inherited so the class states its own contract.
+    _tags = {"stateful": True, "invertible": True, "batch_invariant": True}
 
     def __init__(self, seasonality: StrictInt = 1, offset: StrictFloat = 0.0):
         self.seasonality = seasonality
@@ -924,7 +932,8 @@ class ASinhTransformer(BaseActualTransformer):
         "scale": [Interval(numbers.Real, 0, None, closed="neither")],
     }
 
-    _tags = {"invertible": True}
+    # Batch invariant: elementwise asinh against a fit-time median and MAD, so chunking cannot change a value.
+    _tags = {"invertible": True, "batch_invariant": True}
 
     def __init__(self, scale: StrictFloat = 1.4826):
         self.scale = scale

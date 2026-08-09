@@ -50,6 +50,7 @@ __all__ = [
     "check_transformers_unfitted_stateless",
     "check_observe_concatenates_memory",
     "check_observe_transform_equivalence",
+    "check_batch_invariance",
     "check_observe_transform_sequential_consistency",
     "check_transform_drops_warmup_rows",
 ]
@@ -459,6 +460,76 @@ def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame,
             rel_tol=1e-6,
             abs_tol=1e-8,
         )
+
+
+def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+    """Check that a transformer declaring ``batch_invariant`` earns the claim.
+
+    Observing a block of rows in one ``observe_transform`` call must yield the same
+    rows, within a relative tolerance, as observing them one at a time from the same
+    starting state. That is the property a caller relies on when it replaces a rolling
+    observe with a single bulk one.
+
+    A no-op for transformers that do not declare the tag: absence of the claim is not a
+    defect, it only forfeits the bulk path.
+
+    Parameters
+    ----------
+    transformer : BaseActualTransformer
+        Unfitted transformer.
+    X : pl.DataFrame
+        Training data, split into a fit portion and a replay portion.
+    y : pl.DataFrame, optional
+        Target data.
+
+    Raises
+    ------
+    AssertionError
+        If the per row and bulk outputs differ by more than floating point
+        reassociation.
+
+    Notes
+    -----
+    Compared on a relative tolerance rather than bit equality, and deliberately so.
+    Batching reassociates accumulators, so a rolling mean or standard deviation can
+    differ between the two paths by about one ULP. A bit equality assertion would reject
+    a correct transformer.
+
+    This is a finer granularity than
+    `check_observe_transform_sequential_consistency`, which compares two chunks against
+    their concatenation. Two chunks can agree while single rows do not, because a
+    transformer whose lookback exceeds its declared ``observation_horizon`` still sees
+    enough history in a large chunk and runs short on a single row.
+
+    """
+    tags = transformer.__sklearn_tags__()
+    if tags.transformer_tags is None or not tags.transformer_tags.batch_invariant:
+        return
+
+    if len(X) < 12:
+        return
+
+    fit_size = len(X) // 2
+    X_fit, block = X[:fit_size], X[fit_size:]
+
+    bulk_transformer = clone(transformer)
+    bulk_transformer.fit(X_fit, y)
+    bulk = bulk_transformer.observe_transform(block)
+
+    row_transformer = clone(transformer)
+    row_transformer.fit(X_fit, y)
+    per_row = pl.concat([row_transformer.observe_transform(block[i : i + 1]) for i in range(len(block))])
+
+    assert bulk.columns == per_row.columns, (
+        f"{type(transformer).__name__} declares batch_invariant but a bulk observe "
+        f"produced columns {bulk.columns} against {per_row.columns} per row"
+    )
+    assert_frame_equal(
+        bulk,
+        per_row,
+        rel_tol=1e-9,
+        abs_tol=1e-12,
+    )
 
 
 def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:

@@ -44,6 +44,18 @@ For step-by-step implementation guides, see [Create a Point Forecaster](../how-t
 
 Optional overrides: `_fit()` (default no-op), `_inverse_transform()` (required only for invertible transformers).
 
+Transformer tags:
+
+| Tag | Default | Meaning |
+|-----|---------|---------|
+| `stateful` | `False` | The transformer carries a buffer between calls, bounded by `observation_horizon`. |
+| `invertible` | `False` | `_inverse_transform()` is implemented. |
+| `preserves_dtype` | `False` | Output dtypes match the input's. |
+| `accepts_irregular_grid` | `False` | A non-uniform input time axis is tolerated. |
+| `batch_invariant` | `False` | Observing a block in one `observe_transform` call yields the same rows, within floating point reassociation, as observing them one at a time from the same starting state. |
+
+Composites aggregate `batch_invariant` by conjunction: [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/) and [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) each report it only when every child or step does. This differs from `observation_horizon`, which takes the maximum across a union and the sum across a pipeline. A transformer declaring `batch_invariant` must pass [`check_batch_invariance`](/pages/api/generated/yohou.testing.check_batch_invariance/). See [Extending Yohou](../explanation/extending-yohou.md).
+
 The two bases differ in the frame they accept, not in the methods you implement. Only [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) has the `observe`/`rewind` memory API, which carries a buffer between calls; a forecast transformer refits per vintage and keeps nothing across calls, so neither applies. Before subclassing [`BaseForecastTransformer`](/pages/api/generated/yohou.base.BaseForecastTransformer/), check whether the operation can be expressed per vintage, in which case wrapping an actual transformer in [`PerVintageActualTransformer`](/pages/api/generated/yohou.compose.PerVintageActualTransformer/) is the normal path; the wrapped transformer may be stateful, since each vintage is fitted on its own rows. Subclass only for genuinely cross-vintage work. See [Transformer Kinds](../explanation/transformer-kinds.md).
 
 ### Splitters
