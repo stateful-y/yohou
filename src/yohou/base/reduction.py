@@ -1431,9 +1431,9 @@ default="first_step"
 
         The rolling path observes one row at a time, and ``observe_transform``
         concatenates its buffer with the incoming rows, transforms the whole window,
-        then keeps only the new part. With an observation horizon of 168, observing one
-        row transforms 169 rows to keep one. Transforming the block once instead does
-        the same work for every origin at once.
+        then keeps only the new part, so observing a single row still transforms the
+        whole observation horizon behind it. Transforming the block once instead does
+        that work for every origin at once.
 
         Sound only when every transformer reports ``batch_invariant``; the caller checks
         that. The first origin is not produced here: it precedes any calibration observe
@@ -1585,9 +1585,8 @@ default="first_step"
         per origin, and the estimator issues H calls rather than H per origin.
 
         Not bit identical, and deliberately so. Batching a rolling accumulator
-        reassociates it: measured on the production stack, rolling mean and standard
-        deviation columns move by about one ULP, roughly 1e-16 relative, and nothing
-        else moves at all. Callers comparing the two paths must use a relative
+        reassociates it, so rolling statistic columns can move by about one ULP while
+        nothing else moves at all. Callers comparing the two paths must use a relative
         tolerance.
 
         Requires every transformer to report ``batch_invariant``; the caller checks that
@@ -1801,10 +1800,9 @@ default="first_step"
         is applied row-wise.
 
         The saving is entirely per-call overhead, since the number of rows predicted is
-        unchanged. Measured on a 10 group panel at a 48 step horizon with CatBoost, a
-        step estimator costs about 1.0 ms per call plus 0.9 us per row, so a 10 row call
-        is 99% fixed cost. Across a 337 origin replay that is 16,176 calls of 10 rows
-        against 48 calls of 3,370, measured at 15.9s against 0.19s.
+        unchanged. A tree estimator's cost at these widths is dominated by fixed per
+        call overhead rather than by the rows themselves, so folding many small calls
+        into one large one is close to free.
 
         Parameters
         ----------

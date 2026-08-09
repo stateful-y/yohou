@@ -200,16 +200,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # `_observe_predict_loop` derives step columns once over every observation time
         # and each origin selects its row; given neither, it falls through to `observe`,
         # which re-derives them one timestamp at a time.  Withholding them cost one
-        # `_derive_step_columns` call per calibration origin, measured at 0.154s each on
-        # a 10 group panel at a 48 step horizon, about a third of the replay.  The two
-        # branches resolve vintages as-of per observation time either way, so the
-        # predictions are identical rather than merely close.
+        # `_derive_step_columns` call per calibration origin where one call covers them
+        # all.  The two branches resolve vintages as-of per observation time either way,
+        # so the predictions are identical rather than merely close.
         # The point forecaster is frozen for the whole replay, so no origin depends on
         # having predicted at the one before it. Where the wrapped forecaster can say so,
-        # the origins are recorded first and predicted in one pass per horizon step:
-        # 337 x 48 estimator calls over 10 rows each become 48 calls over 3,370. That is
-        # the same rows through the same estimators, and it is bit-identical for tree
-        # models. Anything that cannot make the guarantee keeps the rolling path.
+        # the origins are recorded first and predicted in one pass per horizon step, so
+        # the estimator call count stops scaling with the origin count. That is the same
+        # rows through the same estimators, and it is bit-identical for tree models.
+        # Anything that cannot make the guarantee keeps the rolling path.
         point = self.point_forecaster_
         direct = getattr(point, "reduction_strategy", None) == "direct"
         bulk = getattr(point, "_observe_predict_bulk_origins", None)

@@ -1091,8 +1091,8 @@ class TestCalibrationReplayStepColumns:
         """Two fits differing only in ``calibration_size`` derive step columns equally often.
 
         Asserted on call count rather than wall clock, which would be flaky on shared
-        CI. Before the frames were forwarded the slope was exactly 1.0 derivations per
-        extra calibration origin, measured on the production stack.
+        CI. Before the frames were forwarded the count grew by exactly one derivation
+        per extra calibration origin.
         """
         y, _, X_forecast = replay_data
 
@@ -1172,9 +1172,8 @@ class TestCalibrationReplayStepColumns:
 
         A mutation confined to the final vintage row does NOT work here: that vintage
         serves at most the last origin, so the comparison passes whether or not the
-        code is correct. This exact false pass occurred while investigating the
-        change. The mutation must reach every origin's step features, so it perturbs a
-        whole value column.
+        code is correct. The mutation must reach every origin's step features, so it
+        perturbs a whole value column.
         """
         y, _, X_forecast = replay_data
         y_train, y_calib = y[:100], y[100:]
@@ -1289,7 +1288,7 @@ class TestBatchedOriginPrediction:
 
         Batching across origins reassociates nothing: a step's estimator is applied
         row-wise, so stacking rows from different origins into one call computes the
-        same numbers. Verified on the production shape too, frame against frame.
+        same numbers.
         """
         y = self._panel()
         y_train, y_calib = y[:100], y[100:]
@@ -1481,10 +1480,10 @@ class TestBulkObserveReplay:
     def test_bulk_replay_matches_rolling_within_tolerance(self):
         """Compared on a relative tolerance, not bit equality.
 
-        Batching a rolling accumulator reassociates it. Measured on a rolling mean and
-        standard deviation, bulk and per row results differ by about one ULP, roughly
-        1e-16 relative. On the production stack they happen to land exactly, but a
-        bit-equality assertion would be asserting a property of one dataset.
+        Batching a rolling accumulator reassociates it, so a rolling mean or standard
+        deviation can differ between the two paths by about one ULP. Some stacks land
+        exactly, but a bit-equality assertion would then be pinning a property of the
+        data rather than of the code.
         """
         y = self._panel()
         y_train, y_calib = y[:100], y[100:]

@@ -491,10 +491,9 @@ def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None 
     Notes
     -----
     Compared on a relative tolerance rather than bit equality, and deliberately so.
-    Batching reassociates accumulators: measured on a rolling mean and standard
-    deviation over a production-shaped frame, bulk and per row results differ by about
-    one ULP, roughly 1e-16 relative. A bit equality assertion would reject a correct
-    transformer.
+    Batching reassociates accumulators, so a rolling mean or standard deviation can
+    differ between the two paths by about one ULP. A bit equality assertion would reject
+    a correct transformer.
 
     This is a finer granularity than
     `check_observe_transform_sequential_consistency`, which compares two chunks against
