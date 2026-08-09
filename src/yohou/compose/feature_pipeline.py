@@ -528,6 +528,16 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
                     t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
                 )
 
+                # Causal only if every step is. Unlike ``observation_horizon``, which
+                # takes the max here, this is a conjunction: one non-causal step makes
+                # the whole output depend on future rows, so a bulk observe would not
+                # reproduce what the rolling path yields. Inside the ``if transformers:``
+                # guard so an empty composition keeps the base default rather than
+                # ``all([]) == True``.
+                tags.transformer_tags.batch_invariant = all(
+                    t.__sklearn_tags__().transformer_tags.batch_invariant for t in transformers
+                )
+
                 # min_value is the one of the first transformer
                 tags.input_tags.min_value = transformers[0].__sklearn_tags__().input_tags.min_value
 

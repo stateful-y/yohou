@@ -184,19 +184,71 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             X_forecast=X_forecast,
         )
 
-        # TODO: Reconsider
         # stride=1: each row of y_calib produces one prediction window of length
         # forecasting_horizon.  This yields calibration_size - step + 1 conformity
         # scores for each horizon step k, instead of the ~2-3 scores that result
         # from stride=forecasting_horizon.  More calibration scores per step gives
         # quantiles that are stable and well-separated.
-        y_pred_calib = self.point_forecaster_.observe_predict(
-            y=y_calib,
-            X_actual=X_actual_calib,
-            forecasting_horizon=None,
-            stride=1,
-            predict_transformed=False,
-        )
+        #
+        # The stride is not a cost knob, which is why there is no trade to make here.
+        # Each origin yields exactly one score per horizon step, so scores, origins and
+        # predictions are the same number: raising the stride buys speed only by
+        # discarding scores one for one.  With a weighted quantile over
+        # similarity-concentrated scores, that budget is already close to its floor.
+        #
+        # X_future and X_forecast are forwarded, not withheld.  Given either,
+        # `_observe_predict_loop` derives step columns once over every observation time
+        # and each origin selects its row; given neither, it falls through to `observe`,
+        # which re-derives them one timestamp at a time.  Withholding them cost one
+        # `_derive_step_columns` call per calibration origin, measured at 0.154s each on
+        # a 10 group panel at a 48 step horizon, about a third of the replay.  The two
+        # branches resolve vintages as-of per observation time either way, so the
+        # predictions are identical rather than merely close.
+        # The point forecaster is frozen for the whole replay, so no origin depends on
+        # having predicted at the one before it. Where the wrapped forecaster can say so,
+        # the origins are recorded first and predicted in one pass per horizon step:
+        # 337 x 48 estimator calls over 10 rows each become 48 calls over 3,370. That is
+        # the same rows through the same estimators, and it is bit-identical for tree
+        # models. Anything that cannot make the guarantee keeps the rolling path.
+        point = self.point_forecaster_
+        direct = getattr(point, "reduction_strategy", None) == "direct"
+        bulk = getattr(point, "_observe_predict_bulk_origins", None)
+        batched = getattr(point, "_observe_predict_batched_origins", None)
+
+        # Three paths, most to least aggressive. The bulk one additionally skips the
+        # rolling observe, which is sound only where every transformer declares
+        # `batch_invariant`; that path moves rolling-statistic columns by about one ULP,
+        # so it is taken only on a declared stack. Anything undeclared keeps a
+        # bit-identical path, which is what makes a missing declaration cost speed alone.
+        if direct and bulk is not None and point._chains_are_batch_invariant():
+            y_pred_calib = bulk(
+                y=y_calib,
+                X_actual=X_actual_calib,
+                groups=point.groups_ or [],
+                X_future=X_future,
+                X_forecast=X_forecast,
+                predict_transformed=False,
+            )
+        elif direct and batched is not None:
+            y_pred_calib = batched(
+                y=y_calib,
+                X_actual=X_actual_calib,
+                groups=point.groups_ or [],
+                stride=1,
+                X_future=X_future,
+                X_forecast=X_forecast,
+                predict_transformed=False,
+            )
+        else:
+            y_pred_calib = self.point_forecaster_.observe_predict(
+                y=y_calib,
+                X_actual=X_actual_calib,
+                forecasting_horizon=None,
+                stride=1,
+                predict_transformed=False,
+                X_future=X_future,
+                X_forecast=X_forecast,
+            )
 
         conformity_scorers = {}
         conformity_scores_list: list[pl.DataFrame] = []

@@ -193,6 +193,7 @@ from .splitter import (
     check_splitter_tags_static_after_fit,
 )
 from .transformer import (
+    check_batch_invariance,
     check_feature_names_out_match,
     check_fit_idempotent,
     check_fit_sets_attributes,
@@ -261,6 +262,7 @@ __all__ = [
     "check_transformers_unfitted_stateless",
     "check_observe_concatenates_memory",
     "check_observe_transform_equivalence",
+    "check_batch_invariance",
     "check_observe_transform_sequential_consistency",
     "check_clone_preserves_forecaster_params",
     "check_fit_predict_with_X_forecast",

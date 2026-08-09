@@ -143,11 +143,59 @@ Tags are organized into groups:
 - **ForecasterTags**: `forecaster_type`, `stateful`, `uses_reduction`,
   `supports_panel_data`, `supports_time_weight`, `requires_exogenous`,
   `tracks_observations`, and others.
-- **TransformerTags**: `stateful`, `invertible`, `preserves_dtype`.
+- **TransformerTags**: `stateful`, `invertible`, `preserves_dtype`,
+  `accepts_irregular_grid`, `batch_invariant`.
 - **ScorerTags**: `prediction_type`, `lower_is_better`, `requires_calibration`.
 - **SplitterTags**: `splitter_type`, `supports_panel_data`,
   `produces_non_overlapping_tests`.
 - **InputTags**: `requires_time_column`, `allow_nan`.
+
+### Declaring `batch_invariant`
+
+Some callers replay many origins over a frozen forecaster: the conformal calibration
+in [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
+is the main one. Observing one row at a time is wasteful there, because
+`observe_transform` concatenates its buffer with the new rows, transforms the whole
+window, and keeps only the new part. With an observation horizon of 168, observing one
+row transforms 169 rows to keep one.
+
+Where the transformer allows it, those callers transform the block once instead. The
+`batch_invariant` tag is how a transformer says it allows it:
+
+```python
+class MyLagTransformer(BaseActualTransformer):
+    _tags = {"stateful": True, "batch_invariant": True}
+```
+
+The claim is that observing a block in one call yields the same rows, within floating
+point reassociation, as observing them one at a time from the same starting state.
+
+Two implementations satisfy it. Most transformers are causal with a finite lookback:
+each output row reads only rows at or before it, and `observation_horizon` covers the
+depth reached. [`LagTransformer`](/pages/api/generated/yohou.preprocessing.LagTransformer/)
+and [`RollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.RollingStatisticsTransformer/)
+work this way. Others carry their own state instead, which replaces a lookback window
+entirely: [`NumericalFilter`](/pages/api/generated/yohou.preprocessing.NumericalFilter/)
+hands its IIR filter delays forward, and no finite horizon could have covered that
+recursion. Both earn the tag, because the tag is about the observable equivalence rather
+than how it is reached.
+
+Do not declare it when your transform reads rows ahead of the one it writes, or when a
+caller-supplied function might.
+[`SlidingWindowFunctionTransformer`](/pages/api/generated/yohou.preprocessing.SlidingWindowFunctionTransformer/)
+declares it despite taking a `func`, because it hands that function a trailing window;
+[`FunctionTransformer`](/pages/api/generated/yohou.preprocessing.FunctionTransformer/)
+does not, because it hands over the whole frame.
+
+**Leaving it off is safe.** The default is `False`, and a caller that cannot verify the
+claim keeps the per-row path, which is what it did before the tag existed. Omitting it
+costs a speedup and never a result, so if you are unsure about your transformer, leave
+it off. Declaring it wrongly is the dangerous direction, which is why anything declaring
+it must pass
+[`check_batch_invariance`](/pages/api/generated/yohou.testing.check_batch_invariance/).
+That check compares a bulk observe against a per-row one on a relative tolerance rather
+than bit equality: batching reassociates accumulators, and a rolling mean legitimately
+moves by about one ULP.
 
 ### Tag Resolution via MRO
 
