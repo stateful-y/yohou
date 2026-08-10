@@ -97,12 +97,18 @@ docs = [
     # package. `mkdocs`/`mkdocs-material` above are kept so CI can still run a
     # MkDocs build as a comparison during the engine transition.
     "zensical>=0.0.51",
-    # Floor matches Zensical's own requirement (pymdown-extensions>=10.21.3).
-    # Do NOT pin to >=11: the examples group's notebook runtime caps
-    # pymdown-extensions at <11, so a project with examples must resolve it in
-    # [10.21.3, 11). Zensical works with either major; forcing 11 makes the
-    # docs-plus-examples sync unsatisfiable.
-    "pymdown-extensions>=10.21.3",
+    # Floor is a security floor: 10.x carries a path traversal in the b64 extension
+    # (GHSA-9xwg-3r6f-jcx2, fixed in 11.0.0) and 11.0.0 carries a ReDoS in four inline
+    # processors (GHSA-gm37-52c6-37mw, fixed in 11.0.1). Zensical works with either
+    # major, so nothing here argues for staying on 10.
+    #
+    # This floor used to read >=10.21.3 with a comment forbidding >=11, because the
+    # examples group's notebook runtime capped it at <11 and a project with examples
+    # could not resolve otherwise. That is what let a known-vulnerable version sit in
+    # five repositories: the cap was real, the CVEs landed behind it, and nothing
+    # rechecked the cap afterwards. That runtime has since relaxed its cap, and the
+    # examples group floors at the first release that did -- the two must move together.
+    "pymdown-extensions>=11.0.1",
     # Also a direct import of docs_build/_api_pages.py, which reads mkdocstrings'
     # `preload_modules` out of mkdocs.yml so that list has one definition rather
     # than two. Same argument as griffe above: it arrives via mkdocs anyway, but
@@ -124,7 +130,11 @@ fix = [
   "prek>=0.4.10",
 ]
 examples = [
-    "marimo>=0.19.0",
+    # Floor is set by the docs group, not by anything marimo does. marimo caps
+    # pymdown-extensions, and every release before 0.23.16 capped it at <11 -- below
+    # the version that fixes two published advisories. Lowering this floor puts those
+    # CVEs back in the lockfile of every project that generates examples.
+    "marimo>=0.23.16",
     "catboost>=1.2",
     "statsmodels>=0.14",
 ]
@@ -168,6 +178,10 @@ line-length = 120
 target-version = "py311"
 src = ["src", "tests"]
 show-fixes = true
+# Every tool that writes throwaway output writes it under `.artifacts/` rather
+# than dropping a directory at the repo root. See the same key in the pytest and
+# coverage sections, `envdir` in the noxfile, and `site_dir` in mkdocs.yml.
+cache-dir = ".artifacts/ruff"
 exclude = ["src/yohou/_version.py", "examples/"]
 
 [tool.ruff.format]
@@ -258,6 +272,7 @@ omit-covered-files = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+cache_dir = ".artifacts/pytest"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -289,6 +304,10 @@ source = ["src/yohou"]
 
 [tool.coverage.run]
 source = ["yohou"]
+# `parallel = true` writes `<data_file>.<host>.<pid>.<random>` siblings, so this
+# keeps the whole family under `.artifacts/` rather than scattering `.coverage.*`
+# across the repo root.
+data_file = ".artifacts/.coverage"
 branch = true
 parallel = true
 sigterm = true
@@ -308,6 +327,15 @@ fail_under = 80
 include_namespace_packages = true
 
 [tool.coverage.html]
+directory = ".artifacts/htmlcov"
+
+[tool.coverage.xml]
+# The ONLY place the coverage XML path is written. `addopts` carries a bare
+# `--cov-report=xml`, which defers to this key; an explicit `--cov-report=xml:PATH`
+# on a command line would override it instead, which is how the CI upload path and
+# the produced filename silently drifted apart before. Nothing else names this file
+# except the Codecov upload step, and a test asserts the two agree.
+output = ".artifacts/coverage.xml"
 
 [tool.rumdl]
 flavor = "mkdocs"
@@ -324,7 +352,7 @@ disable = [
     "MD046",  # Code block style (indented blocks required inside MkDocs tabs)
     "MD051",  # Link fragments (cross-doc references resolved at MkDocs build time)
 ]
-exclude = ["CHANGELOG.md", "site", "htmlcov", ".nox", ".venv", "openspec"]
+exclude = ["CHANGELOG.md", ".artifacts", ".venv", "openspec"]
 
 [tool.rumdl.per-file-ignores]
 ".claude/skills/**" = ["MD007", "MD057"]  # Variable list indent; literal [text](url) syntax examples are not links

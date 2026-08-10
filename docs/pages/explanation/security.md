@@ -47,6 +47,14 @@ rewrite the repository.
 **A single merge gate.** No change lands on the main branch until the full test suite and
 the security checks above all pass, enforced as one required status check.
 
+**Untrusted input never becomes code.** Values an outsider controls -- a pull request
+title, an issue body, a fork's branch name -- reach a workflow's shell only as environment
+variables. Workflow expressions are substituted into a script *before* the shell parses
+it, so interpolating one directly turns a crafted pull request title into commands that
+run with the release job's privileges. Quoting does not help; passing the value through
+`env:` does, because the runner then hands it over as data. A test asserts no workflow
+interpolates such a value into a `run:` or `script:` body.
+
 **Scoped automation identity.** Release automation authenticates with a short-lived,
 narrowly-scoped GitHub App token rather than a broad personal access token, so there is no
 long-lived automation credential to leak.
@@ -62,5 +70,5 @@ The result is public, so the posture is verifiable rather than merely asserted.
 [security policy](https://github.com/stateful-y/yohou/security/policy)
 explains how to report it privately, before any public disclosure.
 
-**Reviewed changes.** Code ownership is declared in `CODEOWNERS`, so changes are reviewed
+**Reviewed changes.** Code ownership is declared in `.github/CODEOWNERS`, so changes are reviewed
 before they merge.
