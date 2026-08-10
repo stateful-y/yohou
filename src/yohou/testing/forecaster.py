@@ -1447,6 +1447,12 @@ def check_step_feature_alignment_filters(
     )
 
     def _fit_and_count(alignment: str) -> tuple[list[int], int]:
+        """Fit a direct-strategy clone under one alignment and measure what it built.
+
+        Returns the per-step input width of each fitted estimator together with the
+        number of step columns the fit derived, which is what the two alignments are
+        then compared on.
+        """
         clone_ = clone(forecaster)
         clone_.set_params(reduction_strategy="direct", step_feature_alignment=alignment)
         clone_.fit(

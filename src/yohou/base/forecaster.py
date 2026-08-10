@@ -1511,6 +1511,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         """
 
         def declared(transformer: Any) -> bool:
+            """Whether one transformer declares itself batch invariant.
+
+            A missing tag reads as not invariant, so an unaudited transformer keeps the
+            rolling path rather than silently claiming the guarantee.
+            """
             if transformer is None:
                 return True
             tags = getattr(transformer, "__sklearn_tags__", None)
@@ -1520,6 +1525,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             return transformer_tags is not None and transformer_tags.batch_invariant
 
         def every(slot: Any) -> bool:
+            """Whether a transformer slot declares batch invariance throughout.
+
+            A slot holds one transformer under standard data and a per-group dict under
+            panel data; the dict qualifies only when every group's transformer does.
+            """
             if slot is None:
                 return True
             if isinstance(slot, dict):
@@ -1531,7 +1541,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     def _observe_predict_loop(
         self,
         *,
-        predict_fn: Callable[..., pl.DataFrame],
+        predict_fn: Callable[..., Any],
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
         X_future: pl.DataFrame | None = None,
@@ -1539,7 +1549,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         groups: list[str] | None,
         stride: int,
         observe_fn: Callable[..., Any] | None = None,
-        reduce_fn: Callable[[list[Any]], Any] | None = None,
+        reduce_fn: Callable[[list[Any]], pl.DataFrame] | None = None,
         **predict_kwargs: Any,
     ) -> pl.DataFrame:
         """Shared observe-then-predict rolling loop.
@@ -1559,7 +1569,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ----------
         predict_fn : callable
             The predict method to call (e.g. ``self.predict``,
-            ``self.predict_interval``, ``self.predict_class_proba``).
+            ``self.predict_interval``, ``self.predict_class_proba``). It returns a
+            ``pl.DataFrame`` unless ``reduce_fn`` is given, in which case it may
+            return whatever per-origin value that reduction consumes.
         y : pl.DataFrame
             Historical target observations to incrementally observe.
         X_actual : pl.DataFrame or None

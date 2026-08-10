@@ -559,7 +559,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             X_t = self._X_t_observed.tail(1).select(~cs.by_name("time"))
             assert self.local_X_t_schema_ is not None
             X_tab = X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
-            y_raw = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
+            y_raw = estimator.predict(X_tab)
 
             result_cols: list[pl.Series] = []
             for coverage_rate in coverage_rates:

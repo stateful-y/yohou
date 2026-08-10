@@ -210,6 +210,11 @@ default="first_step"
     - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : Interval forecaster using reduction.
     """
 
+    # Declared, not assigned: each subclass fits its own shape (one estimator, a list of
+    # H, or a dict keyed by quantile), but the multi-origin paths below read it from the
+    # base. A bare annotation leaves `check_is_fitted` seeing an unfitted instance.
+    estimator_: Any
+
     _parameter_constraints: dict = {
         **BaseForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
@@ -1522,6 +1527,9 @@ default="first_step"
                 )
             else:
                 y_local, X_local = y, X_actual
+                # Only panel fits keep a per-group dict, and this branch is the non-panel one.
+                assert not isinstance(self.target_transformer_, dict)
+                assert not isinstance(self.actual_transformer_, dict)
                 target_transformer = self.target_transformer_
                 actual_transformer = self.actual_transformer_
 
@@ -1789,6 +1797,13 @@ default="first_step"
             }
 
         def assemble(collected: list[dict[str, Any]]) -> pl.DataFrame:
+            """Predict every origin in one batched estimator pass and inverse each.
+
+            The estimator call is what batching buys: one pass per horizon step over all
+            origins instead of one per origin. Everything after it stays per-origin,
+            because the inverse transform and the time columns both read state that
+            belongs to the origin the row came from.
+            """
             frames = self._estimator_predict_direct_multi(
                 typing_cast(list[BaseEstimator], self.estimator_),
                 groups,
@@ -1810,7 +1825,7 @@ default="first_step"
                 self._y_observed, self.observed_time_ = saved_y, saved_time
             return pl.concat(out)
 
-        states_or_frame = self._observe_predict_loop(
+        return self._observe_predict_loop(
             predict_fn=capture,
             y=y,
             X_actual=X_actual,
@@ -1820,7 +1835,6 @@ default="first_step"
             stride=stride,
             reduce_fn=assemble,
         )
-        return typing_cast(pl.DataFrame, states_or_frame)
 
     def _estimator_predict_direct_multi(
         self,
