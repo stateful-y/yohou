@@ -133,6 +133,40 @@ class TestDownsampler:
         assert X_daily["value_a"][0] >= X["value_a"].min()
         assert X_daily["value_a"][0] <= X["value_a"].max()
 
+    def test_downsample_aggregation_std(self) -> None:
+        """Test downsampling with std aggregation.
+
+        Unlike the other aggregations, ``std`` describes how much the series moved
+        *within* each bin rather than where it sat, which is the only way to keep a
+        sub-interval's shape once it has been reduced to a coarser grid.
+        """
+        times = [datetime(2020, 1, 1) + timedelta(hours=i) for i in range(4)]
+        X = pl.DataFrame({"time": times, "value_a": [1.0, 2.0, 3.0, 4.0]})
+
+        downsampler = Downsampler(interval="1d", aggregation="std")
+        downsampler.fit(X)
+        X_daily = downsampler.transform(X)
+
+        # Sample standard deviation of 1, 2, 3, 4 is sqrt(5/3).
+        assert X_daily.height == 1
+        assert X_daily["value_a"][0] == pytest.approx((5 / 3) ** 0.5)
+
+    def test_downsample_std_is_null_for_a_single_point_bin(self) -> None:
+        """A spread is undefined for one observation, so that bin yields null.
+
+        The frame still needs two time points overall, because ``fit`` infers the input
+        interval from them; it is the second *bin* that holds a lone observation.
+        """
+        times = [datetime(2020, 1, 1), datetime(2020, 1, 1, 1), datetime(2020, 1, 2)]
+        X = pl.DataFrame({"time": times, "value_a": [1.0, 2.0, 9.0]})
+
+        downsampler = Downsampler(interval="1d", aggregation="std")
+        downsampler.fit(X)
+        X_daily = downsampler.transform(X)
+
+        assert X_daily["value_a"][0] == pytest.approx(0.5**0.5)
+        assert X_daily["value_a"][1] is None
+
     def test_downsample_closed_label_options(self) -> None:
         """Test downsampling with different closed/label options."""
         X = create_hourly_data(length=24)

@@ -13,7 +13,6 @@ from yohou.base.utils import (
     _observe_transformers_one,
     _retained_forecast_vintages,
     _rewind_transformers_one,
-    _warn_forecast_coverage_at_fit,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval, get_group_df, inspect_panel
@@ -384,6 +383,12 @@ class BasePanelForecaster:
             X_forecast, forecasting_horizon, groups=self.groups_
         )
 
+        # Run the kind guard and initialise the slot attribute up front, so a
+        # misconfigured step_transformer is rejected on a fit carrying no
+        # X_future/X_forecast rather than surfacing only once one appears.
+        # Derivation refits it per group on the frame it builds.
+        self._fit_step_transformer(None, forecasting_horizon, groups=self.groups_)  # ty: ignore[unresolved-attribute]
+
         X_step = _derive_step_columns(
             X_future=X_future,
             X_forecast=X_forecast_t,
@@ -391,10 +396,13 @@ class BasePanelForecaster:
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
             warn_coverage=False,
+            warn_coverage_at_fit=True,
             existing_columns=existing_columns,
+            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[unresolved-attribute]
+                frame, forecasting_horizon, groups=self.groups_
+            ),
         )
         _warn_rank_deficient_step_columns(X_step, X_future, forecasting_horizon)
-        _warn_forecast_coverage_at_fit(X_step, X_forecast_t, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
             self._X_future_raw_ = X_future
@@ -421,6 +429,12 @@ class BasePanelForecaster:
                     )
                 local_step_schema[c] = X_step[c].dtype
             self._step_schema_per_group_ = local_step_schema
+            # The local half of the dual-naming contract. Panel-wide frames name a step
+            # column {group}__{col}_step_{h}; the per-group frames below, and the matrix
+            # stacked from them under panel_strategy="global", name the same column
+            # {col}_step_{h}. Consumers that test a tabular column for step-ness must be
+            # able to recognize either spelling, so record both.
+            self._step_column_local_names_ = set(local_step_schema)
 
             # Distribute step columns to per-group X_t dicts
             for group_name in self.groups_:
@@ -434,6 +448,7 @@ class BasePanelForecaster:
                     X_t[group_name] = X_step_local
         else:
             self._step_column_names_ = set()
+            self._step_column_local_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
             self._X_forecast_t_ = None
@@ -633,6 +648,7 @@ class BasePanelForecaster:
             pl.Series([obs_time]),
             self.fit_forecasting_horizon_,  # ty: ignore[unresolved-attribute]
             self.interval_,
+            step_transform=self._transform_X_step,  # ty: ignore[unresolved-attribute]
         )
         if X_step is not None and self._X_t_observed is not None:
             for group_name, df in self._X_t_observed.items():

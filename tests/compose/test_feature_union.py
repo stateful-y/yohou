@@ -16,6 +16,8 @@ from sklearn.utils.validation import check_is_fitted
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import SimpleTransformer, StatelessTransformer
 from yohou.compose import FeatureUnion
+from yohou.preprocessing import Downsampler
+from yohou.preprocessing.window import LagTransformer
 
 
 class TestFeatureUnionFitTransform:
@@ -571,3 +573,21 @@ class TestFeatureUnionDropPassthrough:
         union.fit(X)
         names = union.get_feature_names_out()
         assert names is not None or names is None
+
+
+class TestFeatureUnionIrregularGrid:
+    """accepts_irregular_grid aggregates as all(children)."""
+
+    def test_all_tolerant(self):
+        u = FeatureUnion([
+            ("d1", Downsampler(interval="1h", aggregation="mean")),
+            ("d2", Downsampler(interval="1h", aggregation="mean")),
+        ])
+        assert u.__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+
+    def test_one_strict_child(self):
+        u = FeatureUnion([
+            ("d", Downsampler(interval="1h", aggregation="mean")),
+            ("lag", LagTransformer(lag=[1])),
+        ])
+        assert u.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False

@@ -1,14 +1,15 @@
 # Forecaster Composition
 
-Yohou provides four classes that compose forecasters into larger forecasting
+Yohou provides five classes that compose forecasters into larger forecasting
 structures. Each component is itself a full forecaster with
 `fit`/`predict`/`observe`/`rewind` lifecycle, not a transformer or preprocessing
 step. They address situations where a single forecaster cannot handle the full
-problem: additive components in the data, target columns with different dynamics,
-features that must be forecast before the target, or panel groups with
-fundamentally different patterns.
+problem: additive components in the data (whether latent or known and separately
+observable), target columns with different dynamics, features that must be
+forecast before the target, or panel groups with fundamentally different
+patterns.
 
-All four classes support panel data, integrate with hyperparameter search and
+All five classes support panel data, integrate with hyperparameter search and
 cross-validation, and can be nested inside each other or wrapped by ensemble
 voters.
 
@@ -65,6 +66,116 @@ component in `pipeline.residuals_`, a dictionary mapping forecaster name to a
 Polars DataFrame. This is useful for inspecting whether a component successfully
 captured its intended pattern or whether signal remains for downstream
 components to model.
+
+## CombiningForecaster
+
+[`CombiningForecaster`](/pages/api/generated/yohou.compose.CombiningForecaster/) is the observed-term, parallel-fit dual of `DecompositionPipeline`. It emits the
+same additive sum, but the components are known, separately observable terms
+rather than latent residuals, and they are fitted independently rather than in
+sequence:
+
+$$\hat{y}_t = \hat{y}_{1,t} + \hat{y}_{2,t} + \cdots + \hat{y}_{k,t} + \hat{\varepsilon}_t$$
+
+Where `DecompositionPipeline` is handed only the aggregate and lets each component
+invent its term from the leftover, `CombiningForecaster` is told how to build each
+term's ground truth. The `terms` parameter takes a list of
+`(name, extractor, forecaster)` triples, and all forecasters must be point
+forecasters:
+
+```python
+import polars as pl
+from yohou.compose import CombiningForecaster
+from yohou.preprocessing import FunctionTransformer
+from yohou.stationarity import PolynomialTrendForecaster
+from yohou.point import SeasonalNaive
+
+# The extractor selects a known, separately observed component as the anchor term.
+anchor = FunctionTransformer(func=lambda df: df.select(pl.col("baseline").alias("baseline")))
+
+# total = baseline anchor + everything else. Each part gets a model suited to it:
+# a trend model for the smooth baseline, a seasonal model for the noisier remainder.
+forecaster = CombiningForecaster(
+    terms=[("baseline", anchor, PolynomialTrendForecaster(degree=1))],
+    residual_forecaster=SeasonalNaive(seasonality=7),
+)
+```
+
+This is the coarse split: a known component (the baseline) is forecast by its own
+model, and everything else falls into the residual. Splitting the remainder further
+later is additive, add more terms and the residual shrinks toward noise.
+
+### Sum or product: the `combine` group
+
+The combination is an abelian-group operation chosen by `combine`. The default
+`"sum"` reconstructs the additive identity above. `"product"` reconstructs the
+aggregate as the product of the term forecasts, with a multiplicative residual:
+
+$$\hat{y}_t = \hat{y}_{1,t} \times \hat{y}_{2,t} \times \cdots \times \hat{y}_{k,t} \times \hat{\varepsilon}_t, \qquad \varepsilon_t = y_t \big/ \textstyle\prod_i y_{i,t}$$
+
+Use `combine="product"` when the target factors into strictly positive multiplicative
+drivers (for example a demand as `base_level x weekday_factor x seasonal_factor`). The
+multiplicative group lives on the positive reals, so `CombiningForecaster` rejects a
+non-positive term or target at fit; model in log space (an additive `combine="sum"`
+of logs) when signs vary. Extract-side arithmetic pairs with the combiner:
+[`ArithmeticTransformer`](/pages/api/generated/yohou.preprocessing.ArithmeticTransformer/)
+with `op="sub"` builds an additive term, `op="div"` a multiplicative one.
+
+### Extractors build labels, not features
+
+Each term's `extractor` is a stateless `BaseActualTransformer` applied at fit time
+to the target `y` joined with `X_actual`. It manufactures the term's training
+target so the term forecaster has something to learn from. The extractor is the
+answer key used to train the term, and it is gone at exam time: it runs at `fit`,
+`observe`, and `rewind`, but never at `predict`, where each term forecaster
+predicts from its own features. An extractor reading the contemporaneous target
+to build a label (for example `total - baseline`) is therefore not
+leakage; the term forecaster's own feature discipline is a separate concern.
+
+### Granularity and broadcasting
+
+Term granularity is inferred from the extractor output. A single unprefixed series
+is a global term, and a `{group}__{column}` panel output is a per-group term. When
+the aggregate is a panel, a global term (such as a single driver shared across every group) is
+broadcast to every panel group, while a panel term aligns to its own group. A
+group present in the aggregate but missing from a panel term's forecast raises
+rather than being silently treated as zero.
+
+### Residual closure
+
+The optional `residual_forecaster` models `eps = y - sum_i y_i`, computed from the
+observed extracted terms. This one slot serves two roles: leave the last piece
+unextracted and the residual carries a whole component (an exact split); extract
+every real term and the residual mops up the small structural gap (an approximate
+split). With `residual_forecaster=None`, the prediction is the plain bottom-up
+sum. The additive identity holds in level space, so there is no pipeline-level
+`target_transformer`; per-term scaling lives inside each term forecaster.
+
+### Reaching a fitted term
+
+The name you give a term is its handle. After fitting, `named_forecasters_` maps each
+term name to its fitted forecaster:
+
+```python
+fitted.named_forecasters_["baseline"]   # the trend model
+fitted.extractors_["baseline"]          # the extractor that built its label
+```
+
+Prefer this over indexing `forecasters_` by position. Terms are summed, so their order
+in `terms` carries no meaning, and `forecasters_[0][1]` reads a different term as soon
+as anyone reorders them. The same accessor is available on every composer that takes
+named components: `named_forecasters_` on
+[`DecompositionPipeline`](/pages/api/generated/yohou.compose.DecompositionPipeline/),
+[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/) and the
+voting ensembles, `named_transformers_` on
+[`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/),
+`named_steps` on [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/),
+and `named_transformers` on
+[`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/).
+
+The trailing underscore is not decoration. It marks accessors that return fitted state,
+which requires a fit first. `FeaturePipeline` and `FeatureUnion` fit their components in
+place, so what they return is the object you constructed and the name carries no
+underscore.
 
 ## ColumnForecaster
 
@@ -240,6 +351,14 @@ decomposition: calling `observe()` then `predict()` produces the same result as
 re-fitting on the extended data, as long as the components remain stable. The
 `observe_predict()` method handles this residual decomposition internally,
 ensuring rolling evaluation produces correct multi-component predictions.
+
+**[`CombiningForecaster`](/pages/api/generated/yohou.compose.CombiningForecaster/)** re-extracts each term's target from the incoming
+window and forwards it to that term's forecaster independently, with no residual
+threading between terms. When a residual forecaster is present, the residual
+`eps = y - sum_i y_i` is recomputed from the freshly extracted terms and observed on
+its own. Because the terms are observed rather than latent, `observe()` then
+`predict()` matches a refit on the extended window without the ordering sensitivity
+the sequential decomposition carries.
 
 **[`ColumnForecaster`](/pages/api/generated/yohou.compose.ColumnForecaster/)** routes each target column to its assigned forecaster.
 All forecasters receive the full exogenous data, but each observes only its own

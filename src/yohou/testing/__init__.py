@@ -97,6 +97,7 @@ from .forecaster import (
     check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
+    check_step_feature_alignment_filters,
 )
 from .generators import (
     _yield_yohou_forecaster_checks as _yield_yohou_forecaster_checks,
@@ -112,6 +113,9 @@ from .generators import (
 )
 from .generators import (
     _yield_yohou_splitter_checks as _yield_yohou_splitter_checks,
+)
+from .generators import (
+    _yield_yohou_step_transformer_checks as _yield_yohou_step_transformer_checks,
 )
 from .generators import (
     _yield_yohou_transformer_checks as _yield_yohou_transformer_checks,
@@ -192,6 +196,7 @@ from .splitter import (
     check_splitter_tags_static_after_fit,
 )
 from .transformer import (
+    check_batch_invariance,
     check_feature_names_out_match,
     check_fit_idempotent,
     check_fit_sets_attributes,
@@ -260,6 +265,7 @@ __all__ = [
     "check_transformers_unfitted_stateless",
     "check_observe_concatenates_memory",
     "check_observe_transform_equivalence",
+    "check_batch_invariance",
     "check_observe_transform_sequential_consistency",
     "check_clone_preserves_forecaster_params",
     "check_fit_predict_with_X_forecast",
@@ -283,6 +289,7 @@ __all__ = [
     "check_prediction_types_property",
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
+    "check_step_feature_alignment_filters",
     "check_point_prediction_structure",
     "check_point_prediction_types",
     "check_coverage_rates_parameter",

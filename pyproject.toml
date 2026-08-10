@@ -355,7 +355,7 @@ disable = [
 exclude = ["CHANGELOG.md", ".artifacts", ".venv", "openspec"]
 
 [tool.rumdl.per-file-ignores]
-".claude/skills/**" = ["MD007"]  # Nested lists in skill files use variable indent
+".claude/skills/**" = ["MD007", "MD057"]  # Variable list indent; literal [text](url) syntax examples are not links
 "docs/pages/api/*.md" = ["MD001", "MD057"]  # mkdocstrings generates heading levels and files at build time
 ".github/PULL_REQUEST_TEMPLATE.md" = ["MD041"]  # PR template starts with checklist
 ".github/skills/**" = ["MD007"]  # Nested lists in skill files use variable indent

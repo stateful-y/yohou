@@ -7,6 +7,7 @@ import polars as pl
 import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import clone
+from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
     MetadataRouter,
     MethodMapping,
@@ -14,7 +15,7 @@ from sklearn.utils.metadata_routing import (
 )
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer, BaseForecastTransformer
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseStepTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
@@ -71,6 +72,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     ----------
     forecasters_ : list of (str, BasePointForecaster) tuples
         Fitted forecasters.
+
+    named_forecasters_ : Bunch
+        The same fitted forecasters keyed by component name.
 
     residuals_ : dict of str to pl.DataFrame
         Residuals after each component (only if store_residuals=True).
@@ -182,6 +186,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BasePointForecaster.__init__(
@@ -189,6 +194,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             target_as_feature=None,
             panel_strategy=panel_strategy,
         )
@@ -231,6 +237,20 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         """
         self._set_params("forecasters", **params)
         return self
+
+    @property
+    def named_forecasters_(self) -> Bunch:
+        """Access fitted component forecasters by name.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with component names as keys and fitted forecaster
+            objects as values.
+
+        """
+        check_is_fitted(self, ["forecasters_"])
+        return Bunch(**dict(self.forecasters_))
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -377,18 +397,15 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # _pre_fit already merged the pipeline-level step columns into X_t, so strip
         # them before forwarding to avoid a name collision when a component derives
         # the same step columns again from the (also-forwarded) X_forecast/X_future.
-        # _step_column_names_ tracks step columns by their derived name, which is
-        # unprefixed for global (non-group) features. Under panel data those columns
-        # are distributed per group and become ``group__<feat>_step_h`` in the
-        # panel-wide X_t, so match on the group-stripped suffix too; otherwise the
-        # global step columns survive and collide with each component's re-derived ones.
+        # Step columns are recorded under their derived name, which is unprefixed for
+        # global (non-group) features. Under panel data those columns are distributed
+        # per group and become ``group__<feat>_step_h`` in the panel-wide X_t, so the
+        # group-stripped suffix must match too; otherwise the global step columns
+        # survive and collide with each component's re-derived ones. _is_step_column
+        # owns that spelling knowledge for every caller.
         X_t_components = X_t
         if X_t is not None and self._step_column_names_:
-            drop_cols = [
-                c
-                for c in X_t.columns
-                if c in self._step_column_names_ or ("__" in c and c.split("__", 1)[1] in self._step_column_names_)
-            ]
+            drop_cols = [c for c in X_t.columns if self._is_step_column(c)]
             if drop_cols:
                 X_t_components = X_t.drop(drop_cols)
 
@@ -783,6 +800,29 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             return y_t_dict
         return y_t.tail(horizon) if horizon else y_t
 
+    def _record_observed_time(self, y: pl.DataFrame) -> None:
+        """Advance ``observed_time_`` to the last row this call observed.
+
+        The components carry the observation state this pipeline predicts from, so
+        nothing here reads ``observed_time_`` and it went unmaintained: ``fit`` set it
+        and ``observe`` left it behind. It is still part of the forecaster contract, and
+        a caller that asks a fitted pipeline how far it has observed deserves an answer
+        about the pipeline rather than about its last fit.
+
+        Panel mode keys it by group, as the base class does. Every group shares the one
+        ``"time"`` column of a wide panel frame, so they advance together.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            The validated, untransformed target this call observed. Untransformed
+            because a stateful target transformer can drop leading rows, which would
+            put a transformed frame's last timestamp behind the data actually seen.
+
+        """
+        last = y["time"][-1]
+        self.observed_time_ = dict.fromkeys(self.groups_, last) if self.groups_ is not None else last
+
     @staticmethod
     def _check_residual_alignment(name: str, aligned_height: int, expected_height: int) -> None:
         """Raise if the residual/prediction inner join dropped rows unexpectedly.
@@ -1034,6 +1074,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # it as a per-group dict, so store the dict form there. _X_observed is
         # not read by this forecaster, so it is intentionally not stored.
         self._y_observed = self._bounded_observed(y_t, y_t_dict)
+        self._record_observed_time(y)
 
         return self
 
@@ -1188,6 +1229,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # it as a per-group dict, so store the dict form there. _X_observed is
         # not read by this forecaster, so it is intentionally not stored.
         self._y_observed = self._bounded_observed(y_t, y_t_dict)
+        # Rewind resets the window rather than extending it, so this moves backwards
+        # as readily as forwards; either way it names the last row now observed.
+        self._record_observed_time(y)
 
         return self
 

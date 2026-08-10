@@ -878,3 +878,42 @@ class TestSimilarityNumericalStability:
             warnings.simplefilter("error", RuntimeWarning)
             w = sim.predict(y_pred.tail(1))
         assert np.all(np.isfinite(w))
+
+
+class TestCompositeNamedAccess:
+    """Sub-similarities are reachable by name, and names must be unique for that to work."""
+
+    @staticmethod
+    def _composite():
+        return CompositeSimilarity(
+            similarities=[("dist", DistanceSimilarity()), ("seasonal", SeasonalSimilarity(seasonality=[7.0]))]
+        )
+
+    def test_returns_the_fitted_sub_similarity_under_its_name(self, train_data):
+        y, y_pred = train_data
+        fitted = self._composite().fit(y, y_pred)
+        assert set(fitted.named_similarities_) == {"dist", "seasonal"}
+        assert isinstance(fitted.named_similarities_["dist"], DistanceSimilarity)
+
+    def test_requires_fit(self):
+        with pytest.raises(NotFittedError):
+            _ = self._composite().named_similarities_
+
+    def test_agrees_with_the_positional_list(self, train_data):
+        y, y_pred = train_data
+        fitted = self._composite().fit(y, y_pred)
+        for name, similarity in fitted.similarities_:
+            assert fitted.named_similarities_[name] is similarity
+
+    def test_repeated_names_are_rejected(self, train_data):
+        """A Bunch keyed by repeated names would drop one component silently."""
+        y, y_pred = train_data
+        duplicated = CompositeSimilarity(
+            similarities=[("dist", DistanceSimilarity()), ("dist", SeasonalSimilarity(seasonality=[7.0]))]
+        )
+        with pytest.raises(ValueError, match="not unique"):
+            duplicated.fit(y, y_pred)
+
+    def test_distinct_names_still_validate(self, train_data):
+        y, y_pred = train_data
+        assert self._composite().fit(y, y_pred) is not None

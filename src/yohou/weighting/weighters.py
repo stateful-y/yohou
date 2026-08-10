@@ -19,6 +19,7 @@ from typing import Any, Literal
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
+from sklearn.utils import Bunch
 
 from yohou.utils._compat import Interval, StrOptions, _BaseComposition
 
@@ -522,7 +523,9 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
     weighters : list of (str, BaseWeighter) tuples
         Named component weighters to combine, e.g.
         ``[("decay", ExponentialDecayWeighter(7)), ("seasonal", SeasonalEmphasisWeighter(7))]``.
-        Must be non-empty.
+        Must be non-empty and names must be unique. Reachable by name through
+        ``named_weighters``, which has no trailing underscore because the sub-weighters are
+        used in place rather than cloned.
     combination : {"multiply", "mean"}, default="multiply"
         How to combine the component weight series.
 
@@ -604,30 +607,54 @@ class CompositeWeighter(BaseWeighter, _BaseComposition):
         self._set_params("weighters", **params)
         return self
 
-    def _check_weighters(self) -> None:
-        """Validate the composition parameters (not the sklearn ``_validate_params``)."""
+    @property
+    def named_weighters(self) -> Bunch:
+        """Access sub-weighters by name.
+
+        No trailing underscore: `CompositeWeighter` uses its sub-weighters in place rather
+        than cloning them, so the object returned here is the same one passed to the
+        constructor and this is a view over parameters, not fitted state. Compare
+        `FeatureUnion.named_transformers`.
+
+        Returns
+        -------
+        Bunch
+            Dictionary-like object with sub-weighter names as keys.
+
+        """
+        return Bunch(**dict(self._check_weighters()))
+
+    def _check_weighters(self) -> list[tuple[str, BaseWeighter]]:
+        """Validate the composition parameters and return the validated weighters.
+
+        Not the sklearn ``_validate_params``.
+        """
         if not self.weighters:
             raise ValueError("CompositeWeighter requires at least one weighter")
         for item in self.weighters:
             if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
                 raise ValueError(f"Each entry in `weighters` must be a (name, weighter) tuple, got {item!r}")
+        # Same gate the six other named composers use, so a Bunch keyed by these names
+        # cannot silently drop a component.
+        self._validate_names([name for name, _ in self.weighters])
         if self.weights is not None and len(self.weights) != len(self.weighters):
             raise ValueError(
                 f"weights length ({len(self.weights)}) must match weighters length ({len(self.weighters)})"
             )
+        return self.weighters
 
-    def _resolved_weights(self) -> list[float]:
+    def _resolved_weights(self, n_weighters: int) -> list[float]:
         """Return per-component weights, defaulting to 1.0 each."""
         if self.weights is not None:
             return self.weights
-        return [1.0] * len(self.weighters)  # ty: ignore[invalid-argument-type]
+        return [1.0] * n_weighters
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Combine all component weights for ``key`` by product or mean."""
         self._validate_params()
-        self._check_weighters()
-        alphas = self._resolved_weights()
-        series = [weighter.compute_weights(key, group_name) for _name, weighter in self.weighters]  # ty: ignore[not-iterable]
+        weighters = self._check_weighters()
+        alphas = self._resolved_weights(len(weighters))
+        series = [weighter.compute_weights(key, group_name) for _name, weighter in weighters]
 
         if self.combination == "multiply":
             result = pl.Series(np.ones(len(key)), dtype=pl.Float64)

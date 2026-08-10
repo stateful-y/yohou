@@ -39,6 +39,7 @@ __all__ = [
     "check_prediction_types_property",
     "check_rewind_propagates_to_transformers",
     "check_rewind_replaces_observations",
+    "check_step_feature_alignment_filters",
 ]
 
 
@@ -861,6 +862,17 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
                 f"doesn't match uses_forecast_transformer tag ({uses_forecast_transformer})"
             )
 
+    # Check uses_step_transformer matches parameter
+    if hasattr(forecaster, "step_transformer"):  # pragma: no branch - every forecaster declares the slot
+        has_step_transformer = forecaster.step_transformer is not None
+        uses_step_transformer = tags.forecaster_tags.uses_step_transformer
+
+        if has_step_transformer != uses_step_transformer:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} step_transformer parameter ({has_step_transformer}) "
+                f"doesn't match uses_step_transformer tag ({uses_step_transformer})"
+            )
+
 
 def check_forecaster_methods_call_check_is_fitted(
     forecaster,
@@ -1296,6 +1308,182 @@ def check_forecast_transformer_slot(
     )
     assert forecaster_clone.forecast_transformer_ is not None, (
         "forecast_transformer_ should not be None when the slot is set and X_forecast is provided"
+    )
+
+
+def check_step_transformer_slot(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    X_future: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check the ``step_transformer`` slot fits, reduces, and reports its usage tag.
+
+    Sets a `StepAggregator` on a slot-bearing forecaster, fits with ``X_future``,
+    and asserts the fitted attribute, the tag, and that the tracked step columns
+    are the reduced ones rather than the raw ``_step_h`` block. That last
+    assertion is what proves the slot is actually applied rather than merely
+    accepted: an inert slot would leave the raw block in place.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance exposing ``step_transformer``.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    X_future : pl.DataFrame
+        Known-future features with a ``"time"`` column.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    from yohou.preprocessing import StepAggregator  # noqa: PLC0415
+
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.set_params(step_transformer=StepAggregator(aggregations=("mean",)))
+
+    assert forecaster_clone.__sklearn_tags__().forecaster_tags.uses_step_transformer, (
+        "uses_step_transformer tag must be True when a step_transformer is set"
+    )
+
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+    )
+
+    assert hasattr(forecaster_clone, "step_transformer_"), (
+        "fit() with X_future must set step_transformer_ when step_transformer provided"
+    )
+    assert forecaster_clone.step_transformer_ is not None, (
+        "step_transformer_ should not be None when the slot is set and X_future is provided"
+    )
+
+    tracked = forecaster_clone._step_column_names_
+    assert tracked, "_step_column_names_ must be non-empty after fit with X_future"
+    assert all(name.endswith("_step_mean") for name in tracked), (
+        f"_step_column_names_ must hold the reduced columns, got {sorted(tracked)}; "
+        f"a raw _step_h block here means the slot was accepted but never applied"
+    )
+
+
+def _collect_n_features(fitted) -> list[int]:
+    """Collect ``n_features_in_`` from a fitted estimator container, in order.
+
+    Reduction forecasters hold their fitted estimators differently per prediction
+    type: one estimator, a list of them for the per-step strategies, or a nested
+    container keyed by bound and coverage rate. Walking the structure keeps the
+    alignment check indifferent to which one it was handed.
+    """
+    found: list[int] = []
+    if hasattr(fitted, "n_features_in_"):
+        found.append(int(fitted.n_features_in_))
+        return found
+    if isinstance(fitted, dict):
+        for value in fitted.values():
+            found.extend(_collect_n_features(value))
+        return found
+    if isinstance(fitted, list | tuple):
+        for value in fitted:
+            found.extend(_collect_n_features(value))
+    return found
+
+
+def check_step_feature_alignment_filters(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check ``step_feature_alignment="matched"`` actually narrows the feature set.
+
+    The failure this exists to catch is silent. ``_filter_step_features`` can only
+    drop the step columns it recognizes, and a name mismatch between the recorded
+    step column names and the tabularized ones makes it recognize none, so it
+    filters nothing and every per-step estimator trains on every step's columns
+    while the configuration says otherwise. Nothing raises, the fit succeeds, and
+    the forecaster reports the alignment it was asked for. Only the fitted feature
+    counts show the difference, so this check compares them directly: ``matched``
+    must leave each per-step estimator with strictly fewer features than ``all``.
+
+    Applies to the ``"direct"`` strategy only, which is the one that filters. The
+    check fits the forecaster twice, so it needs a forecaster exposing
+    ``reduction_strategy`` and ``step_feature_alignment``, and step columns to
+    filter (pass ``X_future`` or ``X_forecast``).
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted reduction forecaster exposing ``reduction_strategy`` and
+        ``step_feature_alignment``.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None, default=None
+        Training features.
+    X_future : pl.DataFrame or None, default=None
+        Known future features. Provide this or ``X_forecast``.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts. Provide this or ``X_future``.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast. Must exceed 1 for the comparison to
+        have any step columns to drop.
+
+    """
+    params = forecaster.get_params()
+    assert "step_feature_alignment" in params, (
+        "check_step_feature_alignment_filters needs a forecaster exposing step_feature_alignment"
+    )
+    assert X_future is not None or X_forecast is not None, (
+        "check_step_feature_alignment_filters needs X_future or X_forecast to derive step columns"
+    )
+    assert forecasting_horizon > 1, (
+        f"forecasting_horizon must exceed 1 to compare alignments, got {forecasting_horizon}"
+    )
+
+    def _fit_and_count(alignment: str) -> tuple[list[int], int]:
+        """Fit a direct-strategy clone under one alignment and measure what it built.
+
+        Returns the per-step input width of each fitted estimator together with the
+        number of step columns the fit derived, which is what the two alignments are
+        then compared on.
+        """
+        clone_ = clone(forecaster)
+        clone_.set_params(reduction_strategy="direct", step_feature_alignment=alignment)
+        clone_.fit(
+            y_train,
+            X_actual_train,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+        )
+        return _collect_n_features(clone_.estimator_), len(clone_._step_column_names_)
+
+    counts_all, n_step_cols = _fit_and_count("all")
+    counts_matched, _ = _fit_and_count("matched")
+
+    # Guard the comparison itself: with no step columns derived, both fits would
+    # agree trivially and the check would pass while testing nothing.
+    assert n_step_cols > 0, (
+        "fit derived no step columns, so this check cannot tell filtering from its absence; "
+        "pass an X_future or X_forecast that covers the horizon"
+    )
+    assert counts_all and len(counts_all) == len(counts_matched), (
+        f"expected the same fitted estimator layout under both alignments, got "
+        f"{len(counts_all)} feature counts for 'all' and {len(counts_matched)} for 'matched'"
+    )
+    offenders = [(i, a, m) for i, (a, m) in enumerate(zip(counts_all, counts_matched, strict=True)) if m >= a]
+    assert not offenders, (
+        f"step_feature_alignment='matched' did not narrow the feature set: estimator(s) "
+        f"{[i for i, _, m in offenders]} saw {[m for _, _, m in offenders]} features against "
+        f"{[a for _, a, _ in offenders]} under 'all', with {n_step_cols} step column(s) derived. "
+        f"The filter recognized no step column to drop, which is the silent no-op this check exists "
+        f"to catch, not a legitimate configuration."
     )
 
 

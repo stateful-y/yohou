@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numbers
-from typing import Literal
+from typing import Any, Literal
 
 import polars as pl
 from pydantic import StrictInt
@@ -258,6 +258,9 @@ class ForecastedFeatureForecaster(BaseForecaster):
         tags.forecaster_tags.uses_forecast_transformer = getattr(
             target_tags.forecaster_tags, "uses_forecast_transformer", False
         ) or getattr(feature_tags.forecaster_tags, "uses_forecast_transformer", False)
+        tags.forecaster_tags.uses_step_transformer = getattr(
+            target_tags.forecaster_tags, "uses_step_transformer", False
+        ) or getattr(feature_tags.forecaster_tags, "uses_step_transformer", False)
 
         # Aggregate other tags
         # Note: uses_reduction is False since this meta-forecaster doesn't have an `estimator`
@@ -977,7 +980,10 @@ class ForecastedFeatureForecaster(BaseForecaster):
         # path, so it must apply the same params (parity with feature_stride == 1).
         routed = process_routing(self, routing_method, **routing_params)
         feature_predict_params = routed.feature_forecaster.predict
-        predict_kwargs = {"forecasting_horizon": fh, **routing_params, **predict_kwargs}
+        # Annotated: without it the value type narrows to the union of what happens to be
+        # merged in, and the splat below is then checked against every named parameter of
+        # the loop rather than against its `**predict_kwargs`.
+        predict_kwargs: dict[str, Any] = {"forecasting_horizon": fh, **routing_params, **predict_kwargs}
 
         if self.feature_stride > 1 and getattr(self, "_target_requires_exogenous_", True):
             return self._feature_stride_serve_loop(

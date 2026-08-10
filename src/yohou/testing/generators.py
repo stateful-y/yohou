@@ -53,6 +53,8 @@ from .forecaster import (
     check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
+    check_step_feature_alignment_filters,
+    check_step_transformer_slot,
 )
 from .interval import (
     check_coverage_rates_parameter,
@@ -116,7 +118,17 @@ from .splitter import (
     check_splitter_tags_match_capabilities,
     check_splitter_tags_static_after_fit,
 )
+from .step_transformer import (
+    check_horizon_agnostic_output_naming,
+    check_memory_api_refused,
+    check_min_steps_contract,
+    check_missing_time_index_raises,
+    check_step_kind_tag,
+    check_time_preserved,
+    check_transform_is_stateless,
+)
 from .transformer import (
+    check_batch_invariance,
     check_feature_names_out_match,
     check_fit_idempotent,
     check_fit_sets_attributes,
@@ -325,6 +337,15 @@ def _yield_yohou_transformer_checks(
         yield (
             "check_observe_transform_sequential_consistency",
             check_observe_transform_sequential_consistency,
+            {"X": X_train, "y": y_train},
+        )
+        # Yielded unconditionally rather than under a `batch_invariant` gate: the check
+        # is a no-op for a transformer that does not declare the tag, and the tag is
+        # what the conformal bulk replay reads to skip the rolling observe entirely.
+        # An unverified declaration there is a wrong number, not a lost speedup.
+        yield (
+            "check_batch_invariance",
+            check_batch_invariance,
             {"X": X_train, "y": y_train},
         )
 
@@ -724,6 +745,37 @@ def _yield_yohou_forecaster_checks(
                         "y_train": y_train,
                         "X_actual_train": X_actual_train,
                         "X_forecast": X_forecast_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
+            # Same reasoning for the step_transformer slot: exercise it for every
+            # family that exposes it rather than in ad-hoc single-class tests.
+            if "step_transformer" in forecaster.get_params():
+                yield (
+                    "check_step_transformer_slot",
+                    check_step_transformer_slot,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_future": X_future_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
+            # The filtering this verifies fails silently: a name mismatch makes
+            # `_filter_step_features` recognize nothing, so every per-step estimator
+            # trains on every step's columns while the configuration still reads
+            # "matched". Only the fitted feature counts differ, so it has to be checked
+            # wherever the parameter is exposed rather than on one class.
+            if "step_feature_alignment" in forecaster.get_params():
+                yield (
+                    "check_step_feature_alignment_filters",
+                    check_step_feature_alignment_filters,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_future": X_future_train,
                         "forecasting_horizon": 3,
                     },
                 )
@@ -1343,6 +1395,42 @@ def _yield_yohou_search_checks(
                     "X_forecast": X_forecast_test,
                 },
             )
+
+
+def _yield_yohou_step_transformer_checks(
+    step_transformer,
+    X_step: pl.DataFrame,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a step-kind transformer.
+
+    Yields the step-transformer family behavioral checks plus the shared sklearn
+    estimator-contract checks. Every check takes an unfitted transformer and a
+    sample step frame, and clones as needed.
+
+    Parameters
+    ----------
+    step_transformer : BaseStepTransformer
+        Step transformer instance (fitted or unfitted; checks clone as needed).
+    X_step : pl.DataFrame
+        A step frame: a ``"time"`` column plus one or more ``{base}_step_{h}``
+        blocks. At least two steps per block, so the per-step behaviour of a
+        wrapped estimator is observable.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    yield "check_step_kind_tag", check_step_kind_tag, {"X": X_step}
+    yield "check_time_preserved", check_time_preserved, {"X": X_step}
+    yield "check_missing_time_index_raises", check_missing_time_index_raises, {"X": X_step}
+    yield "check_transform_is_stateless", check_transform_is_stateless, {"X": X_step}
+    yield "check_memory_api_refused", check_memory_api_refused, {"X": X_step}
+    yield "check_min_steps_contract", check_min_steps_contract, {"X": X_step}
+    yield "check_horizon_agnostic_output_naming", check_horizon_agnostic_output_naming, {"X": X_step}
+
+    yield from _yield_estimator_contract_checks(step_transformer)
 
 
 def _yield_yohou_weighter_checks(

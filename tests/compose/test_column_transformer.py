@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from conftest import SimpleTransformer, StatelessTransformer, run_checks
 from yohou.compose import ColumnTransformer
+from yohou.preprocessing import Downsampler
 from yohou.preprocessing.window import LagTransformer
 from yohou.testing import _yield_yohou_transformer_checks
 
@@ -601,6 +602,34 @@ class TestColumnTransformerTagsAggregation:
         )
         tags = ct.__sklearn_tags__()
         assert tags.transformer_tags.invertible is False
+
+    def test_accepts_irregular_grid_all_tolerant(self):
+        """accepts_irregular_grid is True when every child tolerates an irregular grid."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("d1", Downsampler(interval="1h", aggregation="mean"), ["a"]),
+                ("d2", Downsampler(interval="1h", aggregation="mean"), ["b"]),
+            ],
+        )
+        assert ct.__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+
+    def test_accepts_irregular_grid_one_strict_child(self):
+        """One interval-dependent child makes the whole composition strict."""
+        ct = ColumnTransformer(
+            transformers=[
+                ("tolerant", Downsampler(interval="1h", aggregation="mean"), ["a"]),
+                ("strict", LagTransformer(lag=[1]), ["b"]),
+            ],
+        )
+        assert ct.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+    def test_accepts_irregular_grid_empty_keeps_base_default(self):
+        """A passthrough/drop-only composition keeps the base default, not all([]) == True."""
+        ct = ColumnTransformer(
+            transformers=[("keep", "passthrough", ["a"])],
+            remainder="drop",
+        )
+        assert ct.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
 
     def test_remainder_estimator_included_in_tags(self):
         """Remainder estimator contributes to tag aggregation."""

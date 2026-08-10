@@ -411,6 +411,23 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
                     len(transformers) == 1 and transformers[0].__sklearn_tags__().transformer_tags.invertible
                 )
 
+                # Tolerates an irregular time grid only if every child does. Inside the
+                # ``if transformers:`` guard so an empty union keeps the base default rather
+                # than ``all([]) == True``.
+                tags.transformer_tags.accepts_irregular_grid = all(
+                    t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
+                )
+
+                # Causal only if every child is. Unlike ``observation_horizon``, which
+                # takes the max here, this is a conjunction: one non-causal child makes
+                # the whole output depend on future rows, so a bulk observe would not
+                # reproduce what the rolling path yields. Inside the ``if transformers:``
+                # guard so an empty composition keeps the base default rather than
+                # ``all([]) == True``.
+                tags.transformer_tags.batch_invariant = all(
+                    t.__sklearn_tags__().transformer_tags.batch_invariant for t in transformers
+                )
+
                 # Aggregate min_value: take the maximum (most restrictive)
                 # All transformers receive the same input, so we need to satisfy all constraints
                 min_values = [t.__sklearn_tags__().input_tags.min_value for t in transformers]

@@ -15,7 +15,7 @@ Pages that draw on external academic literature or published standards close wit
 - [Panel Data](panel-data.md): The `{entity}__{variable}` naming convention, the three panel strategies, and panel-aware behavior in forecasters and scorers.
 - [Exogenous Features](exogenous-features.md): The three exogenous types (X_actual, X_future, X_forecast), step-indexed columns, and vintage alignment.
 - [Preprocessing](preprocessing.md): Stateful vs. stateless transformers, the [`BaseActualTransformer`](/pages/api/generated/yohou.base.BaseActualTransformer/) contract, and incremental observation in pipelines.
-- [Transformer Kinds](transformer-kinds.md): The actual and forecast kinds, why the vintage axis rules out statefulness, and why lifting beats reimplementing.
+- [Transformer Kinds](transformer-kinds.md): The actual, forecast, and step kinds, why the vintage axis rules out statefulness, why the step frame needs its own kind despite sharing an index with the actual frame, and why lifting beats reimplementing.
 - [Stationarity](stationarity.md): Why non-stationary series are problematic for regression models, and how differencing and decomposition help.
 - [Feature Pipelines](feature-pipelines.md): [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/), [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/), and [`ColumnTransformer`](/pages/api/generated/yohou.compose.ColumnTransformer/): how to compose transformers and how `observation_horizon` propagates.
 

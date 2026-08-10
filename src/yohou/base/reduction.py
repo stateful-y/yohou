@@ -19,9 +19,12 @@ from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
+from yohou.base.step_transformer import BaseStepTransformer, _is_step_indexed, _step_index
 from yohou.base.transformer import BaseActualTransformer
+from yohou.base.utils import _derive_step_columns, _observe_transformers_one
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
+from yohou.utils.panel import get_group_df
 from yohou.weighting import BaseWeighter
 from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter_to_array
 
@@ -100,6 +103,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
@@ -114,6 +122,14 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
           columns. Cleanest signal, no cross-horizon leakage.
         - ``"cumulative"``: estimator for step h receives columns
           ``*_step_1..h``. All information up to horizon h.
+
+        Filtering applies identically whatever the step columns were derived
+        from (``X_future``, ``X_forecast``, or an ``X_forecast`` routed through a
+        ``forecast_transformer``) and under either panel strategy. A non-default
+        alignment that cannot recognize any step column in the feature matrix
+        raises ``RuntimeError`` rather than falling back to ``"all"``, so a
+        filter that fails to apply cannot be mistaken for one that had nothing
+        to filter.
 
         The other strategies are excluded for different reasons.
         ``"multi-output"`` *cannot* filter: one estimator predicts every
@@ -194,6 +210,11 @@ default="first_step"
     - [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster] : Interval forecaster using reduction.
     """
 
+    # Declared, not assigned: each subclass fits its own shape (one estimator, a list of
+    # H, or a dict keyed by quantile), but the multi-origin paths below read it from the
+    # base. A bare annotation leaves `check_is_fitted` seeing an unfitted instance.
+    estimator_: Any
+
     _parameter_constraints: dict = {
         **BaseForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
@@ -222,6 +243,7 @@ default="first_step"
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
@@ -237,6 +259,7 @@ default="first_step"
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             panel_strategy=panel_strategy,
         )
 
@@ -957,6 +980,23 @@ default="first_step"
         columns from 1 through the given step number. Non-step columns
         are always kept.
 
+        ``_step_column_names_`` holds every column the step stage produced, which
+        after a ``step_transformer`` includes horizon-agnostic summaries
+        (``temp_step_mean``). Those carry no step index to align against and
+        describe the whole block, so they must reach every per-step estimator;
+        filtering applies only to members that actually carry a step index. The
+        set cannot simply be narrowed at the source, because the observe-path
+        column swap needs the full post-transform set to avoid leaving stale
+        columns behind.
+
+        Step columns are recognized through
+        [`_is_step_column`][yohou.base.forecaster.BaseForecaster._is_step_column],
+        which accepts both the panel-wide and the local spelling. ``X_tab`` is a
+        stacked per-group matrix under ``panel_strategy="global"``, so it carries
+        local names while ``_step_column_names_`` holds panel-wide ones; matching
+        against the panel-wide set alone recognizes nothing there and silently
+        degrades ``matched`` and ``cumulative`` to ``all``.
+
         Parameters
         ----------
         X_tab : pl.DataFrame
@@ -970,21 +1010,49 @@ default="first_step"
         pl.DataFrame
             Filtered feature matrix.
 
+        Raises
+        ------
+        RuntimeError
+            If a non-default alignment is requested and step columns were derived
+            at fit, but no column of ``X_tab`` is recognized as one.
+
         """
         if self.step_feature_alignment == "all" or not self._step_column_names_:
             return X_tab
 
-        step_cols_in_tab = [c for c in X_tab.columns if c in self._step_column_names_]
+        step_cols_in_tab = [c for c in X_tab.columns if self._is_step_column(c)]
         if not step_cols_in_tab:
+            # Unreachable by construction: the fit that derived step columns also
+            # recorded both of their spellings, and X_tab is built from those same
+            # frames. Raising rather than returning X_tab unchanged is the point.
+            # The passthrough that used to stand here is what let a naming drift
+            # between the recorded names and the tabular ones disable filtering in
+            # silence, so every per-step model trained on every step's columns while
+            # the configuration said otherwise. A wrong model that reports itself as
+            # the right one is worse than a failed fit.
+            raise RuntimeError(
+                f"step_feature_alignment={self.step_feature_alignment!r} cannot be applied: "
+                f"{len(self._step_column_names_)} step column(s) were derived at fit, but none "
+                f"of the {X_tab.width} tabularized feature columns is recognized as one. This "
+                f"is an internal naming mismatch between the recorded step column names and the "
+                f"feature matrix; it is not caused by the data or by this parameter. Please "
+                f"report it, with the panel_strategy and the exogenous inputs used."
+            )
+
+        # Only horizon-indexed columns are candidates. A step_transformer emits
+        # whole-block summaries (temp_step_mean, wx_step_c0) describing every step
+        # at once, with no index to align against, so they must reach every
+        # per-step estimator. An empty result here is ordinary rather than the
+        # naming drift the guard above reports: it means the slot reduced every
+        # block away.
+        indexed = [c for c in step_cols_in_tab if _is_step_indexed(c)]
+        if not indexed:
             return X_tab
 
-        if self.step_feature_alignment == "matched":
-            keep_suffix = f"_step_{step}"
-            drop = [c for c in step_cols_in_tab if not c.endswith(keep_suffix)]
-        else:
-            # cumulative: keep _step_1 .. _step_{step}
-            keep_suffixes = {f"_step_{s}" for s in range(1, step + 1)}
-            drop = [c for c in step_cols_in_tab if not any(c.endswith(s) for s in keep_suffixes)]
+        # "matched" keeps only this step; "cumulative" keeps _step_1 .. _step_{step}.
+        keep = {step} if self.step_feature_alignment == "matched" else set(range(1, step + 1))
+
+        drop = [c for c in indexed if _step_index(c) not in keep]
 
         return X_tab.drop(drop) if drop else X_tab
 
@@ -1189,8 +1257,15 @@ default="first_step"
                 typing_cast(list[BaseEstimator], estimator),
                 groups,
             )
-        assert isinstance(estimator, BaseEstimator)
-        return self._estimator_predict_multi_output(estimator, groups)
+        # `estimator` is constrained by duck typing (``HasMethods(["fit", "predict"])``), so a
+        # sklearn-compatible estimator that does not subclass ``BaseEstimator`` is legal:
+        # CatBoost and XGBoost's native APIs are both in that position. Only the
+        # not-a-list narrowing matters here, matching the two branches above.
+        assert not isinstance(estimator, list), (
+            "the multi-output strategy fits a single estimator, but a list was stored; "
+            "this is an internal inconsistency in the fitted state"
+        )
+        return self._estimator_predict_multi_output(typing_cast(BaseEstimator, estimator), groups)
 
     def _get_predict_features(
         self,
@@ -1371,6 +1446,485 @@ default="first_step"
             y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
             y_pred_dict[panel_group_name] = y_pred_local
         return pl.concat(list(y_pred_dict.values()), how="horizontal")
+
+    def _bulk_origin_features(
+        self,
+        *,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        groups: list[str],
+        X_future: pl.DataFrame | None,
+        X_forecast: pl.DataFrame | None,
+    ) -> tuple[list[pl.DataFrame], list[Any], list[Any]]:
+        """Transform every calibration origin's features in one pass per group.
+
+        The rolling path observes one row at a time, and ``observe_transform``
+        concatenates its buffer with the incoming rows, transforms the whole window,
+        then keeps only the new part, so observing a single row still transforms the
+        whole observation horizon behind it. Transforming the block once instead does
+        that work for every origin at once.
+
+        Sound only when every transformer reports ``batch_invariant``; the caller checks
+        that. The first origin is not produced here: it precedes any calibration observe
+        and takes its features from the fitted state.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            The calibration block, one row per origin after the first.
+        X_actual : pl.DataFrame or None
+            Actual features aligned with ``y``.
+        groups : list of str
+            Panel group names, or empty for a standard forecaster.
+        X_future : pl.DataFrame or None
+            Known future features.
+        X_forecast : pl.DataFrame or None
+            External forecasts.
+
+        Returns
+        -------
+        X_tab_per_origin : list of pl.DataFrame
+            One feature frame per origin, each with one row per group.
+        y_observed_per_origin : list
+            The ``_y_observed`` each origin's inverse transform must see.
+        observed_time_per_origin : list
+            The ``observed_time_`` each origin's time columns must be built from.
+
+        """
+        panel = self.groups_ is not None
+        n = y.height
+
+        # Step columns are a pure function of the observation times, so they are derived
+        # once for the whole block exactly as the rolling loop's precomputed branch does.
+        step_columns = _derive_step_columns(
+            X_future,
+            self._transform_X_forecast(X_forecast),
+            y["time"],
+            self.fit_forecasting_horizon_,
+            self.interval_,
+        )
+
+        assert self.local_X_t_schema_ is not None
+        feature_order = list(self.local_X_t_schema_.keys())
+        group_names = groups if panel else [None]
+
+        per_group_rows: dict[Any, pl.DataFrame] = {}
+        for group_name in group_names:
+            if panel:
+                y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
+                X_local = None
+                if X_actual is not None and self.local_X_actual_schema_ is not None:
+                    X_local = get_group_df(df=X_actual, group_name=group_name, schema=self._build_X_actual_schema())
+                target_transformer = (
+                    self.target_transformer_[group_name]
+                    if isinstance(self.target_transformer_, dict)
+                    else self.target_transformer_
+                )
+                actual_transformer = (
+                    self.actual_transformer_[group_name]
+                    if isinstance(self.actual_transformer_, dict)
+                    else self.actual_transformer_
+                )
+            else:
+                y_local, X_local = y, X_actual
+                # Only panel fits keep a per-group dict, and this branch is the non-panel one.
+                assert not isinstance(self.target_transformer_, dict)
+                assert not isinstance(self.actual_transformer_, dict)
+                target_transformer = self.target_transformer_
+                actual_transformer = self.actual_transformer_
+
+            X_t_local = _observe_transformers_one(
+                y_local, X_local, target_transformer, actual_transformer, self.target_as_feature
+            )
+
+            if step_columns is not None:
+                # Panel splits the wide step frame per group; standard takes it whole.
+                # Mirrors `_observe_with_precomputed_steps_panel` and its standard
+                # counterpart rather than inventing a third rule.
+                step_schema_per_group = getattr(self, "_step_schema_per_group_", None)
+                if panel and step_schema_per_group is not None:
+                    available = set(step_columns.columns)
+                    step_schema = {
+                        k: v
+                        for k, v in step_schema_per_group.items()
+                        if k in available or f"{group_name}__{k}" in available
+                    }
+                    step_local = get_group_df(step_columns, group_name, step_schema).select(~cs.by_name("time"))
+                elif not panel:
+                    step_local = step_columns.select(~cs.by_name("time"))
+                else:
+                    step_local = None
+
+                if step_local is not None:
+                    X_t_local = (
+                        pl.concat([X_t_local, step_local], how="horizontal") if X_t_local is not None else step_local
+                    )
+
+            assert X_t_local is not None
+            per_group_rows[group_name] = X_t_local.select(feature_order)
+
+        X_tab_per_origin = [
+            pl.concat([per_group_rows[g][i : i + 1] for g in group_names], how="vertical") for i in range(n)
+        ]
+
+        # `_y_observed` and `observed_time_` are what the inverse transform and the time
+        # columns read, and both advance with the origin. Reconstructed by slicing rather
+        # than by rolling, which is the whole point of not rolling.
+        observed_time_per_origin: list[Any] = []
+        y_observed_per_origin: list[Any] = []
+        horizon = self.observation_horizon
+        for i in range(n):
+            if panel:
+                observed_time_per_origin.append(dict.fromkeys(groups, y["time"][i]))
+            else:
+                observed_time_per_origin.append(y["time"][i])
+
+            if horizon <= 0:
+                y_observed_per_origin.append(dict.fromkeys(groups) if panel else None)
+                continue
+
+            if panel:
+                assert isinstance(self._y_observed, dict)
+                per_origin: dict[str, pl.DataFrame | None] = {}
+                for group_name in groups:
+                    stored = self._y_observed[group_name]
+                    local = get_group_df(df=y[: i + 1], group_name=group_name, schema=self.local_y_schema_)
+                    combined = pl.concat([stored, local]) if stored is not None else local
+                    per_origin[group_name] = combined[-horizon:]
+                y_observed_per_origin.append(per_origin)
+            else:
+                stored = typing_cast(pl.DataFrame | None, self._y_observed)
+                combined = pl.concat([stored, y[: i + 1]]) if stored is not None else y[: i + 1]
+                y_observed_per_origin.append(combined[-horizon:])
+
+        return X_tab_per_origin, y_observed_per_origin, observed_time_per_origin
+
+    def _observe_predict_bulk_origins(
+        self,
+        *,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        groups: list[str],
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        predict_transformed: bool = False,
+    ) -> pl.DataFrame:
+        """Replay every origin without rolling, transforming and predicting in bulk.
+
+        Produces the same frame as ``observe_predict`` at ``stride=1`` for a frozen
+        ``direct`` forecaster, within floating point reassociation. Two per origin costs
+        disappear: the transformer chain runs once over the whole block rather than once
+        per origin, and the estimator issues H calls rather than H per origin.
+
+        Not bit identical, and deliberately so. Batching a rolling accumulator
+        reassociates it, so rolling statistic columns can move by about one ULP while
+        nothing else moves at all. Callers comparing the two paths must use a relative
+        tolerance.
+
+        Requires every transformer to report ``batch_invariant``; the caller checks that
+        with `_chains_are_batch_invariant` and falls back to the rolling path otherwise.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            The calibration block.
+        X_actual : pl.DataFrame or None
+            Actual features aligned with ``y``.
+        groups : list of str
+            Panel group names to operate on.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
+        predict_transformed : bool, default=False
+            Return predictions in transformed space rather than original scale.
+
+        Returns
+        -------
+        pl.DataFrame
+            The concatenated per-origin predictions.
+
+        Raises
+        ------
+        ValueError
+            If the reduction strategy is not ``"direct"``.
+
+        See Also
+        --------
+        `_bulk_origin_features` : Builds every origin's feature row in one pass.
+        `_observe_predict_batched_origins` : The rolling-observe, batched-predict path.
+
+        """
+        if self.reduction_strategy != "direct":
+            raise ValueError(
+                f"bulk origin replay is implemented for reduction_strategy='direct', not {self.reduction_strategy!r}"
+            )
+
+        panel = self.groups_ is not None
+
+        # The first origin precedes any calibration observe: its features are the fitted
+        # state, not something the block produces.
+        first_X_tab = (
+            pl.concat([self._get_predict_features(g) for g in groups], how="vertical")
+            if panel
+            else self._get_predict_features()
+        )
+        first_y_observed = self._y_observed
+        first_observed_time = self.observed_time_
+
+        rest_X_tab, rest_y_observed, rest_observed_time = self._bulk_origin_features(
+            y=y, X_actual=X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast
+        )
+
+        X_tab_per_origin = [first_X_tab, *rest_X_tab]
+        y_observed_per_origin = [first_y_observed, *rest_y_observed]
+        observed_time_per_origin = [first_observed_time, *rest_observed_time]
+
+        frames = self._estimator_predict_direct_multi(
+            typing_cast(list[BaseEstimator], self.estimator_), groups, X_tab_per_origin
+        )
+
+        saved_y, saved_time = self._y_observed, self.observed_time_
+        out: list[pl.DataFrame] = []
+        try:
+            for frame, y_observed, observed_time in zip(
+                frames, y_observed_per_origin, observed_time_per_origin, strict=True
+            ):
+                self._y_observed = y_observed
+                self.observed_time_ = observed_time
+                y_t, y_inv = self._predict(groups=groups, y_pred_step=self._add_time_columns(frame))
+                out.append(y_t if predict_transformed else y_inv)
+        except BaseException:
+            self._y_observed, self.observed_time_ = saved_y, saved_time
+            raise
+
+        # The rolling path observes its way through the block and ends having observed
+        # all of it. This path reconstructs each origin by slicing and never advances
+        # the buffer, so it has to land on that same end state deliberately: the last
+        # origin's state, which is the one that has seen every row.
+        #
+        # Restoring the pre-replay state instead leaves the forecaster rewound by the
+        # whole block, and the next observe stitches a stale window onto fresh
+        # forecasts. The two then sit `len(y)` apart on the time axis, which surfaces
+        # as an inconsistent-interval error from whichever transformer inverts first.
+        self._y_observed = y_observed_per_origin[-1]
+        self.observed_time_ = observed_time_per_origin[-1]
+
+        return pl.concat(out)
+
+    def _observe_predict_batched_origins(
+        self,
+        *,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        groups: list[str],
+        stride: int,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+        predict_transformed: bool = False,
+    ) -> pl.DataFrame:
+        """Roll over origins, then predict all of them in one pass per horizon step.
+
+        Equivalent to ``observe_predict`` for a frozen ``direct`` forecaster, and
+        produces the same frame. The difference is where the estimator work happens: the
+        loop records each origin's feature row instead of predicting, and a single
+        batched pass afterwards issues H estimator calls over every origin's rows rather
+        than H per origin.
+
+        Only the estimator calls move. The per-origin inverse transform and frame
+        assembly still run once per origin, through `_predict`, so nothing is
+        reimplemented here and a target transformer whose inverse depends on per-origin
+        ``_y_observed`` stays correct.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target observations to roll through.
+        X_actual : pl.DataFrame or None
+            Actual features aligned with ``y``.
+        groups : list of str
+            Panel group names to operate on.
+        stride : int
+            Rows observed between successive origins.
+        X_future : pl.DataFrame or None, default=None
+            Known future features.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts.
+        predict_transformed : bool, default=False
+            Return predictions in transformed space rather than original scale.
+
+        Returns
+        -------
+        pl.DataFrame
+            The same concatenated per-origin predictions ``observe_predict`` returns.
+
+        Raises
+        ------
+        ValueError
+            If the reduction strategy is not ``"direct"``. The other strategies either
+            hold one estimator for all steps or make each step depend on the previous,
+            so neither has per-step calls to batch across origins.
+
+        See Also
+        --------
+        `_estimator_predict_direct_multi` : The batched estimator pass.
+
+        """
+        if self.reduction_strategy != "direct":
+            raise ValueError(
+                "batched multi-origin prediction is implemented for "
+                f"reduction_strategy='direct', not {self.reduction_strategy!r}"
+            )
+
+        panel = self.groups_ is not None
+
+        def capture(groups: list[str], **_: Any) -> dict[str, Any]:
+            """Record what this origin would have predicted from, and predict nothing.
+
+            ``_y_observed`` and ``observed_time_`` are rebound to fresh objects by every
+            observe rather than mutated in place, so holding the current reference keeps
+            this origin's values without copying them.
+            """
+            X_tab = (
+                pl.concat([self._get_predict_features(g) for g in groups], how="vertical")
+                if panel
+                else self._get_predict_features()
+            )
+            return {
+                "X_tab": X_tab,
+                "y_observed": self._y_observed,
+                "observed_time": self.observed_time_,
+            }
+
+        def assemble(collected: list[dict[str, Any]]) -> pl.DataFrame:
+            """Predict every origin in one batched estimator pass and inverse each.
+
+            The estimator call is what batching buys: one pass per horizon step over all
+            origins instead of one per origin. Everything after it stays per-origin,
+            because the inverse transform and the time columns both read state that
+            belongs to the origin the row came from.
+            """
+            frames = self._estimator_predict_direct_multi(
+                typing_cast(list[BaseEstimator], self.estimator_),
+                groups,
+                [state["X_tab"] for state in collected],
+            )
+            saved_y, saved_time = self._y_observed, self.observed_time_
+            out: list[pl.DataFrame] = []
+            try:
+                for state, frame in zip(collected, frames, strict=True):
+                    # The inverse and the time columns are both origin-dependent, so the
+                    # origin's own state is restored around each call rather than reusing
+                    # whatever the loop left behind.
+                    self._y_observed = state["y_observed"]
+                    self.observed_time_ = state["observed_time"]
+                    y_pred_step = self._add_time_columns(frame)
+                    y_t, y_inv = self._predict(groups=groups, y_pred_step=y_pred_step)
+                    out.append(y_t if predict_transformed else y_inv)
+            finally:
+                self._y_observed, self.observed_time_ = saved_y, saved_time
+            return pl.concat(out)
+
+        return self._observe_predict_loop(
+            predict_fn=capture,
+            y=y,
+            X_actual=X_actual,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            groups=groups,
+            stride=stride,
+            reduce_fn=assemble,
+        )
+
+    def _estimator_predict_direct_multi(
+        self,
+        estimators: list[BaseEstimator],
+        groups: list[str],
+        X_tab_per_origin: list[pl.DataFrame],
+    ) -> list[pl.DataFrame]:
+        """Predict many origins with one estimator call per horizon step.
+
+        The single-origin path issues H calls per origin, each over one row per panel
+        group. When a caller holds many origins whose feature rows are already known and
+        the fitted estimators are shared across them, those calls collapse: H calls over
+        every origin's rows stacked produce the same numbers, because a step's estimator
+        is applied row-wise.
+
+        The saving is entirely per-call overhead, since the number of rows predicted is
+        unchanged. A tree estimator's cost at these widths is dominated by fixed per
+        call overhead rather than by the rows themselves, so folding many small calls
+        into one large one is close to free.
+
+        Parameters
+        ----------
+        estimators : list[BaseEstimator]
+            H fitted estimators, one per horizon step.
+        groups : list of str
+            Panel group names, in the order the rows of each origin's frame follow.
+        X_tab_per_origin : list of pl.DataFrame
+            One feature frame per origin, each with one row per entry of ``groups``
+            (or a single row when the forecaster is not fitted on panel data).
+
+        Returns
+        -------
+        list of pl.DataFrame
+            One prediction frame per origin, in the same shape and column order that
+            `_estimator_predict_direct` returns for a single origin.
+
+        See Also
+        --------
+        `_estimator_predict_direct` : The single-origin path this batches over.
+
+        """
+        assert self.local_y_t_schema_ is not None
+        y_cols = list(self.local_y_t_schema_.keys())
+        n_targets = len(y_cols)
+        drop_nan = self.nan_handling == "drop"
+        panel = self.groups_ is not None
+
+        # Same invariant the single-origin path pins: batching rows across groups is
+        # sound only because every group shares the step's estimator.
+        assert self.groups_ is None or self.panel_strategy == "global", (
+            "batched prediction assumes every panel group shares the step's estimator, "
+            f"which panel_strategy={self.panel_strategy!r} does not guarantee"
+        )
+
+        n_origins = len(X_tab_per_origin)
+        if n_origins == 0:
+            return []
+        rows_per_origin = X_tab_per_origin[0].height
+        assert all(f.height == rows_per_origin for f in X_tab_per_origin), (
+            "every origin must contribute the same number of feature rows for the "
+            "stacked predictions to be sliced back apart by position"
+        )
+
+        X_all = pl.concat(X_tab_per_origin, how="vertical")
+
+        # Step filtering depends only on column names, which are shared across origins
+        # as well as groups, so it runs once per step rather than once per origin.
+        step_preds: list[np.ndarray] = []
+        for step, estimator in enumerate(estimators):
+            frame = self._filter_step_features(X_all, step + 1)
+            mask = self._compute_x_ok_mask(frame).to_numpy() if drop_nan else np.ones(frame.height, dtype=bool)
+            step_preds.append(_predict_direct_step(estimator, frame, n_targets, mask))
+
+        out: list[pl.DataFrame] = []
+        for origin in range(n_origins):
+            base = origin * rows_per_origin
+            if not panel:
+                y_pred = pl.DataFrame(np.vstack([p[base] for p in step_preds]), schema=y_cols)
+                out.append(cast(y_pred, self.local_y_t_schema_))
+                continue
+
+            y_pred_dict = {}
+            for row, panel_group_name in enumerate(groups):
+                y_pred_arr = np.vstack([step_pred[base + row] for step_pred in step_preds])
+                y_pred_local = pl.DataFrame(y_pred_arr, schema=y_cols)
+                y_pred_local = cast(y_pred_local, self.local_y_t_schema_)
+                y_pred_local = y_pred_local.rename({col: f"{panel_group_name}__{col}" for col in y_cols})
+                y_pred_dict[panel_group_name] = y_pred_local
+            out.append(pl.concat(list(y_pred_dict.values()), how="horizontal"))
+        return out
 
     def _estimator_predict_dir_rec(
         self,

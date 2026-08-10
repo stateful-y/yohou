@@ -12,6 +12,7 @@ from yohou.point.reduction import PointReductionForecaster
 from yohou.preprocessing.window import LagTransformer
 from yohou.stationarity.transformers import LogTransformer
 from yohou.testing.forecaster import (
+    _collect_n_features,
     check_clone_preserves_forecaster_params,
     check_fit_predict_with_X_forecast,
     check_fit_predict_with_X_future,
@@ -455,3 +456,40 @@ class TestStepColumnChecks:
             X_forecast=X_forecast,
             forecasting_horizon=3,
         )
+
+
+class TestCollectNFeatures:
+    """The alignment check walks whichever container a family stored its estimators in.
+
+    ``check_step_feature_alignment_filters`` compares fitted feature counts, and the
+    three reduction families hold their estimators differently: one estimator for
+    multi-output, a list for the per-step strategies, and a dict keyed by bound and
+    coverage rate for intervals. The walk is what keeps the comparison indifferent to
+    which one it was handed, so each shape is pinned here rather than only through
+    whichever family the systematic suite happens to reach.
+    """
+
+    class _Fitted:
+        """Stand-in for a fitted estimator carrying only the attribute walked for."""
+
+        def __init__(self, n_features_in_: int):
+            self.n_features_in_ = n_features_in_
+
+    def test_a_bare_estimator_yields_its_own_count(self):
+        assert _collect_n_features(self._Fitted(7)) == [7]
+
+    def test_a_list_yields_one_count_per_step_in_order(self):
+        assert _collect_n_features([self._Fitted(3), self._Fitted(5)]) == [3, 5]
+
+    def test_a_tuple_is_walked_like_a_list(self):
+        assert _collect_n_features((self._Fitted(3), self._Fitted(5))) == [3, 5]
+
+    def test_a_dict_of_lists_flattens(self):
+        """The interval shape: coverage rate to per-step estimators."""
+        nested = {"lower": [self._Fitted(4), self._Fitted(4)], "upper": [self._Fitted(4)]}
+        assert _collect_n_features(nested) == [4, 4, 4]
+
+    def test_an_unrecognised_container_yields_nothing(self):
+        """No count rather than a guess, so the caller's own assertion reports it."""
+        assert _collect_n_features(object()) == []
+        assert _collect_n_features(None) == []

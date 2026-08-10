@@ -1,5 +1,5 @@
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -14,6 +14,7 @@ from sklearn.preprocessing import StandardScaler
 
 from conftest import run_checks
 from yohou.point import PointReductionForecaster
+from yohou.preprocessing import LagTransformer
 from yohou.testing import _yield_yohou_forecaster_checks
 from yohou.weighting import LookupWeighter, TableWeighter
 
@@ -1627,6 +1628,194 @@ class TestStepFeatureAlignment:
             )
 
 
+@pytest.fixture(scope="module")
+def panel_step_alignment_data():
+    """Panel target plus a global X_forecast, both reaching the fit horizon.
+
+    Global (unprefixed) forecast channels on purpose: routed through a per-group
+    ``forecast_transformer`` they come back prefixed, which is the naming split
+    these tests exist to pin down.
+    """
+    n = 60
+    horizon = 3
+    time = pl.datetime_range(
+        start=datetime(2021, 1, 1),
+        end=datetime(2021, 1, 1, 0, 0, n - 1),
+        interval="1s",
+        eager=True,
+    )
+    rng = np.random.default_rng(7)
+    y = pl.DataFrame({
+        "time": time,
+        "x__value": rng.standard_normal(n),
+        "z__value": rng.standard_normal(n),
+    })
+    X_forecast = pl.concat([
+        pl.DataFrame({
+            "vintage_time": [t] * horizon,
+            "time": [t + timedelta(seconds=h) for h in range(1, horizon + 1)],
+            "load": rng.standard_normal(horizon),
+            "wind": rng.standard_normal(horizon),
+        })
+        for t in time
+    ])
+    return y, X_forecast, horizon
+
+
+def _passthrough_forecast_transformer():
+    """A forecast_transformer that selects columns and derives nothing.
+
+    Deliberately inert: it makes the fit take the per-group transform path (which
+    re-prefixes every output column) without changing a single value, so a feature
+    count that moves can only come from the alignment filter.
+    """
+    from yohou.compose import ColumnTransformer, PerVintageActualTransformer
+
+    return PerVintageActualTransformer(
+        transformer=ColumnTransformer(
+            transformers=[("keep", "passthrough", ["load", "wind"])],
+            remainder="drop",
+            verbose_feature_names_out=False,
+        )
+    )
+
+
+class TestStepFeatureAlignmentPanel:
+    """Alignment must filter under panel naming, not just standard naming.
+
+    Under ``panel_strategy="global"`` the fitted step column names are panel-wide
+    (``{group}__{col}_step_{h}``) while the stacked matrix the estimators see uses
+    the local spelling (``{col}_step_{h}``). Matching only the panel-wide names
+    recognizes nothing, so the filter passes the matrix through and every per-step
+    model silently trains on every step's columns.
+    """
+
+    def _fit(self, y, X_forecast, horizon, alignment, transformer=None, panel_strategy="global"):
+        f = PointReductionForecaster(
+            reduction_strategy="direct",
+            step_feature_alignment=alignment,
+            panel_strategy=panel_strategy,
+            forecast_transformer=transformer,
+            actual_transformer=LagTransformer(lag=[1]),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            f.fit(y=y, forecasting_horizon=horizon, X_forecast=X_forecast)
+        return f
+
+    def test_matched_filters_through_a_forecast_transformer(self, panel_step_alignment_data):
+        """The deployed shape: panel + X_forecast + per-group transformer."""
+        y, X_forecast, horizon = panel_step_alignment_data
+        matched = self._fit(y, X_forecast, horizon, "matched", _passthrough_forecast_transformer())
+        every = self._fit(y, X_forecast, horizon, "all", _passthrough_forecast_transformer())
+
+        matched_counts = [est.n_features_in_ for est in matched.estimator_]
+        all_counts = [est.n_features_in_ for est in every.estimator_]
+
+        assert len(set(matched_counts)) == 1, f"matched should be even across steps, got {matched_counts}"
+        assert all(m < a for m, a in zip(matched_counts, all_counts, strict=True)), (
+            f"matched={matched_counts} did not narrow against all={all_counts}; the filter recognized "
+            f"no step column, which is the silent no-op"
+        )
+        # The transformer prefixes its outputs, so the two spellings must differ here.
+        # Without that the test would pass on data that never exercises the mismatch.
+        assert matched._step_column_names_ != matched._step_column_local_names_, (
+            "fixture no longer produces prefixed step columns, so this test proves nothing"
+        )
+
+    def test_matched_keeps_only_its_own_step(self, panel_step_alignment_data):
+        """Each estimator's features name its own step and no other."""
+        y, X_forecast, horizon = panel_step_alignment_data
+        f = self._fit(y, X_forecast, horizon, "matched", _passthrough_forecast_transformer())
+
+        for step, est in enumerate(f.estimator_, start=1):
+            names = list(getattr(est, "feature_names_in_", []))
+            step_names = [n for n in names if "_step_" in n]
+            assert step_names, f"step {step} estimator saw no step column at all"
+            foreign = [n for n in step_names if not n.endswith(f"_step_{step}")]
+            assert not foreign, f"step {step} estimator also saw {foreign}"
+
+    def test_matched_filters_without_a_transformer(self, panel_step_alignment_data):
+        """The mismatch is about prefixes, not about the transformer.
+
+        Panel-shaped columns reach the same naming split with no transformer in
+        play, so the fix must not be conditional on one being configured.
+        """
+        y, X_forecast, horizon = panel_step_alignment_data
+        # Every group carries every channel: a panel column present for one group
+        # only is a different (and invalid) shape, not the one under test.
+        prefixed = X_forecast.select(
+            "vintage_time",
+            "time",
+            pl.col("load").alias("x__load"),
+            pl.col("wind").alias("x__wind"),
+            pl.col("load").alias("z__load"),
+            pl.col("wind").alias("z__wind"),
+        )
+        matched = self._fit(y, prefixed, horizon, "matched")
+        every = self._fit(y, prefixed, horizon, "all")
+
+        matched_counts = [est.n_features_in_ for est in matched.estimator_]
+        all_counts = [est.n_features_in_ for est in every.estimator_]
+        assert all(m < a for m, a in zip(matched_counts, all_counts, strict=True)), (
+            f"matched={matched_counts} did not narrow against all={all_counts} on prefixed raw columns"
+        )
+
+    def test_cumulative_grows_with_the_step(self, panel_step_alignment_data):
+        """Step h sees steps 1..h, so the counts must strictly increase."""
+        y, X_forecast, horizon = panel_step_alignment_data
+        f = self._fit(y, X_forecast, horizon, "cumulative", _passthrough_forecast_transformer())
+        counts = [est.n_features_in_ for est in f.estimator_]
+        assert all(a < b for a, b in zip(counts, counts[1:], strict=False)), (
+            f"cumulative counts should increase with the step, got {counts}"
+        )
+
+    def test_predict_filters_as_fit_did(self, panel_step_alignment_data):
+        """Predict must apply the same filter, and the narrowing must be visible."""
+        y, X_forecast, horizon = panel_step_alignment_data
+        preds = {}
+        for alignment in ("all", "matched", "cumulative"):
+            f = self._fit(y, X_forecast, horizon, alignment, _passthrough_forecast_transformer())
+            y_pred = f.predict(forecasting_horizon=horizon)
+            assert len(y_pred) == horizon, f"{alignment}: expected {horizon} rows"
+            preds[alignment] = y_pred["x__value"].to_list()
+
+        # Different feature sets, so different fitted models: identical predictions
+        # would mean the filter never took effect.
+        assert preds["matched"] != preds["all"], "matched predicted exactly as all did"
+
+    def test_multivariate_is_unaffected(self, panel_step_alignment_data):
+        """The multivariate strategy never had the split, and must keep working.
+
+        It skips panel detection, so its two spellings coincide. This guards the
+        fix against regressing the mode it was not written for.
+        """
+        y, X_forecast, horizon = panel_step_alignment_data
+        matched = self._fit(y, X_forecast, horizon, "matched", panel_strategy="multivariate")
+        every = self._fit(y, X_forecast, horizon, "all", panel_strategy="multivariate")
+
+        assert matched._step_column_names_ == matched._step_column_local_names_, (
+            "multivariate should not produce a naming split"
+        )
+        assert matched.estimator_[0].n_features_in_ < every.estimator_[0].n_features_in_
+        assert len(matched.predict(forecasting_horizon=horizon)) == horizon
+
+    def test_unrecognizable_step_columns_raise(self, panel_step_alignment_data):
+        """A filter that cannot recognize any step column fails loudly.
+
+        Unreachable through the public API once the naming is right, so the state
+        is forced here. The point is that a future drift surfaces as an error
+        rather than as models quietly trained on the wrong feature set.
+        """
+        y, X_forecast, horizon = panel_step_alignment_data
+        f = self._fit(y, X_forecast, horizon, "matched", _passthrough_forecast_transformer())
+
+        f._step_column_local_names_ = {"nothing_matches_step_1"}
+        f._step_column_names_ = {"nothing_matches_step_1"}
+        with pytest.raises(RuntimeError, match="step_feature_alignment='matched' cannot be applied"):
+            f.predict(forecasting_horizon=horizon)
+
+
 class TestPipelineSampleWeightRouting:
     """Tests for sample_weight routing through Pipeline and plain estimators."""
 
@@ -1703,3 +1892,97 @@ class TestPipelineSampleWeightRouting:
         # The warning is the assertion under test; the predict round-trip only
         # confirms fit still produced a usable forecaster.
         assert len(y_pred) == 3
+
+
+class TestDuckTypedEstimator:
+    """The estimator is constrained by duck typing, so it need not subclass BaseEstimator.
+
+    `_parameter_constraints` declares ``HasMethods(["fit", "predict"])``, which admits
+    sklearn-compatible libraries that do not inherit from ``BaseEstimator``: CatBoost and
+    XGBoost's native APIs are both in that position. Predict used to assert the nominal
+    type instead, so such an estimator fitted happily and then failed at predict with a
+    bare ``AssertionError``.
+    """
+
+    class _DuckMultiOutput:
+        """Minimal sklearn-shaped multi-output regressor that is NOT a BaseEstimator."""
+
+        def __init__(self, fill: float = 1.5):
+            self.fill = fill
+
+        def get_params(self, deep: bool = True):
+            return {"fill": self.fill}
+
+        def set_params(self, **params):
+            for k, v in params.items():
+                setattr(self, k, v)
+            return self
+
+        def fit(self, X, y):
+            self.n_outputs_ = np.asarray(y).reshape(len(y), -1).shape[1]
+            return self
+
+        def predict(self, X):
+            return np.full((len(X), self.n_outputs_), self.fill)
+
+    @staticmethod
+    def _series() -> pl.DataFrame:
+        time = pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 5, 23), interval="1h", eager=True)
+        return pl.DataFrame({"time": time, "v": [float(i % 24) for i in range(len(time))]})
+
+    def test_not_a_base_estimator_still_predicts(self):
+        est = self._DuckMultiOutput()
+        assert not isinstance(est, BaseEstimator), "the point of this test"
+        fc = PointReductionForecaster(estimator=est, reduction_strategy="multi-output")
+        fc.fit(self._series(), forecasting_horizon=6)
+        pred = fc.predict()
+        assert pred.height == 6
+        assert pred["v"].to_list() == pytest.approx([1.5] * 6)
+
+
+class TestMultiOriginPathsRequireDirect:
+    """Both multi-origin replays refuse a strategy they cannot batch.
+
+    The batching rests on each horizon step owning an independent estimator, so the
+    rows of many origins can be stacked into one call per step. ``multi-output`` holds
+    a single estimator for every step and ``dir-rec`` feeds each step the previous
+    step's in-sample predictions, so neither has per-step calls to batch across
+    origins. Refusing is the honest answer: silently falling back would make the
+    replay path a caller selected unobservable.
+    """
+
+    @staticmethod
+    def _fitted(strategy):
+        time = pl.datetime_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 1) + timedelta(days=45), interval="1d", eager=True
+        )
+        y = pl.DataFrame({"time": time, "value": [10.0 + i + (i % 7) for i in range(len(time))]})
+        forecaster = PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy=strategy,
+            actual_transformer=LagTransformer(lag=[1, 2]),
+        ).fit(y[:40], forecasting_horizon=3)
+        return forecaster, y
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "dir-rec"])
+    def test_bulk_replay_refuses(self, strategy):
+        forecaster, y = self._fitted(strategy)
+        with pytest.raises(ValueError, match="bulk origin replay is implemented"):
+            forecaster._observe_predict_bulk_origins(y=y[40:46], X_actual=None, groups=forecaster.groups_ or [])
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "dir-rec"])
+    def test_batched_replay_refuses(self, strategy):
+        forecaster, y = self._fitted(strategy)
+        with pytest.raises(ValueError, match="batched multi-origin prediction is implemented"):
+            forecaster._observe_predict_batched_origins(
+                y=y[40:46], X_actual=None, groups=forecaster.groups_ or [], stride=1
+            )
+
+    def test_the_batched_estimator_pass_returns_nothing_for_no_origins(self):
+        """An empty replay is a no-op, not a slice of an empty stack.
+
+        The pass reads ``X_tab_per_origin[0]`` to fix the rows-per-origin stride, so
+        the empty case has to return before that rather than through it.
+        """
+        forecaster, _ = self._fitted("direct")
+        assert forecaster._estimator_predict_direct_multi(forecaster.estimator_, [], []) == []

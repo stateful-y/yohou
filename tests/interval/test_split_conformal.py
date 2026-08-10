@@ -1006,3 +1006,839 @@ class TestSplitConformalTransformerRouting:
         assert len(search.cv_results_["params"]) == 2
         best_slot = search.best_forecaster_.point_forecaster_.forecast_transformer_
         assert best_slot is not None
+
+
+class TestCalibrationReplayStepColumns:
+    """The calibration replay derives step columns once, not once per origin.
+
+    ``_observe_predict_loop`` has two branches. Given ``X_future`` or ``X_forecast``
+    it derives step columns once over every observation time and each origin selects
+    its row; given neither it falls through to ``observe``, which re-derives them one
+    timestamp at a time. ``SplitConformalForecaster.fit`` holds both frames, so it
+    forwards them.
+
+    Every forecaster here is a ``PointReductionForecaster``, not the ``SeasonalNaive``
+    used elsewhere in this module. ``SeasonalNaive`` reports
+    ``requires_exogenous=False`` and discards both frames, which would make every
+    assertion below pass without exercising anything.
+    """
+
+    @staticmethod
+    def _forecaster():
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.point import PointReductionForecaster
+
+        return PointReductionForecaster(LinearRegression(), reduction_strategy="direct", target_as_feature="raw")
+
+    @pytest.fixture
+    def replay_data(self, y_X_factory):
+        y, _, X_future, X_forecast = y_X_factory(
+            length=140,
+            n_targets=1,
+            n_features=0,
+            seed=7,
+            n_future_features=2,
+            n_forecast_features=2,
+            forecasting_horizon=4,
+            return_exogenous=True,
+        )
+        return y, X_future, X_forecast
+
+    def _replay(self, y_train, y_calib, X_forecast, *, forward):
+        """Fit a point forecaster and replay the calibration block.
+
+        ``forward=False`` reproduces the pre-change call, which withheld the frames
+        and so took the per origin branch.
+        """
+        point = self._forecaster().fit(y_train, forecasting_horizon=4, X_forecast=X_forecast)
+        return point.observe_predict(
+            y=y_calib,
+            forecasting_horizon=None,
+            stride=1,
+            predict_transformed=False,
+            X_forecast=X_forecast if forward else None,
+        )
+
+    @staticmethod
+    def _count_derivations(forecaster, y, X_forecast):
+        """Count ``_derive_step_columns`` calls across one conformal fit."""
+        import yohou.base.forecaster as forecaster_module
+        import yohou.base.panel as panel_module
+        import yohou.base.standard as standard_module
+
+        modules = [forecaster_module, panel_module, standard_module]
+        original = forecaster_module._derive_step_columns
+        calls = []
+
+        def counting(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        for module in modules:
+            module._derive_step_columns = counting
+        try:
+            forecaster.fit(y, forecasting_horizon=4, X_forecast=X_forecast)
+        finally:
+            for module in modules:
+                module._derive_step_columns = original
+        return len(calls)
+
+    def _conformal(self, calibration_size):
+        return SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=calibration_size)
+
+    def test_derivation_count_does_not_grow_with_calibration_size(self, replay_data):
+        """Two fits differing only in ``calibration_size`` derive step columns equally often.
+
+        Asserted on call count rather than wall clock, which would be flaky on shared
+        CI. Before the frames were forwarded the count grew by exactly one derivation
+        per extra calibration origin.
+        """
+        y, _, X_forecast = replay_data
+
+        small = self._count_derivations(self._conformal(20), y, X_forecast)
+        large = self._count_derivations(self._conformal(50), y, X_forecast)
+
+        assert small == large, (
+            f"step column derivations scaled with calibration_size: {small} at 20 "
+            f"origins, {large} at 50. The replay has fallen back to the per origin "
+            f"branch of _observe_predict_loop, which means fit stopped forwarding "
+            f"X_future / X_forecast to observe_predict."
+        )
+
+    def test_derivation_count_check_detects_the_per_origin_branch(self, replay_data):
+        """Guard the count assertion against being unable to fail.
+
+        Drives ``observe_predict`` directly with the frames withheld, which is exactly
+        what ``fit`` did before this change, and confirms the count then does scale.
+        """
+        y, _, X_forecast = replay_data
+        y_train = y[:100]
+
+        def count_replay(calibration_rows):
+            import yohou.base.forecaster as forecaster_module
+            import yohou.base.panel as panel_module
+            import yohou.base.standard as standard_module
+
+            modules = [forecaster_module, panel_module, standard_module]
+            original = forecaster_module._derive_step_columns
+            calls = []
+
+            def counting(*args, **kwargs):
+                calls.append(1)
+                return original(*args, **kwargs)
+
+            point = self._forecaster().fit(y_train, forecasting_horizon=4, X_forecast=X_forecast)
+            for module in modules:
+                module._derive_step_columns = counting
+            try:
+                point.observe_predict(
+                    y=y[100 : 100 + calibration_rows],
+                    forecasting_horizon=None,
+                    stride=1,
+                    predict_transformed=False,
+                )
+            finally:
+                for module in modules:
+                    module._derive_step_columns = original
+            return len(calls)
+
+        assert count_replay(10) != count_replay(30), (
+            "the derivation count is insensitive to how many origins the replay "
+            "visits, so the assertion above could not detect a regression"
+        )
+
+    def test_forwarding_the_frames_changes_no_prediction(self, replay_data):
+        """The two branches produce identical predictions, not merely close ones.
+
+        ``_derive_step_columns`` resolves vintages as-of per observation time, so one
+        call with N timestamps performs the same per-timestamp selection as N calls
+        with one each. Nothing is reassociated, so this is exact equality; a tolerance
+        here would mask a regression.
+        """
+        y, _, X_forecast = replay_data
+        y_train, y_calib = y[:100], y[100:]
+
+        forwarded = self._replay(y_train, y_calib, X_forecast, forward=True)
+        withheld = self._replay(y_train, y_calib, X_forecast, forward=False)
+
+        assert forwarded.equals(withheld), (
+            "forwarding X_forecast changed the replay output; the two branches of "
+            "_observe_predict_loop must resolve the same vintages per observation time"
+        )
+
+    def test_equivalence_check_detects_a_planted_difference(self, replay_data):
+        """Guard the equality assertion against being unable to fail.
+
+        A mutation confined to the final vintage row does NOT work here: that vintage
+        serves at most the last origin, so the comparison passes whether or not the
+        code is correct. The mutation must reach every origin's step features, so it
+        perturbs a whole value column.
+        """
+        y, _, X_forecast = replay_data
+        y_train, y_calib = y[:100], y[100:]
+
+        value_col = next(c for c in X_forecast.columns if c not in ("vintage_time", "time"))
+        mutated = X_forecast.with_columns((pl.col(value_col) * 1.5 + 1.0).alias(value_col))
+
+        point = self._forecaster().fit(y_train, forecasting_horizon=4, X_forecast=X_forecast)
+        baseline = point.observe_predict(
+            y=y_calib,
+            forecasting_horizon=None,
+            stride=1,
+            predict_transformed=False,
+            X_forecast=X_forecast,
+        )
+        point = self._forecaster().fit(y_train, forecasting_horizon=4, X_forecast=X_forecast)
+        perturbed = point.observe_predict(
+            y=y_calib,
+            forecasting_horizon=None,
+            stride=1,
+            predict_transformed=False,
+            X_forecast=mutated,
+        )
+
+        assert not perturbed.equals(baseline), (
+            "the equivalence comparison cannot fail: perturbing an entire X_forecast "
+            "value column left the replay output unchanged"
+        )
+
+    def test_forwarding_x_future_changes_no_prediction(self, replay_data):
+        """The same equality holds for the known-future channel, not only forecasts."""
+        y, X_future, _ = replay_data
+        y_train, y_calib = y[:100], y[100:]
+
+        def replay(frame):
+            point = self._forecaster().fit(y_train, forecasting_horizon=4, X_future=X_future)
+            return point.observe_predict(
+                y=y_calib,
+                forecasting_horizon=None,
+                stride=1,
+                predict_transformed=False,
+                X_future=frame,
+            )
+
+        assert replay(X_future).equals(replay(None))
+
+    def test_no_calibration_origin_loses_its_forecast_features(self, replay_data):
+        """Every origin resolves a vintage at or before it.
+
+        A correctness guard, not a performance one. An origin whose forecast step
+        columns are all null is scored against a degraded predictor, which silently
+        widens the calibration distribution and therefore the served bands.
+        """
+        y, _, X_forecast = replay_data
+
+        forecaster = self._conformal(30).fit(y, forecasting_horizon=4, X_forecast=X_forecast)
+
+        observed = forecaster.point_forecaster_._X_t_observed
+        frames = list(observed.values()) if isinstance(observed, dict) else [observed]
+        for frame in frames:
+            step_cols = [c for c in frame.columns if "_step_" in c]
+            assert step_cols, "the fixture must produce step columns for this to test anything"
+            all_null = [c for c in step_cols if frame[c].is_null().all()]
+            assert not all_null, (
+                f"forecast step columns {all_null} are entirely null on a calibration origin's observed feature row"
+            )
+
+
+class TestBatchedOriginPrediction:
+    """The replay predicts every origin in one pass per horizon step.
+
+    The point forecaster is frozen for the whole replay, so no origin depends on
+    having predicted at the one before it. Recording each origin's feature row and
+    predicting them together issues H estimator calls instead of H per origin, over
+    the same rows through the same estimators.
+    """
+
+    @staticmethod
+    def _panel(n=140, n_groups=3):
+        rng = np.random.default_rng(11)
+        time = pl.datetime_range(
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 1) + timedelta(hours=n - 1),
+            interval="1h",
+            eager=True,
+        )
+        cols = {"time": time}
+        for g in range(n_groups):
+            cols[f"g{g}__value"] = np.cumsum(rng.standard_normal(n)) + 100.0 + g
+        return pl.DataFrame(cols)
+
+    @staticmethod
+    def _forecaster():
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        return PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy="direct",
+            panel_strategy="global",
+            target_as_feature="raw",
+            actual_transformer=LagTransformer(lag=[1, 3]),
+        )
+
+    def _fitted(self, y_train, horizon=4):
+        return self._forecaster().fit(y_train, forecasting_horizon=horizon)
+
+    def test_batched_replay_matches_rolling(self):
+        """Structure exactly, values to within floating-point reassociation.
+
+        A step's estimator is applied row-wise, so stacking origins into one call
+        computes the same numbers mathematically but not to the same bits: BLAS picks
+        its kernel by matrix size, and the stacked call is hundreds of rows where the
+        rolling call is one per group. Whether the last bit actually differs depends on
+        the machine, so an exact comparison here passes and fails by runner. Same
+        tolerance, and same reason for the ``abs_tol``, as
+        `tests.point.test_reduction._assert_matches_per_group`, which covers the
+        sibling case of batching across panel groups instead of across origins.
+
+        A real mix-up between origins moves a prediction by orders of magnitude more,
+        which is what the planted-difference test below pins.
+        """
+        y = self._panel()
+        y_train, y_calib = y[:100], y[100:]
+
+        rolling = self._fitted(y_train).observe_predict(
+            y=y_calib, forecasting_horizon=None, stride=1, predict_transformed=False
+        )
+        batched_forecaster = self._fitted(y_train)
+        batched = batched_forecaster._observe_predict_batched_origins(
+            y=y_calib, X_actual=None, groups=batched_forecaster.groups_ or [], stride=1
+        )
+
+        assert batched.shape == rolling.shape
+        assert batched.schema == rolling.schema
+        pl.testing.assert_frame_equal(
+            batched,
+            rolling,
+            check_exact=False,
+            rel_tol=1e-12,
+            abs_tol=1e-15,
+        )
+
+    def test_equivalence_check_detects_a_planted_difference(self):
+        """Guard the equivalence assertion against being unable to fail.
+
+        Mis-assigns each origin's predictions to a different origin, which is the
+        failure mode that matters here: the batched pass slices one stacked result
+        back apart by position, so an off-by-one there would be silent.
+        """
+        from yohou.base.reduction import BaseReductionForecaster
+
+        y = self._panel()
+        y_train, y_calib = y[:100], y[100:]
+
+        rolling = self._fitted(y_train).observe_predict(
+            y=y_calib, forecasting_horizon=None, stride=1, predict_transformed=False
+        )
+
+        original = BaseReductionForecaster._estimator_predict_direct_multi
+
+        def shuffled(self, estimators, groups, X_tab_per_origin):
+            return list(reversed(original(self, estimators, groups, X_tab_per_origin)))
+
+        forecaster = self._fitted(y_train)
+        BaseReductionForecaster._estimator_predict_direct_multi = shuffled
+        try:
+            mutated = forecaster._observe_predict_batched_origins(
+                y=y_calib, X_actual=None, groups=forecaster.groups_ or [], stride=1
+            )
+        finally:
+            BaseReductionForecaster._estimator_predict_direct_multi = original
+
+        # The same tolerant comparison the real check uses, so this guards that check
+        # rather than a stricter one no longer made anywhere.
+        with pytest.raises(AssertionError):
+            pl.testing.assert_frame_equal(mutated, rolling, check_exact=False, rel_tol=1e-12, abs_tol=1e-15)
+
+    def test_estimator_calls_do_not_scale_with_origin_count(self):
+        """One call per horizon step for the whole replay, not one per origin.
+
+        Counted rather than timed: wall clock would be flaky on shared CI, and the
+        call count is what actually changed.
+        """
+        import yohou.base.reduction as reduction_module
+
+        y = self._panel()
+        y_train = y[:100]
+        horizon = 4
+
+        def count(n_origins, *, batched):
+            original = reduction_module._predict_direct_step
+            calls = []
+
+            def counting(*a, **k):
+                calls.append(1)
+                return original(*a, **k)
+
+            forecaster = self._fitted(y_train, horizon)
+            y_calib = y[100 : 100 + n_origins]
+            reduction_module._predict_direct_step = counting
+            try:
+                if batched:
+                    forecaster._observe_predict_batched_origins(
+                        y=y_calib, X_actual=None, groups=forecaster.groups_ or [], stride=1
+                    )
+                else:
+                    forecaster.observe_predict(y=y_calib, forecasting_horizon=None, stride=1, predict_transformed=False)
+            finally:
+                reduction_module._predict_direct_step = original
+            return len(calls)
+
+        assert count(10, batched=True) == count(30, batched=True) == horizon, (
+            "the batched path must issue exactly one estimator call per horizon step, "
+            "independent of how many origins the replay visits"
+        )
+        # The rolling contrast proves the assertion above has teeth.
+        assert count(10, batched=False) != count(30, batched=False)
+
+    def test_conformal_fit_reaches_the_batched_path(self):
+        """The replay inside `fit` uses it, not only the method in isolation."""
+        import yohou.base.reduction as reduction_module
+
+        y = self._panel()
+        original = reduction_module._predict_direct_step
+        calls = []
+
+        def counting(*a, **k):
+            calls.append(1)
+            return original(*a, **k)
+
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25)
+        reduction_module._predict_direct_step = counting
+        try:
+            forecaster.fit(y, forecasting_horizon=4)
+        finally:
+            reduction_module._predict_direct_step = original
+
+        # A per origin replay at 25 origins would issue at least 26 * 4 = 104 calls.
+        assert len(calls) < 104, (
+            f"{len(calls)} estimator calls for a 25 origin conformal fit suggests the "
+            f"replay is still predicting one origin at a time"
+        )
+
+    def test_non_direct_strategies_are_refused(self):
+        """multi-output holds one estimator for all steps, so there is nothing to batch."""
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        y = self._panel()
+        forecaster = PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy="multi-output",
+            panel_strategy="global",
+            target_as_feature="raw",
+            actual_transformer=LagTransformer(lag=[1, 3]),
+        ).fit(y[:100], forecasting_horizon=4)
+
+        with pytest.raises(ValueError, match="reduction_strategy='direct'"):
+            forecaster._observe_predict_batched_origins(
+                y=y[100:], X_actual=None, groups=forecaster.groups_ or [], stride=1
+            )
+
+
+class TestBulkObserveReplay:
+    """The replay transforms the whole calibration block in one pass per group.
+
+    `observe_transform` concatenates its buffer with the incoming rows, transforms the
+    window, then keeps only the new part, so observing one row against a 168 row buffer
+    transforms 169 rows to keep one. Transforming the block once does that work for
+    every origin at once.
+
+    Sound only where every transformer reports `batch_invariant`, which the replay
+    checks. An undeclared stack keeps the rolling path, so a missing declaration costs
+    a speedup and never a result.
+    """
+
+    @staticmethod
+    def _panel(n=140, n_groups=3):
+        rng = np.random.default_rng(23)
+        time = pl.datetime_range(
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 1) + timedelta(hours=n - 1),
+            interval="1h",
+            eager=True,
+        )
+        cols = {"time": time}
+        for g in range(n_groups):
+            cols[f"g{g}__value"] = np.cumsum(rng.standard_normal(n)) + 100.0 + g
+        return pl.DataFrame(cols)
+
+    @staticmethod
+    def _forecaster(actual_transformer=None):
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.compose import FeatureUnion
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer, RollingStatisticsTransformer
+
+        if actual_transformer is None:
+            actual_transformer = FeatureUnion([
+                ("lags", LagTransformer(lag=[1, 3])),
+                ("roll", RollingStatisticsTransformer(window_size=4, statistics=["mean", "std"])),
+            ])
+        return PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy="direct",
+            panel_strategy="global",
+            target_as_feature="raw",
+            actual_transformer=actual_transformer,
+        )
+
+    def test_bulk_replay_matches_rolling_within_tolerance(self):
+        """Compared on a relative tolerance, not bit equality.
+
+        Batching a rolling accumulator reassociates it, so a rolling mean or standard
+        deviation can differ between the two paths by about one ULP. Some stacks land
+        exactly, but a bit-equality assertion would then be pinning a property of the
+        data rather than of the code.
+        """
+        y = self._panel()
+        y_train, y_calib = y[:100], y[100:]
+        horizon = 4
+
+        rolling = (
+            self
+            ._forecaster()
+            .fit(y_train, forecasting_horizon=horizon)
+            .observe_predict(y=y_calib, forecasting_horizon=None, stride=1, predict_transformed=False)
+        )
+        bulk_forecaster = self._forecaster().fit(y_train, forecasting_horizon=horizon)
+        bulk = bulk_forecaster._observe_predict_bulk_origins(
+            y=y_calib, X_actual=None, groups=bulk_forecaster.groups_ or []
+        )
+
+        assert bulk.shape == rolling.shape
+        assert bulk["time"].equals(rolling["time"])
+        assert bulk["vintage_time"].equals(rolling["vintage_time"])
+
+        numeric = [c for c, dtype in rolling.schema.items() if dtype.is_numeric()]
+        expected = rolling.select(numeric).to_numpy()
+        actual = bulk.select(numeric).to_numpy()
+        relative = np.abs(np.where(expected != 0, (actual - expected) / expected, actual - expected))
+        assert np.nanmax(relative) < 1e-9, (
+            f"bulk observe moved a prediction by {np.nanmax(relative):.3e} relative, far "
+            f"beyond the floating point reassociation a batched accumulator explains"
+        )
+
+    def test_tolerance_check_detects_a_planted_difference(self):
+        """Guard the tolerance assertion against being unable to fail.
+
+        Shifts one origin's features by a row, which is the failure mode that matters:
+        the bulk path reconstructs each origin's row by slicing rather than by rolling,
+        so an off-by-one there would produce plausible values in the wrong places.
+        """
+        from yohou.base.reduction import BaseReductionForecaster
+
+        y = self._panel()
+        y_train, y_calib = y[:100], y[100:]
+
+        rolling = (
+            self
+            ._forecaster()
+            .fit(y_train, forecasting_horizon=4)
+            .observe_predict(y=y_calib, forecasting_horizon=None, stride=1, predict_transformed=False)
+        )
+
+        original = BaseReductionForecaster._bulk_origin_features
+
+        def shifted(self, **kwargs):
+            X_tab, y_observed, observed_time = original(self, **kwargs)
+            return X_tab[1:] + X_tab[:1], y_observed, observed_time
+
+        forecaster = self._forecaster().fit(y_train, forecasting_horizon=4)
+        BaseReductionForecaster._bulk_origin_features = shifted
+        try:
+            mutated = forecaster._observe_predict_bulk_origins(
+                y=y_calib, X_actual=None, groups=forecaster.groups_ or []
+            )
+        finally:
+            BaseReductionForecaster._bulk_origin_features = original
+
+        numeric = [c for c, dtype in rolling.schema.items() if dtype.is_numeric()]
+        expected = rolling.select(numeric).to_numpy()
+        actual = mutated.select(numeric).to_numpy()
+        relative = np.abs(np.where(expected != 0, (actual - expected) / expected, actual - expected))
+        assert np.nanmax(relative) > 1e-9, (
+            "the tolerance comparison cannot fail: rotating the per origin feature rows "
+            "left every prediction within tolerance"
+        )
+
+    def test_transformer_calls_do_not_scale_with_origin_count(self):
+        """One transform pass per group for the whole block, not one per origin."""
+        import yohou.base.reduction as reduction_module
+
+        y = self._panel()
+        y_train = y[:100]
+
+        def count(n_origins):
+            original = reduction_module._observe_transformers_one
+            calls = []
+
+            def counting(*a, **k):
+                calls.append(1)
+                return original(*a, **k)
+
+            forecaster = self._forecaster().fit(y_train, forecasting_horizon=4)
+            reduction_module._observe_transformers_one = counting
+            try:
+                forecaster._observe_predict_bulk_origins(
+                    y=y[100 : 100 + n_origins], X_actual=None, groups=forecaster.groups_ or []
+                )
+            finally:
+                reduction_module._observe_transformers_one = original
+            return len(calls)
+
+        assert count(10) == count(30), (
+            "the bulk path must transform each group once for the whole block, "
+            "independent of how many origins the replay visits"
+        )
+
+    def test_an_undeclared_transformer_keeps_the_rolling_path(self):
+        """A stack the gate cannot vouch for falls back rather than guessing."""
+        from yohou.preprocessing import FunctionTransformer
+
+        y = self._panel()
+        declared = self._forecaster().fit(y[:100], forecasting_horizon=4)
+        undeclared = self._forecaster(actual_transformer=FunctionTransformer(func=lambda frame: frame * 2.0)).fit(
+            y[:100], forecasting_horizon=4
+        )
+
+        assert declared._chains_are_batch_invariant()
+        assert not undeclared._chains_are_batch_invariant(), (
+            "FunctionTransformer takes a caller-supplied func over the whole frame, so "
+            "it cannot promise batch invariance and must not be vouched for"
+        )
+
+    def test_conformal_fit_reaches_the_bulk_path(self):
+        """The replay inside `fit` uses it when the stack allows."""
+        import yohou.base.reduction as reduction_module
+
+        y = self._panel()
+        original = reduction_module._observe_transformers_one
+        calls = []
+
+        def counting(*a, **k):
+            calls.append(1)
+            return original(*a, **k)
+
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25)
+        reduction_module._observe_transformers_one = counting
+        try:
+            forecaster.fit(y, forecasting_horizon=4)
+        finally:
+            reduction_module._observe_transformers_one = original
+
+        # A per origin replay over 25 origins and 3 groups would issue at least 75 calls.
+        assert len(calls) < 75, (
+            f"{len(calls)} transformer passes for a 25 origin conformal fit suggests the "
+            f"replay is still observing one row at a time"
+        )
+
+    def test_the_replay_leaves_the_forecaster_having_observed_the_block(self):
+        """Both paths must agree on where they leave the forecaster, not just on frames.
+
+        The rolling path observes its way through the calibration block and ends having
+        observed all of it. The bulk path reconstructs each origin by slicing and never
+        advances the buffer, so it has to land on that end state deliberately.
+
+        Every equivalence test around this replay compares returned frames, and the two
+        paths returned equivalent frames while disagreeing about the state left behind.
+        That is why this asserts on the state instead.
+        """
+        from yohou.preprocessing import FunctionTransformer
+
+        y = self._panel()
+        calibration_size = 25
+
+        bulk = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=calibration_size).fit(
+            y, forecasting_horizon=4
+        )
+        rolling = SplitConformalForecaster(
+            point_forecaster=self._forecaster(actual_transformer=FunctionTransformer(func=lambda frame: frame * 1.0)),
+            calibration_size=calibration_size,
+        ).fit(y, forecasting_horizon=4)
+
+        assert bulk.point_forecaster_._chains_are_batch_invariant()
+        assert not rolling.point_forecaster_._chains_are_batch_invariant()
+
+        assert bulk.point_forecaster_.observed_time_ == rolling.point_forecaster_.observed_time_, (
+            "the bulk replay left the forecaster at a different observation time than the "
+            "rolling replay, so one of them did not observe the whole calibration block"
+        )
+
+    def test_the_replay_leaves_the_observation_time_at_the_end_of_the_data(self):
+        """Pinned against the data rather than against the other path.
+
+        Restoring the pre-replay state rewinds the forecaster by the whole calibration
+        block, so this lands `calibration_size` rows early. Stating the expected time
+        outright means the test still fails if both paths regress together.
+        """
+        y = self._panel()
+
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25).fit(
+            y, forecasting_horizon=4
+        )
+
+        observed = forecaster.point_forecaster_.observed_time_
+        # Panel forecasters carry one observation time per group; they share a clock.
+        if isinstance(observed, dict):
+            assert len(set(observed.values())) == 1
+            observed = next(iter(observed.values()))
+        assert observed == y["time"][-1], (
+            f"observation time is {observed} but the data ends at {y['time'][-1]}; a "
+            f"forecaster rewound behind its own training data stitches a stale window "
+            f"onto fresh forecasts"
+        )
+
+    def test_predicting_after_the_replay_sees_one_regular_time_axis(self):
+        """The failure this actually caused, rather than the state that caused it.
+
+        A forecaster left rewound by the calibration block produces a frame spanning its
+        stale observation window and a fresh forecast window with nothing in between.
+        Whichever transformer inverts first then rejects the two intervals, so a plain
+        observe-then-predict is enough to catch it without reaching into any state.
+
+        Two things make this bite, and both are properties of the production stack
+        rather than of this test. The target transformer validates the frame handed to
+        its inverse, so without one nothing inspects the time axis. And the observation
+        horizon has to outlast the stride: the buffer keeps its most recent
+        `observation_horizon` rows, so a stack that observes at least that many rows per
+        origin flushes the hole away before anything looks at it. A short lookback is
+        why the obvious version of this test passes against the bug.
+        """
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.compose import FeatureUnion
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+        from yohou.stationarity import ASinhTransformer
+
+        y = self._panel(n=180)
+        train, later = y[:140], y[140:]
+
+        point = PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy="direct",
+            panel_strategy="global",
+            target_as_feature="raw",
+            actual_transformer=FeatureUnion([("lags", LagTransformer(lag=[1, 30]))]),
+            target_transformer=ASinhTransformer(),
+        )
+        forecaster = SplitConformalForecaster(point_forecaster=point, calibration_size=25).fit(
+            train, forecasting_horizon=4
+        )
+
+        predictions = forecaster.observe_predict_interval(y=later, forecasting_horizon=4, coverage_rates=[0.8])
+        assert predictions.height > 0
+
+    def test_the_batched_path_also_leaves_the_block_observed(self):
+        """The third path, which the bulk-versus-rolling comparison does not reach.
+
+        `_observe_predict_batched_origins` captures its saved state inside `assemble`,
+        which runs as the `reduce_fn` after `_observe_predict_loop` has already rolled
+        through the origins, so what it restores is a post-observe state. That is why it
+        was never affected. Asserting it means the invariant covers all three paths
+        rather than the two a bulk-versus-rolling comparison happens to exercise.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25)
+
+        # The batched path is chosen when the stack is not batch invariant but the
+        # forecaster still exposes batched origins, so deny the bulk guard to reach it.
+        cls = type(forecaster.point_forecaster)
+        saved = cls._chains_are_batch_invariant
+        cls._chains_are_batch_invariant = lambda self: False
+        try:
+            fitted = forecaster.fit(y, forecasting_horizon=4)
+        finally:
+            cls._chains_are_batch_invariant = saved
+
+        assert fitted.replay_path_ == "batched"
+        observed = fitted.point_forecaster_.observed_time_
+        stamps = set(observed.values()) if isinstance(observed, dict) else {observed}
+        assert stamps == {y["time"].max()}, (
+            "the batched replay left the forecaster short of the calibration block, so it "
+            "has the defect the bulk path had"
+        )
+
+    def test_a_replay_that_rewinds_the_forecaster_fails_at_fit(self):
+        """The invariant check fires where the state breaks, not four layers later.
+
+        Before this check, a replay that rewound the forecaster surfaced as an
+        inconsistent-interval error from whichever transformer inverted first, describing
+        regular input data as irregular. Attributing that took a cloud step log and a
+        bisect across two submodule bumps.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25).fit(
+            y, forecasting_horizon=4
+        )
+
+        # Rewind the fitted point forecaster by the calibration block, which is exactly
+        # what restoring the pre-replay state used to do.
+        point = forecaster.point_forecaster_
+        rewound = y["time"].max() - timedelta(hours=25)
+        point.observed_time_ = (
+            dict.fromkeys(point.observed_time_, rewound) if isinstance(point.observed_time_, dict) else rewound
+        )
+
+        with pytest.raises(RuntimeError, match="fitted and not predictable"):
+            forecaster._check_replay_left_the_block_observed(y, "bulk")
+
+
+class TestReplayLeftTheBlockObserved:
+    """The guard reads one attribute, so its shapes are pinned directly.
+
+    Reaching each branch through a real fit would need a forecaster deliberately built
+    to strand its observation state, and the failure it reports is one the guard exists
+    to make attributable rather than one any current forecaster produces. Calling it
+    with the states it reads keeps every branch honest without inventing a broken
+    forecaster to produce them.
+    """
+
+    @staticmethod
+    def _y():
+        time = pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 5), interval="1d", eager=True)
+        return pl.DataFrame({"time": time, "value": [1.0, 2.0, 3.0, 4.0, 5.0]})
+
+    class _Point:
+        """Stand-in exposing only the attribute the guard consults."""
+
+        def __init__(self, observed_time_=None):
+            if observed_time_ is not None:
+                self.observed_time_ = observed_time_
+
+    def _check(self, observed):
+        forecaster = SplitConformalForecaster()
+        forecaster.point_forecaster_ = self._Point(observed)
+        forecaster._check_replay_left_the_block_observed(self._y(), "rolling")
+
+    def test_a_forecaster_without_the_attribute_is_left_alone(self):
+        """Nothing to compare against is not evidence of a rewind."""
+        self._check(None)
+
+    def test_a_forecaster_at_the_end_of_the_block_passes(self):
+        self._check(datetime(2024, 1, 5))
+
+    def test_a_panel_dict_at_the_end_of_the_block_passes(self):
+        """Panel keys the state per entity; every entity must have reached the end."""
+        self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 5)})
+
+    def test_a_forecaster_left_behind_raises_naming_the_gap(self):
+        with pytest.raises(RuntimeError, match="3 days"):
+            self._check(datetime(2024, 1, 2))
+
+    def test_one_lagging_group_is_enough_to_raise(self):
+        """A partial rewind is still a hole, and only the lagging stamp is reported.
+
+        The group that reached the end is filtered out, so the message names the one
+        that did not rather than listing every entity.
+        """
+        with pytest.raises(RuntimeError, match=r"at \[datetime\.datetime\(2024, 1, 2"):
+            self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 2)})

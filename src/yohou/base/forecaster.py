@@ -17,8 +17,14 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTransformer
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
+from yohou.base.step_transformer import BaseStepTransformer
 from yohou.base.transformer import BaseActualTransformer
-from yohou.base.utils import _densify_forecast_vintages, _derive_step_columns, _require_forecast_transformer
+from yohou.base.utils import (
+    _densify_forecast_vintages,
+    _derive_step_columns,
+    _require_forecast_transformer,
+    _require_step_transformer,
+)
 from yohou.utils import (
     Tags,
     cast,
@@ -55,6 +61,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -107,6 +118,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         # BaseForecastTransformer here would reject it. _require_forecast_transformer
         # rejects what reports kind="actual".
         "forecast_transformer": [BaseForecastTransformer, BaseActualTransformer, None],
+        # Loose structurally, strict by tag, for the same reason as
+        # "forecast_transformer" above: a step-kind composition is a
+        # BaseActualTransformer subclass reporting kind="step".
+        # _require_step_transformer rejects what does not report kind="step".
+        "step_transformer": [BaseStepTransformer, BaseActualTransformer, None],
         "target_as_feature": [StrOptions({"transformed", "raw"}), None],
         "panel_strategy": [StrOptions({"global", "multivariate"})],
     }
@@ -120,12 +136,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: "BaseStepTransformer | None" = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         self.target_transformer = target_transformer
         self.actual_transformer = actual_transformer
         self.forecast_transformer = forecast_transformer
+        self.step_transformer = step_transformer
         self.target_as_feature = target_as_feature
         self.panel_strategy = panel_strategy
 
@@ -158,6 +176,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         tags.forecaster_tags.uses_target_transformer = self.target_transformer is not None
         tags.forecaster_tags.uses_actual_transformer = self.actual_transformer is not None
         tags.forecaster_tags.uses_forecast_transformer = self.forecast_transformer is not None
+        tags.forecaster_tags.uses_step_transformer = self.step_transformer is not None
 
         # A forecaster is stateful if it uses a stateful transformer.
         # Subclasses that are intrinsically stateful override __sklearn_tags__
@@ -458,6 +477,242 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 f"Raise forecasting_horizon to at least {minimum}, or reduce the transformer's "
                 f"row consumption."
             )
+
+    def _local_step_schema(self, X_step: pl.DataFrame, groups: list[str]) -> dict[str, Any]:
+        """Map unprefixed step column name to dtype, for per-group extraction.
+
+        Derived from the frame being split rather than read from
+        ``_step_schema_per_group_``, because the slot is fitted during derivation,
+        before that attribute is set. Computing it per call also keeps the
+        pre-transform (mixed global and per-group) and post-transform (fully
+        localized) shapes each handled by the frame actually in hand.
+
+        Parameters
+        ----------
+        X_step : pl.DataFrame
+            A step frame carrying ``"time"`` plus step columns, some prefixed
+            ``{group}__`` and some global.
+        groups : list of str
+            Panel group names.
+
+        Returns
+        -------
+        dict
+            Unprefixed column name to dtype, covering the first group's local
+            columns and every global column.
+
+        """
+        step_cols = [c for c in X_step.columns if c != "time"]
+        first = groups[0]
+        schema: dict[str, Any] = {c.split("__", 1)[1]: X_step[c].dtype for c in step_cols if c.startswith(f"{first}__")}
+        for c in step_cols:
+            if "__" not in c or not any(c.startswith(f"{g}__") for g in groups):
+                schema.setdefault(c, X_step[c].dtype)
+        return schema
+
+    def _assert_forecasting_horizon_meets_min_steps(self, forecasting_horizon: int) -> None:
+        """Raise unless the horizon reaches the step slot's minimum block width.
+
+        The mirror of :meth:`_assert_forecasting_horizon_meets_minimum` for the
+        step axis. Each base column expands to exactly ``forecasting_horizon``
+        step columns, so the horizon *is* the block width a step transformer sees.
+        Anything reporting no minimum is skipped rather than assumed to be ``1``.
+
+        Parameters
+        ----------
+        forecasting_horizon : int
+            The fit horizon.
+
+        Raises
+        ------
+        ValueError
+            If the horizon is below the slot's reported minimum.
+
+        """
+        # Read from the unfitted slot, not the fitted one, so the assertion runs
+        # before the inner estimator is asked to fit. A transformer needing more
+        # step columns than the horizon provides fails inside its own fit with a
+        # message about matrix shapes, which never mentions forecasting_horizon;
+        # checking first is what makes the horizon the thing the user is told about.
+        transformer = self.step_transformer
+        if transformer is None:
+            return
+
+        minimum = getattr(transformer, "min_steps", None)
+        if minimum is None:
+            return
+
+        if forecasting_horizon < minimum:
+            raise ValueError(
+                f"forecasting_horizon ({forecasting_horizon}) is below the minimum block "
+                f"width the step_transformer requires ({minimum}). Each base column expands "
+                f"to exactly forecasting_horizon step columns, so the transformer would see "
+                f"fewer columns than it needs. Raise forecasting_horizon to at least "
+                f"{minimum}, or reduce the transformer's width requirement."
+            )
+
+    def _fit_step_transformer(
+        self,
+        X_step: pl.DataFrame | None,
+        forecasting_horizon: int,
+        groups: list[str] | None = None,
+    ) -> pl.DataFrame | None:
+        """Fit the ``step_transformer`` slot, assert the horizon, and transform.
+
+        Called from the fit path with the freshly derived step frame. The wrong-kind
+        guard runs before the ``X_step is None`` early return, so a misconfigured
+        slot is rejected on a fit that happens to carry no ``X_future``/``X_forecast``
+        rather than surfacing only once one appears.
+
+        Parameters
+        ----------
+        X_step : pl.DataFrame or None
+            The derived step frame, or ``None`` when neither ``X_future`` nor
+            ``X_forecast`` was given.
+        forecasting_horizon : int
+            The fit horizon, checked against the slot's ``min_steps``.
+        groups : list of str or None, default=None
+            Panel group names for the per-group fit, or ``None`` for a single
+            instance over the wide frame (standard and multivariate).
+
+        Returns
+        -------
+        pl.DataFrame or None
+            The transformed step frame, or the input unchanged when the slot is
+            unset.
+
+        """
+        self.step_transformer_ = None
+
+        if self.step_transformer is None:
+            return X_step
+
+        _require_step_transformer(self.step_transformer, "step_transformer")
+
+        if X_step is None:
+            return X_step
+
+        self._assert_forecasting_horizon_meets_min_steps(forecasting_horizon)
+
+        if groups is None:
+            self.step_transformer_ = clone(self.step_transformer).fit(X_step)
+        else:
+            schema = self._local_step_schema(X_step, groups)
+            self.step_transformer_ = {
+                group_name: clone(self.step_transformer).fit(
+                    get_group_df(df=X_step, group_name=group_name, schema=schema)
+                )
+                for group_name in groups
+            }
+
+        return self._transform_X_step(X_step)
+
+    def _transform_X_step(self, X_step: pl.DataFrame) -> pl.DataFrame:
+        """Apply the fitted ``step_transformer`` to a derived step frame.
+
+        The single entry point every derivation site routes through, for the same
+        reason ``_transform_X_forecast`` is one: under ``panel_strategy="global"``
+        the fitted slot is a dict keyed by group, and four of the six derivation
+        sites are transform-only paths that would otherwise each have to resolve
+        that shape themselves.
+
+        Under the dict branch every non-index output column is re-prefixed with its
+        group, which localizes any global step column that ``get_group_df`` folded
+        into each group's slice. That matches ``_transform_X_forecast`` exactly; see
+        design Decision 6 for why consistency was preferred to exempting globals.
+
+        Parameters
+        ----------
+        X_step : pl.DataFrame
+            A derived step frame. Never ``None``: derivation calls this only on a
+            frame it built, and ``_fit_step_transformer`` only after its own
+            ``None`` early return.
+
+        Returns
+        -------
+        pl.DataFrame
+            The transformed frame, or the input unchanged when the slot is unset.
+
+        """
+        transformer = getattr(self, "step_transformer_", None)
+        if transformer is None:
+            return X_step
+
+        if not isinstance(transformer, dict):
+            return transformer.transform(X_step)
+
+        schema = self._local_step_schema(X_step, [str(g) for g in transformer])
+        parts: list[pl.DataFrame] = []
+        for group_name, group_transformer in transformer.items():
+            if group_transformer is None:
+                continue
+            local = get_group_df(df=X_step, group_name=group_name, schema=schema)
+            transformed = group_transformer.transform(local)
+            parts.append(transformed.rename({c: f"{group_name}__{c}" for c in transformed.columns if c != "time"}))
+
+        if not parts:
+            return X_step
+
+        wide = parts[0]
+        for part in parts[1:]:
+            wide = wide.join(part, on="time", how="full", coalesce=True)
+        return wide.sort("time")
+
+    def _is_step_column(self, name: str) -> bool:
+        """Report whether ``name`` names a derived step column, in either spelling.
+
+        Step columns carry two names. Panel-wide frames spell one
+        ``{group}__{col}_step_{h}`` and record it in ``_step_column_names_``; the
+        per-group frames, and the matrix stacked from them under
+        ``panel_strategy="global"``, spell the same column ``{col}_step_{h}`` and
+        record it in ``_step_column_local_names_``. Which spelling a caller holds
+        depends on which frame it is inspecting, and callers that inspect both
+        (or that inspect a stacked matrix without knowing how it was built) cannot
+        pick one set and be right.
+
+        The mismatch runs in both directions, which is why the query is asked here
+        rather than open-coded per caller. A stacked panel matrix holds local names
+        against panel-wide records, so a caller testing only ``_step_column_names_``
+        answers "no" for every column, which reads as "there are no step columns"
+        rather than as the name mismatch it is. A panel-wide frame holds prefixed
+        names against records that are unprefixed whenever the source column was
+        global, so a caller testing only the verbatim name misses those. Hence the
+        three forms below: the name as given against either record, and the
+        group-stripped suffix against either record.
+
+        Over-matching is not a practical risk: every recorded name is generated by
+        step-column derivation, so an ordinary engineered feature does not collide
+        with one. On standard data the two sets coincide and this reduces to a
+        plain lookup.
+
+        The query is membership, not a ``_step_{h}`` suffix test, and that is what
+        keeps it correct once a ``step_transformer`` is set. Such a transformer
+        emits horizon-agnostic names (``temp_step_mean``, ``wx_step_c0``) which are
+        recorded here exactly as the step-indexed ones are, so callers that strip
+        derived step columns catch them too. A suffix-parsing matcher would leave
+        them behind, and ``DecompositionPipeline`` would then forward a summary
+        column each component is about to re-derive, failing the fit on a duplicate
+        column.
+
+        Parameters
+        ----------
+        name : str
+            A column name from any frame the forecaster handles.
+
+        Returns
+        -------
+        bool
+            True when the column is a derived step column under either spelling.
+
+        """
+        step_names = getattr(self, "_step_column_names_", set())
+        local_names = getattr(self, "_step_column_local_names_", set())
+        if name in step_names or name in local_names:
+            return True
+        if "__" in name:
+            suffix = name.split("__", 1)[1]
+            return suffix in step_names or suffix in local_names
+        return False
 
     def _transform_X_forecast(self, X_forecast: pl.DataFrame | None) -> pl.DataFrame | None:
         """Apply the fitted ``forecast_transformer`` to an ``X_forecast`` frame.
@@ -1070,6 +1325,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             pl.Series([obs_time]),
             self.fit_forecasting_horizon_,
             self.interval_,
+            step_transform=self._transform_X_step,
         )
 
         step_col_list = sorted(self._step_column_names_)
@@ -1234,10 +1490,58 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         return y_pred
 
+    def _chains_are_batch_invariant(self) -> bool:
+        """Whether every fitted transformer may be observed in bulk rather than per row.
+
+        True only when both the target and actual chains report
+        ``batch_invariant``. A transformer that does not declare the tag is treated as
+        not invariant, so an unaudited stack keeps the rolling path: a missing
+        declaration costs a speedup and never a result.
+
+        Returns
+        -------
+        bool
+            ``True`` when a bulk observe over a block reproduces, within floating point
+            reassociation, what observing the block one row at a time would produce.
+
+        See Also
+        --------
+        `yohou.testing.check_batch_invariance` : Verifies a transformer's declaration.
+
+        """
+
+        def declared(transformer: Any) -> bool:
+            """Whether one transformer declares itself batch invariant.
+
+            A missing tag reads as not invariant, so an unaudited transformer keeps the
+            rolling path rather than silently claiming the guarantee.
+            """
+            if transformer is None:
+                return True
+            tags = getattr(transformer, "__sklearn_tags__", None)
+            if tags is None:
+                return False
+            transformer_tags = tags().transformer_tags
+            return transformer_tags is not None and transformer_tags.batch_invariant
+
+        def every(slot: Any) -> bool:
+            """Whether a transformer slot declares batch invariance throughout.
+
+            A slot holds one transformer under standard data and a per-group dict under
+            panel data; the dict qualifies only when every group's transformer does.
+            """
+            if slot is None:
+                return True
+            if isinstance(slot, dict):
+                return all(declared(t) for t in slot.values())
+            return declared(slot)
+
+        return every(getattr(self, "target_transformer_", None)) and every(getattr(self, "actual_transformer_", None))
+
     def _observe_predict_loop(
         self,
         *,
-        predict_fn: Callable[..., pl.DataFrame],
+        predict_fn: Callable[..., Any],
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
         X_future: pl.DataFrame | None = None,
@@ -1245,6 +1549,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         groups: list[str] | None,
         stride: int,
         observe_fn: Callable[..., Any] | None = None,
+        reduce_fn: Callable[[list[Any]], pl.DataFrame] | None = None,
         **predict_kwargs: Any,
     ) -> pl.DataFrame:
         """Shared observe-then-predict rolling loop.
@@ -1264,7 +1569,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ----------
         predict_fn : callable
             The predict method to call (e.g. ``self.predict``,
-            ``self.predict_interval``, ``self.predict_class_proba``).
+            ``self.predict_interval``, ``self.predict_class_proba``). It returns a
+            ``pl.DataFrame`` unless ``reduce_fn`` is given, in which case it may
+            return whatever per-origin value that reduction consumes.
         y : pl.DataFrame
             Historical target observations to incrementally observe.
         X_actual : pl.DataFrame or None
@@ -1284,6 +1591,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Optional callback for meta-forecasters. When provided, called
             as ``observe_fn(y_slice, X_actual=X_obs_slice, X_future=...,
             X_forecast=...)`` instead of using pre-computed step columns.
+        reduce_fn : callable or None, default=None
+            How to combine the per-origin results of ``predict_fn``. ``None``
+            concatenates them, which is the ordinary rolling forecast. A caller
+            that wants to defer work out of the loop passes a ``predict_fn``
+            that records state rather than predicting, and a ``reduce_fn`` that
+            does the deferred work once over every origin.
         **predict_kwargs : dict
             Extra keyword arguments forwarded to ``predict_fn``
             (e.g. ``forecasting_horizon``, ``coverage_rates``).
@@ -1317,11 +1630,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 y["time"],
                 self.fit_forecasting_horizon_,
                 self.interval_,
+                step_transform=self._transform_X_step,
             )
 
-        # Initial predict (reads _X_t_observed set during fit/last observe)
-        y_pred_i = predict_fn(groups=groups, **predict_kwargs)
-        y_pred = y_pred_i
+        # Initial predict (reads _X_t_observed set during fit/last observe).
+        # Accumulated into a list rather than concatenated per iteration: a running
+        # `pl.concat` reallocates the whole frame every origin, which is quadratic in
+        # the origin count for a result that is only needed once.
+        outputs: list[Any] = [predict_fn(groups=groups, **predict_kwargs)]
 
         for i in range(0, len(y), stride):
             y_slice = y[i : i + stride]
@@ -1349,10 +1665,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 # No step columns and no observe_fn: fall back to regular observe
                 self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups)
 
-            y_pred_i = predict_fn(groups=groups, **predict_kwargs)
-            y_pred = pl.concat([y_pred, y_pred_i])
+            outputs.append(predict_fn(groups=groups, **predict_kwargs))
 
-        return y_pred
+        return pl.concat(outputs) if reduce_fn is None else reduce_fn(outputs)
 
     def _add_time_columns(self, y_pred: pl.DataFrame) -> pl.DataFrame:
         """Add time metadata columns to predictions.
@@ -1399,6 +1714,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
     def _predict(
         self,
         groups: list[str],
+        y_pred_step: pl.DataFrame | None = None,
         **predict_one_params,
     ) -> tuple[pl.DataFrame, pl.DataFrame]:
         """Generate one-step or multi-step prediction.
@@ -1410,8 +1726,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             - Pass an empty list to predict for non-panel (global) data.
             - If a list of str: predict only for the specified panel groups.
             Parameter is ignored if the forecaster was not fitted on panel data.
+        y_pred_step : pl.DataFrame or None, default=None
+            Predictions in transformed space, already carrying their time columns.
+            When given, ``_predict_one`` is skipped and these are inverse-transformed
+            and assembled instead. This lets a caller holding many origins lift the
+            estimator work out of its loop and run it once, then reuse this method for
+            the per-origin inverse rather than duplicating it.
         **predict_one_params : dict
-            Params to the _predict_one method.
+            Params to the _predict_one method. Ignored when ``y_pred_step`` is given.
 
         Returns
         -------
@@ -1421,7 +1743,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Inverse transformed predicted time series (original scale).
 
         """
-        y_pred_step = self._predict_one(groups=groups, **predict_one_params)
+        if y_pred_step is None:
+            y_pred_step = self._predict_one(groups=groups, **predict_one_params)
 
         if self.target_transformer is None:
             if not groups:

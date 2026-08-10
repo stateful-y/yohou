@@ -12,7 +12,6 @@ from yohou.base.utils import (
     _observe_transformers_one,
     _retained_forecast_vintages,
     _rewind_transformers_one,
-    _warn_forecast_coverage_at_fit,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval
@@ -221,8 +220,9 @@ class BaseStandardForecaster:
         Notes
         -----
         Beyond the return values, this method sets the following fitted
-        attributes on ``self``: ``_step_column_names_``, ``_X_future_raw_``,
-        ``_X_forecast_raw_``, ``_X_future_schema_``, and ``_X_forecast_schema_``
+        attributes on ``self``: ``_step_column_names_``,
+        ``_step_column_local_names_``, ``_X_future_raw_``, ``_X_forecast_raw_``,
+        ``_X_future_schema_``, and ``_X_forecast_schema_``
         (plus those set by ``_set_transformed_attributes_standard`` and
         ``_update_y_X_t_observed_standard``).
 
@@ -237,6 +237,12 @@ class BaseStandardForecaster:
 
         # Inject step columns from X_future / X_forecast. Coverage is reported at
         # fit per column (below), so the per-call warning is suppressed here.
+        # Run the kind guard and initialise the slot attribute up front, so a
+        # misconfigured step_transformer is rejected on a fit carrying no
+        # X_future/X_forecast rather than surfacing only once one appears.
+        # Derivation refits it on the frame it builds.
+        self._fit_step_transformer(None, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+
         X_step = _derive_step_columns(
             X_future=X_future,
             X_forecast=X_forecast_t,
@@ -244,12 +250,19 @@ class BaseStandardForecaster:
             forecasting_horizon=forecasting_horizon,
             interval=self.interval_,
             warn_coverage=False,
+            warn_coverage_at_fit=True,
             existing_columns=set(X_t.columns) - {"time"} if X_t is not None else None,
+            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[unresolved-attribute]
+                frame, forecasting_horizon
+            ),
         )
         _warn_rank_deficient_step_columns(X_step, X_future, forecasting_horizon)
-        _warn_forecast_coverage_at_fit(X_step, X_forecast_t, forecasting_horizon)
         if X_step is not None:
             self._step_column_names_ = set(X_step.columns) - {"time"}
+            # Standard data has no panel prefixes, so the local half of the dual-naming
+            # contract coincides with the panel-wide half. Set it all the same: consumers
+            # read the pair unconditionally, and only the panel path makes them differ.
+            self._step_column_local_names_ = set(self._step_column_names_)
             self._X_future_raw_ = X_future
             # Raw: backs the recursive-predict presence sentinel, and keeping it raw
             # holds X_forecast_eff type-consistent across its two branches.
@@ -266,6 +279,7 @@ class BaseStandardForecaster:
                 X_t = X_step.join(y_t.select("time"), on="time", how="semi")
         else:
             self._step_column_names_ = set()
+            self._step_column_local_names_ = set()
             self._X_future_raw_ = None
             self._X_forecast_raw_ = None
             self._X_forecast_t_ = None
@@ -406,6 +420,7 @@ class BaseStandardForecaster:
             pl.Series([self.observed_time_]),
             self.fit_forecasting_horizon_,  # ty: ignore[unresolved-attribute]
             self.interval_,
+            step_transform=self._transform_X_step,  # ty: ignore[unresolved-attribute]
         )
         if X_step is not None and self._X_t_observed is not None:
             self._X_t_observed = pl.concat(

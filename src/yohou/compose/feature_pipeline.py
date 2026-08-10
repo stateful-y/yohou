@@ -326,6 +326,32 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
         return sklearn_Pipeline._fit(self, X, y, routed_params, **kwargs)  # ty: ignore[invalid-argument-type]
 
     @property
+    def target_output_name(self) -> str | None:
+        """Delegate to the first step that designates a target column.
+
+        ``inverse_transform`` runs the steps in reverse, so the frame it finally returns
+        is whatever the *first* step's inverse emitted, and that step's declaration is
+        the one that describes it. Scanning forward for the first non-``None`` keeps a
+        pipeline honest when only a later step retains operands. Without this delegation
+        the property inherits the ``None`` default, and wrapping a target transform in a
+        pipeline silently drops the distinction between the target and the scaffolding
+        retained beside it.
+
+        Returns
+        -------
+        str or None
+            The reconstructed target column, or ``None`` when no step designates one.
+
+        """
+        for _, transformer in self.steps:
+            if transformer is None or transformer == "passthrough":
+                continue
+            name = getattr(transformer, "target_output_name", None)
+            if name is not None:
+                return name
+        return None
+
+    @property
     def named_steps(self) -> Bunch:
         """Access the steps by name.
 
@@ -493,6 +519,23 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
                 # Invertible if all steps are invertible
                 tags.transformer_tags.invertible = all(
                     t.__sklearn_tags__().transformer_tags.invertible for t in transformers
+                )
+
+                # Tolerates an irregular time grid only if every step does. Inside the
+                # ``if transformers:`` guard so an empty pipeline keeps the base default
+                # rather than ``all([]) == True``.
+                tags.transformer_tags.accepts_irregular_grid = all(
+                    t.__sklearn_tags__().transformer_tags.accepts_irregular_grid for t in transformers
+                )
+
+                # Causal only if every step is. Unlike ``observation_horizon``, which
+                # takes the max here, this is a conjunction: one non-causal step makes
+                # the whole output depend on future rows, so a bulk observe would not
+                # reproduce what the rolling path yields. Inside the ``if transformers:``
+                # guard so an empty composition keeps the base default rather than
+                # ``all([]) == True``.
+                tags.transformer_tags.batch_invariant = all(
+                    t.__sklearn_tags__().transformer_tags.batch_invariant for t in transformers
                 )
 
                 # min_value is the one of the first transformer

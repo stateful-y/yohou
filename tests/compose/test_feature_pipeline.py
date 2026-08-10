@@ -17,6 +17,8 @@ from sklearn.utils.validation import check_is_fitted
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from conftest import InvertibleTransformer, SimpleTransformer, StatelessTransformer
 from yohou.compose import FeaturePipeline
+from yohou.preprocessing import Downsampler
+from yohou.preprocessing.window import LagTransformer
 
 
 class TestFeaturePipelineFitTransform:
@@ -413,3 +415,59 @@ class TestFeaturePipelineTags:
         tags = pipe.__sklearn_tags__()
         first_min = StatelessTransformer().__sklearn_tags__().input_tags.min_value
         assert tags.input_tags.min_value == first_min
+
+
+class TestFeaturePipelineIrregularGrid:
+    """accepts_irregular_grid aggregates as all(steps)."""
+
+    def test_all_tolerant(self):
+        p = FeaturePipeline([
+            ("d1", Downsampler(interval="1h", aggregation="mean")),
+            ("d2", Downsampler(interval="1h", aggregation="mean")),
+        ])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is True
+
+    def test_one_strict_step(self):
+        p = FeaturePipeline([
+            ("d", Downsampler(interval="1h", aggregation="mean")),
+            ("lag", LagTransformer(lag=[1])),
+        ])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+    def test_empty_keeps_base_default(self):
+        p = FeaturePipeline([("keep", "passthrough")])
+        assert p.__sklearn_tags__().transformer_tags.accepts_irregular_grid is False
+
+
+class TestFeaturePipelineTargetOutputName:
+    """A pipeline must not swallow a step's target/scaffolding distinction.
+
+    A target transform that retains operands so its inverse is defined names the one
+    output that is the real value. If wrapping it in a pipeline reports ``None``, a
+    consumer summing contributions adds the retained operands into the result.
+    """
+
+    def _pipe(self):
+        from yohou.preprocessing import ArithmeticTransformer
+        from yohou.stationarity import ASinhTransformer
+
+        return FeaturePipeline([
+            ("ratio", ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)),
+            ("compress", ASinhTransformer()),
+        ])
+
+    def test_delegates_to_the_designating_step(self):
+        assert self._pipe().target_output_name == "a"
+
+    def test_none_when_no_step_designates_one(self):
+        pipe = FeaturePipeline([("a", SimpleTransformer(observation_horizon=0))])
+        assert pipe.target_output_name is None
+
+    def test_skips_passthrough_steps(self):
+        from yohou.preprocessing import ArithmeticTransformer
+
+        pipe = FeaturePipeline([
+            ("skip", "passthrough"),
+            ("ratio", ArithmeticTransformer("a", "b", op="div", output_name="c", keep_inputs=True)),
+        ])
+        assert pipe.target_output_name == "a"

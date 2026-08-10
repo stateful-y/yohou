@@ -10,6 +10,8 @@ Preprocessing transformers for stationarization and feature engineering.
 
 | Name | Description |
 |------|-------------|
+| [`ArithmeticTransformer`](generated/yohou.preprocessing.ArithmeticTransformer.md) | Invertible column-wise arithmetic between two columns. |
+| [`ReduceTransformer`](generated/yohou.preprocessing.ReduceTransformer.md) | Invertible n-ary reduction of several columns with ``sum`` or ``product``. |
 | [`CalendarFeatureTransformer`](generated/yohou.preprocessing.CalendarFeatureTransformer.md) | Extract calendar-based features from the time column. |
 | [`DaylightSavingFeatureTransformer`](generated/yohou.preprocessing.DaylightSavingFeatureTransformer.md) | Deterministic daylight-saving-time features from the time column. |
 | [`HolidayFeatureTransformer`](generated/yohou.preprocessing.HolidayFeatureTransformer.md) | Extract holiday indicator features from a user-provided holiday calendar. |
@@ -36,6 +38,9 @@ Preprocessing transformers for stationarization and feature engineering.
 | [`RobustScaler`](generated/yohou.preprocessing.RobustScaler.md) | Scale features using statistics that are robust to outliers. |
 | [`SplineTransformer`](generated/yohou.preprocessing.SplineTransformer.md) | Generate univariate B-spline bases for features. |
 | [`StandardScaler`](generated/yohou.preprocessing.StandardScaler.md) | Standardize features by removing the mean and scaling to unit variance. |
+| [`StepAggregator`](generated/yohou.preprocessing.StepAggregator.md) | Reduce each base column's step block to one column per aggregation. |
+| [`StepColumnReducer`](generated/yohou.preprocessing.StepColumnReducer.md) | Lift an sklearn transformer onto the step axis, one estimator per base column. |
+| [`StepFrameReducer`](generated/yohou.preprocessing.StepFrameReducer.md) | Lift an sklearn transformer onto the step axis, one estimator for the whole frame. |
 | [`FourierFeatureTransformer`](generated/yohou.preprocessing.FourierFeatureTransformer.md) | Generate Fourier harmonic features from the time column. |
 | [`TimeIndexTransformer`](generated/yohou.preprocessing.TimeIndexTransformer.md) | Convert the time column to a numeric index with optional polynomial terms. |
 | [`ExponentialMovingAverage`](generated/yohou.preprocessing.ExponentialMovingAverage.md) | Exponentially Weighted Moving Average (EWMA) transformer. |

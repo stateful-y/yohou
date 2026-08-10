@@ -46,7 +46,7 @@ class Downsampler(BaseActualTransformer):
         Target time interval (e.g., "1h", "1d", "5m", "30s").
         Uses polars duration string syntax. Must be greater than or equal to
         the input data's interval.
-    aggregation : {"mean", "sum", "min", "max", "first", "last", "median"}, default="mean"
+    aggregation : {"mean", "sum", "min", "max", "first", "last", "median", "std"}, default="mean"
         Aggregation function to apply within each time bin:
         - "mean": Average values in each bin
         - "sum": Sum values in each bin
@@ -55,6 +55,10 @@ class Downsampler(BaseActualTransformer):
         - "first": First value in each bin
         - "last": Last value in each bin
         - "median": Median value in each bin
+        - "std": Sample standard deviation of the values in each bin, which
+          measures how much the series moved *within* the bin rather than where
+          it sat. A bin holding fewer than two values yields null, since a
+          spread is undefined for a single point.
     closed : {"left", "right"}, default="left"
         Which side of the interval is closed.
     label : {"left", "right"}, default="left"
@@ -97,7 +101,7 @@ class Downsampler(BaseActualTransformer):
 
     """
 
-    _valid_aggregations = {"mean", "sum", "min", "max", "first", "last", "median"}
+    _valid_aggregations = {"mean", "sum", "min", "max", "first", "last", "median", "std"}
 
     _parameter_constraints: dict = {
         "interval": [str],
@@ -115,7 +119,7 @@ class Downsampler(BaseActualTransformer):
     def __init__(
         self,
         interval: str = "1h",
-        aggregation: Literal["mean", "sum", "min", "max", "first", "last", "median"] = "mean",
+        aggregation: Literal["mean", "sum", "min", "max", "first", "last", "median", "std"] = "mean",
         closed: Literal["left", "right"] = "left",
         label: Literal["left", "right"] = "left",
         include_boundaries: bool = False,
@@ -189,6 +193,8 @@ class Downsampler(BaseActualTransformer):
                 agg_exprs.append(pl.col(col).last())
             elif self.aggregation == "median":
                 agg_exprs.append(pl.col(col).median())
+            elif self.aggregation == "std":
+                agg_exprs.append(pl.col(col).std())
 
         result = (
             X

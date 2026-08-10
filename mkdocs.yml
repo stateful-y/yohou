@@ -281,6 +281,7 @@ nav:
     - Clean and Resample Time Series: pages/how-to/clean-and-resample.md
     - Compose Feature Pipelines: pages/how-to/compose-feature-pipelines.md
     - Transform Forecast Features: pages/how-to/transform-forecast-features.md
+    - Reduce Forecast Step Features: pages/how-to/reduce-step-features.md
     - Apply Stationarity Transforms: pages/how-to/apply-stationarity-transforms.md
     - Apply Signal Processing: pages/how-to/apply-signal-processing.md
     - Combine Forecasters with Ensembles: pages/how-to/ensemble-forecasting.md

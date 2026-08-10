@@ -12,6 +12,7 @@ Composition utilities for transformers and forecasters.
 |------|-------------|
 | [`ColumnForecaster`](generated/yohou.compose.ColumnForecaster.md) | Applies different forecasters to different column subsets. |
 | [`ColumnTransformer`](generated/yohou.compose.ColumnTransformer.md) | Applies transformers to columns of a polars DataFrame. |
+| [`CombiningForecaster`](generated/yohou.compose.CombiningForecaster.md) | Point meta-forecaster that combines independently fitted per-term forecasts. |
 | [`DecompositionPipeline`](generated/yohou.compose.DecompositionPipeline.md) | Meta-forecaster that decomposes time series into sequential components. |
 | [`FeaturePipeline`](generated/yohou.compose.FeaturePipeline.md) | A sequence of time series transformers. |
 | [`FeatureUnion`](generated/yohou.compose.FeatureUnion.md) | Concatenates results of multiple transformer objects. |

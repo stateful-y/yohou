@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -45,6 +45,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     nan_handling : {"drop", "pass"}, default="pass"
@@ -79,6 +84,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         - ``"all"``: every estimator receives all step columns.
         - ``"matched"``: estimator for step h receives only ``*_step_h``.
         - ``"cumulative"``: estimator for step h receives ``*_step_1..h``.
+
+        Filtering applies identically whatever the step columns were derived
+        from and under either panel strategy. A non-default alignment that
+        cannot recognize any step column in the feature matrix raises
+        ``RuntimeError`` rather than falling back to ``"all"``.
 
     time_weighter : BaseWeighter or None, default=None
         Per-timestep training-sample weighter (e.g.
@@ -184,6 +194,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -206,6 +217,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
@@ -547,7 +559,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             X_t = self._X_t_observed.tail(1).select(~cs.by_name("time"))
             assert self.local_X_t_schema_ is not None
             X_tab = X_t.select(list(self.local_X_t_schema_.keys())).to_numpy()
-            y_raw = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
+            y_raw = estimator.predict(X_tab)
 
             result_cols: list[pl.Series] = []
             for coverage_rate in coverage_rates:

@@ -408,3 +408,37 @@ def test_public_weighters_are_discoverable() -> None:
     ):
         assert name in discovered, f"{name} not discovered"
         assert discovered[name].__module__.startswith("yohou.weighting")
+
+
+class TestCompositeNamedAccess:
+    """Sub-weighters are reachable by name.
+
+    No trailing underscore: ``CompositeWeighter`` uses its sub-weighters in place rather
+    than cloning them, so this is a view over parameters, not fitted state.
+    """
+
+    @staticmethod
+    def _parts():
+        return ExponentialDecayWeighter(half_life=5), SeasonalEmphasisWeighter(seasonality=7)
+
+    def test_returns_each_sub_weighter_under_its_name(self):
+        decay, seasonal = self._parts()
+        composite = CompositeWeighter(weighters=[("decay", decay), ("seasonal", seasonal)])
+        assert set(composite.named_weighters) == {"decay", "seasonal"}
+
+    def test_does_not_require_fit_and_returns_the_same_objects(self):
+        """The missing underscore claims in-place semantics; this pins that claim."""
+        decay, seasonal = self._parts()
+        composite = CompositeWeighter(weighters=[("decay", decay), ("seasonal", seasonal)])
+        assert composite.named_weighters["decay"] is decay
+        assert composite.named_weighters["seasonal"] is seasonal
+
+    def test_repeated_names_are_rejected(self):
+        decay, seasonal = self._parts()
+        composite = CompositeWeighter(weighters=[("dup", decay), ("dup", seasonal)])
+        with pytest.raises(ValueError, match="not unique"):
+            _ = composite.named_weighters
+
+    def test_distinct_names_still_validate(self):
+        decay, seasonal = self._parts()
+        CompositeWeighter(weighters=[("decay", decay), ("seasonal", seasonal)])._check_weighters()

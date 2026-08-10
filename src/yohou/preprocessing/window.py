@@ -85,7 +85,9 @@ class LagTransformer(BaseActualTransformer):
         "lag": [Interval(numbers.Integral, 1, None, closed="left"), list],
     }
 
-    _tags = {"stateful": True}
+    # Causal: `.shift(lag)` reads backwards only, and `observation_horizon` is
+    # `max(lags)`, exactly the depth reached.
+    _tags = {"stateful": True, "batch_invariant": True}
 
     def __init__(self, lag: StrictInt | list[StrictInt] = 1):
         self.lag = lag
@@ -216,7 +218,9 @@ class MeanLagTransformer(BaseActualTransformer):
         "n_lags": [Interval(numbers.Integral, 1, None, closed="left")],
     }
 
-    _tags = {"stateful": True}
+    # Causal: every term is a backward `.shift`, and `observation_horizon` is
+    # `max(lags) * n_lags`, the deepest shift taken.
+    _tags = {"stateful": True, "batch_invariant": True}
 
     def __init__(self, lag: StrictInt | list[StrictInt] = 1, n_lags: StrictInt = 1):
         self.lag = lag
@@ -360,7 +364,10 @@ class SlidingWindowFunctionTransformer(BaseActualTransformer):
         "kw_args": [dict, None],
     }
 
-    _tags = {"stateful": True}
+    # Causal: windows are trailing (`X[i : i + window_size]`) and stamped at the
+    # window's last point, so row t reads only rows in [t - window_size + 1, t]
+    # whatever `func` does inside them.
+    _tags = {"stateful": True, "batch_invariant": True}
 
     def __init__(
         self,
@@ -531,7 +538,11 @@ class RollingStatisticsTransformer(BaseActualTransformer):
         "statistics": [str, list],
     }
 
-    _tags = {"stateful": True}
+    # Causal: polars rolling aggregations are trailing, and `observation_horizon`
+    # is `window_size - 1`. Batching does reassociate the accumulator, so bulk and
+    # per row results differ by about one ULP; the conformance check compares on a
+    # relative tolerance for exactly this reason.
+    _tags = {"stateful": True, "batch_invariant": True}
 
     def __init__(
         self,
