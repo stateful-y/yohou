@@ -849,6 +849,44 @@ class TestDecompositionPipelineObserveRewind:
         y_pred = forecaster.predict(forecasting_horizon=5)
         assert len(y_pred) == 5
 
+    def test_observe_advances_observed_time(self, time_series_factory):
+        """The pipeline's own ``observed_time_``, not only its components'.
+
+        Nothing inside the pipeline reads it -- predict builds its vintage from the
+        components -- so it stayed at the fit end through every observe without
+        changing a prediction. It is read from outside: a conformal fit compares it
+        against the calibration block to decide whether the replay left the
+        forecaster predictable, and a pipeline that never advanced looked to that
+        check like a replay that had rewound.
+        """
+        y = time_series_factory(length=80, n_components=1)
+
+        forecaster = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("season", SeasonalNaive(seasonality=7)),
+        ])
+        forecaster.fit(y[:60], forecasting_horizon=5)
+        assert forecaster.observed_time_ == y[:60]["time"][-1]
+
+        forecaster.observe(y=y[60:70])
+        assert forecaster.observed_time_ == y[60:70]["time"][-1]
+
+        # Rewind resets the window rather than extending it, so it moves backwards.
+        forecaster.rewind(y=y[:60])
+        assert forecaster.observed_time_ == y[:60]["time"][-1]
+
+    def test_observe_advances_observed_time_panel(self, panel_time_series_factory):
+        """Panel keys it by group, the shape the base class stores."""
+        y = panel_time_series_factory(length=80, n_series=1, n_groups=2)
+
+        forecaster = DecompositionPipeline([("trend", PolynomialTrendForecaster(degree=1))])
+        forecaster.fit(y[:60], forecasting_horizon=5)
+        forecaster.observe(y=y[60:70])
+
+        assert isinstance(forecaster.observed_time_, dict)
+        assert set(forecaster.observed_time_) == set(forecaster.groups_)
+        assert all(stamp == y[60:70]["time"][-1] for stamp in forecaster.observed_time_.values())
+
 
 class TestDecompositionPipelineFeatureTransformer:
     """Tests for DecompositionPipeline with actual_transformer."""

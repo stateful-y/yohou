@@ -800,6 +800,29 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             return y_t_dict
         return y_t.tail(horizon) if horizon else y_t
 
+    def _record_observed_time(self, y: pl.DataFrame) -> None:
+        """Advance ``observed_time_`` to the last row this call observed.
+
+        The components carry the observation state this pipeline predicts from, so
+        nothing here reads ``observed_time_`` and it went unmaintained: ``fit`` set it
+        and ``observe`` left it behind. It is still part of the forecaster contract, and
+        a caller that asks a fitted pipeline how far it has observed deserves an answer
+        about the pipeline rather than about its last fit.
+
+        Panel mode keys it by group, as the base class does. Every group shares the one
+        ``"time"`` column of a wide panel frame, so they advance together.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            The validated, untransformed target this call observed. Untransformed
+            because a stateful target transformer can drop leading rows, which would
+            put a transformed frame's last timestamp behind the data actually seen.
+
+        """
+        last = y["time"][-1]
+        self.observed_time_ = dict.fromkeys(self.groups_, last) if self.groups_ is not None else last
+
     @staticmethod
     def _check_residual_alignment(name: str, aligned_height: int, expected_height: int) -> None:
         """Raise if the residual/prediction inner join dropped rows unexpectedly.
@@ -1051,6 +1074,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # it as a per-group dict, so store the dict form there. _X_observed is
         # not read by this forecaster, so it is intentionally not stored.
         self._y_observed = self._bounded_observed(y_t, y_t_dict)
+        self._record_observed_time(y)
 
         return self
 
@@ -1205,6 +1229,9 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # it as a per-group dict, so store the dict form there. _X_observed is
         # not read by this forecaster, so it is intentionally not stored.
         self._y_observed = self._bounded_observed(y_t, y_t_dict)
+        # Rewind resets the window rather than extending it, so this moves backwards
+        # as readily as forwards; either way it names the last row now observed.
+        self._record_observed_time(y)
 
         return self
 
