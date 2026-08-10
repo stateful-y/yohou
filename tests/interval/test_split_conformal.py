@@ -1283,12 +1283,20 @@ class TestBatchedOriginPrediction:
     def _fitted(self, y_train, horizon=4):
         return self._forecaster().fit(y_train, forecasting_horizon=horizon)
 
-    def test_batched_replay_is_bit_identical_to_rolling(self):
-        """Exact equality, not a tolerance.
+    def test_batched_replay_matches_rolling(self):
+        """Structure exactly, values to within floating-point reassociation.
 
-        Batching across origins reassociates nothing: a step's estimator is applied
-        row-wise, so stacking rows from different origins into one call computes the
-        same numbers.
+        A step's estimator is applied row-wise, so stacking origins into one call
+        computes the same numbers mathematically but not to the same bits: BLAS picks
+        its kernel by matrix size, and the stacked call is hundreds of rows where the
+        rolling call is one per group. Whether the last bit actually differs depends on
+        the machine, so an exact comparison here passes and fails by runner. Same
+        tolerance, and same reason for the ``abs_tol``, as
+        `tests.point.test_reduction._assert_matches_per_group`, which covers the
+        sibling case of batching across panel groups instead of across origins.
+
+        A real mix-up between origins moves a prediction by orders of magnitude more,
+        which is what the planted-difference test below pins.
         """
         y = self._panel()
         y_train, y_calib = y[:100], y[100:]
@@ -1302,13 +1310,17 @@ class TestBatchedOriginPrediction:
         )
 
         assert batched.shape == rolling.shape
-        assert batched.equals(rolling), (
-            "the batched multi-origin replay changed a prediction; it must group the "
-            "same rows into fewer calls, not compute anything differently"
+        assert batched.schema == rolling.schema
+        pl.testing.assert_frame_equal(
+            batched,
+            rolling,
+            check_exact=False,
+            rel_tol=1e-12,
+            abs_tol=1e-15,
         )
 
     def test_equivalence_check_detects_a_planted_difference(self):
-        """Guard the equality assertion against being unable to fail.
+        """Guard the equivalence assertion against being unable to fail.
 
         Mis-assigns each origin's predictions to a different origin, which is the
         failure mode that matters here: the batched pass slices one stacked result
@@ -1337,9 +1349,10 @@ class TestBatchedOriginPrediction:
         finally:
             BaseReductionForecaster._estimator_predict_direct_multi = original
 
-        assert not mutated.equals(rolling), (
-            "the equality comparison cannot fail: reversing the per origin assignment left the replay output unchanged"
-        )
+        # The same tolerant comparison the real check uses, so this guards that check
+        # rather than a stricter one no longer made anywhere.
+        with pytest.raises(AssertionError):
+            pl.testing.assert_frame_equal(mutated, rolling, check_exact=False, rel_tol=1e-12, abs_tol=1e-15)
 
     def test_estimator_calls_do_not_scale_with_origin_count(self):
         """One call per horizon step for the whole replay, not one per origin.
