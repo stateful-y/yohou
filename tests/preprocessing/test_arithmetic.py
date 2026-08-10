@@ -63,6 +63,24 @@ class TestArithmeticForward:
         with pytest.raises(ValueError, match="missing required column"):
             ArithmeticTransformer("a", "b", op="sub").fit(X)
 
+    def test_output_name_reusing_an_operand_is_not_retained(self):
+        """An operand that is also the output is not carried alongside it.
+
+        Retaining it would select the column twice, once as the operand and once as
+        the result that replaces it.
+        """
+        X = _frame()
+        t = ArithmeticTransformer("a", "b", op="sub", output_name="a", keep_inputs=True).fit(X)
+        assert t.get_feature_names_out() == ["b", "a"]
+        assert t.transform(X).columns == ["time", "b", "a"]
+
+    def test_a_repeated_operand_is_retained_once(self):
+        """The same column on both sides is carried once, not twice."""
+        X = _frame()
+        t = ArithmeticTransformer("a", "a", op="sub", output_name="c", keep_inputs=True).fit(X)
+        assert t.get_feature_names_out() == ["a", "c"]
+        assert np.allclose(t.transform(X)["c"].to_numpy(), 0.0)
+
 
 class TestArithmeticInverse:
     """Group-inverse recovery in both directions."""
@@ -97,6 +115,15 @@ class TestArithmeticInverse:
         decomposed = X_t.select("time", "cost", "margin")
         recovered = t.inverse_transform(decomposed)
         assert np.allclose(recovered["revenue"].to_numpy(), frame["revenue"].to_numpy())
+
+    def test_target_output_name_follows_invert_wrt(self):
+        """The declared contribution is the operand the inverse reconstructs.
+
+        The inverse emits the recovered operand and the sibling it needed; a consumer
+        combining transformed series reads this to tell the value from the scaffolding.
+        """
+        assert ArithmeticTransformer("a", "b", op="sub", invert_wrt="left").target_output_name == "a"
+        assert ArithmeticTransformer("a", "b", op="sub", invert_wrt="right").target_output_name == "b"
 
     def test_missing_sibling_raises(self):
         """Inverse without the retained sibling raises instead of guessing."""
@@ -149,6 +176,64 @@ class TestReduce:
         X = self._frame3()
         with pytest.raises(ValueError, match="must be one of input_cols"):
             ReduceTransformer(["a", "b"], invert_col="z").fit(X)
+
+    def test_empty_input_cols_rejected(self):
+        """An empty input_cols reaches fit, since the constraint only checks the type."""
+        X = self._frame3()
+        with pytest.raises(ValueError, match="non-empty list"):
+            ReduceTransformer([], output_name="out").fit(X)
+
+    def test_missing_input_raises(self):
+        """A named input absent from the frame raises at fit."""
+        X = self._frame3().drop("c")
+        with pytest.raises(ValueError, match="missing required column"):
+            ReduceTransformer(["a", "b", "c"], output_name="out").fit(X)
+
+    def test_inverse_without_invert_col_raises(self):
+        """No designated column means no inverse to compute."""
+        X = self._frame3()
+        t = ReduceTransformer(["a", "b"], output_name="out", keep_inputs=True).fit(X)
+        with pytest.raises(ValueError, match="requires invert_col"):
+            t.inverse_transform(t.transform(X))
+
+    @pytest.mark.parametrize("op", ["sum", "product"])
+    def test_single_column_reduction_inverts_as_identity(self, op):
+        """One input leaves no siblings, so the output is the operand unchanged.
+
+        Both reductions agree here: a one-element sum and a one-element product are
+        each the element, so the inverse is the identity rather than a subtraction
+        or a division by an empty product.
+        """
+        X = self._frame3()
+        t = ReduceTransformer(["a"], op=op, output_name="out", keep_inputs=True, invert_col="a")
+        X_t = t.fit_transform(X)
+        assert np.allclose(X_t["out"].to_numpy(), X["a"].to_numpy())
+        recovered = t.inverse_transform(X_t)
+        assert np.allclose(recovered["a"].to_numpy(), X["a"].to_numpy())
+
+    def test_target_output_name_tracks_invert_col(self):
+        """The recovered part is named, and is None when there is nothing to recover."""
+        assert ReduceTransformer(["a", "b"], invert_col="a").target_output_name == "a"
+        assert ReduceTransformer(["a", "b"]).target_output_name is None
+
+    def test_feature_names_out(self):
+        """get_feature_names_out mirrors the emitted columns."""
+        X = self._frame3()
+        kept = ReduceTransformer(["a", "b"], output_name="out", keep_inputs=True).fit(X)
+        assert kept.get_feature_names_out() == ["a", "b", "out"]
+        lean = ReduceTransformer(["a", "b"], output_name="out").fit(X)
+        assert lean.get_feature_names_out() == ["out"]
+
+    def test_output_name_reusing_an_input_is_not_retained_twice(self):
+        """An input that is also the output is dropped from the retained list.
+
+        Retaining it would put the column in the selection twice, once as the carried
+        input and once as the reduction that overwrites it.
+        """
+        X = self._frame3()
+        t = ReduceTransformer(["a", "b"], output_name="a", keep_inputs=True).fit(X)
+        assert t.get_feature_names_out() == ["b", "a"]
+        assert t.transform(X).columns == ["time", "b", "a"]
 
 
 class TestForecastLift:

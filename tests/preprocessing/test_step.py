@@ -12,9 +12,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer as SklearnFunctionTransformer
 from sklearn.preprocessing import StandardScaler as SklearnStandardScaler
 
+from conftest import run_checks
 from yohou.compose import FeaturePipeline
 from yohou.preprocessing import StepAggregator, StepColumnReducer, StepFrameReducer
-from yohou.testing.step_transformer import STEP_TRANSFORMER_CHECKS
+from yohou.testing import _yield_yohou_step_transformer_checks
 
 
 def _frame(with_nulls: bool = False) -> pl.DataFrame:
@@ -51,11 +52,16 @@ TRANSFORMERS = [
 ]
 
 
-@pytest.mark.parametrize("check", STEP_TRANSFORMER_CHECKS, ids=lambda c: c.__name__)
 @pytest.mark.parametrize("transformer", TRANSFORMERS, ids=lambda t: type(t).__name__)
-def test_systematic_step_transformer_checks(check, transformer):
-    """Every concrete step transformer satisfies the shared contract."""
-    check(clone(transformer), _frame())
+def test_systematic_step_transformer_checks(transformer):
+    """Every concrete step transformer satisfies the shared contract.
+
+    Driven through the generator rather than `STEP_TRANSFORMER_CHECKS` directly, which
+    is what every other estimator family does: the generator yields the same family
+    checks and then the shared estimator-contract ones (clone, get_params, repr), so
+    calling the bare list quietly held step transformers to a shorter contract.
+    """
+    run_checks(clone(transformer), _yield_yohou_step_transformer_checks(transformer, _frame()))
 
 
 class TestStepAggregator:

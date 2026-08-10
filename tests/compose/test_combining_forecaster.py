@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
+import polars.selectors as cs
 import pytest
 from sklearn.base import clone
 
@@ -13,6 +14,8 @@ from yohou.compose import CombiningForecaster
 from yohou.point import SeasonalNaive
 from yohou.stationarity import PolynomialTrendForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
+from yohou.utils import POINT
+from yohou.utils._compat import InvalidParameterError
 
 # ``check_clone_preserves_forecaster_params`` asserts that the trailing element of
 # every 3-tuple parameter survives clone unchanged (``_safe_equal``). That assertion
@@ -57,6 +60,31 @@ class _SelectColumn(BaseActualTransformer):
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Return the single output feature name."""
         return [self.out_name]
+
+
+class _PanelPassthrough(BaseActualTransformer):
+    """Stateless extractor returning every panel column unchanged."""
+
+    def __init__(self):
+        self._observation_horizon = 0
+
+    @property
+    def observation_horizon(self) -> int:
+        """Return the (zero) observation horizon of this stateless extractor."""
+        return 0
+
+    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "_PanelPassthrough":
+        """Fit against the input frame, setting the transformer schema."""
+        BaseActualTransformer.fit(self, X, y)
+        return self
+
+    def transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Return the frame as given."""
+        return X
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
+        """Return both panel column names."""
+        return ["p0__spp", "p1__spp"]
 
 
 class _ScaleColumn(BaseActualTransformer):
@@ -355,7 +383,13 @@ class TestValidation:
             forecaster.fit(y, forecasting_horizon=3)
 
     def test_non_point_residual_forecaster_rejected(self):
-        """A non-point residual forecaster raises ValueError."""
+        """A non-point residual forecaster is rejected by its parameter constraint.
+
+        The rejection comes from `_validate_params`, not from a hand-written check in
+        ``fit``: ``residual_forecaster`` is constrained to ``[BasePointForecaster, None]``,
+        so nothing else survives to reach the body. Asserting the constraint's own error
+        keeps the test honest about which guard is doing the work.
+        """
 
         class _NotAForecaster:
             """A stand-in object that is not a BasePointForecaster."""
@@ -365,7 +399,7 @@ class TestValidation:
             terms=[("a", _SelectColumn("total", "part"), SeasonalNaive(seasonality=7))],
             residual_forecaster=_NotAForecaster(),
         )
-        with pytest.raises(ValueError, match="residual_forecaster"):
+        with pytest.raises(InvalidParameterError, match="residual_forecaster"):
             forecaster.fit(y, forecasting_horizon=3)
 
     def test_duplicate_term_names_rejected(self):
@@ -633,8 +667,34 @@ class TestPanel:
         y = _panel_y()
         forecaster = CombiningForecaster(terms=[("drop", _DropGroup(), SeasonalNaive(seasonality=7))])
         forecaster.fit(y[:45], forecasting_horizon=3)
-        with pytest.raises(ValueError, match="p1"):
-            forecaster.predict(forecasting_horizon=3)
+        # Dropping the group in the extractor drops it from the whole forecaster, so the
+        # group validation rejects p1 before the combine step is reached. That is the
+        # earlier of the two guards; the combine-step one is exercised below.
+        with pytest.raises(ValueError, match="not found in fitted forecaster"):
+            forecaster.predict(forecasting_horizon=3, groups=["p0", "p1"])
+
+    def test_a_term_that_loses_a_group_at_predict_raises(self):
+        """The combine step refuses to zero-fill a group a panel term stopped emitting.
+
+        Distinct from the check above: here the forecaster is fitted on both groups, so
+        the aggregate target has p1 and only the *term's* forecast lacks it. Nothing
+        earlier catches that, and without this guard the group would silently combine
+        from fewer terms than the others.
+        """
+        y = _panel_y()
+        forecaster = CombiningForecaster(terms=[("all", _PanelPassthrough(), SeasonalNaive(seasonality=7))])
+        forecaster.fit(y[:45], forecasting_horizon=3)
+
+        term = forecaster.forecasters_[0][1]
+        full = term.predict(forecasting_horizon=3)
+
+        with pytest.raises(ValueError, match="missing group 'p1'"):
+            forecaster._broadcast_combine(
+                [("panel", full.select(~cs.starts_with("p1__")))],
+                ("vintage_time", "time"),
+                ["p0", "p1"],
+                None,
+            )
 
     def test_group_subselection_filters_output(self):
         """Predicting a single group returns only that group's column."""
@@ -718,6 +778,47 @@ class TestObserveRewind:
         assert "vintage_time" in pred.columns
         assert pred["vintage_time"].n_unique() >= 2
 
+    def test_observe_predict_defaults_its_stride_to_the_fit_horizon(self):
+        """An omitted stride steps a whole horizon, so vintages do not overlap."""
+        y = _global_y()
+        forecaster = CombiningForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
+        forecaster.fit(y[:30], forecasting_horizon=3)
+
+        strided = forecaster.observe_predict(y[30:39], forecasting_horizon=3, stride=None)
+        clone(forecaster).fit(y[:30], forecasting_horizon=3)
+        explicit = CombiningForecaster(terms=[("a", _SelectColumn("total", "a"), SeasonalNaive(seasonality=7))])
+        explicit.fit(y[:30], forecasting_horizon=3)
+        expected = explicit.observe_predict(y[30:39], forecasting_horizon=3, stride=3)
+
+        assert strided.equals(expected), "stride=None must resolve to fit_forecasting_horizon_"
+
+    def test_rewind_restores_the_residual_forecaster_too(self):
+        """The residual is rewound on its own recomputed stream, not left where it was.
+
+        The residual forecaster observes epsilon rather than the target, so rewinding the
+        terms alone would leave it holding a window the terms no longer agree with.
+        """
+        y = _global_y()
+        y_train, y_new = y[:45], y[45:51]
+
+        def _build():
+            return CombiningForecaster(
+                terms=[("a", _ScaleColumn("total", 0.9, "a"), SeasonalNaive(seasonality=7))],
+                residual_forecaster=SeasonalNaive(seasonality=7),
+            )
+
+        forecaster = _build()
+        forecaster.fit(y_train, forecasting_horizon=3)
+        forecaster.observe(y_new)
+        forecaster.rewind(y_train)
+
+        base = _build()
+        base.fit(y_train, forecasting_horizon=3)
+        assert np.allclose(
+            forecaster.predict(forecasting_horizon=3)["total"].to_numpy(),
+            base.predict(forecasting_horizon=3)["total"].to_numpy(),
+        )
+
 
 # --------------------------------------------------------------------------------------
 # get_params / set_params
@@ -743,6 +844,37 @@ class TestParams:
         assert isinstance(extractor, _SelectColumn)
         assert sub_forecaster.degree == 3
 
+    def test_replacing_a_term_keeps_its_extractor(self):
+        """Swapping the forecaster by name goes through the 2-tuple adapter.
+
+        ``_BaseComposition`` addresses terms as ``(name, estimator)`` pairs, so the
+        extractor is stripped on the way out and merged back on the way in. Replacing a
+        whole term is where that round trip has to hold: losing the extractor here would
+        leave the term with nothing to extract.
+        """
+        forecaster = CombiningForecaster(
+            terms=[("trend", _SelectColumn("total", "part"), PolynomialTrendForecaster(degree=1))]
+        )
+        forecaster.set_params(trend=SeasonalNaive(seasonality=7))
+
+        name, extractor, sub_forecaster = forecaster.terms[0]
+        assert name == "trend"
+        assert isinstance(extractor, _SelectColumn), "the extractor must survive the swap"
+        assert isinstance(sub_forecaster, SeasonalNaive)
+
+    def test_the_adapter_passes_two_tuples_through_untouched(self):
+        """A ``terms`` list already in 2-tuple shape is returned as-is.
+
+        The unpacking in the adapter raises on a 2-tuple, and the fallback is what makes
+        ``get_params`` work on a half-built instance rather than raising from inside
+        sklearn's repr machinery.
+        """
+        forecaster = CombiningForecaster(terms=[("trend", PolynomialTrendForecaster(degree=1))])
+        assert forecaster._terms == forecaster.terms
+
+        forecaster._terms = [("trend", SeasonalNaive(seasonality=7))]
+        assert isinstance(forecaster.terms[0][1], SeasonalNaive)
+
 
 # --------------------------------------------------------------------------------------
 # Extractor state guard and empty terms
@@ -762,6 +894,20 @@ class TestStateAndEmptyValidation:
         forecaster.fit(y, forecasting_horizon=3)  # must not raise
         pred = forecaster.predict(forecasting_horizon=3)
         assert pred.columns == ["vintage_time", "time", "total"]
+
+    def test_tags_on_an_empty_instance_keep_the_base_defaults(self):
+        """With no children to poll, the derived tags are left as inherited.
+
+        ``get_params`` and sklearn's repr reach ``__sklearn_tags__`` on a bare instance,
+        so it has to answer before ``terms`` is populated rather than deriving from an
+        empty ``any()``/``all()``, which would report stateful=False and
+        supports_panel_data=True as though they had been established.
+        """
+        tags = CombiningForecaster(terms=[]).__sklearn_tags__()
+        assert tags.forecaster_tags is not None
+        assert tags.forecaster_tags.forecaster_type == POINT
+        assert tags.forecaster_tags.requires_exogenous is False
+        assert tags.forecaster_tags.tracks_observations is False
 
     def test_empty_terms_rejected(self):
         """An empty terms list raises at fit rather than crashing later at predict."""
@@ -998,6 +1144,20 @@ class TestRetainedOperandsAreNotCombined:
 
         assert LogTransformer().target_output_name is None
         assert _SelectColumn("a", "out").target_output_name is None
+
+    def test_a_declared_member_the_term_never_emits_raises(self):
+        """A member naming no column is a mis-declaration, not an empty contribution.
+
+        Narrowing to nothing would drop the term from the aggregate silently, which is
+        the same corruption the declaration exists to prevent, one level down.
+        """
+        forecaster, _ = self._fitted()
+        frame = pl.DataFrame({"time": [datetime(2024, 1, 1)], "anchor": [1.0], "gas_ref": [2.0]})
+
+        assert forecaster._narrow_to_contribution(frame, None) is frame
+        assert forecaster._narrow_to_contribution(frame, "anchor").columns == ["time", "anchor"]
+        with pytest.raises(ValueError, match="emitted none of it"):
+            forecaster._narrow_to_contribution(frame, "absent")
 
 
 class TestNamedForecasters:

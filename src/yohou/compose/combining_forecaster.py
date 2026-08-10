@@ -487,18 +487,17 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         # Validate term names are unique (and routing-safe).
         self._validate_names([name for name, _, _ in self.terms])  # ty: ignore[invalid-assignment]
 
-        # Validate all term forecasters and the residual are point forecasters.
+        # Validate the term forecasters. `_parameter_constraints` reaches `terms` only as
+        # far as `list`, so the type of what each triple carries is checked here.
+        # `residual_forecaster` needs no counterpart: its own constraint is
+        # `[BasePointForecaster, None]`, so `_validate_params` has already rejected
+        # anything else before this method runs.
         for name, _extractor, forecaster in self.terms:  # ty: ignore[invalid-assignment]
             if not isinstance(forecaster, BasePointForecaster):
                 raise ValueError(
                     f"All term forecasters must be BasePointForecaster instances. "
                     f"Term '{name}' has a {type(forecaster).__name__}."
                 )
-        if self.residual_forecaster is not None and not isinstance(self.residual_forecaster, BasePointForecaster):
-            raise ValueError(
-                f"residual_forecaster must be a BasePointForecaster instance, got "
-                f"{type(self.residual_forecaster).__name__}."
-            )
 
         # Self-scaffolding: sets groups_, local_y_schema_, interval_, observed_time_,
         # _step_column_names_, _X_forecast_t_, etc. that predict/validate rely on.

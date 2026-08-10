@@ -53,6 +53,7 @@ from .forecaster import (
     check_requires_exogenous_warns_on_X_future_X_forecast,
     check_rewind_propagates_to_transformers,
     check_rewind_replaces_observations,
+    check_step_feature_alignment_filters,
     check_step_transformer_slot,
 )
 from .interval import (
@@ -127,6 +128,7 @@ from .step_transformer import (
     check_transform_is_stateless,
 )
 from .transformer import (
+    check_batch_invariance,
     check_feature_names_out_match,
     check_fit_idempotent,
     check_fit_sets_attributes,
@@ -335,6 +337,15 @@ def _yield_yohou_transformer_checks(
         yield (
             "check_observe_transform_sequential_consistency",
             check_observe_transform_sequential_consistency,
+            {"X": X_train, "y": y_train},
+        )
+        # Yielded unconditionally rather than under a `batch_invariant` gate: the check
+        # is a no-op for a transformer that does not declare the tag, and the tag is
+        # what the conformal bulk replay reads to skip the rolling observe entirely.
+        # An unverified declaration there is a wrong number, not a lost speedup.
+        yield (
+            "check_batch_invariance",
+            check_batch_invariance,
             {"X": X_train, "y": y_train},
         )
 
@@ -744,6 +755,23 @@ def _yield_yohou_forecaster_checks(
                 yield (
                     "check_step_transformer_slot",
                     check_step_transformer_slot,
+                    {
+                        "y_train": y_train,
+                        "X_actual_train": X_actual_train,
+                        "X_future": X_future_train,
+                        "forecasting_horizon": 3,
+                    },
+                )
+
+            # The filtering this verifies fails silently: a name mismatch makes
+            # `_filter_step_features` recognize nothing, so every per-step estimator
+            # trains on every step's columns while the configuration still reads
+            # "matched". Only the fitted feature counts differ, so it has to be checked
+            # wherever the parameter is exposed rather than on one class.
+            if "step_feature_alignment" in forecaster.get_params():
+                yield (
+                    "check_step_feature_alignment_filters",
+                    check_step_feature_alignment_filters,
                     {
                         "y_train": y_train,
                         "X_actual_train": X_actual_train,
