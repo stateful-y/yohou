@@ -119,24 +119,25 @@ the same way, since that column is part of the index rather than a feature to ro
 ## Kind Homogeneity
 
 All three containers are polymorphic in transformer kind: each works on single-axis
-actual data or on vintage-indexed forecast data, and none is fixed to one. A container
+actual data, on vintage-indexed forecast data, or on the derived step frame, and
+none is fixed to one. A container
 does not declare its kind. It derives it from its children, so a
 [`FeatureUnion`](/pages/api/generated/yohou.compose.FeatureUnion/) of forecast-kind branches is itself forecast-kind and can nest
 inside another forecast-kind container. See [Transformer Kinds](transformer-kinds.md)
-for what the two kinds are and why the distinction exists.
+for what the three kinds are and why the distinctions exist.
 
 Deriving a kind from the children only works if the children agree, which is why a
-composition must be homogeneous. Mixing actual-kind and forecast-kind transformers in
-one container raises a `ValueError` naming the offenders on each side. The restriction
+composition must be homogeneous. Mixing kinds in one container raises a `ValueError`
+naming the members of each kind present. The restriction
 is not bookkeeping: the container would have to concatenate a frame indexed by `"time"`
 with one indexed by `vintage_time` and `time`, and there is no correct way to line those
 up. One row per timestamp cannot be matched against a stack of vintages that each say
 something different about that timestamp.
 
 Kind also decides how a container combines its branches, because it decides what
-identifies a row. An actual-kind container aligns its branches on `"time"`. A
-forecast-kind container aligns on `vintage_time` and `time` together, since `"time"`
-alone does not identify a row once several vintages are in play. Composition is
+identifies a row. Actual-kind and step-kind containers align their branches on
+`"time"`. A forecast-kind container aligns on `vintage_time` and `time` together,
+since `"time"` alone does not identify a row once several vintages are in play. Composition is
 otherwise index-agnostic: the same container code runs for both, reading the join keys
 from the kind it derived.
 
@@ -241,6 +242,6 @@ accepted it. See
 
 ## Connections
 
-[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Transformer Kinds](transformer-kinds.md) explains the actual and forecast kinds that composition requires to be homogeneous. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) are described in [Stationarity](stationarity.md).
+[Preprocessing](preprocessing.md) covers the individual transformers used inside pipelines, including how `observe` and `rewind` state works on each transformer. [Transformer Kinds](transformer-kinds.md) explains the actual, forecast, and step kinds that composition requires to be homogeneous. [Forecaster Composition](forecaster-composition.md) discusses composing forecasters rather than transformers. Stationarity transforms that can serve as steps inside a [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/) are described in [Stationarity](stationarity.md).
 
 For practical recipes, see [How to Compose Feature Pipelines](../how-to/compose-feature-pipelines.md). The compose API is documented in the [yohou.compose reference](/pages/api/compose/).

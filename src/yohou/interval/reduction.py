@@ -10,7 +10,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
-from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
 from yohou.utils._compat import HasMethods, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
@@ -45,6 +45,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     nan_handling : {"drop", "pass"}, default="pass"
@@ -189,6 +194,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         nan_handling: Literal["drop", "pass"] = "pass",
@@ -211,6 +217,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             nan_handling=nan_handling,
             n_jobs=n_jobs,

@@ -37,6 +37,11 @@ from .sklearn_wrappers import (
     SplineTransformer,
     StandardScaler,
 )
+from .step import (
+    StepAggregator,
+    StepColumnReducer,
+    StepFrameReducer,
+)
 from .time_features import FourierFeatureTransformer, TimeIndexTransformer
 from .window import (
     ExponentialMovingAverage,
@@ -68,6 +73,9 @@ __all__ = [
     # Sklearn scalers
     "SklearnScaler",
     "StandardScaler",
+    "StepFrameReducer",
+    "StepColumnReducer",
+    "StepAggregator",
     "MinMaxScaler",
     "RobustScaler",
     "MaxAbsScaler",

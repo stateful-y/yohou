@@ -8,7 +8,7 @@ import polars.selectors as cs
 from yohou.base import BaseActualTransformer
 
 #: The kind of frame a transformer consumes/produces.
-Kind = Literal["actual", "forecast"]
+Kind = Literal["actual", "forecast", "step"]
 
 #: Reserved index columns, in canonical order. A single-axis ("actual") frame
 #: carries ``["time"]``; an ``X_forecast`` ("forecast") frame carries
@@ -35,7 +35,7 @@ def index_columns(df: pl.DataFrame) -> list[str]:
 
 
 def transformer_kind(transformer: Any) -> Kind:
-    """Return a transformer's ``kind`` tag (``"actual"`` or ``"forecast"``).
+    """Return a transformer's ``kind`` tag (``"actual"``, ``"forecast"``, or ``"step"``).
 
     Defaults to ``"actual"`` for anything without a readable ``kind`` tag.
 
@@ -46,7 +46,7 @@ def transformer_kind(transformer: Any) -> Kind:
 
     Returns
     -------
-    {"actual", "forecast"}
+    {"actual", "forecast", "step"}
         The transformer's kind.
 
     """
@@ -107,16 +107,18 @@ def check_homogeneous_kinds(named_transformers: list[tuple[str, Any]], composer_
     Raises
     ------
     ValueError
-        If the children mix ``"actual"`` and ``"forecast"`` kinds.
+        If the children mix kinds.
 
     """
     kinds = {name: transformer_kind(t) for name, t in _real_transformers(named_transformers)}
     if len(set(kinds.values())) > 1:
-        actual = sorted(n for n, k in kinds.items() if k == "actual")
-        forecast = sorted(n for n, k in kinds.items() if k == "forecast")
+        # Enumerate whatever kinds are present rather than naming a fixed pair, so
+        # adding a kind does not silently drop its members from the message.
+        present = sorted(set(kinds.values()))
+        detail = ", ".join(f"{kind}={sorted(n for n, k in kinds.items() if k == kind)}" for kind in present)
         raise ValueError(
-            f"{composer_name} cannot mix actual and forecast transformers in one composition: "
-            f"actual={actual}, forecast={forecast}. A composition must be homogeneous in kind."
+            f"{composer_name} cannot mix {' and '.join(present)} transformers in one composition: "
+            f"{detail}. A composition must be homogeneous in kind."
         )
     return next(iter(kinds.values())) if kinds else "actual"
 

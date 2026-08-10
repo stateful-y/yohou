@@ -10,7 +10,7 @@ from pydantic import StrictFloat, StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransformer
+from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransformer, BaseStepTransformer
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 from yohou.utils._compat import _fit_context
 
@@ -236,6 +236,11 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     target_as_feature : {"transformed", "raw"} or None, default="transformed"
         Controls whether the target is included as a feature.
         ``"transformed"`` includes the transformed target, ``"raw"``
@@ -276,12 +281,14 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         *,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
     ) -> None:
         super().__init__(
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             target_transformer=None,
             target_as_feature=target_as_feature,
             panel_strategy=panel_strategy,

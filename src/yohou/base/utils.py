@@ -15,6 +15,8 @@ import sklearn
 from sklearn.base import clone
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from yohou.base import BaseActualTransformer
 
 _YOHOU_ROOT = str(Path(__file__).resolve().parents[1])
@@ -46,15 +48,38 @@ def _caller_stacklevel() -> int:
     return 1
 
 
-def _is_forecast_kind(obj: object) -> bool:
-    """Return whether ``obj`` reports ``kind == "forecast"``.
+def _kind_of(obj: object) -> str:
+    """Return ``obj``'s transformer ``kind`` tag, defaulting to ``"actual"``.
 
     Reads the tag rather than testing the base class. An ``isinstance`` check
     cannot express this: the composition estimators stay ``BaseActualTransformer``
     subclasses and discriminate their kind by tag, so a ``FeatureUnion`` of
     forecast transformers is an instance of the actual base while reporting
     ``kind="forecast"``. Anything without readable transformer tags counts as
-    actual, so a real validation error surfaces instead of this one.
+    actual, so a real validation error surfaces instead of a kind error.
+
+    Parameters
+    ----------
+    obj : object
+        A transformer instance (or anything, including ``None``).
+
+    Returns
+    -------
+    str
+        The reported kind, or ``"actual"`` when no kind tag is readable.
+
+    """
+    get_tags = getattr(obj, "__sklearn_tags__", None)
+    if get_tags is None:
+        return "actual"
+    transformer_tags = getattr(get_tags(), "transformer_tags", None)
+    if transformer_tags is None:
+        return "actual"
+    return getattr(transformer_tags, "kind", "actual")
+
+
+def _is_forecast_kind(obj: object) -> bool:
+    """Return whether ``obj`` reports ``kind == "forecast"``.
 
     Parameters
     ----------
@@ -67,11 +92,31 @@ def _is_forecast_kind(obj: object) -> bool:
         ``True`` only if the object explicitly reports the forecast kind.
 
     """
-    get_tags = getattr(obj, "__sklearn_tags__", None)
-    if get_tags is None:
-        return False
-    transformer_tags = getattr(get_tags(), "transformer_tags", None)
-    return transformer_tags is not None and getattr(transformer_tags, "kind", "actual") == "forecast"
+    return _kind_of(obj) == "forecast"
+
+
+def _is_step_kind(obj: object) -> bool:
+    """Return whether ``obj`` reports ``kind == "step"``.
+
+    The mirror of :func:`_is_forecast_kind` for the step frame, which is the
+    wide ``{base}_step_1..H`` frame derived from ``X_future`` and ``X_forecast``.
+    A step frame carries the same single ``"time"`` index a single-axis frame
+    does, so the kind tag is the only thing separating the two; an ``isinstance``
+    check would let a step transformer into an actual slot, where it would find
+    no step columns and silently emit nothing.
+
+    Parameters
+    ----------
+    obj : object
+        A transformer instance (or anything, including ``None``).
+
+    Returns
+    -------
+    bool
+        ``True`` only if the object explicitly reports the step kind.
+
+    """
+    return _kind_of(obj) == "step"
 
 
 def _require_actual_memory_api(transformer: object, method: str) -> None:
@@ -91,7 +136,7 @@ def _require_actual_memory_api(transformer: object, method: str) -> None:
     Raises
     ------
     ValueError
-        If ``transformer`` reports ``kind == "forecast"``.
+        If ``transformer`` reports ``kind == "forecast"`` or ``kind == "step"``.
 
     """
     if _is_forecast_kind(transformer):
@@ -100,6 +145,15 @@ def _require_actual_memory_api(transformer: object, method: str) -> None:
             f"transformer, which must be an actual-kind transformer to maintain memory. "
             f"The observe/rewind buffer holds contiguous recent rows, which the vintage "
             f"axis of an X_forecast frame cannot provide. Forecast transformers are "
+            f"stateless, so there is no memory to update or rewind."
+        )
+    if _is_step_kind(transformer):
+        raise ValueError(
+            f"{type(transformer).__name__}.{method}() is unavailable on a step-kind "
+            f"transformer, which must be an actual-kind transformer to maintain memory. "
+            f"The observe/rewind buffer holds contiguous recent rows carried between "
+            f"calls, but a step frame is re-derived from scratch at every observe and "
+            f"predict, so nothing accumulates across them. Step transformers are "
             f"stateless, so there is no memory to update or rewind."
         )
 
@@ -134,6 +188,14 @@ def _require_actual_transformer(transformer: object, slot: str) -> None:
             f"transformers belong in the forecast_transformer slot, which applies them "
             f"to the X_forecast frame, not in {slot}."
         )
+    if _is_step_kind(transformer):
+        raise ValueError(
+            f"{slot} must be an actual-kind transformer (operating on the single-axis "
+            f"target/X_actual frame), but got a step-kind transformer. Step transformers "
+            f"belong in the step_transformer slot, which applies them to the derived "
+            f"{{base}}_step_1..H frame, not in {slot}. A step transformer placed here "
+            f"would find no step columns and silently emit nothing."
+        )
 
 
 def _require_forecast_transformer(transformer: object, slot: str) -> None:
@@ -166,9 +228,46 @@ def _require_forecast_transformer(transformer: object, slot: str) -> None:
     if transformer is not None and not _is_forecast_kind(transformer):
         raise ValueError(
             f"{slot} must be a forecast-kind transformer (operating on the "
-            f"vintage-indexed X_forecast frame), but got an actual-kind transformer. "
-            f"Lift it onto the vintage axis with PerVintageActualTransformer, or pass "
-            f"it to actual_transformer to apply it to the single-axis X_actual frame."
+            f"vintage-indexed X_forecast frame), but got a {_kind_of(transformer)}-kind "
+            f"transformer. Lift it onto the vintage axis with PerVintageActualTransformer, "
+            f"or pass it to actual_transformer to apply it to the single-axis X_actual frame."
+        )
+
+
+def _require_step_transformer(transformer: object, slot: str) -> None:
+    """Raise if ``transformer`` is not a step-kind transformer in the step slot.
+
+    The mirror of :func:`_require_forecast_transformer`. A forecaster's
+    ``step_transformer`` operates on the wide ``{base}_step_1..H`` frame derived
+    from ``X_future`` and ``X_forecast``, so it must be step-kind.
+
+    As on the forecast side, the parameter constraint cannot carry this alone. A
+    step-kind composition (a ``FeatureUnion`` of step transformers) is a
+    ``BaseActualTransformer`` subclass reporting ``kind="step"``, so the
+    constraint has to admit ``BaseActualTransformer`` to let compositions
+    through, which also lets a genuine actual transformer past. The kind tag is
+    what separates them.
+
+    Parameters
+    ----------
+    transformer : object
+        The transformer assigned to the slot (or ``None``).
+    slot : str
+        Slot name, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        If ``transformer`` is not ``None`` and does not report ``kind == "step"``.
+
+    """
+    if transformer is not None and not _is_step_kind(transformer):
+        raise ValueError(
+            f"{slot} must be a step-kind transformer (operating on the derived "
+            f"{{base}}_step_1..H frame), but got a {_kind_of(transformer)}-kind "
+            f"transformer. Pass it to actual_transformer to apply it to the single-axis "
+            f"X_actual frame, or to forecast_transformer to apply it per vintage to the "
+            f"X_forecast frame."
         )
 
 
@@ -571,6 +670,14 @@ def _warn_rank_deficient_step_columns(
     The message reports the measurement rather than asserting a diagnosis: a
     constant column is rank deficient too, and this check cannot tell it apart
     from a clock feature.
+
+    ``X_step`` is the frame that reaches the estimator, so a ``step_transformer``
+    that reduced a base column's block away suppresses the warning for that
+    column without a separate rule: :func:`_rank_deficient_step_columns` skips any
+    base column whose ``{col}_step_1..H`` names are absent. A transform that keeps
+    the block one-for-one (a wrapped scaler) leaves the names in place and does
+    not remove collinearity, so the warning correctly still fires. Suppression is
+    therefore decided by column presence, never by the transformer's identity.
     """
     if X_step is None or X_future is None:
         return
@@ -586,7 +693,9 @@ def _warn_rank_deficient_step_columns(
             f"forecast step, so the forward window buys nothing and the collinear "
             f"copies dilute any regularisation applied to them. If '{col}' is "
             f"computable from the timestamp alone, generate it with a "
-            f"actual_transformer instead of passing it through X_future. If it is "
+            f"actual_transformer instead of passing it through X_future; if you "
+            f"want to keep it in X_future, reduce the block along the horizon with "
+            f"a step_transformer, which collapses the collinear copies. If it is "
             f"constant, or genuinely needs an external table, this warning does not "
             f"apply and can be silenced.",
             UserWarning,
@@ -828,7 +937,9 @@ def _derive_step_columns(
     interval: str | timedelta,
     *,
     warn_coverage: bool = True,
+    warn_coverage_at_fit: bool = False,
     existing_columns: set[str] | None = None,
+    step_transform: Callable[[pl.DataFrame], pl.DataFrame] | None = None,
 ) -> pl.DataFrame | None:
     """Derive step-indexed columns from X_future and X_forecast.
 
@@ -861,9 +972,24 @@ def _derive_step_columns(
         ``X_forecast``. The fit path passes ``False`` and reports coverage
         per column instead via :func:`_warn_forecast_coverage_at_fit`, so the
         per-call warning carries the observe and predict paths only.
+    warn_coverage_at_fit : bool, default=False
+        Whether to emit the per-column fit-time coverage diagnostic. Set by the
+        fit path only. Measured here, before ``step_transform`` runs, because a
+        step transformer renames its output and the measurement needs the
+        ``{base}_step_h`` names; delegating it to derivation is what keeps it on
+        the pre-transform frame.
     existing_columns : set of str or None, default=None
         Column names already present (e.g., X_actual columns). Used for
         collision detection against generated step column names.
+    step_transform : callable or None, default=None
+        Applied to the combined step frame before it is returned, and before the
+        collision check, so callers see only post-transform names. Taken as a
+        parameter rather than applied by callers because there are six derivation
+        sites, four of them transform-only; applying it outside would leave four
+        places to miss, and a missed one yields a design matrix whose columns
+        disagree with what the estimator was fitted on. Kept as a plain callable
+        so this function stays free of any forecaster dependency: a forecaster
+        passes its own ``_transform_X_step``, which resolves the panel dict.
 
     Returns
     -------
@@ -966,24 +1092,42 @@ def _derive_step_columns(
             source_names[c] = "X_forecast"
         parts.append(forecast_pivoted)
 
+    # Combine parts horizontally
+    if len(parts) == 1:
+        result = parts[0]
+    else:
+        # Both X_future and X_forecast present: concat horizontally
+        result = pl.concat(
+            [parts[0], parts[1].select(~cs.by_name("time"))],
+            how="horizontal",
+        )
+
+    # Coverage is measured here, on the pre-transform frame, because it reports
+    # the nulls a step transformer must have a policy about. Measuring it after
+    # would hide them behind whatever that policy did, and a transformer renames
+    # its output anyway, so the {base}_step_h columns the measurement needs would
+    # be gone. This is why the fit path delegates the per-column diagnostic to
+    # derivation rather than calling it on the returned frame.
+    if warn_coverage_at_fit:
+        _warn_forecast_coverage_at_fit(result, X_forecast, forecasting_horizon)
+
+    # Apply the step transform before the collision check. A step transformer
+    # emits names derivation never generated (temp_step_mean), and those are what
+    # actually join the design matrix, so checking the pre-transform names would
+    # let a post-transform collision through unnoticed.
+    if step_transform is not None:
+        result = step_transform(result)
+
     # Check collisions against existing columns (e.g., X_actual)
     if existing_columns is not None:
-        collisions = set(source_names.keys()) & existing_columns
+        derived = {c for c in result.columns if c != "time"}
+        collisions = derived & existing_columns
         if collisions:
-            details = ", ".join(f"'{c}' (from {source_names[c]})" for c in sorted(collisions))
+            details = ", ".join(f"'{c}' (from {source_names.get(c, 'step_transformer')})" for c in sorted(collisions))
             msg = (
                 f"Step column names collide with existing columns: {details}. "
                 f"Rename the source columns to avoid conflicts."
             )
             raise ValueError(msg)
 
-    # Combine parts horizontally
-    if len(parts) == 1:
-        return parts[0]
-
-    # Both X_future and X_forecast present: concat horizontally
-    result = pl.concat(
-        [parts[0], parts[1].select(~cs.by_name("time"))],
-        how="horizontal",
-    )
     return result

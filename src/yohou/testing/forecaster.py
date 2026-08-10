@@ -862,6 +862,17 @@ def check_forecaster_tags_match_capabilities(forecaster) -> None:
                 f"doesn't match uses_forecast_transformer tag ({uses_forecast_transformer})"
             )
 
+    # Check uses_step_transformer matches parameter
+    if hasattr(forecaster, "step_transformer"):  # pragma: no branch - every forecaster declares the slot
+        has_step_transformer = forecaster.step_transformer is not None
+        uses_step_transformer = tags.forecaster_tags.uses_step_transformer
+
+        if has_step_transformer != uses_step_transformer:
+            raise AssertionError(
+                f"{forecaster.__class__.__name__} step_transformer parameter ({has_step_transformer}) "
+                f"doesn't match uses_step_transformer tag ({uses_step_transformer})"
+            )
+
 
 def check_forecaster_methods_call_check_is_fitted(
     forecaster,
@@ -1297,6 +1308,66 @@ def check_forecast_transformer_slot(
     )
     assert forecaster_clone.forecast_transformer_ is not None, (
         "forecast_transformer_ should not be None when the slot is set and X_forecast is provided"
+    )
+
+
+def check_step_transformer_slot(
+    forecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    X_future: pl.DataFrame,
+    forecasting_horizon: int = 3,
+) -> None:
+    """Check the ``step_transformer`` slot fits, reduces, and reports its usage tag.
+
+    Sets a `StepAggregator` on a slot-bearing forecaster, fits with ``X_future``,
+    and asserts the fitted attribute, the tag, and that the tracked step columns
+    are the reduced ones rather than the raw ``_step_h`` block. That last
+    assertion is what proves the slot is actually applied rather than merely
+    accepted: an inert slot would leave the raw block in place.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Unfitted forecaster instance exposing ``step_transformer``.
+    y_train : pl.DataFrame
+        Training target data.
+    X_actual_train : pl.DataFrame or None
+        Training features.
+    X_future : pl.DataFrame
+        Known-future features with a ``"time"`` column.
+    forecasting_horizon : int, default=3
+        Number of steps ahead to forecast.
+
+    """
+    from yohou.preprocessing import StepAggregator  # noqa: PLC0415
+
+    forecaster_clone = clone(forecaster)
+    forecaster_clone.set_params(step_transformer=StepAggregator(aggregations=("mean",)))
+
+    assert forecaster_clone.__sklearn_tags__().forecaster_tags.uses_step_transformer, (
+        "uses_step_transformer tag must be True when a step_transformer is set"
+    )
+
+    forecaster_clone.fit(
+        y_train,
+        X_actual_train,
+        forecasting_horizon=forecasting_horizon,
+        X_future=X_future,
+    )
+
+    assert hasattr(forecaster_clone, "step_transformer_"), (
+        "fit() with X_future must set step_transformer_ when step_transformer provided"
+    )
+    assert forecaster_clone.step_transformer_ is not None, (
+        "step_transformer_ should not be None when the slot is set and X_future is provided"
+    )
+
+    tracked = forecaster_clone._step_column_names_
+    assert tracked, "_step_column_names_ must be non-empty after fit with X_future"
+    assert all(name.endswith("_step_mean") for name in tracked), (
+        f"_step_column_names_ must hold the reduced columns, got {sorted(tracked)}; "
+        f"a raw _step_h block here means the slot was accepted but never applied"
     )
 
 

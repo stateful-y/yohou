@@ -115,6 +115,9 @@ from .generators import (
     _yield_yohou_splitter_checks as _yield_yohou_splitter_checks,
 )
 from .generators import (
+    _yield_yohou_step_transformer_checks as _yield_yohou_step_transformer_checks,
+)
+from .generators import (
     _yield_yohou_transformer_checks as _yield_yohou_transformer_checks,
 )
 from .generators import (

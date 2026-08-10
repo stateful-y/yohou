@@ -15,7 +15,7 @@ from sklearn.utils.metadata_routing import (
 )
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.base import BaseActualTransformer, BaseForecastTransformer
+from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseStepTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
@@ -186,6 +186,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BasePointForecaster.__init__(
@@ -193,6 +194,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             target_as_feature=None,
             panel_strategy=panel_strategy,
         )

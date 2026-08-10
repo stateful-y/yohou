@@ -450,6 +450,10 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 getattr(f.__sklearn_tags__().forecaster_tags, "uses_forecast_transformer", False)
                 for f in forecasters_to_check
             )
+            tags.forecaster_tags.uses_step_transformer = any(
+                getattr(f.__sklearn_tags__().forecaster_tags, "uses_step_transformer", False)
+                for f in forecasters_to_check
+            )
             tags.forecaster_tags.supports_panel_data = all(
                 getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for f in forecasters_to_check
             )

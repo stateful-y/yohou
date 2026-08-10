@@ -19,6 +19,7 @@ from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
+from yohou.base.step_transformer import BaseStepTransformer, _is_step_indexed, _step_index
 from yohou.base.transformer import BaseActualTransformer
 from yohou.base.utils import _derive_step_columns, _observe_transformers_one
 from yohou.utils import Tags, cast, tabularize
@@ -102,6 +103,11 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         so the step columns reaching the estimator are built from transformed
         values. Must be forecast-kind (vintage-indexed); an actual-kind
         transformer is rejected. ``None`` leaves ``X_forecast`` untouched.
+    step_transformer : BaseStepTransformer or None, default=None
+        Transformer applied to the derived ``{base}_step_1..H`` frame after
+        step columns are built from ``X_future``/``X_forecast`` and before they
+        join the design matrix. Reduces or rescales along the horizon axis.
+        ``None`` leaves the step columns as derived.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
     step_feature_alignment : {"all", "matched", "cumulative"}, default="all"
@@ -232,6 +238,7 @@ default="first_step"
         target_transformer: BaseActualTransformer | None = None,
         actual_transformer: BaseActualTransformer | None = None,
         forecast_transformer: BaseForecastTransformer | None = None,
+        step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
@@ -247,6 +254,7 @@ default="first_step"
             target_transformer=target_transformer,
             actual_transformer=actual_transformer,
             forecast_transformer=forecast_transformer,
+            step_transformer=step_transformer,
             panel_strategy=panel_strategy,
         )
 
@@ -967,6 +975,15 @@ default="first_step"
         columns from 1 through the given step number. Non-step columns
         are always kept.
 
+        ``_step_column_names_`` holds every column the step stage produced, which
+        after a ``step_transformer`` includes horizon-agnostic summaries
+        (``temp_step_mean``). Those carry no step index to align against and
+        describe the whole block, so they must reach every per-step estimator;
+        filtering applies only to members that actually carry a step index. The
+        set cannot simply be narrowed at the source, because the observe-path
+        column swap needs the full post-transform set to avoid leaving stale
+        columns behind.
+
         Step columns are recognized through
         [`_is_step_column`][yohou.base.forecaster.BaseForecaster._is_step_column],
         which accepts both the panel-wide and the local spelling. ``X_tab`` is a
@@ -1017,13 +1034,20 @@ default="first_step"
                 f"report it, with the panel_strategy and the exogenous inputs used."
             )
 
-        if self.step_feature_alignment == "matched":
-            keep_suffix = f"_step_{step}"
-            drop = [c for c in step_cols_in_tab if not c.endswith(keep_suffix)]
-        else:
-            # cumulative: keep _step_1 .. _step_{step}
-            keep_suffixes = {f"_step_{s}" for s in range(1, step + 1)}
-            drop = [c for c in step_cols_in_tab if not any(c.endswith(s) for s in keep_suffixes)]
+        # Only horizon-indexed columns are candidates. A step_transformer emits
+        # whole-block summaries (temp_step_mean, wx_step_c0) describing every step
+        # at once, with no index to align against, so they must reach every
+        # per-step estimator. An empty result here is ordinary rather than the
+        # naming drift the guard above reports: it means the slot reduced every
+        # block away.
+        indexed = [c for c in step_cols_in_tab if _is_step_indexed(c)]
+        if not indexed:
+            return X_tab
+
+        # "matched" keeps only this step; "cumulative" keeps _step_1 .. _step_{step}.
+        keep = {step} if self.step_feature_alignment == "matched" else set(range(1, step + 1))
+
+        drop = [c for c in indexed if _step_index(c) not in keep]
 
         return X_tab.drop(drop) if drop else X_tab
 

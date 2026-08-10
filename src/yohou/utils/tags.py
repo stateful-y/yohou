@@ -88,13 +88,16 @@ class TransformerTags:
         revert transformations.
     preserves_dtype : bool, default=False
         Whether the transformer preserves input data types.
-    kind : {"actual", "forecast"}, default="actual"
+    kind : {"actual", "forecast", "step"}, default="actual"
         Which exogenous frame shape the transformer consumes and produces.
         ``"actual"`` transformers operate on a single-axis ``["time", ...]``
         frame; ``"forecast"`` transformers operate on an ``X_forecast`` frame
-        carrying ``["vintage_time", "time", ...]``. Leaf transformers stamp
-        this statically via their base class; composition estimators aggregate
-        it from their children.
+        carrying ``["vintage_time", "time", ...]``; ``"step"`` transformers
+        operate on the derived step frame, which carries ``["time", ...]`` plus
+        ``{base}_step_1..H`` columns. A step frame has the same index as an
+        actual frame, so the tag rather than the shape is what separates them.
+        Leaf transformers stamp this statically via their base class;
+        composition estimators aggregate it from their children.
     accepts_irregular_grid : bool, default=False
         Whether the transformer accepts a non-uniform input time axis. When
         ``True``, the shared fit-time validation skips the strict
@@ -141,7 +144,7 @@ class TransformerTags:
     stateful: bool = False
     invertible: bool = False
     preserves_dtype: bool = False
-    kind: Literal["actual", "forecast"] = "actual"
+    kind: Literal["actual", "forecast", "step"] = "actual"
     accepts_irregular_grid: bool = False
     batch_invariant: bool = False
 
@@ -173,6 +176,10 @@ class ForecasterTags:
     uses_forecast_transformer : bool, default=False
         Whether the forecaster uses a forecast transformer to transform
         the ``X_forecast`` frame before step columns are derived.
+    uses_step_transformer : bool, default=False
+        Whether the forecaster uses a step transformer to transform the
+        derived ``{base}_step_1..H`` frame after step columns are built
+        and before they join the design matrix.
     supports_panel_data : bool, default=True
         Whether the forecaster can handle panel data (multiple time series
         with prefixed column names).
@@ -200,6 +207,7 @@ class ForecasterTags:
     uses_target_transformer: bool = False
     uses_actual_transformer: bool = False
     uses_forecast_transformer: bool = False
+    uses_step_transformer: bool = False
     supports_panel_data: bool = True
     supports_time_weight: bool = False
     supports_vintage_weight: bool = False
