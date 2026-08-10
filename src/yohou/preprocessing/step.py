@@ -1,18 +1,4 @@
-"""Step-kind transformers over the derived ``{base}_step_1..H`` frame.
-
-Three transformers live here. [`StepAggregator`][yohou.preprocessing.step.StepAggregator]
-reduces each base column's step block with a closed vocabulary of arithmetic
-summaries. [`StepColumnReducer`][yohou.preprocessing.step.StepColumnReducer] and
-[`StepFrameReducer`][yohou.preprocessing.step.StepFrameReducer] lift an arbitrary
-sklearn transformer onto the step axis, differing only in how the frame is
-reshaped for it: one inner estimator per base column, or one over the whole frame.
-
-The wrappers do not reuse
-[`SklearnTransformer`][yohou.preprocessing.sklearn_base.SklearnTransformer],
-whose ``transform`` reattaches columns positionally and so holds only for
-inner estimators that preserve column count and order. A dimensionality reducer
-does not.
-"""
+"""Step-kind transformers over the derived ``{base}_step_1..H`` frame."""
 
 import re
 from typing import Any, Literal
