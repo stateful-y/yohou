@@ -1626,3 +1626,154 @@ class TestBulkObserveReplay:
             f"{len(calls)} transformer passes for a 25 origin conformal fit suggests the "
             f"replay is still observing one row at a time"
         )
+
+    def test_the_replay_leaves_the_forecaster_having_observed_the_block(self):
+        """Both paths must agree on where they leave the forecaster, not just on frames.
+
+        The rolling path observes its way through the calibration block and ends having
+        observed all of it. The bulk path reconstructs each origin by slicing and never
+        advances the buffer, so it has to land on that end state deliberately.
+
+        Every equivalence test around this replay compares returned frames, and the two
+        paths returned equivalent frames while disagreeing about the state left behind.
+        That is why this asserts on the state instead.
+        """
+        from yohou.preprocessing import FunctionTransformer
+
+        y = self._panel()
+        calibration_size = 25
+
+        bulk = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=calibration_size).fit(
+            y, forecasting_horizon=4
+        )
+        rolling = SplitConformalForecaster(
+            point_forecaster=self._forecaster(actual_transformer=FunctionTransformer(func=lambda frame: frame * 1.0)),
+            calibration_size=calibration_size,
+        ).fit(y, forecasting_horizon=4)
+
+        assert bulk.point_forecaster_._chains_are_batch_invariant()
+        assert not rolling.point_forecaster_._chains_are_batch_invariant()
+
+        assert bulk.point_forecaster_.observed_time_ == rolling.point_forecaster_.observed_time_, (
+            "the bulk replay left the forecaster at a different observation time than the "
+            "rolling replay, so one of them did not observe the whole calibration block"
+        )
+
+    def test_the_replay_leaves_the_observation_time_at_the_end_of_the_data(self):
+        """Pinned against the data rather than against the other path.
+
+        Restoring the pre-replay state rewinds the forecaster by the whole calibration
+        block, so this lands `calibration_size` rows early. Stating the expected time
+        outright means the test still fails if both paths regress together.
+        """
+        y = self._panel()
+
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25).fit(
+            y, forecasting_horizon=4
+        )
+
+        observed = forecaster.point_forecaster_.observed_time_
+        # Panel forecasters carry one observation time per group; they share a clock.
+        if isinstance(observed, dict):
+            assert len(set(observed.values())) == 1
+            observed = next(iter(observed.values()))
+        assert observed == y["time"][-1], (
+            f"observation time is {observed} but the data ends at {y['time'][-1]}; a "
+            f"forecaster rewound behind its own training data stitches a stale window "
+            f"onto fresh forecasts"
+        )
+
+    def test_predicting_after_the_replay_sees_one_regular_time_axis(self):
+        """The failure this actually caused, rather than the state that caused it.
+
+        A forecaster left rewound by the calibration block produces a frame spanning its
+        stale observation window and a fresh forecast window with nothing in between.
+        Whichever transformer inverts first then rejects the two intervals, so a plain
+        observe-then-predict is enough to catch it without reaching into any state.
+
+        Two things make this bite, and both are properties of the production stack
+        rather than of this test. The target transformer validates the frame handed to
+        its inverse, so without one nothing inspects the time axis. And the observation
+        horizon has to outlast the stride: the buffer keeps its most recent
+        `observation_horizon` rows, so a stack that observes at least that many rows per
+        origin flushes the hole away before anything looks at it. A short lookback is
+        why the obvious version of this test passes against the bug.
+        """
+        from sklearn.linear_model import LinearRegression
+
+        from yohou.compose import FeatureUnion
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+        from yohou.stationarity import ASinhTransformer
+
+        y = self._panel(n=180)
+        train, later = y[:140], y[140:]
+
+        point = PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy="direct",
+            panel_strategy="global",
+            target_as_feature="raw",
+            actual_transformer=FeatureUnion([("lags", LagTransformer(lag=[1, 30]))]),
+            target_transformer=ASinhTransformer(),
+        )
+        forecaster = SplitConformalForecaster(point_forecaster=point, calibration_size=25).fit(
+            train, forecasting_horizon=4
+        )
+
+        predictions = forecaster.observe_predict_interval(y=later, forecasting_horizon=4, coverage_rates=[0.8])
+        assert predictions.height > 0
+
+    def test_the_batched_path_also_leaves_the_block_observed(self):
+        """The third path, which the bulk-versus-rolling comparison does not reach.
+
+        `_observe_predict_batched_origins` captures its saved state inside `assemble`,
+        which runs as the `reduce_fn` after `_observe_predict_loop` has already rolled
+        through the origins, so what it restores is a post-observe state. That is why it
+        was never affected. Asserting it means the invariant covers all three paths
+        rather than the two a bulk-versus-rolling comparison happens to exercise.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25)
+
+        # The batched path is chosen when the stack is not batch invariant but the
+        # forecaster still exposes batched origins, so deny the bulk guard to reach it.
+        cls = type(forecaster.point_forecaster)
+        saved = cls._chains_are_batch_invariant
+        cls._chains_are_batch_invariant = lambda self: False
+        try:
+            fitted = forecaster.fit(y, forecasting_horizon=4)
+        finally:
+            cls._chains_are_batch_invariant = saved
+
+        assert fitted.replay_path_ == "batched"
+        observed = fitted.point_forecaster_.observed_time_
+        stamps = set(observed.values()) if isinstance(observed, dict) else {observed}
+        assert stamps == {y["time"].max()}, (
+            "the batched replay left the forecaster short of the calibration block, so it "
+            "has the defect the bulk path had"
+        )
+
+    def test_a_replay_that_rewinds_the_forecaster_fails_at_fit(self):
+        """The invariant check fires where the state breaks, not four layers later.
+
+        Before this check, a replay that rewound the forecaster surfaced as an
+        inconsistent-interval error from whichever transformer inverted first, describing
+        regular input data as irregular. Attributing that took a cloud step log and a
+        bisect across two submodule bumps.
+        """
+        y = self._panel()
+        forecaster = SplitConformalForecaster(point_forecaster=self._forecaster(), calibration_size=25).fit(
+            y, forecasting_horizon=4
+        )
+
+        # Rewind the fitted point forecaster by the calibration block, which is exactly
+        # what restoring the pre-replay state used to do.
+        point = forecaster.point_forecaster_
+        rewound = y["time"].max() - timedelta(hours=25)
+        point.observed_time_ = (
+            dict.fromkeys(point.observed_time_, rewound) if isinstance(point.observed_time_, dict) else rewound
+        )
+
+        with pytest.raises(RuntimeError, match="fitted and not predictable"):
+            forecaster._check_replay_left_the_block_observed(y, "bulk")

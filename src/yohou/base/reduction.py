@@ -1686,8 +1686,21 @@ default="first_step"
                 self.observed_time_ = observed_time
                 y_t, y_inv = self._predict(groups=groups, y_pred_step=self._add_time_columns(frame))
                 out.append(y_t if predict_transformed else y_inv)
-        finally:
+        except BaseException:
             self._y_observed, self.observed_time_ = saved_y, saved_time
+            raise
+
+        # The rolling path observes its way through the block and ends having observed
+        # all of it. This path reconstructs each origin by slicing and never advances
+        # the buffer, so it has to land on that same end state deliberately: the last
+        # origin's state, which is the one that has seen every row.
+        #
+        # Restoring the pre-replay state instead leaves the forecaster rewound by the
+        # whole block, and the next observe stitches a stale window onto fresh
+        # forecasts. The two then sit `len(y)` apart on the time axis, which surfaces
+        # as an inconsistent-interval error from whichever transformer inverts first.
+        self._y_observed = y_observed_per_origin[-1]
+        self.observed_time_ = observed_time_per_origin[-1]
 
         return pl.concat(out)
 

@@ -219,6 +219,18 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # `batch_invariant`; that path moves rolling-statistic columns by about one ULP,
         # so it is taken only on a declared stack. Anything undeclared keeps a
         # bit-identical path, which is what makes a missing declaration cost speed alone.
+        # Recorded as a fitted attribute, not just chosen. Which path ran decides what
+        # state the forecaster is left in, so a state defect is only attributable to a
+        # path if the fitted object can say which one it took. Establishing that for the
+        # 2026-08-08 regression cost a bisect across two submodule bumps.
+        if direct and bulk is not None and point._chains_are_batch_invariant():
+            replay_path = "bulk"
+        elif direct and batched is not None:
+            replay_path = "batched"
+        else:
+            replay_path = "rolling"
+        self.replay_path_ = replay_path
+
         if direct and bulk is not None and point._chains_are_batch_invariant():
             y_pred_calib = bulk(
                 y=y_calib,
@@ -290,7 +302,48 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 key = f"step_{step}"
                 self._fit_score_counts_[key] = conformity_scores.filter(pl.col("step") == step).height
 
+        self._check_replay_left_the_block_observed(y, replay_path)
+
         return self
+
+    def _check_replay_left_the_block_observed(self, y: pl.DataFrame, replay_path: str) -> None:
+        """Fail here if the replay did not leave the point forecaster where fit ends.
+
+        The replay consumes the calibration window to produce conformity scores, and
+        whatever it does internally the forecaster it leaves behind must have observed
+        that window. A path that does not is fitted but unpredictable: the first
+        ``predict`` assembles a frame with a ``calibration_size``-sized hole in it.
+
+        Without this check that defect surfaces several layers away, as an
+        inconsistent-interval error raised from whichever transformer inverts first, and
+        it describes the *input* as irregular when the input was regular and the gap was
+        introduced by the fit. Attributing it took a cloud step log and a bisect. One
+        timestamp comparison against a fit that costs minutes buys the attribution back.
+
+        Raises
+        ------
+        RuntimeError
+            If the wrapped point forecaster's observation state stops short of the data
+            the forecaster was fitted on.
+        """
+        observed = getattr(self.point_forecaster_, "observed_time_", None)
+        if observed is None:
+            return
+
+        # Under a panel strategy this is one timestamp per entity, not a scalar.
+        stamps = observed.values() if isinstance(observed, dict) else [observed]
+        expected = y["time"].max()
+        behind = sorted({stamp for stamp in stamps if stamp is not None and stamp != expected})
+        if not behind:
+            return
+
+        msg = (
+            f"The '{replay_path}' calibration replay left the point forecaster at {behind} "
+            f"but fit ended at {expected}, so it is fitted and not predictable: the next "
+            f"predict would assemble a frame with a {expected - behind[0]} hole in it. "
+            "The replay must leave the forecaster having observed the calibration block."
+        )
+        raise RuntimeError(msg)
 
     def _observe_conformity(
         self,
