@@ -66,6 +66,13 @@ jobs:
         if: ${{ matrix.python-version == '3.11' }}
         with:
           use_oidc: true
+          # Named explicitly, with the uploader's search off. This step had
+          # neither for several releases: it uploaded whatever the fallback happened to
+          # find, which is the exact pattern the tests.yml upload was fixed to remove --
+          # and it survived that fix because the check only looked at tests.yml.
+          files: '${{ github.workspace }}/.artifacts/coverage.xml'
+          disable_search: true
+          fail_ci_if_error: true
 
   # The release path's tools, exercised where a failure is cheap.
   #
