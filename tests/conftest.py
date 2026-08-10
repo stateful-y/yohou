@@ -16,9 +16,25 @@ from typing import Any
 import polars as pl
 import polars.selectors as cs
 import pytest
+from hypothesis import settings
+from hypothesis.database import DirectoryBasedExampleDatabase
 from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseActualTransformer
+
+# Hypothesis remembers failing examples so a rerun replays them first. That example
+# database defaults to `.hypothesis/` at the repo root; this puts it under
+# `.artifacts/` with every other piece of throwaway output. It has no config-file
+# key, so registering and loading a profile is the only way to set it -- which is why
+# this lives here rather than in pyproject.toml.
+#
+# This moves the example database ONLY. Hypothesis also writes a `.hypothesis/`
+# storage directory for its own constants and unicode caches, which no setting
+# relocates. Newer versions drop a self-ignoring `.gitignore` inside it and older
+# ones do not, so `.gitignore` lists it explicitly rather than depending on which
+# version resolved.
+settings.register_profile("default", database=DirectoryBasedExampleDatabase(".artifacts/hypothesis"))
+settings.load_profile("default")
 
 
 def run_checks(

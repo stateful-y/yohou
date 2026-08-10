@@ -1,5 +1,12 @@
 # Available commands for Yohou
 
+# Throwaway build output lives under one directory instead of scattering across the
+# repo root. `site_dir` must agree with `site_dir` in mkdocs.yml, which is what
+# actually decides where the site is written; these recipes only read it.
+# `tests/test_artifact_paths.py` asserts the two agree.
+artifacts_dir := ".artifacts"
+site_dir := artifacts_dir / "site"
+
 # Show all available commands
 default:
     @just --list
@@ -60,13 +67,13 @@ fix:
 build:
     uv run python docs_build/build.py prebuild
     uv run zensical build
-    uv run python docs_build/build.py postbuild site
+    uv run python docs_build/build.py postbuild {{ site_dir }}
 
 # Build documentation without exporting notebooks
 build-fast:
     MKDOCS_SKIP_NOTEBOOKS=1 uv run python docs_build/build.py prebuild
     MKDOCS_SKIP_NOTEBOOKS=1 uv run zensical build
-    uv run python docs_build/build.py postbuild site
+    uv run python docs_build/build.py postbuild {{ site_dir }}
 
 # Export all marimo notebooks to HTML (cached, only re-exports changed ones)
 export-notebooks:
@@ -84,15 +91,13 @@ serve-fast:
 
 # Check built docs for dead links (build first with 'just build' or 'just build-fast')
 link:
-    uvx linkchecker site/index.html --no-status --no-warnings
+    uvx linkchecker {{ site_dir }}/index.html --no-status --no-warnings
 
 # Clean build artifacts
 clean:
-    rm -rf .nox
+    rm -rf {{ artifacts_dir }}
     rm -rf build dist *.egg-info
-    rm -rf .pytest_cache .ty_cache .ruff_cache
-    rm -rf htmlcov .coverage coverage.xml
-    rm -rf site
+    rm -rf .ty_cache .rumdl_cache
     find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
     find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
     find . -type f -name "*.pyc" -delete
