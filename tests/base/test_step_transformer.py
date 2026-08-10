@@ -1,6 +1,7 @@
 """Tests for the step-kind transformer base and its slot guards."""
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import polars as pl
 import pytest
@@ -46,6 +47,14 @@ class _Identity(BaseStepTransformer):
         return list(self.feature_names_in_)
 
 
+class _NoTransformerTags:
+    """Reports sklearn tags that carry no transformer section, as an estimator does."""
+
+    def __sklearn_tags__(self):
+        """Return a tag object whose ``transformer_tags`` is absent."""
+        return SimpleNamespace(transformer_tags=None)
+
+
 class TestStepIndexPartition:
     """The single site that parses a horizon index out of a column name."""
 
@@ -76,6 +85,25 @@ class TestBaseContract:
         assert _Identity().__sklearn_tags__().transformer_tags.kind == "step"
         assert _is_step_kind(_Identity())
         assert _kind_of(_Identity()) == "step"
+
+    @pytest.mark.parametrize(
+        ("obj", "why"),
+        [
+            (None, "None"),
+            (object(), "no __sklearn_tags__"),
+            (_NoTransformerTags(), "tags without a transformer section"),
+        ],
+    )
+    def test_an_unreadable_kind_falls_back_to_actual(self, obj, why):
+        """Anything that cannot state a kind is treated as actual, deliberately.
+
+        The slot guards raise on a *wrong* kind, so answering "step" or "forecast" for
+        an object that never said so would turn an ordinary validation error into a
+        kind error and point the message at the wrong thing. Defaulting to actual lets
+        the real error surface, which is why ``None`` has to reach here unharmed.
+        """
+        assert _kind_of(obj) == "actual", why
+        assert not _is_step_kind(obj)
 
     def test_fit_records_schema(self, step_frame):
         """fit records the non-index feature schema."""

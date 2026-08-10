@@ -1938,3 +1938,51 @@ class TestDuckTypedEstimator:
         pred = fc.predict()
         assert pred.height == 6
         assert pred["v"].to_list() == pytest.approx([1.5] * 6)
+
+
+class TestMultiOriginPathsRequireDirect:
+    """Both multi-origin replays refuse a strategy they cannot batch.
+
+    The batching rests on each horizon step owning an independent estimator, so the
+    rows of many origins can be stacked into one call per step. ``multi-output`` holds
+    a single estimator for every step and ``dir-rec`` feeds each step the previous
+    step's in-sample predictions, so neither has per-step calls to batch across
+    origins. Refusing is the honest answer: silently falling back would make the
+    replay path a caller selected unobservable.
+    """
+
+    @staticmethod
+    def _fitted(strategy):
+        time = pl.datetime_range(
+            datetime(2024, 1, 1), datetime(2024, 1, 1) + timedelta(days=45), interval="1d", eager=True
+        )
+        y = pl.DataFrame({"time": time, "value": [10.0 + i + (i % 7) for i in range(len(time))]})
+        forecaster = PointReductionForecaster(
+            LinearRegression(),
+            reduction_strategy=strategy,
+            actual_transformer=LagTransformer(lag=[1, 2]),
+        ).fit(y[:40], forecasting_horizon=3)
+        return forecaster, y
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "dir-rec"])
+    def test_bulk_replay_refuses(self, strategy):
+        forecaster, y = self._fitted(strategy)
+        with pytest.raises(ValueError, match="bulk origin replay is implemented"):
+            forecaster._observe_predict_bulk_origins(y=y[40:46], X_actual=None, groups=forecaster.groups_ or [])
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "dir-rec"])
+    def test_batched_replay_refuses(self, strategy):
+        forecaster, y = self._fitted(strategy)
+        with pytest.raises(ValueError, match="batched multi-origin prediction is implemented"):
+            forecaster._observe_predict_batched_origins(
+                y=y[40:46], X_actual=None, groups=forecaster.groups_ or [], stride=1
+            )
+
+    def test_the_batched_estimator_pass_returns_nothing_for_no_origins(self):
+        """An empty replay is a no-op, not a slice of an empty stack.
+
+        The pass reads ``X_tab_per_origin[0]`` to fix the rows-per-origin stride, so
+        the empty case has to return before that rather than through it.
+        """
+        forecaster, _ = self._fitted("direct")
+        assert forecaster._estimator_predict_direct_multi(forecaster.estimator_, [], []) == []

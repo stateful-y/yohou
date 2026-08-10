@@ -1790,3 +1790,55 @@ class TestBulkObserveReplay:
 
         with pytest.raises(RuntimeError, match="fitted and not predictable"):
             forecaster._check_replay_left_the_block_observed(y, "bulk")
+
+
+class TestReplayLeftTheBlockObserved:
+    """The guard reads one attribute, so its shapes are pinned directly.
+
+    Reaching each branch through a real fit would need a forecaster deliberately built
+    to strand its observation state, and the failure it reports is one the guard exists
+    to make attributable rather than one any current forecaster produces. Calling it
+    with the states it reads keeps every branch honest without inventing a broken
+    forecaster to produce them.
+    """
+
+    @staticmethod
+    def _y():
+        time = pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 5), interval="1d", eager=True)
+        return pl.DataFrame({"time": time, "value": [1.0, 2.0, 3.0, 4.0, 5.0]})
+
+    class _Point:
+        """Stand-in exposing only the attribute the guard consults."""
+
+        def __init__(self, observed_time_=None):
+            if observed_time_ is not None:
+                self.observed_time_ = observed_time_
+
+    def _check(self, observed):
+        forecaster = SplitConformalForecaster()
+        forecaster.point_forecaster_ = self._Point(observed)
+        forecaster._check_replay_left_the_block_observed(self._y(), "rolling")
+
+    def test_a_forecaster_without_the_attribute_is_left_alone(self):
+        """Nothing to compare against is not evidence of a rewind."""
+        self._check(None)
+
+    def test_a_forecaster_at_the_end_of_the_block_passes(self):
+        self._check(datetime(2024, 1, 5))
+
+    def test_a_panel_dict_at_the_end_of_the_block_passes(self):
+        """Panel keys the state per entity; every entity must have reached the end."""
+        self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 5)})
+
+    def test_a_forecaster_left_behind_raises_naming_the_gap(self):
+        with pytest.raises(RuntimeError, match="3 days"):
+            self._check(datetime(2024, 1, 2))
+
+    def test_one_lagging_group_is_enough_to_raise(self):
+        """A partial rewind is still a hole, and only the lagging stamp is reported.
+
+        The group that reached the end is filtered out, so the message names the one
+        that did not rather than listing every entity.
+        """
+        with pytest.raises(RuntimeError, match=r"at \[datetime\.datetime\(2024, 1, 2"):
+            self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 2)})
