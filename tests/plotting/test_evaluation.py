@@ -5,6 +5,8 @@ import pytest
 pytest.importorskip("plotly", reason="plotting extra not installed")
 
 
+from datetime import datetime, timedelta
+
 import numpy as np
 import polars as pl
 import pytest
@@ -821,6 +823,42 @@ class TestPlotScorePerHorizon:
             color_palette=["#FF0000"],
         )
         assert_figure_valid(fig)
+
+    @pytest.fixture
+    def walk_forward(self):
+        """Three vintages of a four-step horizon, the shape a backtest leaves."""
+        horizon, n_vintages = 4, 3
+        times, vintages = [], []
+        for v in range(n_vintages):
+            origin = datetime(2020, 1, 1) + timedelta(hours=v * horizon)
+            for step in range(1, horizon + 1):
+                vintages.append(origin)
+                times.append(origin + timedelta(hours=step))
+        y_truth = pl.DataFrame({"time": times, "value": [10.0] * len(times)})
+        # error grows with the step, so a correct profile is monotonic
+        y_pred = pl.DataFrame({
+            "vintage_time": vintages,
+            "time": times,
+            "value": [10.0 + (t - v).total_seconds() / 3600 for t, v in zip(times, vintages, strict=True)],
+        })
+        return {"y_truth": y_truth, "y_pred": y_pred, "horizon": horizon}
+
+    def test_axis_is_the_horizon_not_the_row_count(self, walk_forward):
+        """The step axis must span the horizon, not horizon x vintages.
+
+        Componentwise aggregation keeps one row per (time, vintage); numbering
+        those rows drew every vintage's profile end to end under an axis
+        labelled as a single horizon.
+        """
+        fig = plot_score_per_step(MeanAbsoluteError(), walk_forward["y_truth"], walk_forward["y_pred"])
+        steps = list(fig.data[0].x)
+        assert steps == list(range(1, walk_forward["horizon"] + 1))
+
+    def test_each_step_averages_over_its_vintages(self, walk_forward):
+        """Step k is the mean over every vintage's step k, so the profile is
+        the horizon decay rather than a sawtooth."""
+        fig = plot_score_per_step(MeanAbsoluteError(), walk_forward["y_truth"], walk_forward["y_pred"])
+        assert list(fig.data[0].y) == [1.0, 2.0, 3.0, 4.0]
 
 
 class TestPlotScoreTimeSeriesPanel:

@@ -95,6 +95,38 @@ def _prepare_scorer_for_componentwise(scorer: BaseScorer) -> BaseScorer:
     return scorer_cw
 
 
+def _prepare_scorer_for_step_profile(scorer: BaseScorer) -> BaseScorer:
+    """Clone and configure a scorer to leave only the forecasting-step axis.
+
+    The orthogonal aggregation modes name the dimension each one *collapses*, so
+    keeping the step axis means asking for every other mode rather than for
+    ``"stepwise"``. The result carries one row per forecasting step, whatever the
+    number of vintages.
+
+    Componentwise aggregation alone does not do this: it keeps one row per
+    ``(time, vintage)``, so a walk-forward panel of V vintages over an H-step
+    horizon yields ``V * H`` rows. Treating that row count as the horizon plots V
+    horizon profiles end to end under an axis labelled as one.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer to prepare.
+
+    Returns
+    -------
+    BaseScorer
+        Cloned scorer whose scores collapse to one row per forecasting step.
+
+    """
+    scorer_sp = copy.deepcopy(scorer)
+    modes = ["vintagewise", "componentwise", "groupwise"]
+    if isinstance(scorer_sp, BaseIntervalScorer):
+        modes.append("coveragewise")
+    scorer_sp.set_params(aggregation_method=modes)
+    return scorer_sp
+
+
 def _warn_large_grid(n_scorers: int, n_models: int, threshold: int = 12) -> None:
     """Warn when the combination of scorers and models exceeds a threshold."""
     total = n_scorers * n_models
@@ -2699,10 +2731,10 @@ def plot_score_per_step(
     y_pred_dict: dict[str, pl.DataFrame] = _normalize_y_pred(y_pred)
     scorer_dict = _normalize_scorers(scorer)
 
-    # Prepare and fit each scorer for componentwise aggregation
+    # Prepare and fit each scorer to collapse to the forecasting-step axis
     scorer_cw_dict: dict[str, BaseScorer] = {}
     for s_name, s in scorer_dict.items():
-        s_cw = _prepare_scorer_for_componentwise(s)
+        s_cw = _prepare_scorer_for_step_profile(s)
         s_cw.fit(y_truth)
         scorer_cw_dict[s_name] = s_cw
 
@@ -2727,19 +2759,24 @@ def plot_score_per_step(
             validate_plotting_data(y_pred_m)
             scores_df = scorer_cw_r.score(y_truth_sub, y_pred_m)
             if not isinstance(scores_df, pl.DataFrame):
-                msg_ = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
+                msg_ = f"Scorer must return DataFrame for step aggregation, got {type(scores_df).__name__}"
                 raise TypeError(msg_)
 
             score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
             if len(score_cols) == 1:
                 score_vals = scores_df[score_cols[0]].drop_nulls().to_numpy()
             else:
-                # average across components at each timestep
+                # average across components at each step
                 score_vals = scores_df.select(score_cols).mean_horizontal().to_numpy()
                 score_vals = score_vals[~np.isnan(score_vals)]
 
-            n_steps = len(score_vals)
-            steps = np.arange(1, n_steps + 1)
+            # The step axis comes from the scorer, which knows the forecast
+            # origin of every row. Numbering the rows instead only agrees with
+            # the horizon when there is exactly one vintage.
+            if "forecasting_step" in scores_df.columns:
+                steps = scores_df["forecasting_step"].to_numpy()[: len(score_vals)]
+            else:
+                steps = np.arange(1, len(score_vals) + 1)
             c = _colors[idx % len(_colors)]
 
             lg_kwargs: dict = {}
@@ -2776,7 +2813,7 @@ def plot_score_per_step(
                     col=col,
                 )
 
-            if show_trend and n_steps >= 2:
+            if show_trend and len(steps) >= 2:
                 coeffs = np.polyfit(steps, score_vals, 1)
                 trend_y = np.polyval(coeffs, steps)
                 fig.add_trace(
