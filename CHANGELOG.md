@@ -16,7 +16,7 @@ This **minor release** includes 20 commits.
 - Add an optional adapter that keeps interval coverage on target under drift  ([#119](https://github.com/stateful-y/yohou/pull/119)) by @gtauzin
 
 ### Bug Fixes
-- Pin ossf/scorecard-action to v2.4.4 (@v2 tag does not exist) by @gtauzin
+- Pin ossf/scorecard-action to the existing v2.4.4 tag by @gtauzin
 - Drop the workflow token to read-only except in the jobs that write  ([#139](https://github.com/stateful-y/yohou/pull/139)) by @gtauzin
 - Fix a shell injection in the release publish job (template v0.40.1)  ([#140](https://github.com/stateful-y/yohou/pull/140)) by @gtauzin
 - Stop the nightly coverage upload from silently uploading the wrong report  ([#145](https://github.com/stateful-y/yohou/pull/145)) by @gtauzin
@@ -32,15 +32,15 @@ This **minor release** includes 20 commits.
 - Move build output to .artifacts/ and CODEOWNERS to .github/  ([#142](https://github.com/stateful-y/yohou/pull/142)) by @gtauzin
 
 ### Miscellaneous Tasks
-- Update from template v0.31.1 (Renovate replaces Dependabot)  ([#122](https://github.com/stateful-y/yohou/pull/122)) by @gtauzin
-- Update from template v0.32.1 (pre-push gates + CI roll-up)  ([#124](https://github.com/stateful-y/yohou/pull/124)) by @gtauzin
-- Update from template v0.35.0 (least-privilege workflows + secret scanning)  ([#125](https://github.com/stateful-y/yohou/pull/125)) by @gtauzin
-- Update from template v0.36.0 (Codecov OIDC + scorecard pin)  ([#126](https://github.com/stateful-y/yohou/pull/126)) by @gtauzin
-- Update from template v0.37.0 (gitsign tag-signing docs)  ([#128](https://github.com/stateful-y/yohou/pull/128)) by @gtauzin
-- Update from template v0.38.0  ([#129](https://github.com/stateful-y/yohou/pull/129)) by @gtauzin
-- Update from template v0.39.0  ([#130](https://github.com/stateful-y/yohou/pull/130)) by @gtauzin
-- Update from template v0.39.1  ([#131](https://github.com/stateful-y/yohou/pull/131)) by @gtauzin
-- Update from template v0.40.0  ([#132](https://github.com/stateful-y/yohou/pull/132)) by @gtauzin
+- Replace Dependabot with Renovate for dependency updates (template v0.31.1)  ([#122](https://github.com/stateful-y/yohou/pull/122)) by @gtauzin
+- Add pre-push gates and a single CI roll-up check (template v0.32.1)  ([#124](https://github.com/stateful-y/yohou/pull/124)) by @gtauzin
+- Restrict workflow permissions and add secret scanning (template v0.35.0)  ([#125](https://github.com/stateful-y/yohou/pull/125)) by @gtauzin
+- Switch Codecov to OIDC and pin the Scorecard action (template v0.36.0)  ([#126](https://github.com/stateful-y/yohou/pull/126)) by @gtauzin
+- Document signing release tags with gitsign (template v0.37.0)  ([#128](https://github.com/stateful-y/yohou/pull/128)) by @gtauzin
+- Add a CLAUDE.md project-instructions file for AI assistants (template v0.38.0)  ([#129](https://github.com/stateful-y/yohou/pull/129)) by @gtauzin
+- Fix three release-pipeline defects (template v0.39.0)  ([#130](https://github.com/stateful-y/yohou/pull/130)) by @gtauzin
+- Let Renovate see the SBOM tool's version pin (template v0.39.1)  ([#131](https://github.com/stateful-y/yohou/pull/131)) by @gtauzin
+- Add a nightly job that exercises the release path (template v0.40.0)  ([#132](https://github.com/stateful-y/yohou/pull/132)) by @gtauzin
 - Make the nightly run survive dataset-host outages and test every Python  ([#137](https://github.com/stateful-y/yohou/pull/137)) by @gtauzin
 
 ### Contributors
