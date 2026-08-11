@@ -154,6 +154,25 @@ plot_group_scores(scorer, y_test, y_pred, kind="box")
 plot_group_scores(scorer, y_test, y_pred, kind="heatmap")
 ```
 
+The vintage views in sections 4 and 6 average the entity columns unless you ask
+them not to, so a model that is accurate at most entities and wrong at one reads
+as mildly mediocre. Pass `facet_by="group"` to see the entities separately:
+
+```python
+# One per-vintage subplot per entity, models overlaid inside each
+plot_score_per_vintage(scorer["MAE"], y_test, {"ridge": y_pred_ridge}, facet_by="group")
+
+# One step-by-vintage heatmap per entity, sharing a single colour scale
+plot_score_heatmap(scorer["MAE"], y_test, y_pred_ridge, facet_by="group")
+
+# Restrict a wide panel to the entities worth looking at
+plot_score_heatmap(scorer["MAE"], y_test, y_pred_ridge, groups=["store_1"], facet_by="group")
+```
+
+Both views spend their subplot grid on the entities, so `plot_score_per_vintage`
+raises when it is given several scorers and `facet_by` together. Score one metric
+at a time when faceting.
+
 For box plots, `distribute_by` controls the variability dimension (`"time"`,
 `"vintage"`, or `"step"`).
 

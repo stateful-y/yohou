@@ -50,6 +50,7 @@ __all__ = [
 ]
 
 _SCORER_META_COLS = frozenset({"time", "vintage_time", "forecasting_step", "coverage_rate"})
+_FRAME_INDEX_COLS = frozenset({"time", "vintage_time"})
 
 
 def _normalize_scorers(
@@ -184,6 +185,83 @@ def _warn_large_grid(n_scorers: int, n_models: int, threshold: int = 12) -> None
             UserWarning,
             stacklevel=3,
         )
+
+
+def _panel_facet_columns(
+    frame: pl.DataFrame,
+    groups: list[str] | None,
+    facet_by: Literal["group", "member"],
+) -> dict[str, list[str]]:
+    """Bucket a frame's panel columns into one entry per facet.
+
+    Parameters
+    ----------
+    frame : pl.DataFrame
+        Frame whose columns follow the ``group__member`` convention.
+    groups : list[str] | None
+        Panel groups to keep, or ``None`` for all of them.
+    facet_by : Literal["group", "member"]
+        Whether each facet is a group (columns sharing a prefix) or a
+        member (columns sharing a postfix).
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Facet label to the columns it covers. Empty when *frame* holds
+        no panel columns.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from yohou.plotting.evaluation import _panel_facet_columns
+    >>> df = pl.DataFrame({"time": [1], "a__value": [1.0], "b__value": [2.0]})
+    >>> _panel_facet_columns(df, None, "group")
+    {'a': ['a__value'], 'b': ['b__value']}
+    >>> _panel_facet_columns(df, None, "member")
+    {'value': ['a__value', 'b__value']}
+    """
+    _, panel_groups = inspect_panel(frame)
+    if not panel_groups:
+        return {}
+    selected = {g: cols for g, cols in panel_groups.items() if groups is None or g in groups}
+    if facet_by == "group":
+        return selected
+    members: dict[str, list[str]] = {}
+    for cols in selected.values():
+        for col in cols:
+            members.setdefault(_member_name(col), []).append(col)
+    return members
+
+
+def _select_facet(frame: pl.DataFrame, facet_cols: list[str]) -> pl.DataFrame:
+    """Narrow a truth or prediction frame to one facet's columns.
+
+    A facet column brings its companions with it: predictions name their
+    bounds ``{col}_lower_{rate}`` and ``{col}_upper_{rate}``, and their
+    class probabilities ``{col}_proba_{label}``, so an interval scorer
+    would fail on a facet holding the point column alone.
+
+    Frames that carry none of the facet's columns are returned whole, so
+    a global truth column stays usable against every facet.
+
+    Parameters
+    ----------
+    frame : pl.DataFrame
+        Truth or prediction frame, with its index columns.
+    facet_cols : list[str]
+        Panel columns belonging to the facet.
+
+    Returns
+    -------
+    pl.DataFrame
+        The frame narrowed to its index columns, *facet_cols*, and the
+        companion columns derived from them.
+    """
+    prefixes = tuple(f"{col}_" for col in facet_cols)
+    keep = [c for c in frame.columns if c in _FRAME_INDEX_COLS or c in facet_cols or c.startswith(prefixes)]
+    if not any(c not in _FRAME_INDEX_COLS for c in keep):
+        return frame
+    return frame.select(keep)
 
 
 def _render_residual_diagnostics(
@@ -3125,6 +3203,8 @@ def plot_score_per_vintage(
     kind: Literal["line", "bar"] = "line",
     compare_by: Literal["scorer", "model"] = "scorer",
     show_trend: bool = False,
+    groups: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = None,
     facet_n_cols: int = 2,
     color_palette: list[str] | None = None,
     show_legend: bool = True,
@@ -3168,6 +3248,18 @@ def plot_score_per_vintage(
         dimension is overlaid vs faceted.
     show_trend : bool, default=False
         Overlay a linear trend line.
+    groups : list[str] | None, default=None
+        Panel groups to draw. ``None`` draws every group found in
+        ``y_truth``. Only consulted when ``facet_by`` is set.
+    facet_by : Literal["group", "member"] | None, default=None
+        Resolve panel data to one subplot per group (or per member),
+        with models overlaid inside each. ``None`` averages the entity
+        columns into a single trace.
+
+        Unlike :func:`plot_score_time_series` and
+        :func:`plot_score_per_step`, this view does not facet on merely
+        detecting panel columns: panel data alone renders exactly as it
+        did before, and faceting happens only when asked for here.
     facet_n_cols : int, default=2
         Columns in the faceted grid.
     color_palette : list[str] | None, default=None
@@ -3205,6 +3297,9 @@ def plot_score_per_vintage(
         If ``y_pred`` has no ``vintage_time`` column, a ``ValueError`` is
         raised later (from the scorer) reporting that ``vintage_time`` is
         missing.
+        If several scorers are passed together with ``facet_by``: the
+        subplot grid is already spent on scorers and models, so entities
+        have nowhere to go.
 
     Examples
     --------
@@ -3337,6 +3432,69 @@ def plot_score_per_vintage(
                 col=col,
             )
 
+    # Panel dispatch. Entered on the caller's ask rather than on detecting panel
+    # columns, so panel data alone keeps the averaged trace earlier callers saw.
+    if facet_by is not None:
+        panel_facets = _panel_facet_columns(y_truth, groups, facet_by)
+        if panel_facets:
+            if multi_scorer:
+                msg = (
+                    "Multi-scorer is not supported with faceting in plot_score_per_vintage. "
+                    "Pass a single scorer instead."
+                )
+                raise ValueError(msg)
+
+            panel_labels = list(panel_facets)
+            n_cols = min(facet_n_cols, len(panel_labels))
+            n_rows = (len(panel_labels) + n_cols - 1) // n_cols
+            colors = resolve_color_palette(color_palette, n_models)
+            panel_scorer = next(iter(scorer_dict.values()))
+
+            fig = make_subplots(
+                rows=n_rows,
+                cols=n_cols,
+                subplot_titles=panel_labels,
+                shared_xaxes=True,
+                vertical_spacing=_subplot_spacing(n_rows),
+            )
+
+            legend_tracker = LegendTracker()
+            for facet_idx, facet_label in enumerate(panel_labels):
+                r = facet_idx // n_cols + 1
+                c = facet_idx % n_cols + 1
+                facet_cols = panel_facets[facet_label]
+                y_truth_f = _select_facet(y_truth, facet_cols)
+                for m_idx, (m_name, y_pm) in enumerate(y_pred_dict.items()):
+                    vintages, sv = _compute_vintage_scores(
+                        panel_scorer,
+                        y_truth_f,
+                        _select_facet(y_pm, facet_cols),
+                    )
+                    _render_vintage(
+                        fig,
+                        m_name,
+                        vintages,
+                        sv,
+                        colors[m_idx],
+                        legend_tracker.should_show(m_name),
+                        row=r,
+                        col=c,
+                    )
+
+            panel_scorer_name = panel_scorer.__class__.__name__
+            fig = apply_default_layout(
+                fig,
+                title=title or f"{panel_scorer_name} by Vintage",
+                x_label=x_label or "Vintage (Observed Time)",
+                y_label=y_label or panel_scorer_name,
+                width=width,
+                height=height or max(300 * n_rows, 400),
+            )
+            if kind == "bar" and n_models > 1:
+                fig.update_layout(barmode="group")
+            fig.update_layout(showlegend=show_legend)
+            return fig
+
     # Multi-scorer + multi-model -> faceted subplots
     if multi_scorer and n_models > 1:
         _warn_large_grid(n_scorers, n_models)
@@ -3439,6 +3597,68 @@ def plot_score_per_vintage(
     return fig
 
 
+def _score_heatmap_matrix(
+    scorer: BaseScorer,
+    y_truth: pl.DataFrame,
+    y_pred: pl.DataFrame,
+    vintages: pl.Series,
+) -> tuple[np.ndarray, list[str], list[str]]:
+    """Score every vintage separately into a ``(vintages x steps)`` matrix.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer to clone, prepare componentwise and fit on *y_truth*.
+    y_truth : pl.DataFrame
+        Ground truth with ``"time"`` column.
+    y_pred : pl.DataFrame
+        Predictions with ``"vintage_time"`` and ``"time"`` columns.
+    vintages : pl.Series
+        Sorted unique vintage values to score, one per matrix row.
+
+    Returns
+    -------
+    z : np.ndarray
+        Score matrix, one row per vintage and one column per step.
+    vintage_labels : list[str]
+        Row labels.
+    step_labels : list[str]
+        Column labels.
+    """
+    scorer_cw = _prepare_scorer_for_componentwise(copy.deepcopy(scorer))
+    scorer_cw.fit(y_truth)
+
+    score_matrix: list[list[float]] = []
+    vintage_labels: list[str] = []
+    n_steps: int | None = None
+
+    for vintage_val in vintages:
+        y_pred_v = y_pred.filter(pl.col("vintage_time") == vintage_val)
+        scores_df = scorer_cw.score(y_truth, y_pred_v)
+
+        if not isinstance(scores_df, pl.DataFrame):
+            msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
+            raise TypeError(msg)
+
+        score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
+        if len(score_cols) == 1:
+            row_scores = scores_df[score_cols[0]].to_list()
+        else:
+            row_scores = scores_df.select(score_cols).mean_horizontal().to_list()
+
+        if n_steps is None:
+            n_steps = len(row_scores)
+
+        # Pad or truncate to consistent length
+        row_scores = row_scores[:n_steps] + [float("nan")] * max(0, n_steps - len(row_scores))
+
+        score_matrix.append(row_scores)
+        vintage_labels.append(str(vintage_val))
+
+    step_labels = [str(i) for i in range(1, (n_steps or 0) + 1)]
+    return np.array(score_matrix), vintage_labels, step_labels
+
+
 def plot_score_heatmap(
     scorer: BaseScorer,
     y_truth: pl.DataFrame,
@@ -3446,6 +3666,9 @@ def plot_score_heatmap(
     *,
     x_dim: Literal["step", "vintage"] = "step",
     y_dim: Literal["step", "vintage"] = "vintage",
+    groups: list[str] | None = None,
+    facet_by: Literal["group", "member"] | None = None,
+    facet_n_cols: int = 2,
     color_palette: str | None = None,
     text_format: str = ".2f",
     show_text: bool = True,
@@ -3475,6 +3698,20 @@ def plot_score_heatmap(
     y_dim : str, default="vintage"
         Dimension for the y-axis: ``"step"`` or ``"vintage"``.
         Must differ from ``x_dim``.
+    groups : list[str] | None, default=None
+        Panel groups to draw. ``None`` draws every group found in
+        ``y_truth``. Only consulted when ``facet_by`` is set.
+    facet_by : Literal["group", "member"] | None, default=None
+        Resolve panel data to one heatmap per group (or per member).
+        Both axes are already spent on step and vintage, so the entity
+        dimension becomes a subplot grid. All heatmaps in the grid share
+        one colour scale, so entities stay comparable at a glance.
+        ``None`` averages the entity columns into a single grid.
+
+        As with :func:`plot_score_per_vintage`, faceting happens only
+        when asked for here, never on merely detecting panel columns.
+    facet_n_cols : int, default=2
+        Columns in the faceted grid.
     color_palette : str or None, default=None
         Plotly colorscale name. If None, auto-selects based on
         ``scorer._lower_is_better``: ``"Blues"`` when lower is better,
@@ -3556,51 +3793,6 @@ def plot_score_heatmap(
         msg = "y_pred has only a single vintage (vintage_time). plot_score_heatmap requires at least 2 vintages."
         raise ValueError(msg)
 
-    # Compute per-vintage, per-step scores
-    scorer_cw = _prepare_scorer_for_componentwise(copy.deepcopy(scorer))
-    scorer_cw.fit(y_truth)
-
-    score_matrix: list[list[float]] = []
-    vintage_labels: list[str] = []
-    n_steps: int | None = None
-
-    for vintage_val in vintages:
-        y_pred_v = y_pred.filter(pl.col("vintage_time") == vintage_val)
-        scores_df = scorer_cw.score(y_truth, y_pred_v)
-
-        if not isinstance(scores_df, pl.DataFrame):
-            msg = f"Scorer must return DataFrame for componentwise aggregation, got {type(scores_df).__name__}"
-            raise TypeError(msg)
-
-        score_cols = [c for c in scores_df.columns if c not in _SCORER_META_COLS]
-        if len(score_cols) == 1:
-            row_scores = scores_df[score_cols[0]].to_list()
-        else:
-            row_scores = scores_df.select(score_cols).mean_horizontal().to_list()
-
-        if n_steps is None:
-            n_steps = len(row_scores)
-
-        # Pad or truncate to consistent length
-        row_scores = row_scores[:n_steps] + [float("nan")] * max(0, n_steps - len(row_scores))
-
-        score_matrix.append(row_scores)
-        vintage_labels.append(str(vintage_val))
-
-    step_labels = [str(i) for i in range(1, (n_steps or 0) + 1)]
-    z = np.array(score_matrix)
-
-    # Arrange dimensions
-    if x_dim == "step" and y_dim == "vintage":
-        x_labels = step_labels
-        y_labels = vintage_labels
-        z_plot = z
-    else:
-        # x_dim == "vintage" and y_dim == "step"
-        x_labels = vintage_labels
-        y_labels = step_labels
-        z_plot = z.T
-
     # Auto-select colorscale
     if color_palette is None:
         lower_is_better = getattr(scorer, "_lower_is_better", True)
@@ -3608,8 +3800,88 @@ def plot_score_heatmap(
     else:
         colorscale = color_palette
 
-    # Build text annotations
-    text_vals = [[f"{v:{text_format}}" for v in row] for row in z_plot] if show_text else None
+    def _orient(
+        z: np.ndarray, vintage_labels: list[str], step_labels: list[str]
+    ) -> tuple[np.ndarray, list[str], list[str]]:
+        """Lay the matrix out along the requested axes."""
+        if x_dim == "step" and y_dim == "vintage":
+            return z, step_labels, vintage_labels
+        # x_dim == "vintage" and y_dim == "step"
+        return z.T, vintage_labels, step_labels
+
+    def _cell_text(z_plot: np.ndarray) -> list[list[str]] | None:
+        """Format the per-cell annotations, or None when they are off."""
+        if not show_text:
+            return None
+        return [[f"{v:{text_format}}" for v in row] for row in z_plot]
+
+    scorer_name = scorer.__class__.__name__
+    default_x = x_label or ("Horizon Step" if x_dim == "step" else "Vintage (Observed Time)")
+    default_y = y_label or ("Horizon Step" if y_dim == "step" else "Vintage (Observed Time)")
+
+    # Panel dispatch. Entered on the caller's ask rather than on detecting panel
+    # columns, so panel data alone keeps the averaged grid earlier callers saw.
+    if facet_by is not None:
+        panel_facets = _panel_facet_columns(y_truth, groups, facet_by)
+        if panel_facets:
+            panel_labels = list(panel_facets)
+            n_cols = min(facet_n_cols, len(panel_labels))
+            n_rows = (len(panel_labels) + n_cols - 1) // n_cols
+            fig = make_subplots(
+                rows=n_rows,
+                cols=n_cols,
+                subplot_titles=panel_labels,
+                vertical_spacing=_subplot_spacing(n_rows),
+            )
+
+            oriented = []
+            for facet_label in panel_labels:
+                facet_cols = panel_facets[facet_label]
+                z_f, vintage_labels_f, step_labels_f = _score_heatmap_matrix(
+                    scorer,
+                    _select_facet(y_truth, facet_cols),
+                    _select_facet(y_pred, facet_cols),
+                    vintages,
+                )
+                oriented.append(_orient(z_f, vintage_labels_f, step_labels_f))
+
+            # One colour range over the whole grid: entities are only comparable
+            # if the same colour means the same score in every subplot.
+            finite = [z_plot[np.isfinite(z_plot)] for z_plot, _, _ in oriented]
+            finite = [part for part in finite if part.size]
+            zmin = float(min(part.min() for part in finite)) if finite else 0.0
+            zmax = float(max(part.max() for part in finite)) if finite else 1.0
+
+            for facet_idx, (z_plot, x_labels, y_labels) in enumerate(oriented):
+                fig.add_trace(
+                    go.Heatmap(
+                        z=z_plot,
+                        x=x_labels,
+                        y=y_labels,
+                        coloraxis="coloraxis",
+                        text=_cell_text(z_plot),
+                        texttemplate="%{text}" if show_text else None,
+                        hovertemplate="x: %{x}<br>y: %{y}<br>Score: %{z:.3f}<extra></extra>",
+                    ),
+                    row=facet_idx // n_cols + 1,
+                    col=facet_idx % n_cols + 1,
+                )
+
+            fig = apply_default_layout(
+                fig,
+                title=title or f"{scorer_name} Heatmap",
+                x_label=default_x,
+                y_label=default_y,
+                width=width,
+                height=height,
+            )
+            fig.update_layout(coloraxis={"colorscale": colorscale, "cmin": zmin, "cmax": zmax})
+            return fig
+
+    # Compute per-vintage, per-step scores
+    z, vintage_labels, step_labels = _score_heatmap_matrix(scorer, y_truth, y_pred, vintages)
+    z_plot, x_labels, y_labels = _orient(z, vintage_labels, step_labels)
+    text_vals = _cell_text(z_plot)
 
     fig = go.Figure(
         data=go.Heatmap(
@@ -3623,9 +3895,6 @@ def plot_score_heatmap(
         )
     )
 
-    scorer_name = scorer.__class__.__name__
-    default_x = x_label or ("Horizon Step" if x_dim == "step" else "Vintage (Observed Time)")
-    default_y = y_label or ("Horizon Step" if y_dim == "step" else "Vintage (Observed Time)")
     default_title = title or f"{scorer_name} Heatmap"
 
     fig = apply_default_layout(
