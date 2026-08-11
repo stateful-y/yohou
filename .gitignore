@@ -45,7 +45,14 @@ env/
 
 # Testing. `.tox/` is not something this template configures, and the bare
 # patterns below catch output from a tool run outside the project's own config.
+# The three root-level names are where coverage and mkdocs land when they are
+# invoked without the project's settings (`uv run pytest` from the repo root
+# rather than `just test`); `.artifacts/` only catches them when the config is
+# read, and 90MB of built site went untracked at the root before these existed.
 .tox/
+.coverage
+coverage.xml
+/site/
 *.cover
 *.log
 
