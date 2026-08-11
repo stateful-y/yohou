@@ -164,6 +164,22 @@ Passing a specific list of group names to `groups` filters which panels appear,
 which is useful for large panel datasets where plotting everything at once would
 be overwhelming.
 
+### Two views that wait to be asked
+
+[`plot_score_per_vintage`](/pages/api/generated/yohou.plotting.plot_score_per_vintage/)
+and [`plot_score_heatmap`](/pages/api/generated/yohou.plotting.plot_score_heatmap/)
+are exceptions to the automatic activation above. Both default to
+`facet_by=None` and average the entity columns into one series, which is what
+they have always done; passing `facet_by` is what resolves them to their
+entities. Detection alone changes nothing, so panel data keeps rendering the way
+it did before these parameters existed.
+
+The heatmap spends both of its axes on step and vintage, so its entities become
+a subplot grid rather than a third axis, and every heatmap in that grid shares
+one colour scale so the entities stay comparable. Because the per-vintage view
+already spends its own grid on scorers and models, asking it for several scorers
+and faceting at once raises rather than silently dropping one of them.
+
 Color consistency across facets is managed by `PanelColorManager`, which assigns
 stable colors to member or group names so the same entity always appears in the
 same color regardless of subplot position. `LegendTracker` deduplicates legend

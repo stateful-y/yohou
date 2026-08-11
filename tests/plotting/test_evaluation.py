@@ -3540,3 +3540,221 @@ class TestScoreDistributionKdeWarning:
         y_pred = pl.DataFrame({"time": dates, "y": [5.0] * n})
         with pytest.warns(UserWarning, match="KDE"):
             plot_score_distribution(MeanAbsoluteError(), y_truth, y_pred, kind="kde")
+
+
+@pytest.fixture
+def uneven_panel_vintages():
+    """A two-entity panel where one model is only wrong at one entity.
+
+    ``uniform`` is off by 5 everywhere; ``lopsided`` is perfect at
+    ``site_a`` and off by 10 at ``site_b``. Averaged over the entities the
+    two are indistinguishable, which is what faceting has to reveal.
+    """
+    times = [datetime(2020, 1, 1) + timedelta(hours=h) for h in range(12)]
+    vintage_times = [datetime(2019, 12, 31)] * 6 + [datetime(2020, 1, 1)] * 6
+    y_truth = pl.DataFrame({
+        "time": times,
+        "site_a__value": [10.0 + i for i in range(12)],
+        "site_b__value": [30.0 + i for i in range(12)],
+    })
+    lopsided = pl.DataFrame({
+        "vintage_time": vintage_times,
+        "time": times,
+        "site_a__value": y_truth["site_a__value"],
+        "site_b__value": y_truth["site_b__value"] + 10.0,
+    })
+    uniform = pl.DataFrame({
+        "vintage_time": vintage_times,
+        "time": times,
+        "site_a__value": y_truth["site_a__value"] + 5.0,
+        "site_b__value": y_truth["site_b__value"] + 5.0,
+    })
+    return {"y_truth": y_truth, "lopsided": lopsided, "uniform": uniform}
+
+
+class TestPlotScorePerVintagePanel:
+    """Per-vintage resolves panel data to its entities when asked to."""
+
+    def test_facet_by_group_yields_one_subplot_per_entity(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            {"lopsided": uneven_panel_vintages["lopsided"]},
+            facet_by="group",
+        )
+        assert len({trace.yaxis for trace in fig.data}) == 2
+
+    def test_one_bad_entity_is_visible_rather_than_averaged_away(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            {
+                "lopsided": uneven_panel_vintages["lopsided"],
+                "uniform": uneven_panel_vintages["uniform"],
+            },
+            facet_by="group",
+        )
+        by_axis = {}
+        for trace in fig.data:
+            by_axis.setdefault(trace.yaxis, {})[trace.name] = list(trace.y)
+        per_entity = [axis["lopsided"] for axis in by_axis.values()]
+        assert per_entity[0] != per_entity[1]
+        assert any(scores != by_axis[axis]["uniform"] for axis, scores in zip(by_axis, per_entity, strict=True))
+
+    def test_without_facet_by_the_entities_are_still_averaged(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            {
+                "lopsided": uneven_panel_vintages["lopsided"],
+                "uniform": uneven_panel_vintages["uniform"],
+            },
+        )
+        traces = {trace.name: list(trace.y) for trace in fig.data}
+        assert len({trace.yaxis for trace in fig.data}) == 1
+        assert traces["lopsided"] == traces["uniform"]
+
+    def test_groups_filters_which_entities_are_drawn(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            groups=["site_a"],
+            facet_by="group",
+        )
+        assert len({trace.yaxis for trace in fig.data}) == 1
+
+    def test_facet_by_member_groups_the_shared_column(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            facet_by="member",
+        )
+        assert len({trace.yaxis for trace in fig.data}) == 1
+
+    def test_scorer_dict_over_panel_data_still_averages_without_faceting(self, uneven_panel_vintages):
+        fig = plot_score_per_vintage(
+            {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()},
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+        )
+        assert len(fig.data) == 2
+
+    def test_scorer_dict_with_faceting_raises(self, uneven_panel_vintages):
+        with pytest.raises(ValueError, match="Multi-scorer is not supported with faceting"):
+            plot_score_per_vintage(
+                {"MAE": MeanAbsoluteError(), "RMSE": RootMeanSquaredError()},
+                uneven_panel_vintages["y_truth"],
+                uneven_panel_vintages["lopsided"],
+                facet_by="group",
+            )
+
+    def test_non_panel_data_ignores_the_request_to_facet(self, multi_vintage_data):
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            facet_by="group",
+        )
+        assert len({trace.yaxis for trace in fig.data}) == 1
+
+
+class TestPlotScoreHeatmapPanel:
+    """The heatmap spends a subplot grid on entities, not a third axis."""
+
+    def test_one_heatmap_per_entity_each_still_vintages_by_steps(self, uneven_panel_vintages):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            facet_by="group",
+        )
+        assert len(fig.data) == 2
+        for trace in fig.data:
+            assert np.array(trace.z).shape == (2, 6)
+
+    def test_every_heatmap_shares_one_colour_range(self, uneven_panel_vintages):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            facet_by="group",
+        )
+        assert {trace.coloraxis for trace in fig.data} == {"coloraxis"}
+        assert fig.layout.coloraxis.cmin == 0.0
+        assert fig.layout.coloraxis.cmax == 10.0
+
+    def test_the_failing_entity_reads_differently_from_the_healthy_one(self, uneven_panel_vintages):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            facet_by="group",
+        )
+        cells = [np.unique(np.array(trace.z)).tolist() for trace in fig.data]
+        assert cells == [[0.0], [10.0]]
+
+    def test_without_facet_by_the_grid_is_unchanged(self, uneven_panel_vintages):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+        )
+        assert len(fig.data) == 1
+        assert np.array(fig.data[0].z).shape == (2, 6)
+        assert np.unique(np.array(fig.data[0].z)).tolist() == [5.0]
+
+    def test_faceting_respects_swapped_axes(self, uneven_panel_vintages):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            uneven_panel_vintages["y_truth"],
+            uneven_panel_vintages["lopsided"],
+            x_dim="vintage",
+            y_dim="step",
+            facet_by="group",
+        )
+        for trace in fig.data:
+            assert np.array(trace.z).shape == (6, 2)
+
+    def test_non_panel_data_ignores_the_request_to_facet(self, multi_vintage_data):
+        fig = plot_score_heatmap(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+            facet_by="group",
+        )
+        assert len(fig.data) == 1
+
+
+class TestFacetedIntervalScoring:
+    """A facet carries the bound columns its point column needs."""
+
+    @pytest.fixture
+    def panel_with_bounds(self):
+        times = [datetime(2020, 1, 1) + timedelta(hours=h) for h in range(12)]
+        vintage_times = [datetime(2019, 12, 31)] * 6 + [datetime(2020, 1, 1)] * 6
+        truth_a = [10.0 + i for i in range(12)]
+        truth_b = [30.0 + i for i in range(12)]
+        y_truth = pl.DataFrame({"time": times, "site_a__value": truth_a, "site_b__value": truth_b})
+        columns = {"vintage_time": vintage_times, "time": times}
+        for entity, base, spread in (("site_a", truth_a, 3.0), ("site_b", truth_b, 9.0)):
+            columns[f"{entity}__value"] = base
+            for rate in (0.5, 0.8):
+                columns[f"{entity}__value_lower_{rate}"] = [v - spread for v in base]
+                columns[f"{entity}__value_upper_{rate}"] = [v + spread for v in base]
+        return y_truth, pl.DataFrame(columns)
+
+    def test_interval_scorer_survives_faceting(self, panel_with_bounds):
+        y_truth, y_pred = panel_with_bounds
+        scorer = IntervalScore(coverage_rates=[0.5, 0.8])
+        scorer.fit(y_truth)
+        fig = plot_score_per_vintage(scorer, y_truth, y_pred, facet_by="group")
+        assert len({trace.yaxis for trace in fig.data}) == 2
+
+    def test_interval_scorer_survives_heatmap_faceting(self, panel_with_bounds):
+        y_truth, y_pred = panel_with_bounds
+        scorer = IntervalScore(coverage_rates=[0.5, 0.8])
+        scorer.fit(y_truth)
+        fig = plot_score_heatmap(scorer, y_truth, y_pred, facet_by="group")
+        assert len(fig.data) == 2
