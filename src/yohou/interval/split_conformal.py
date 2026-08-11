@@ -1,6 +1,7 @@
 """Implementation of conformal forecasters."""
 
 import numbers
+import warnings
 from typing import Literal
 
 import numpy as np
@@ -16,7 +17,7 @@ from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
 
-from .base import BaseIntervalForecaster, BaseSimilarity
+from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
 from .utils import weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
@@ -39,6 +40,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
         Similarity measure used to weight conformity scores.
+    adapter : BaseConformalAdapter or None, default=None
+        Adaptive conformal inference adapter. When ``None`` (the default),
+        intervals use the static calibrated level. When supplied, the
+        forecaster tracks a time-varying effective miscoverage level per
+        coverage rate and horizon step, updating it online from realized
+        coverage. Composes with ``similarity``: the adapter sets the level,
+        the similarity sets the weights.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
 
@@ -69,6 +77,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         "calibration_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "conformity_scorer": [BaseConformityScorer],
         "similarity": [BaseSimilarity, None],
+        "adapter": [BaseConformalAdapter, None],
     }
 
     def __sklearn_tags__(self) -> Tags:
@@ -93,6 +102,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         calibration_size: StrictInt = 100,
         conformity_scorer: BaseConformityScorer = Residual(),
         similarity: BaseSimilarity | None = None,
+        adapter: BaseConformalAdapter | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
     ):
         BaseIntervalForecaster.__init__(self, panel_strategy=panel_strategy)
@@ -100,6 +110,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.point_forecaster = point_forecaster
         self.conformity_scorer = conformity_scorer
         self.similarity = similarity
+        self.adapter = adapter
         self.calibration_size = calibration_size
 
     @_fit_context(prefer_skip_nested_validation=True)
@@ -304,6 +315,20 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         self._check_replay_left_the_block_observed(y, replay_path)
 
+        if self.adapter is not None:
+            # One cloned adapter per horizon step, mirroring similarities_.
+            # Each clone is told the tracked coverage rates and the scorer's
+            # symmetry so it can seed one effective level per (rate, tail).
+            scorer_tags = self.conformity_scorer.__sklearn_tags__()
+            assert scorer_tags.scorer_tags is not None
+            self._adapter_symmetric_ = scorer_tags.scorer_tags.symmetric
+            self.adapters_ = {}
+            for step in range(1, 1 + forecasting_horizon):
+                key = f"step_{step}"
+                self.adapters_[key] = clone(self.adapter).fit(
+                    self.fit_coverage_rates_, symmetric=self._adapter_symmetric_
+                )
+
         return self
 
     def _check_replay_left_the_block_observed(self, y: pl.DataFrame, replay_path: str) -> None:
@@ -460,6 +485,247 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y_rewind = y.head(n_remove)
                 similarity_step.rewind(y=y_rewind, y_pred=y_rewind, X_actual=X_actual)
 
+    @staticmethod
+    def _adapter_thresholds(
+        calib_col: np.ndarray,
+        weights: np.ndarray,
+        level: object,
+        symmetric: bool,
+    ) -> object:
+        """Compute score-space interval thresholds at an effective level.
+
+        Parameters
+        ----------
+        calib_col : np.ndarray
+            Calibration conformity scores for one value column.
+        weights : np.ndarray
+            Per-calibration weights (uniform when no similarity is used).
+        level : float or tuple of float
+            Effective level: a single miscoverage ``alpha`` for symmetric
+            scorers, or ``(beta_lower, beta_upper)`` per-tail miscoverage for
+            asymmetric scorers.
+        symmetric : bool
+            Whether the conformity scorer is symmetric.
+
+        Returns
+        -------
+        float or tuple of float
+            For symmetric scorers, the half-width quantile ``q`` (a truth is
+            covered when its score is ``<= q``). For asymmetric scorers, the
+            ``(lower_q, upper_q)`` score bounds (a truth is covered when its
+            score lies within them).
+
+        """
+        if symmetric:
+            alpha_eff = float(level)  # ty: ignore[invalid-argument-type]
+            return weighted_quantile(calib_col, alpha_eff, weights)
+
+        beta_lower, beta_upper = level  # ty: ignore[not-iterable]
+        lower_q = weighted_quantile(calib_col, 1.0 - float(beta_lower), weights)
+        upper_q = weighted_quantile(calib_col, float(beta_upper), weights)
+        return (lower_q, upper_q)
+
+    def _adapter_step_errors(
+        self,
+        y: pl.DataFrame,
+        scores_new: pl.DataFrame,
+        calib: pl.DataFrame,
+        y_pred_step: pl.DataFrame,
+        step_key: str,
+        coverage_rates: list[float],
+        symmetric: bool,
+        n_rows: int,
+    ) -> list[dict[float, object]]:
+        """Build one per-row miscoverage dict per observed row for a step.
+
+        Rows this step could not score (its prediction reached past the
+        observed truth) receive a zero-update sentinel so every step advances
+        exactly ``n_rows`` times, keeping the rewind arithmetic exact.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            The newly observed batch (defines row order and count).
+        scores_new : pl.DataFrame
+            New conformity scores for this step (``"time"`` plus value cols).
+        calib : pl.DataFrame
+            Pre-observe calibration scores for this step.
+        y_pred_step : pl.DataFrame
+            Pre-observe point predictions for this step.
+        step_key : str
+            The ``"step_k"`` key into ``similarities_``.
+        coverage_rates : list of float
+            Tracked coverage rates.
+        symmetric : bool
+            Whether the conformity scorer is symmetric.
+        n_rows : int
+            Number of rows in ``y``.
+
+        Returns
+        -------
+        list of dict
+            Length ``n_rows``; each dict maps a coverage rate to its
+            miscoverage signal.
+
+        """
+        value_cols = [c for c in calib.columns if c != "time"]
+        calib_cols = {c: calib[c].to_numpy().astype(np.float64) for c in value_cols}
+        n_calib = calib.height
+        levels = self.adapters_[step_key].predict()
+
+        def sentinel(coverage_rate: float) -> object:
+            """Return the zero-update error for a row this step could not score."""
+            alpha_target = 1.0 - coverage_rate
+            return alpha_target if symmetric else (alpha_target / 2.0, alpha_target / 2.0)
+
+        # Default every row to the zero-update sentinel, then fill scored rows.
+        errors: list[dict[float, object]] = [{cr: sentinel(cr) for cr in coverage_rates} for _ in range(n_rows)]
+
+        if scores_new.height == 0:
+            return errors
+
+        # Weights per scored row (uniform when no similarity is configured).
+        scored_pred = y_pred_step.join(scores_new.select("time"), on="time", how="semi")
+        if self.similarity is not None and hasattr(self, "similarities_"):
+            weight_matrix = self.similarities_[step_key].predict(y_pred=scored_pred).astype(np.float64)
+        else:
+            weight_matrix = np.ones((scores_new.height, n_calib), dtype=np.float64)
+
+        row_index = {t: i for i, t in enumerate(y["time"].to_list())}
+        scored_values = {c: scores_new[c].to_numpy().astype(np.float64) for c in value_cols}
+
+        for j, t in enumerate(scores_new["time"].to_list()):
+            i = row_index[t]
+            weights = weight_matrix[j]
+            for coverage_rate in coverage_rates:
+                level = levels[coverage_rate]
+                if symmetric:
+                    misses = []
+                    for c in value_cols:
+                        q = float(self._adapter_thresholds(calib_cols[c], weights, level, True))  # ty: ignore[invalid-argument-type]
+                        misses.append(1.0 if scored_values[c][j] > q else 0.0)
+                    errors[i][coverage_rate] = float(np.mean(misses))
+                else:
+                    lower_misses, upper_misses = [], []
+                    for c in value_cols:
+                        lower_q, upper_q = self._adapter_thresholds(calib_cols[c], weights, level, False)  # ty: ignore[not-iterable]
+                        s = scored_values[c][j]
+                        lower_misses.append(1.0 if s < lower_q else 0.0)
+                        upper_misses.append(1.0 if s > upper_q else 0.0)
+                    errors[i][coverage_rate] = (float(np.mean(lower_misses)), float(np.mean(upper_misses)))
+
+        return errors
+
+    @staticmethod
+    def _pool_adapter_errors(
+        per_step_errors: dict[str, list[dict[float, object]]],
+        coverage_rates: list[float],
+        symmetric: bool,
+        n_rows: int,
+    ) -> list[dict[float, object]]:
+        """Average per-step miscoverage into one shared per-row trajectory.
+
+        Used for ``alpha_pooling="shared"``: a single pooled update is fed to
+        every step's adapter, so the per-step dict alone (which cannot see
+        across steps) still yields one shared level.
+
+        Parameters
+        ----------
+        per_step_errors : dict
+            Maps each ``"step_k"`` key to its length-``n_rows`` error list.
+        coverage_rates : list of float
+            Tracked coverage rates.
+        symmetric : bool
+            Whether the conformity scorer is symmetric.
+        n_rows : int
+            Number of observed rows.
+
+        Returns
+        -------
+        list of dict
+            Length ``n_rows`` pooled error list.
+
+        """
+        keys = list(per_step_errors)
+        pooled: list[dict[float, object]] = []
+        for i in range(n_rows):
+            row: dict[float, object] = {}
+            for coverage_rate in coverage_rates:
+                if symmetric:
+                    row[coverage_rate] = float(np.mean([per_step_errors[k][i][coverage_rate] for k in keys]))
+                else:
+                    lowers = [per_step_errors[k][i][coverage_rate][0] for k in keys]  # ty: ignore[not-subscriptable]
+                    uppers = [per_step_errors[k][i][coverage_rate][1] for k in keys]  # ty: ignore[not-subscriptable]
+                    row[coverage_rate] = (float(np.mean(lowers)), float(np.mean(uppers)))
+            pooled.append(row)
+        return pooled
+
+    def _observe_adapter(self, y: pl.DataFrame) -> None:
+        """Advance the per-step adapters from newly observed coverage.
+
+        Runs before ``_observe_conformity`` (and before the point forecaster
+        absorbs ``y``) so the effective level is updated against the
+        calibration set and similarity state as they stood pre-observe.
+        Panel-agnostic, like ``_observe_conformity``.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations.
+
+        """
+        if not hasattr(self, "adapters_"):
+            return
+
+        fh = self.fit_forecasting_horizon_
+        n_rows = len(y)
+        symmetric = self._adapter_symmetric_
+        coverage_rates = self.fit_coverage_rates_
+
+        y_pred = self.point_forecaster_.predict(forecasting_horizon=fh)
+
+        per_step_errors: dict[str, list[dict[float, object]]] = {}
+        for step in range(1, 1 + fh):
+            key = f"step_{step}"
+            scorer = self.conformity_scorers_[key]
+            y_pred_step = y_pred[step - 1 :: fh].drop("vintage_time", strict=False)
+            scores_new = scorer.score(y, y_pred_step)
+            calib = self.conformity_scores_.filter(pl.col("step") == step).drop("step")
+            per_step_errors[key] = self._adapter_step_errors(
+                y=y,
+                scores_new=scores_new,
+                calib=calib,
+                y_pred_step=y_pred_step,
+                step_key=key,
+                coverage_rates=coverage_rates,
+                symmetric=symmetric,
+                n_rows=n_rows,
+            )
+
+        if getattr(self.adapter, "alpha_pooling", "per_step") == "shared":
+            pooled = self._pool_adapter_errors(per_step_errors, coverage_rates, symmetric, n_rows)
+            for key in per_step_errors:
+                self.adapters_[key].observe(pooled)
+        else:
+            for key, errors in per_step_errors.items():
+                self.adapters_[key].observe(errors)
+
+    def _rewind_adapter(self, y: pl.DataFrame) -> None:
+        """Roll each per-step adapter back by ``len(y)`` observations.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target observations to rewind (used only for the row count).
+
+        """
+        if not hasattr(self, "adapters_"):
+            return
+
+        n_rewind = len(y)
+        for adapter in self.adapters_.values():
+            adapter.rewind(n_rewind)
+
     def observe(
         self,
         y: pl.DataFrame,
@@ -516,6 +782,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # runs unconditionally ahead of the panel/standard branch; routing it
         # through the standard branch alone would silently skip it on panel
         # data.
+        #
+        # The adapter runs *before* _observe_conformity so its realized-coverage
+        # check sees the calibration scores and similarity weights as they stood
+        # pre-observe, before this batch is appended.
+        self._observe_adapter(y)
         self._observe_conformity(y)
 
         if self.groups_ is None:
@@ -576,6 +847,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # rolls back, mirroring the order used by observe() so both methods
         # maintain the same state invariant. As in observe(), this rollback is
         # panel-agnostic and runs unconditionally ahead of the branch.
+        self._rewind_adapter(y)
         self._rewind_conformity(y, X_actual=X_actual)
 
         if self.groups_ is None:
@@ -925,6 +1197,79 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         upper_bound = pl.DataFrame(upper_data)
         return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
+    def _adapter_inverse_score(
+        self,
+        y_pred_step: pl.DataFrame,
+        conformity_scores_step: pl.DataFrame,
+        coverage_rate: float,
+        level: object,
+        weights: np.ndarray,
+        conformity_scorer_step: BaseConformityScorer,
+    ) -> pl.DataFrame:
+        """Build an interval at the adapter's effective level.
+
+        Constructs the interval from the effective miscoverage level the
+        adapter currently tracks, then labels the output columns with the
+        *nominal* ``coverage_rate`` so callers still read a "90% interval"
+        even though its width was adapted. Uses similarity weights when
+        supplied and uniform weights otherwise, mirroring
+        ``_weighted_inverse_score``.
+
+        Parameters
+        ----------
+        y_pred_step : pl.DataFrame
+            Point predictions for one step (single row) with ``"time"``.
+        conformity_scores_step : pl.DataFrame
+            Conformity scores for this step with ``"time"``.
+        coverage_rate : float
+            Nominal coverage rate used only to label the output columns.
+        level : float or tuple of float
+            Effective level from the adapter: ``alpha`` for symmetric
+            scorers, ``(beta_lower, beta_upper)`` for asymmetric ones.
+        weights : np.ndarray
+            Per-calibration weights (similarity weights, or uniform).
+        conformity_scorer_step : BaseConformityScorer
+            Fitted conformity scorer (for tags and formatting).
+
+        Returns
+        -------
+        pl.DataFrame
+            Interval columns (no ``"time"`` column), labeled with the
+            nominal ``coverage_rate``.
+
+        """
+        value_cols = [c for c in conformity_scores_step.columns if c != "time"]
+        scores_no_time = conformity_scores_step.drop("time", strict=False)
+        y_pred_values = y_pred_step.drop("time")
+
+        tags = conformity_scorer_step.__sklearn_tags__()
+        assert tags.scorer_tags is not None
+        symmetric = tags.scorer_tags.symmetric
+        multiplicative = tags.scorer_tags.multiplicative
+        epsilon = conformity_scorer_step.get_params().get("epsilon", 0.0)
+
+        lower_data: dict[str, list[float]] = {}
+        upper_data: dict[str, list[float]] = {}
+
+        for col in value_cols:
+            scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+            pred_val = float(y_pred_values[col][0])
+            scale = (pred_val + epsilon) if multiplicative else 1.0
+
+            thresholds = self._adapter_thresholds(scores_col, weights, level, symmetric)
+            if symmetric:
+                q = float(thresholds)  # ty: ignore[invalid-argument-type]
+                lower_data[col] = [pred_val - q * scale]
+                upper_data[col] = [pred_val + q * scale]
+            else:
+                lower_q, upper_q = thresholds  # ty: ignore[not-iterable]
+                lower_data[col] = [pred_val + lower_q * scale]
+                upper_data[col] = [pred_val + upper_q * scale]
+
+        lower_bound = pl.DataFrame(lower_data)
+        upper_bound = pl.DataFrame(upper_data)
+        return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
+
     def predict_interval(  # ty: ignore[invalid-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
@@ -1001,6 +1346,22 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y_pred_time = y_pred.select("time")
         y_pred_values = y_pred.drop("time")
 
+        # An adapter only adapts the coverage rates it seeded at fit time.
+        # Rates it never tracked fall back to the static level, with a warning
+        # so the fallback is never silent.
+        tracked_rates: set[float] = set()
+        if hasattr(self, "adapters_"):
+            tracked_rates = set(self.adapters_["step_1"].predict().keys())
+            for coverage_rate in coverage_rates:
+                if coverage_rate not in tracked_rates:
+                    warnings.warn(
+                        f"Coverage rate {coverage_rate} was not tracked by the adaptive conformal "
+                        f"adapter (tracked rates: {sorted(tracked_rates)}); falling back to the static "
+                        f"calibrated level for it.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+
         y_pred_intervals_list: list[pl.DataFrame] = []
         for step in range(1, 1 + forecasting_horizon):
             # Get step predictions
@@ -1015,16 +1376,39 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
             rate_parts: list[pl.DataFrame] = []
             for coverage_rate in coverage_rates:
+                adapter_active = hasattr(self, "adapters_") and coverage_rate in tracked_rates
+                effective_level = self.adapters_[f"step_{step}"].predict()[coverage_rate] if adapter_active else None
+
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
                     weights_array = similarity_step.predict(y_pred=y_pred_step)
                     step_weights = weights_array[0].astype(np.float64)
 
-                    y_pred_interval_rate_step = self._weighted_inverse_score(
+                    if adapter_active:
+                        y_pred_interval_rate_step = self._adapter_inverse_score(
+                            y_pred_step=y_pred_step,
+                            conformity_scores_step=conformity_scores_step,
+                            coverage_rate=coverage_rate,
+                            level=effective_level,
+                            weights=step_weights,
+                            conformity_scorer_step=conformity_scorer_step,
+                        )
+                    else:
+                        y_pred_interval_rate_step = self._weighted_inverse_score(
+                            y_pred_step=y_pred_step,
+                            conformity_scores_step=conformity_scores_step,
+                            coverage_rate=coverage_rate,
+                            weights=step_weights,
+                            conformity_scorer_step=conformity_scorer_step,
+                        )
+                elif adapter_active:
+                    uniform_weights = np.ones(conformity_scores_step.height, dtype=np.float64)
+                    y_pred_interval_rate_step = self._adapter_inverse_score(
                         y_pred_step=y_pred_step,
                         conformity_scores_step=conformity_scores_step,
                         coverage_rate=coverage_rate,
-                        weights=step_weights,
+                        level=effective_level,
+                        weights=uniform_weights,
                         conformity_scorer_step=conformity_scorer_step,
                     )
                 else:

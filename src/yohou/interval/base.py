@@ -14,7 +14,7 @@ from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransf
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
 from yohou.utils._compat import _fit_context
 
-__all__ = ["BaseIntervalForecaster", "BaseSimilarity"]
+__all__ = ["BaseConformalAdapter", "BaseIntervalForecaster", "BaseSimilarity"]
 
 
 class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
@@ -222,6 +222,130 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
 
         """
         return self
+
+
+class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
+    """Base class for adaptive conformal inference adapters.
+
+    A conformal adapter maintains a time-varying effective miscoverage
+    level and updates it online from the coverage realized on newly
+    observed data. It is an optional, pluggable add-on for
+    ``SplitConformalForecaster``: when ``adapter=None`` the forecaster uses
+    the static calibrated level, and when an adapter is supplied the
+    forecaster feeds it per-row miscoverage indicators and reads back the
+    effective level to use when constructing intervals.
+
+    The adapter owns a single horizon step. The forecaster clones one
+    adapter per step into a ``adapters_`` dict (mirroring ``similarities_``)
+    and drives the per-step lifecycle. Inside its step the adapter tracks
+    one effective level per coverage rate for symmetric conformity scorers,
+    and two (lower and upper) for asymmetric ones. The forecaster, which
+    holds the calibration scores and any similarity weights, computes the
+    miscoverage indicators; the adapter is the level-recursion state
+    machine only.
+
+    Notes
+    -----
+    The lifecycle mirrors the rest of the library: ``fit`` seeds the level
+    from the target coverage, ``observe`` advances it per newly observed
+    row, ``predict`` returns the current level, and ``rewind`` rolls it
+    back so backtests and production replay share one code path.
+
+    See Also
+    --------
+    - [`AdaptiveConformalInference`][yohou.interval.adapter.AdaptiveConformalInference] :
+        Concrete Gibbs-Candes online level adjustment.
+    - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] :
+        Conformal forecaster that consumes an adapter.
+
+    """
+
+    _parameter_constraints: dict = {}
+
+    def __sklearn_tags__(self) -> Tags:
+        """Get estimator tags.
+
+        Returns
+        -------
+        Tags
+            Estimator tags with conformal-adapter-specific attributes.
+
+        """
+        tags = Tags(estimator_type="conformal_adapter", requires_fit=True)
+
+        assert tags.conformal_adapter_tags is not None
+        tags.conformal_adapter_tags.online = True
+        tags.conformal_adapter_tags.requires_coverage_rates = True
+        tags.conformal_adapter_tags.tail_aware = True
+
+        return tags
+
+    @abc.abstractmethod
+    def fit(self, coverage_rates: list[float], *, symmetric: bool) -> "BaseConformalAdapter":
+        """Seed the effective level(s) from the target coverage rates.
+
+        Parameters
+        ----------
+        coverage_rates : list of float
+            The nominal coverage rates to track, one effective level seeded
+            per rate at ``1 - coverage_rate``.
+        symmetric : bool
+            Whether the conformity scorer is symmetric. Symmetric scorers
+            use one level per rate; asymmetric scorers use two (lower and
+            upper), each targeting half the miscoverage.
+
+        Returns
+        -------
+        self
+
+        """
+
+    @abc.abstractmethod
+    def observe(self, errors: list[dict[float, Any]]) -> "BaseConformalAdapter":
+        """Advance the effective level(s) from per-row miscoverage.
+
+        Parameters
+        ----------
+        errors : list of dict
+            One entry per newly observed row. Each entry maps a tracked
+            coverage rate to its miscoverage signal: a float in ``[0, 1]``
+            for symmetric scorers, or a ``(lower, upper)`` tuple of such
+            floats for asymmetric scorers.
+
+        Returns
+        -------
+        self
+
+        """
+
+    @abc.abstractmethod
+    def predict(self) -> dict[float, Any]:
+        """Return the current effective level(s).
+
+        Returns
+        -------
+        dict
+            Maps each tracked coverage rate to its current effective level:
+            a float for symmetric scorers, or a ``(lower, upper)`` tuple for
+            asymmetric scorers.
+
+        """
+
+    @abc.abstractmethod
+    def rewind(self, n_rows: int) -> "BaseConformalAdapter":
+        """Roll the effective level(s) back by ``n_rows`` observations.
+
+        Parameters
+        ----------
+        n_rows : int
+            Number of most-recently observed rows to undo, never dropping
+            below the fit-time seed.
+
+        Returns
+        -------
+        self
+
+        """
 
 
 class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):

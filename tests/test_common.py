@@ -14,11 +14,12 @@ from sklearn.base import clone
 
 from conftest import run_checks
 from yohou.base import BaseActualTransformer, BaseForecaster
-from yohou.interval.base import BaseSimilarity
+from yohou.interval.base import BaseConformalAdapter, BaseSimilarity
 from yohou.metrics.base import BaseScorer
 from yohou.model_selection.split import BaseSplitter
 from yohou.testing import (
     _yield_composition_contract_checks,
+    _yield_yohou_conformal_adapter_checks,
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
     _yield_yohou_similarity_checks,
@@ -54,6 +55,8 @@ _SKIP_COMMON = {
     "SklearnScaler",
     # Similarity (not a standard estimator type)
     "DistanceSimilarity",
+    # Conformal adapter (not a standard estimator type; tested by TestConformalAdapterCommon)
+    "AdaptiveConformalInference",
     # Meta-forecasters requiring inner estimator (tested in tests/interval/)
     "SplitConformalForecaster",
     # Requires a timezone-aware "time" column, which the common sweep's tz-naive
@@ -482,6 +485,35 @@ class TestSimilarityCommon:
         similarity = instances[name]
         y_calib, y_pred_calib = _similarity_calibration()
         run_checks(similarity, _yield_yohou_similarity_checks(similarity, y_calib, y_pred_calib))
+
+
+def _conformal_adapter_instances() -> dict[str, object]:
+    """Representative *working* conformal adapter instances keyed by class name."""
+    from yohou.interval.adapter import AdaptiveConformalInference
+
+    return {
+        "AdaptiveConformalInference": AdaptiveConformalInference(),
+    }
+
+
+class TestConformalAdapterCommon:
+    """Run systematic checks on all discovered conformal adapters."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in all_estimators() if issubclass(c, BaseConformalAdapter)],
+        ids=[n for n, c in all_estimators() if issubclass(c, BaseConformalAdapter)],
+    )
+    def test_conformal_adapter_checks(self, name, cls):
+        """Run all applicable check-generator checks for a conformal adapter."""
+        instances = _conformal_adapter_instances()
+        if name not in instances:
+            pytest.fail(
+                f"{name} is not registered in _conformal_adapter_instances(). Add a representative "
+                "instance there following the create-yohou-conformal-adapter skill pattern."
+            )
+        adapter = instances[name]
+        run_checks(adapter, _yield_yohou_conformal_adapter_checks(adapter))
 
 
 def _composition_descriptors() -> dict[str, dict]:

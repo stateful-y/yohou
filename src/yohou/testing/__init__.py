@@ -100,6 +100,9 @@ from .forecaster import (
     check_step_feature_alignment_filters,
 )
 from .generators import (
+    _yield_yohou_conformal_adapter_checks as _yield_yohou_conformal_adapter_checks,
+)
+from .generators import (
     _yield_yohou_forecaster_checks as _yield_yohou_forecaster_checks,
 )
 from .generators import (

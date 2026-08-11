@@ -10,6 +10,7 @@ from typing import ClassVar, Literal
 
 __all__ = [
     "CLASS_PROBA",
+    "ConformalAdapterTags",
     "ForecasterTags",
     "INTERVAL",
     "InputTags",
@@ -291,6 +292,30 @@ class SimilarityTags:
 
 
 @dataclass
+class ConformalAdapterTags:
+    """Tags specific to conformal adapters for adaptive conformal inference.
+
+    Parameters
+    ----------
+    online : bool, default=True
+        Whether the adapter updates its effective miscoverage level online
+        as new observations arrive (via ``observe``).
+    requires_coverage_rates : bool, default=True
+        Whether the adapter must be told the tracked coverage rates at fit
+        time in order to seed one effective level per rate.
+    tail_aware : bool, default=True
+        Whether the adapter respects the conformity scorer's ``symmetric``
+        tag, tracking one level for symmetric scorers and two (lower and
+        upper) for asymmetric ones.
+
+    """
+
+    online: bool = True
+    requires_coverage_rates: bool = True
+    tail_aware: bool = True
+
+
+@dataclass
 class SplitterTags:
     """Tags specific to cross-validation splitters.
 
@@ -359,7 +384,9 @@ class Tags:
 
     """
 
-    estimator_type: Literal["transformer", "forecaster", "scorer", "similarity", "splitter"] | None = None
+    estimator_type: (
+        Literal["transformer", "forecaster", "scorer", "similarity", "splitter", "conformal_adapter"] | None
+    ) = None
     requires_fit: bool = True
     non_deterministic: bool = False
     input_tags: InputTags | None = None
@@ -369,6 +396,7 @@ class Tags:
     forecaster_tags: ForecasterTags | None = None
     scorer_tags: ScorerTags | None = None
     similarity_tags: SimilarityTags | None = None
+    conformal_adapter_tags: ConformalAdapterTags | None = None
 
     def __post_init__(self):
         """Initialize nested tags after dataclass initialization."""
@@ -387,5 +415,7 @@ class Tags:
             self.scorer_tags = ScorerTags()
         elif self.estimator_type == "similarity" and self.similarity_tags is None:
             self.similarity_tags = SimilarityTags()
+        elif self.estimator_type == "conformal_adapter" and self.conformal_adapter_tags is None:
+            self.conformal_adapter_tags = ConformalAdapterTags()
         elif self.estimator_type == "splitter" and self.splitter_tags is None:
             self.splitter_tags = SplitterTags()

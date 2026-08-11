@@ -28,6 +28,13 @@ from .common import (
     check_metadata_routing_get_metadata_routing,
 )
 from .composite import _yield_composite_reducer_checks
+from .conformal_adapter import (
+    check_conformal_adapter_clipping,
+    check_conformal_adapter_methods_call_check_is_fitted,
+    check_conformal_adapter_observe_rewind_round_trip,
+    check_conformal_adapter_predict_returns_levels,
+    check_conformal_adapter_update_direction,
+)
 from .contract import _yield_estimator_contract_checks
 from .forecaster import (
     check_clone_preserves_forecaster_params,
@@ -1513,3 +1520,40 @@ def _yield_yohou_similarity_checks(
         yield from _yield_composite_reducer_checks(
             similarity, descriptor, operate=lambda c: c.fit(y_calib, y_pred_calib)
         )
+
+
+def _yield_yohou_conformal_adapter_checks(
+    adapter,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a conformal adapter.
+
+    Yields the conformal-adapter-family lifecycle checks (predict shape,
+    observe/rewind round-trip, update direction, clipping, and unfitted
+    guards) followed by the shared sklearn estimator-contract checks.
+
+    Parameters
+    ----------
+    adapter : BaseConformalAdapter
+        Adapter instance.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    yield "check_conformal_adapter_predict_returns_levels", check_conformal_adapter_predict_returns_levels, {}
+    yield (
+        "check_conformal_adapter_observe_rewind_round_trip",
+        check_conformal_adapter_observe_rewind_round_trip,
+        {},
+    )
+    yield "check_conformal_adapter_update_direction", check_conformal_adapter_update_direction, {}
+    yield "check_conformal_adapter_clipping", check_conformal_adapter_clipping, {}
+    yield (
+        "check_conformal_adapter_methods_call_check_is_fitted",
+        check_conformal_adapter_methods_call_check_is_fitted,
+        {},
+    )
+
+    yield from _yield_estimator_contract_checks(adapter)
