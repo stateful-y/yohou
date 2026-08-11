@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.12] - 2026-08-11
+
+This **minor release** includes 20 commits.
+
+
+### Features
+- Add CombiningForecaster, which sums or multiplies per-term forecasts  ([#114](https://github.com/stateful-y/yohou/pull/114)) by @gtauzin
+- Add an optional adapter that keeps interval coverage on target under drift  ([#119](https://github.com/stateful-y/yohou/pull/119)) by @gtauzin
+
+### Bug Fixes
+- Pin ossf/scorecard-action to the existing v2.4.4 tag by @gtauzin
+- Drop the workflow token to read-only except in the jobs that write  ([#139](https://github.com/stateful-y/yohou/pull/139)) by @gtauzin
+- Fix a shell injection in the release publish job (template v0.40.1)  ([#140](https://github.com/stateful-y/yohou/pull/140)) by @gtauzin
+- Stop the nightly coverage upload from silently uploading the wrong report  ([#145](https://github.com/stateful-y/yohou/pull/145)) by @gtauzin
+- Fix plot_score_per_vintage raising on metrics with no per-step axis  ([#148](https://github.com/stateful-y/yohou/pull/148)) by @gtauzin
+
+### Documentation
+- Add the missing check_mixed_cadence_X_forecast_resolves to the API reference  ([#127](https://github.com/stateful-y/yohou/pull/127)) by @gtauzin
+
+### Performance
+- Speed up parallel direct prediction by not serializing the whole forecaster  ([#136](https://github.com/stateful-y/yohou/pull/136)) by @gtauzin
+
+### Refactoring
+- Move build output to .artifacts/ and CODEOWNERS to .github/  ([#142](https://github.com/stateful-y/yohou/pull/142)) by @gtauzin
+
+### Miscellaneous Tasks
+- Replace Dependabot with Renovate for dependency updates (template v0.31.1)  ([#122](https://github.com/stateful-y/yohou/pull/122)) by @gtauzin
+- Add pre-push gates and a single CI roll-up check (template v0.32.1)  ([#124](https://github.com/stateful-y/yohou/pull/124)) by @gtauzin
+- Restrict workflow permissions and add secret scanning (template v0.35.0)  ([#125](https://github.com/stateful-y/yohou/pull/125)) by @gtauzin
+- Switch Codecov to OIDC and pin the Scorecard action (template v0.36.0)  ([#126](https://github.com/stateful-y/yohou/pull/126)) by @gtauzin
+- Document signing release tags with gitsign (template v0.37.0)  ([#128](https://github.com/stateful-y/yohou/pull/128)) by @gtauzin
+- Add a CLAUDE.md project-instructions file for AI assistants (template v0.38.0)  ([#129](https://github.com/stateful-y/yohou/pull/129)) by @gtauzin
+- Fix three release-pipeline defects (template v0.39.0)  ([#130](https://github.com/stateful-y/yohou/pull/130)) by @gtauzin
+- Let Renovate see the SBOM tool's version pin (template v0.39.1)  ([#131](https://github.com/stateful-y/yohou/pull/131)) by @gtauzin
+- Add a nightly job that exercises the release path (template v0.40.0)  ([#132](https://github.com/stateful-y/yohou/pull/132)) by @gtauzin
+- Make the nightly run survive dataset-host outages and test every Python  ([#137](https://github.com/stateful-y/yohou/pull/137)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.11] - 2026-07-20
 
 This **minor release** includes 5 commits.
