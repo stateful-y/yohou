@@ -95,6 +95,53 @@ def _prepare_scorer_for_componentwise(scorer: BaseScorer) -> BaseScorer:
     return scorer_cw
 
 
+def _prepare_scorer_for_vintage_profile(scorer: BaseScorer, y_truth: pl.DataFrame) -> BaseScorer:
+    """Clone, configure and fit a scorer to leave only the vintage axis standing.
+
+    Collapsing the forecasting-step axis is the natural way to reach one row per
+    forecast origin, but a scorer may restrict which aggregation modes it
+    accepts: a metric defined over a whole forecast window has no step axis to
+    collapse and refuses ``"stepwise"`` outright. Such metrics already score once
+    per vintage, so componentwise aggregation alone leaves exactly the axis this
+    view needs.
+
+    The refusal surfaces only on ``fit`` and no public surface advertises which
+    modes a scorer takes, so the supported aggregation is found by trying. Only
+    the configuration is guarded; anything raised by scoring itself propagates.
+
+    Parameters
+    ----------
+    scorer : BaseScorer
+        Scorer to prepare.
+    y_truth : pl.DataFrame
+        Ground truth to fit the prepared clone on.
+
+    Returns
+    -------
+    BaseScorer
+        Fitted clone whose scores collapse to one row per vintage.
+
+    Raises
+    ------
+    ValueError
+        If the scorer accepts neither aggregation, re-raising its own refusal.
+
+    """
+    preferred = ["stepwise", "coveragewise"] if isinstance(scorer, BaseIntervalScorer) else ["stepwise"]
+    refusal: ValueError | None = None
+    for modes in (preferred, ["componentwise"]):
+        candidate = copy.deepcopy(scorer)
+        try:
+            candidate.set_params(aggregation_method=modes)
+            candidate.fit(y_truth)
+        except ValueError as exc:
+            refusal = refusal or exc
+            continue
+        return candidate
+    assert refusal is not None  # the loop only exits here after a refusal
+    raise refusal
+
+
 def _prepare_scorer_for_step_profile(scorer: BaseScorer) -> BaseScorer:
     """Clone and configure a scorer to leave only the forecasting-step axis.
 
@@ -3202,15 +3249,10 @@ def plot_score_per_vintage(
         y_p: pl.DataFrame,
     ) -> tuple[pl.Series, pl.Series]:
         """Compute per-vintage aggregate scores."""
-        s_cw = copy.deepcopy(s)
-        if isinstance(s_cw, BaseIntervalScorer):
-            s_cw.set_params(aggregation_method=["stepwise", "coveragewise"])
-        else:
-            s_cw.set_params(aggregation_method="stepwise")
-        s_cw.fit(y_t)
+        s_cw = _prepare_scorer_for_vintage_profile(s, y_t)
         scores_df = s_cw.score(y_t, y_p)
         if not isinstance(scores_df, pl.DataFrame):
-            msg = f"Scorer must return DataFrame for stepwise aggregation, got {type(scores_df).__name__}"
+            msg = f"Scorer must return DataFrame for per-vintage aggregation, got {type(scores_df).__name__}"
             raise TypeError(msg)
         if "vintage_time" not in scores_df.columns:
             msg = (
