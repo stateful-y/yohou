@@ -2901,8 +2901,67 @@ class TestPlotScoreSummary:
         assert desc_bar.y[0] >= desc_bar.y[-1]
 
 
+class TestPlotScorePerVintageRestrictedScorer:
+    """A metric that refuses `stepwise` still reaches its per-vintage view.
+
+    Metrics defined over a whole forecast window (a day's trading result, a
+    peak-window ranking) have no step axis to collapse and reject `stepwise`
+    outright. They already score once per vintage, so this view is exactly
+    where they belong.
+    """
+
+    class _WindowOnlyMAE(MeanAbsoluteError):
+        """Stands in for a window-defined metric: componentwise or nothing."""
+
+        _VALID = {"componentwise", "vintagewise"}
+
+        def fit(self, y_train, **params):
+            modes = self.aggregation_method
+            modes = {modes} if isinstance(modes, str) else set(modes)
+            if not modes <= self._VALID:
+                msg = f"Invalid aggregation_method {sorted(modes)}. Valid: {sorted(self._VALID)}"
+                raise ValueError(msg)
+            return super().fit(y_train, **params)
+
+    def test_restricted_scorer_plots_instead_of_raising(self, multi_vintage_data):
+        """The view must not force an aggregation the scorer rejects."""
+        fig = plot_score_per_vintage(
+            self._WindowOnlyMAE(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+        )
+        assert_figure_valid(fig)
+        assert len(fig.data) >= 1
+
+    def test_a_scorer_refusing_everything_still_reports_its_own_refusal(self, multi_vintage_data):
+        """The fallback must not swallow a scorer that accepts no aggregation."""
+
+        class _RefusesAll(MeanAbsoluteError):
+            def fit(self, y_train, **params):
+                msg = "Invalid aggregation_method: this scorer accepts none"
+                raise ValueError(msg)
+
+        with pytest.raises(ValueError, match="accepts none"):
+            plot_score_per_vintage(
+                _RefusesAll(),
+                multi_vintage_data["y_truth"],
+                multi_vintage_data["y_pred"],
+            )
+
+
 class TestPlotScorePerVintage:
     """Tests for plot_score_per_vintage function."""
+
+    def test_axis_is_one_point_per_vintage(self, multi_vintage_data):
+        """The x axis is the forecast origins, one point each."""
+        fig = plot_score_per_vintage(
+            MeanAbsoluteError(),
+            multi_vintage_data["y_truth"],
+            multi_vintage_data["y_pred"],
+        )
+        n_vintages = multi_vintage_data["y_pred"]["vintage_time"].n_unique()
+        assert len(fig.data[0].x) == n_vintages
+        assert len(set(fig.data[0].x)) == n_vintages
 
     def test_basic(self, multi_vintage_data):
         """Basic per-vintage plot with single scorer."""
