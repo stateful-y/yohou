@@ -12,36 +12,36 @@ This **minor release** includes 20 commits.
 
 
 ### Features
-- Add CombiningForecaster meta-forecaster  ([#114](https://github.com/stateful-y/yohou/pull/114)) by @gtauzin
-- Add optional adaptive conformal inference adapter  ([#119](https://github.com/stateful-y/yohou/pull/119)) by @gtauzin
+- Add CombiningForecaster, which sums or multiplies per-term forecasts  ([#114](https://github.com/stateful-y/yohou/pull/114)) by @gtauzin
+- Add an optional adapter that keeps interval coverage on target under drift  ([#119](https://github.com/stateful-y/yohou/pull/119)) by @gtauzin
 
 ### Bug Fixes
 - Pin ossf/scorecard-action to v2.4.4 (@v2 tag does not exist) by @gtauzin
-- Scope the token to the jobs that write  ([#139](https://github.com/stateful-y/yohou/pull/139)) by @gtauzin
-- Update from template v0.40.1  ([#140](https://github.com/stateful-y/yohou/pull/140)) by @gtauzin
-- Stop the nightly coverage upload relying on a fallback search  ([#145](https://github.com/stateful-y/yohou/pull/145)) by @gtauzin
-- Let per-vintage carry metrics that refuse stepwise  ([#148](https://github.com/stateful-y/yohou/pull/148)) by @gtauzin
+- Drop the workflow token to read-only except in the jobs that write  ([#139](https://github.com/stateful-y/yohou/pull/139)) by @gtauzin
+- Fix a shell injection in the release publish job (template v0.40.1)  ([#140](https://github.com/stateful-y/yohou/pull/140)) by @gtauzin
+- Stop the nightly coverage upload from silently uploading the wrong report  ([#145](https://github.com/stateful-y/yohou/pull/145)) by @gtauzin
+- Fix plot_score_per_vintage raising on metrics with no per-step axis  ([#148](https://github.com/stateful-y/yohou/pull/148)) by @gtauzin
 
 ### Documentation
-- Regenerate stale testing.md (adds check_mixed_cadence_X_forecast_resolves)  ([#127](https://github.com/stateful-y/yohou/pull/127)) by @gtauzin
+- Add the missing check_mixed_cadence_X_forecast_resolves to the API reference  ([#127](https://github.com/stateful-y/yohou/pull/127)) by @gtauzin
 
 ### Performance
-- Stop shipping the forecaster per predict task, batch panel groups  ([#136](https://github.com/stateful-y/yohou/pull/136)) by @gtauzin
+- Speed up parallel direct prediction by not serializing the whole forecaster  ([#136](https://github.com/stateful-y/yohou/pull/136)) by @gtauzin
 
 ### Refactoring
 - Move build output to .artifacts/ and CODEOWNERS to .github/  ([#142](https://github.com/stateful-y/yohou/pull/142)) by @gtauzin
 
 ### Miscellaneous Tasks
 - Update from template v0.31.1 (Renovate replaces Dependabot)  ([#122](https://github.com/stateful-y/yohou/pull/122)) by @gtauzin
-- Update to v0.32.1 (pre-push gates + CI roll-up)  ([#124](https://github.com/stateful-y/yohou/pull/124)) by @gtauzin
-- Sync to v0.35.0  ([#125](https://github.com/stateful-y/yohou/pull/125)) by @gtauzin
-- Sync to v0.36.0 (Codecov OIDC + scorecard pin)  ([#126](https://github.com/stateful-y/yohou/pull/126)) by @gtauzin
-- Sync to v0.37.0 (gitsign tag-signing docs)  ([#128](https://github.com/stateful-y/yohou/pull/128)) by @gtauzin
-- Update from python-package-copier v0.38.0  ([#129](https://github.com/stateful-y/yohou/pull/129)) by @gtauzin
+- Update from template v0.32.1 (pre-push gates + CI roll-up)  ([#124](https://github.com/stateful-y/yohou/pull/124)) by @gtauzin
+- Update from template v0.35.0 (least-privilege workflows + secret scanning)  ([#125](https://github.com/stateful-y/yohou/pull/125)) by @gtauzin
+- Update from template v0.36.0 (Codecov OIDC + scorecard pin)  ([#126](https://github.com/stateful-y/yohou/pull/126)) by @gtauzin
+- Update from template v0.37.0 (gitsign tag-signing docs)  ([#128](https://github.com/stateful-y/yohou/pull/128)) by @gtauzin
+- Update from template v0.38.0  ([#129](https://github.com/stateful-y/yohou/pull/129)) by @gtauzin
 - Update from template v0.39.0  ([#130](https://github.com/stateful-y/yohou/pull/130)) by @gtauzin
 - Update from template v0.39.1  ([#131](https://github.com/stateful-y/yohou/pull/131)) by @gtauzin
 - Update from template v0.40.0  ([#132](https://github.com/stateful-y/yohou/pull/132)) by @gtauzin
-- Survive dataset-host outages, fix matrix python selection  ([#137](https://github.com/stateful-y/yohou/pull/137)) by @gtauzin
+- Make the nightly run survive dataset-host outages and test every Python  ([#137](https://github.com/stateful-y/yohou/pull/137)) by @gtauzin
 
 ### Contributors
 
