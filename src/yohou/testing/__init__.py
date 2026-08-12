@@ -132,6 +132,7 @@ from .interval import (
     check_interval_bounds,
     check_interval_prediction_columns,
     check_interval_prediction_types,
+    check_per_column_calibration_independence,
 )
 from .metadata_routing import (
     assert_request_equal,
@@ -300,6 +301,7 @@ __all__ = [
     "check_interval_bounds",
     "check_interval_prediction_columns",
     "check_interval_prediction_types",
+    "check_per_column_calibration_independence",
     "check_estimator_parameter",
     "check_reduction_strategy",
     "check_panel_data",

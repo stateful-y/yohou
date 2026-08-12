@@ -283,3 +283,85 @@ class TestConformityScorerTags:
         tags = _ConcreteAbsoluteQuantileResidual().__sklearn_tags__()
         assert tags.scorer_tags is not None
         assert tags.scorer_tags.symmetric is True
+
+
+class TestMultiColumnInverseScore:
+    """Each value column's bounds come from that column's own quantile.
+
+    The quantile helpers used to reduce the whole frame with one `np.quantile`
+    call, so a frame holding columns of different magnitude got one shared
+    width. These pin the reduction at the level it was changed: a direct
+    `inverse_score` call, which is public API and is reachable without going
+    through a forecaster.
+    """
+
+    TIMES = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+
+    @property
+    def scores(self) -> pl.DataFrame:
+        """Signed scores whose two columns differ 100x in spread."""
+        return pl.DataFrame({
+            "time": self.TIMES,
+            "small": [-0.1, -0.05, 0.0, 0.05, 0.1],
+            "big": [-10.0, -5.0, 0.0, 5.0, 10.0],
+        })
+
+    @property
+    def y_pred(self) -> pl.DataFrame:
+        return pl.DataFrame({"time": [datetime(2020, 2, 1)], "small": [1.0], "big": [100.0]})
+
+    def test_residual_uses_each_columns_own_quantile(self):
+        scorer = Residual().fit(self.scores)
+        intervals = scorer.inverse_score(self.y_pred, self.scores, 0.6)
+
+        # At coverage 0.6 the tails are taken at 0.2 (method="lower") and 0.8
+        # (method="higher"). On five points those land on index 0 and index 4,
+        # so the bounds use each column's most extreme score: -0.1/0.1 added to
+        # a prediction of 1.0, and -10/10 added to 100.0.
+        assert intervals["small_lower_0.6"][0] == pytest.approx(0.9)
+        assert intervals["small_upper_0.6"][0] == pytest.approx(1.1)
+        assert intervals["big_lower_0.6"][0] == pytest.approx(90.0)
+        assert intervals["big_upper_0.6"][0] == pytest.approx(110.0)
+
+    def test_absolute_residual_uses_each_columns_own_quantile(self):
+        scores = self.scores.with_columns(pl.col("small").abs(), pl.col("big").abs())
+        scorer = AbsoluteResidual().fit(scores)
+        intervals = scorer.inverse_score(self.y_pred, scores, 0.6)
+
+        # Symmetric: the 0.6 quantile (method="lower") of each column's sorted
+        # absolute scores, so one half-width per column, 0.05 and 5.0.
+        assert intervals["small_lower_0.6"][0] == pytest.approx(0.95)
+        assert intervals["small_upper_0.6"][0] == pytest.approx(1.05)
+        assert intervals["big_lower_0.6"][0] == pytest.approx(95.0)
+        assert intervals["big_upper_0.6"][0] == pytest.approx(105.0)
+
+    def test_gamma_residual_scales_each_column_by_its_own_prediction(self):
+        """The multiplicative path: per-column quantile times per-column denominator."""
+        scores = pl.DataFrame({
+            "time": self.TIMES,
+            "small": [-0.2, -0.1, 0.0, 0.1, 0.2],
+            "big": [-0.04, -0.02, 0.0, 0.02, 0.04],
+        })
+        # epsilon must be strictly positive; keep it far below the predictions
+        # so it does not perturb the expected bounds.
+        scorer = GammaResidual(epsilon=1e-12).fit(scores)
+        intervals = scorer.inverse_score(self.y_pred, scores, 0.6)
+
+        # Tails land on index 0 and 4 as above, so each column uses its own
+        # extreme relative score against its own prediction:
+        # small: 1.0 + (-0.2 * 1.0) and 1.0 + (0.2 * 1.0)
+        assert intervals["small_lower_0.6"][0] == pytest.approx(0.8)
+        assert intervals["small_upper_0.6"][0] == pytest.approx(1.2)
+        # big: 100.0 + (-0.04 * 100.0) and 100.0 + (0.04 * 100.0)
+        assert intervals["big_lower_0.6"][0] == pytest.approx(96.0)
+        assert intervals["big_upper_0.6"][0] == pytest.approx(104.0)
+
+    def test_helpers_return_one_value_per_column(self):
+        """The reduction returns n values for an n-column frame, not one."""
+        scorer = Residual().fit(self.scores)
+        scores_no_time = self.scores.drop("time")
+
+        lower, upper = scorer._compute_asymmetric_quantiles(scores_no_time, 0.6)
+        assert len(lower) == 2
+        assert len(upper) == 2
+        assert len(scorer._compute_symmetric_quantiles(scores_no_time, 0.6)) == 2

@@ -69,6 +69,7 @@ from .interval import (
     check_interval_bounds,
     check_interval_prediction_columns,
     check_interval_prediction_types,
+    check_per_column_calibration_independence,
 )
 from .panel import (
     check_panel_data,
@@ -638,6 +639,15 @@ def _yield_yohou_forecaster_checks(
             check_coverage_rates_validation,
             {"y": y_train, "X_actual": X_actual_train, "X_future": X_future_train, "X_forecast": X_forecast_train},
         )
+        # Gated on conformity-score calibration: the invariant is about which
+        # scores a column's quantile comes from, so a forecaster that predicts
+        # its bounds directly (quantile regression) has nothing to check.
+        if hasattr(forecaster, "conformity_scorer"):
+            yield (
+                "check_per_column_calibration_independence",
+                check_per_column_calibration_independence,
+                {"y_train": y_train},
+            )
 
     # Class-probability forecaster checks
     if forecaster_type is not None and "class_proba" in forecaster_type:

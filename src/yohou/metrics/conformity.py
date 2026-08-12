@@ -140,9 +140,15 @@ class Residual(BaseConformityScorer):
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
-        # Compute intervals
-        lower_quantile, upper_quantile = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
-        lower_bound, upper_bound = y_pred + lower_quantile, y_pred + upper_quantile
+        # Compute intervals. The quantiles arrive one per value column, in the
+        # score frame's column order, which matches y_pred's positionally.
+        lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
+        lower_bound = y_pred.with_columns([
+            pl.col(col) + q for col, q in zip(y_pred.columns, lower_quantiles, strict=True)
+        ])
+        upper_bound = y_pred.with_columns([
+            pl.col(col) + q for col, q in zip(y_pred.columns, upper_quantiles, strict=True)
+        ])
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
@@ -275,9 +281,10 @@ class AbsoluteResidual(Residual):
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
-        # Compute symmetric intervals
-        quantile = self._compute_symmetric_quantiles(conformity_scores, coverage_rate)
-        lower_bound, upper_bound = y_pred - quantile, y_pred + quantile
+        # Compute symmetric intervals, one half-width per value column
+        quantiles = self._compute_symmetric_quantiles(conformity_scores, coverage_rate)
+        lower_bound = y_pred.with_columns([pl.col(col) - q for col, q in zip(y_pred.columns, quantiles, strict=True)])
+        upper_bound = y_pred.with_columns([pl.col(col) + q for col, q in zip(y_pred.columns, quantiles, strict=True)])
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
@@ -414,16 +421,19 @@ class GammaResidual(BaseConformityScorer):
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
-        # Compute quantiles
-        lower_q, upper_q = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
+        # Compute quantiles, one pair per value column
+        lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(conformity_scores, coverage_rate)
 
-        # Determine explicit float types for Polars
-        lower_q, upper_q = float(lower_q), float(upper_q)
-
-        # Reconstruct y
-        denom = y_pred + self.epsilon
-        lower_bound = y_pred + lower_q * denom
-        upper_bound = y_pred + upper_q * denom
+        # Reconstruct y. The score is relative to the prediction, so each
+        # column's quantile is scaled by that column's own denominator.
+        lower_bound = y_pred.with_columns([
+            pl.col(col) + float(q) * (pl.col(col) + self.epsilon)
+            for col, q in zip(y_pred.columns, lower_quantiles, strict=True)
+        ])
+        upper_bound = y_pred.with_columns([
+            pl.col(col) + float(q) * (pl.col(col) + self.epsilon)
+            for col, q in zip(y_pred.columns, upper_quantiles, strict=True)
+        ])
 
         y_pred_interval = self._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 

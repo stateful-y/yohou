@@ -49,26 +49,35 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         return super().fit(y_train, forecaster=forecaster, **params)
 
     @staticmethod
-    def _compute_asymmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> tuple[float, float]:
-        """Compute lower and upper quantiles for asymmetric intervals.
+    def _compute_asymmetric_quantiles(
+        conformity_scores: pl.DataFrame, coverage_rate: float
+    ) -> tuple[list[float], list[float]]:
+        """Compute lower and upper quantiles per value column.
+
+        One quantile pair is derived per column, from that column's scores
+        alone. Reducing the whole frame to a single pair gave every column the
+        same interval width, which over-covers low-magnitude columns and
+        under-covers high-magnitude ones.
 
         Parameters
         ----------
         conformity_scores : pl.DataFrame
-            Conformity scores from calibration.
+            Conformity scores from calibration, one column per value column.
 
         coverage_rate : float
             Target coverage rate.
 
         Returns
         -------
-        lower_quantile : float
-            Lower quantile value. When ``coverage_rate == 0`` this is the
-            median (quantile 0.5) of the scores.
+        lower_quantiles : list of float
+            Lower quantile per column, in column order. When
+            ``coverage_rate == 0`` each is the median (quantile 0.5) of that
+            column's scores.
 
-        upper_quantile : float
-            Upper quantile value. When ``coverage_rate == 0`` this is the
-            median (quantile 0.5) of the scores.
+        upper_quantiles : list of float
+            Upper quantile per column, in column order. When
+            ``coverage_rate == 0`` each is the median (quantile 0.5) of that
+            column's scores.
 
         Raises
         ------
@@ -95,32 +104,37 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         alpha = 1.0 - coverage_rate
 
+        # axis=0 reduces down each column, so a frame of n columns yields n
+        # quantiles rather than one over the flattened array.
         if coverage_rate == 0:
-            median_val: float = np.quantile(scores_array, 0.5, method="lower")
-            return median_val, median_val
+            medians = np.quantile(scores_array, 0.5, axis=0, method="lower")
+            return list(np.atleast_1d(medians)), list(np.atleast_1d(medians))
 
-        lower_quantile: float = np.quantile(scores_array, alpha / 2.0, method="lower")
+        lower_quantiles = np.quantile(scores_array, alpha / 2.0, axis=0, method="lower")
 
-        upper_quantile: float = np.quantile(scores_array, 1.0 - alpha / 2.0, method="higher")
+        upper_quantiles = np.quantile(scores_array, 1.0 - alpha / 2.0, axis=0, method="higher")
 
-        return lower_quantile, upper_quantile
+        return list(np.atleast_1d(lower_quantiles)), list(np.atleast_1d(upper_quantiles))
 
     @staticmethod
-    def _compute_symmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> float:
-        """Compute quantile for symmetric intervals.
+    def _compute_symmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> list[float]:
+        """Compute the symmetric half-width quantile per value column.
+
+        As with the asymmetric variant, the reduction runs down each column so
+        a column's interval is calibrated from its own scores alone.
 
         Parameters
         ----------
         conformity_scores : pl.DataFrame
-            Conformity scores from calibration.
+            Conformity scores from calibration, one column per value column.
 
         coverage_rate : float
             Target coverage rate.
 
         Returns
         -------
-        float
-            Quantile value for symmetric intervals.
+        list of float
+            Quantile per column, in column order.
 
         Raises
         ------
@@ -139,9 +153,9 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
                 "Increase calibration_size or reduce forecasting_horizon."
             )
 
-        quantile: float = np.quantile(conformity_array, coverage_rate, method="lower")
+        quantiles = np.quantile(conformity_array, coverage_rate, axis=0, method="lower")
 
-        return quantile
+        return list(np.atleast_1d(quantiles))
 
     @staticmethod
     def _format_y_pred_interval(

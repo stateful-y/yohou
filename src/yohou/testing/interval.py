@@ -4,6 +4,8 @@ This module provides validation functions specific to interval forecasters
 (BaseIntervalForecaster implementations).
 """
 
+import math
+
 import polars as pl
 from sklearn.base import clone
 
@@ -15,6 +17,7 @@ __all__ = [
     "check_interval_bounds",
     "check_interval_prediction_columns",
     "check_interval_prediction_types",
+    "check_per_column_calibration_independence",
 ]
 
 
@@ -229,3 +232,79 @@ def check_coverage_rates_validation(
         )
     except ValueError as e:
         assert "coverage" in str(e).lower(), f"ValueError should mention coverage_rates, got: {e}"
+
+
+def check_per_column_calibration_independence(forecaster, y_train: pl.DataFrame) -> None:
+    """Check each value column's interval is calibrated from that column alone.
+
+    Multiplies one value column by a constant and asserts two things: that
+    column's interval width scales with it, and every other column's width does
+    not move. A forecaster that reduces a multi-column conformity frame to one
+    shared quantile fails both halves, which is the defect this check exists to
+    catch: before it, a frame holding a scale-1 and a scale-100 column gave both
+    the same width, over-covering the small column and under-covering the large.
+
+    The check builds its own inner point forecaster rather than reusing the one
+    under test. The independence half is only well defined when the point model
+    does not pool rows across columns: a shared global model legitimately moves
+    every column's prediction when one column's data changes, so the width shift
+    would not be attributable to the calibration axis.
+
+    Parameters
+    ----------
+    forecaster : BaseIntervalForecaster
+        Forecaster under test. Used for its class and constructor parameters;
+        a fresh clone is fitted here.
+    y_train : pl.DataFrame
+        Training data. Ignored except for its time column, since the check
+        generates its own two-column frame with a known scale relationship.
+
+    Raises
+    ------
+    AssertionError
+        If the scaled column's width does not track its data, or if another
+        column's width moves in response.
+
+    """
+    from yohou.point import SeasonalNaive
+
+    times = y_train["time"]
+    if len(times) < 60:
+        return
+
+    seasonality = 7
+    base = [10.0 + 5.0 * ((i % seasonality) - 3) / 3.0 for i in range(len(times))]
+    jitter = [0.4 * (((i * 37) % 11) / 11.0 - 0.5) for i in range(len(times))]
+    quiet = [b + j for b, j in zip(base, jitter, strict=True)]
+
+    factor = 100.0
+    frame = pl.DataFrame({"time": times, "a__value": quiet, "b__value": quiet})
+    scaled = frame.with_columns(pl.col("b__value") * factor)
+
+    def widths(y: pl.DataFrame) -> dict[str, float]:
+        """Fit a fresh clone on ``y`` and return its interval width per column."""
+        candidate = clone(forecaster)
+        candidate.set_params(point_forecaster=SeasonalNaive(seasonality=seasonality))
+        calibration_size = min(50, len(times) // 3)
+        candidate.set_params(calibration_size=calibration_size)
+        candidate.fit(y, forecasting_horizon=1, coverage_rates=[0.9])
+        intervals = candidate.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+        return {
+            column: float(intervals[f"{column}_upper_0.9"][0] - intervals[f"{column}_lower_0.9"][0])
+            for column in ("a__value", "b__value")
+        }
+
+    before, after = widths(frame), widths(scaled)
+
+    if before["b__value"] <= 0.0:
+        return
+
+    observed_factor = after["b__value"] / before["b__value"]
+    assert 0.5 * factor < observed_factor < 2.0 * factor, (
+        f"scaling column 'b__value' by {factor} changed its interval width by {observed_factor:.2f}x. "
+        "A column's width must be calibrated from that column's own conformity scores."
+    )
+    assert math.isclose(after["a__value"], before["a__value"], rel_tol=1e-9), (
+        f"scaling column 'b__value' moved column 'a__value' width from {before['a__value']} to "
+        f"{after['a__value']}. Calibration must not be pooled across value columns."
+    )

@@ -37,6 +37,15 @@ def _fit(adapter=None, scorer=None, similarity=None, horizon=3, calib=50):
     return forecaster, y
 
 
+def _level(forecaster, step: int = 1, column: str = "value"):
+    """Effective level for one (step, value column) pair.
+
+    Adapter clones are keyed by step and then by value column, so a univariate
+    fixture reaches its only adapter through the sole column name.
+    """
+    return forecaster.adapters_[f"step_{step}"][column].predict()
+
+
 def _width(intervals: pl.DataFrame, rate: float = 0.9) -> list[float]:
     """Interval widths for the given coverage rate."""
     return (intervals[f"value_upper_{rate}"] - intervals[f"value_lower_{rate}"]).to_list()
@@ -138,11 +147,11 @@ class TestAdapterInForecaster:
     def test_observe_adapts_then_rewind_restores(self):
         forecaster, y = _fit(adapter=AdaptiveConformalInference(step_size=0.1))
         new = y[180:188]
-        before = forecaster.adapters_["step_1"].predict()
+        before = _level(forecaster)
         forecaster.observe(new)
-        assert forecaster.adapters_["step_1"].predict() != before
+        assert _level(forecaster) != before
         forecaster.rewind(new)
-        assert forecaster.adapters_["step_1"].predict() == before
+        assert _level(forecaster) == before
 
     def test_untracked_rate_warns_and_falls_back(self):
         forecaster, _ = _fit(adapter=AdaptiveConformalInference())
@@ -160,12 +169,12 @@ class TestAdapterInForecaster:
 
     def test_symmetric_scorer_single_level(self):
         forecaster, y = _fit(adapter=AdaptiveConformalInference(), scorer=AbsoluteResidual())
-        level = forecaster.adapters_["step_1"].predict()[0.9]
+        level = _level(forecaster)[0.9]
         assert isinstance(level, float)
 
     def test_asymmetric_scorer_two_tails(self):
         forecaster, y = _fit(adapter=AdaptiveConformalInference(), scorer=Residual())
-        level = forecaster.adapters_["step_1"].predict()[0.9]
+        level = _level(forecaster)[0.9]
         assert isinstance(level, tuple) and len(level) == 2
 
     def test_composes_with_similarity(self):
@@ -178,7 +187,7 @@ class TestAdapterInForecaster:
         forecaster.observe(y[180:188])
         intervals = forecaster.predict_interval()
         assert len(intervals) == 3
-        assert forecaster.adapters_["step_1"].predict()[0.9] != 0.1
+        assert _level(forecaster)[0.9] != 0.1
 
     def test_shared_pooling_ties_steps_together(self):
         forecaster, y = _fit(
@@ -186,7 +195,7 @@ class TestAdapterInForecaster:
             scorer=AbsoluteResidual(),
         )
         forecaster.observe(y[180:188])
-        levels = [forecaster.adapters_[f"step_{s}"].predict()[0.9] for s in (1, 2, 3)]
+        levels = [_level(forecaster, s)[0.9] for s in (1, 2, 3)]
         assert levels[0] == pytest.approx(levels[1]) == pytest.approx(levels[2])
 
     def test_shared_pooling_with_asymmetric_scorer(self):
@@ -196,7 +205,7 @@ class TestAdapterInForecaster:
             scorer=Residual(),
         )
         forecaster.observe(y[180:188])
-        levels = [forecaster.adapters_[f"step_{s}"].predict()[0.9] for s in (1, 2, 3)]
+        levels = [_level(forecaster, s)[0.9] for s in (1, 2, 3)]
         # Every step shares one (lower, upper) trajectory.
         assert all(isinstance(level, tuple) for level in levels)
         assert levels[0] == pytest.approx(levels[1])
@@ -208,7 +217,7 @@ class TestAdapterInForecaster:
             scorer=AbsoluteResidual(),
         )
         forecaster.observe(y[180:190])
-        levels = {s: forecaster.adapters_[f"step_{s}"].predict()[0.9] for s in (1, 2, 3)}
+        levels = {s: _level(forecaster, s)[0.9] for s in (1, 2, 3)}
         # Different horizons generally realize different coverage, so at least
         # one step's level should differ from another.
         assert len({round(v, 6) for v in levels.values()}) > 1
@@ -218,3 +227,103 @@ class TestAdapterInForecaster:
         out = forecaster.observe_predict_interval(y[180:190], stride=1, coverage_rates=[0.9])
         assert "value_lower_0.9" in out.columns
         assert len(out) > 0
+
+
+def _two_column_series(n: int = 200) -> pl.DataFrame:
+    """Two seasonal panel entities sharing a time index."""
+    dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    def series(seed: int) -> list[float]:
+        rng = np.random.default_rng(seed)
+        return [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + rng.normal(0, 0.5) for i in range(n)]
+
+    return pl.DataFrame({"time": dates, "a__value": series(1), "b__value": series(2)})
+
+
+class TestAdapterEntityAxis:
+    """Each value column adapts from its own miscoverage.
+
+    Regression coverage for the cross-entity mean: ``_adapter_step_errors`` fed
+    ``np.mean(misses)`` over all value columns into a recursion the spec defines
+    with a binary indicator, so one chronically miscovered entity dragged every
+    other entity's level with it.
+    """
+
+    @staticmethod
+    def _fit(y: pl.DataFrame) -> SplitConformalForecaster:
+        return SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1),
+        ).fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])
+
+    def test_one_columns_miscoverage_does_not_affect_the_other(self):
+        """Shocking one column must leave the other column's level untouched.
+
+        Compared across two runs rather than before-and-after within one: a
+        covered column still advances its own level, because the recursion
+        moves by ``step_size * alpha_target`` when the miscoverage indicator is
+        zero. The property under test is independence between columns.
+        """
+        y = _two_column_series()
+
+        def observe_and_read(shock: bool) -> dict[str, object]:
+            forecaster = self._fit(y)
+            row = y[180:181]
+            if shock:
+                # "b" lands far outside any calibrated interval; "a" is untouched.
+                row = row.with_columns(pl.col("b__value") + 100_000.0)
+            forecaster.observe(y=row)
+            return {column: adapter.predict()[0.9] for column, adapter in forecaster.adapters_["step_1"].items()}
+
+        quiet, shocked = observe_and_read(shock=False), observe_and_read(shock=True)
+
+        assert shocked["a__value"] == quiet["a__value"], "another column's shock must not reach this column's level"
+        assert shocked["b__value"] != quiet["b__value"], "the shocked column's level must respond"
+
+    def test_adapters_are_keyed_by_step_and_column(self):
+        y = _two_column_series()
+        forecaster = self._fit(y)
+
+        assert set(forecaster.adapters_) == {"step_1"}
+        assert set(forecaster.adapters_["step_1"]) == {"a__value", "b__value"}
+
+    def test_a_column_of_a_panel_matches_the_equivalent_single_column_run(self):
+        """One column of a multi-column frame must adapt exactly as it would alone."""
+        y = _two_column_series()
+        panel = self._fit(y)
+        univariate = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1),
+        ).fit(y[:180].select(["time", "a__value"]), forecasting_horizon=1, coverage_rates=[0.9])
+
+        panel.observe(y=y[180:185])
+        univariate.observe(y=y[180:185].select(["time", "a__value"]))
+
+        assert (
+            panel.adapters_["step_1"]["a__value"].predict()[0.9]
+            == univariate.adapters_["step_1"]["a__value"].predict()[0.9]
+        )
+
+    def test_shared_pooling_still_lets_columns_diverge(self):
+        """``alpha_pooling="shared"`` pools across steps, never across columns."""
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=AbsoluteResidual(),
+            adapter=AdaptiveConformalInference(step_size=0.1, alpha_pooling="shared"),
+        ).fit(y[:180], forecasting_horizon=2, coverage_rates=[0.9])
+
+        # Only "b" is shocked, so only "b" should be driven away from "a".
+        forecaster.observe(y=y[180:184].with_columns(pl.col("b__value") + 100_000.0))
+
+        levels = {column: adapter.predict()[0.9] for column, adapter in forecaster.adapters_["step_1"].items()}
+        assert levels["a__value"] != levels["b__value"], "shared pooling must not fuse the columns"
+
+        # Within a column, the shared trajectory still ties the two steps.
+        for column in ("a__value", "b__value"):
+            step_1 = forecaster.adapters_["step_1"][column].predict()[0.9]
+            step_2 = forecaster.adapters_["step_2"][column].predict()[0.9]
+            assert step_1 == pytest.approx(step_2), f"{column} steps should share one trajectory"

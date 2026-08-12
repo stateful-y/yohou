@@ -29,10 +29,13 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     conformity scorer is asymmetric, a lower and an upper level are tracked
     separately, each targeting $\alpha^{*}/2$.
 
-    This adapter owns one horizon step; ``SplitConformalForecaster`` clones
-    one per step and supplies the miscoverage indicators (it holds the
-    calibration scores and any similarity weights). The adapter is the
-    level-recursion state machine only.
+    This adapter owns one horizon step and one value column;
+    ``SplitConformalForecaster`` clones one per pair and supplies that column's
+    own miscoverage indicators (it holds the calibration scores and any
+    similarity weights). The adapter is the level-recursion state machine only.
+    Keying by column as well as step is what keeps one entity's misses from
+    moving another entity's interval, since the quantile the level modulates is
+    itself per column.
 
     Parameters
     ----------

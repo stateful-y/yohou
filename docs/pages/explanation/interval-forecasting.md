@@ -154,15 +154,42 @@ then produces intervals that adapt to local conditions.
 [`DistanceSimilarity`](/pages/api/generated/yohou.interval.DistanceSimilarity/)
 computes distances between the current prediction context (the feature vector derived
 from the point forecaster's observation window at predict time) and each calibration
-feature vector stored during `fit()`. It then converts distances to weights using a
-numerically stable softmax of negative distances with uniform mass reserved for the
-test point:
+feature vector stored during `fit()`. Each feature column is first divided by its
+own spread, measured at `fit()` time. Then the distances are divided by a fitted
+distance scale (the median pairwise distance among the calibration features) and by
+the `bandwidth` parameter. Writing that scaled distance as
+$\tilde{d} = d / (\text{bandwidth} \cdot \text{distance scale})$, the weights are a
+numerically stable softmax of negative scaled distances with uniform mass reserved
+for the test point:
 
-$$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}{1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
+$$w_{ji} = \frac{\exp(-(\tilde{d}_{ji} - \min_k \tilde{d}_{jk}))}{1 + \sum_k \exp(-(\tilde{d}_{jk} - \min_k \tilde{d}_{jk}))}$$
 
 Calibration points close to the current prediction get exponentially higher weights
 than distant ones. The distance metric is configurable: euclidean, cityblock, cosine,
 or any metric supported by `scipy.spatial.distance.cdist`.
+
+The two scalings each fix a different failure. Dividing by the fitted distance scale
+makes the weights invariant to a rescaling of the data: without it, the softmax has no
+width of its own, so how concentrated the weights are depends on the units. The same
+series measured in thousands rather than units would put nearly all its weight on a
+single calibration row, and the resulting interval would be read off one conformity
+score. Dividing each column by its own spread stops a single high-magnitude column
+from deciding the neighbourhood for every other column, which is what happens on a
+panel whose entities differ in size.
+
+`bandwidth` is the knob left over once the scale is handled. Below 1 concentrates
+weight on nearer calibration rows, above 1 flattens toward uniform. Reach for it when
+the default neighbourhood is wider or narrower than the structure you know is in your
+data.
+
+The two similarities default it differently, and the reason is worth knowing.
+`DistanceSimilarity` defaults to `1.0`. `SeasonalSimilarity` defaults to `0.5`, because
+its harmonic features are bounded on the unit circle: their median pairwise distance is
+around 1.5, so dividing by it flattens a spread that was already narrow. At `1.0` a
+weekly seasonality keeps roughly 41 of 50 calibration rows as effective sample size,
+near enough to uniform that the weighted quantile usually lands on the same order
+statistic as the unweighted one, which makes the similarity do nothing visible. At `0.5`
+it keeps roughly 25 and the weighting bites.
 
 The leading `1` in the denominator reserves uniform mass for the hypothetical test
 point, so each weight row is non-negative and sums to a value strictly below 1. This
@@ -272,9 +299,12 @@ summarized below.
 | Similarity weighting | which residuals count | `similarity` |
 | Adaptive conformal inference | how far into their tail to reach | `adapter` |
 
-The adapter tracks one level per horizon step (or a single shared level with
-`alpha_pooling="shared"`), and one level per tail for asymmetric conformity
-scorers so a lopsided error distribution corrects each side separately.
+The adapter tracks one level per horizon step and value column (or one level per
+value column shared across steps with `alpha_pooling="shared"`), and one level per
+tail for asymmetric conformity scorers so a lopsided error distribution corrects
+each side separately. `alpha_pooling` pools along the horizon axis only: two
+entities' levels are never fused, so a chronically miscovered entity widens its own
+intervals and nobody else's.
 
 ## Quantile Reduction Intervals
 
@@ -354,15 +384,44 @@ and
 support panel data through the `panel_strategy` parameter:
 
 - **`"global"`** (default): fits a single shared model across all groups, but
-  maintains per-group transformer state and observation buffers. Groups share a
-  single calibration set or quantile model. For independent per-group models, use
+  maintains per-group transformer state and observation buffers. For independent
+  per-group models, use
   [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/).
-- **`"multivariate"`**: pools data across groups, sharing calibration scores or
-  quantile models. This is useful when individual groups have limited data and
-  borrowing strength across entities improves interval quality.
+- **`"multivariate"`**: skips panel detection entirely and treats `__`-prefixed
+  columns as ordinary multivariate columns, so one transformer and one model see
+  the full wide frame. Use it when cross-group feature interactions matter.
 
 The choice mirrors the panel strategies available in point forecasting. See
 [Panel Data](panel-data.md) for the full treatment.
+
+### What `panel_strategy` does not govern
+
+`panel_strategy` decides how the *point model* is fitted and how per-group state
+is kept. It does not decide the calibration axis. Conformal calibration is always
+per value column, under either strategy: each `{group}__{variable}` column takes
+the quantile of its own conformity scores, and the adaptive level, when an
+`adapter` is configured, is likewise tracked per column.
+
+This matters when entities differ in magnitude. A store selling 50 units a day
+and one selling 5,000 need interval widths two orders of magnitude apart. Sharing
+one calibration across them would over-cover the small entity and under-cover the
+large one, and the sharing would be invisible: both intervals are well-formed, one
+is simply too wide and the other too narrow.
+
+There is deliberately no option to pool calibration scores across entities, and no
+`calibration_pooling` parameter. Pooling raw residuals from entities of different
+magnitude is what produces the failure above, and pooling is only defensible with a
+scale-free conformity score such as
+[`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/).
+The same reasoning is why the adapter has no `entity_pooling` parameter alongside
+its `alpha_pooling`. Both were considered and deferred rather than rejected: the
+default had to settle first, and both could be added later without moving it.
+
+Note also that entity count never starves calibration here. `calibration_size` slices
+rows, and every entity shares the time index, so each entity receives the full
+calibration count no matter how many entities there are. What can starve it is a short
+history: a coverage rate of `1 - alpha` needs at least `1/alpha - 1` calibration scores
+to be expressible at all, meaning 19 for 95% and 99 for 99%.
 
 ## Coverage Rates
 
