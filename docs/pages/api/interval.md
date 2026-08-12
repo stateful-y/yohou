@@ -10,6 +10,8 @@ Interval forecasters for prediction uncertainty quantification.
 
 | Name | Description |
 |------|-------------|
+| [`AdaptiveConformalInference`](generated/yohou.interval.AdaptiveConformalInference.md) | Online miscoverage-level adjustment (Gibbs and Candes, 2021). |
+| [`BaseConformalAdapter`](generated/yohou.interval.BaseConformalAdapter.md) | Base class for adaptive conformal inference adapters. |
 | [`BaseIntervalForecaster`](generated/yohou.interval.BaseIntervalForecaster.md) | Base class for interval forecasters. |
 | [`BaseSimilarity`](generated/yohou.interval.BaseSimilarity.md) | Base class for similarity measures used in interval forecasting. |
 | [`IntervalReductionForecaster`](generated/yohou.interval.IntervalReductionForecaster.md) | Interval forecaster using sklearn estimators on tabularized time series. |
