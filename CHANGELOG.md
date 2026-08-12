@@ -6,14 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.1.0-alpha.12] - 2026-08-11
+## [0.1.0-alpha.12] - 2026-08-12
 
-This **minor release** includes 20 commits.
+This **minor release** includes 22 commits.
 
 
 ### Features
 - Add CombiningForecaster, which sums or multiplies per-term forecasts  ([#114](https://github.com/stateful-y/yohou/pull/114)) by @gtauzin
 - Add an optional adapter that keeps interval coverage on target under drift  ([#119](https://github.com/stateful-y/yohou/pull/119)) by @gtauzin
+- Add panel support to the per-vintage and heatmap score views  ([#150](https://github.com/stateful-y/yohou/pull/150)) by @gtauzin
 
 ### Bug Fixes
 - Pin ossf/scorecard-action to the existing v2.4.4 tag by @gtauzin
@@ -21,6 +22,7 @@ This **minor release** includes 20 commits.
 - Fix a shell injection in the release publish job (template v0.40.1)  ([#140](https://github.com/stateful-y/yohou/pull/140)) by @gtauzin
 - Stop the nightly coverage upload from silently uploading the wrong report  ([#145](https://github.com/stateful-y/yohou/pull/145)) by @gtauzin
 - Fix plot_score_per_vintage raising on metrics with no per-step axis  ([#148](https://github.com/stateful-y/yohou/pull/148)) by @gtauzin
+- Unblock PyPI publishing by bumping gh-action-pypi-publish to v1.14.2  ([#152](https://github.com/stateful-y/yohou/pull/152)) by @gtauzin
 
 ### Documentation
 - Add the missing check_mixed_cadence_X_forecast_resolves to the API reference  ([#127](https://github.com/stateful-y/yohou/pull/127)) by @gtauzin
