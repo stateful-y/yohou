@@ -41,4 +41,5 @@ Pages that draw on external academic literature or published standards close wit
 
 ## Reference
 
+- [Security](security.md): The hardened release pipeline, what each measure protects against, and how to verify a published release.
 - [Glossary](glossary.md): Definitions of key terms used across Yohou documentation.
