@@ -1,5 +1,6 @@
 """Scikit-learn-compatible time series forecasting framework built on polars."""
 
+import logging
 import re
 from importlib.metadata import version
 from typing import Any
@@ -9,6 +10,14 @@ from sklearn import set_config
 from yohou.utils._compat import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
 
 __version__ = version(__name__)
+
+# The standard library convention for a library: emit, and let the application
+# decide where it goes and at what level. The null handler prevents Python's
+# "No handlers could be found" fallback without claiming stderr, and no level is
+# set anywhere in the package, so the application's configuration is
+# authoritative. Submodules use ``getLogger(__name__)``, so ``yohou.compose`` can
+# be turned down without silencing ``yohou.model_selection``.
+logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 # Enable metadata routing globally for all Yohou estimators
 set_config(enable_metadata_routing=True)

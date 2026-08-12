@@ -260,7 +260,7 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
         """
         return Bunch(**dict(self.transformer_list))
 
-    def _log_message(self, name: str, idx: int, total: int) -> str:
+    def _log_message(self, name: str, idx: int, total: int) -> str | None:
         """Get log message for a transformer.
 
         Parameters
@@ -274,10 +274,15 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
 
         Returns
         -------
-        message : str
-            Log message.
+        message : str or None
+            The step message, or ``None`` when ``verbose`` is false. ``None`` is
+            what makes the caller silent: ``_print_elapsed_time`` prints whenever
+            the message it is handed is not ``None``, so a port that always
+            returns a string prints on every fit regardless of the parameter.
 
         """
+        if not self.verbose:
+            return None
         return f"(step {idx} of {total}) Processing {name}"
 
     def _parallel_func(self, X: pl.DataFrame, y: pl.DataFrame | None, func: Any, routed_params: Any) -> Any:
