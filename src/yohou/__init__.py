@@ -7,6 +7,7 @@ from typing import Any
 
 from sklearn import set_config
 
+from yohou.base.utils import ForecastCoverageWarning
 from yohou.utils._compat import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
 
 __version__ = version(__name__)
@@ -120,6 +121,7 @@ def __getattr__(name: str):  # noqa: ANN202
 
 
 __all__ = [
+    "ForecastCoverageWarning",
     "__version__",
     "base",
     "class_proba",
