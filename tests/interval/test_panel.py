@@ -74,12 +74,16 @@ class TestSplitConformalPanelChecks:
 
     @pytest.mark.slow
     def test_split_conformal_panel_checks(self, panel_time_series_factory):
-        y = panel_time_series_factory(length=100, n_series=3)
-        y_train, y_test = y[:80], y[80:]
+        # Sized so the default 0.95 rate is expressible at every horizon step:
+        # an asymmetric scorer needs 39 scores there, and step 3 sees
+        # calibration_size - 2. At the previous 30 the sweep ran in a regime the
+        # forecaster itself warns about, which is not what these checks are for.
+        y = panel_time_series_factory(length=220, n_series=3)
+        y_train, y_test = y[:180], y[180:]
 
         forecaster = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=7),
-            calibration_size=30,
+            calibration_size=50,
         )
         forecaster.fit(y_train, forecasting_horizon=3)
 

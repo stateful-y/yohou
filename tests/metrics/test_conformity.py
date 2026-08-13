@@ -366,3 +366,34 @@ class TestMultiColumnInverseScore:
         assert len(lower) == 2
         assert len(upper) == 2
         assert len(scorer._compute_symmetric_quantiles(scores_no_time, 0.6)) == 2
+
+
+class TestEmptyConformityFrame:
+    """Both quantile helpers reject an empty calibration set by name."""
+
+    @pytest.mark.parametrize("rate", [0.5, 0.9])
+    def test_asymmetric_helper_raises_on_empty(self, rate):
+        empty = pl.DataFrame({"value": []}, schema={"value": pl.Float64})
+        with pytest.raises(ValueError, match="calibration set is too small"):
+            Residual._compute_asymmetric_quantiles(empty, rate)
+
+    @pytest.mark.parametrize("rate", [0.5, 0.9])
+    def test_symmetric_helper_raises_on_empty(self, rate):
+        empty = pl.DataFrame({"value": []}, schema={"value": pl.Float64})
+        with pytest.raises(ValueError, match="calibration set is too small"):
+            AbsoluteResidual._compute_symmetric_quantiles(empty, rate)
+
+
+def test_zero_coverage_rate_yields_a_degenerate_interval_per_column():
+    """``coverage_rate == 0`` is a documented special case: both bounds are the median.
+
+    It bypasses the conformal order statistic entirely, so it needs its own
+    coverage; the correction does not apply to a zero-width interval.
+    """
+    times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+    scores = pl.DataFrame({"time": times, "a": [-2.0, -1.0, 0.0, 1.0, 2.0], "b": [-20.0, -10.0, 0.0, 10.0, 20.0]})
+
+    lower, upper = Residual._compute_asymmetric_quantiles(scores.drop("time"), 0.0)
+
+    assert lower == upper
+    assert lower == [0.0, 0.0]

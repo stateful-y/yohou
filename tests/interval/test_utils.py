@@ -199,3 +199,11 @@ class TestConformalCorrection:
         weighted = weighted_quantile(scores, 1.0 - rate, reserved)
 
         assert weighted == pytest.approx(unweighted)
+
+    def test_rate_whose_tail_rounds_to_one_imposes_no_constraint(self):
+        """A rate just below 1 can round its derived tail level to exactly 1.0.
+
+        ``1 - (1 - 0.9999999999999999) / 2`` evaluates to ``1.0`` in float64, so
+        the closed form would divide by zero. The guard returns 0 instead.
+        """
+        assert required_calibration_size(0.9999999999999999, symmetric=False) == 0

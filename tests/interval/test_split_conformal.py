@@ -1989,6 +1989,21 @@ class TestCalibrationIndependenceCheck:
 
         check_per_column_calibration_independence(forecaster, y_train=y[:180])
 
+    def test_check_skips_a_history_too_short_to_judge(self, y_X_factory):
+        """Under 60 timestamps the check cannot fit and calibrate, so it declines.
+
+        Returning rather than asserting keeps the systematic sweep usable on the
+        short fixtures other checks run on, instead of failing them for a reason
+        unrelated to calibration scope.
+        """
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=50).fit(
+            y[:180], forecasting_horizon=1
+        )
+
+        # No assertion error despite the frame being far too short to calibrate.
+        check_per_column_calibration_independence(forecaster, y_train=y[:40])
+
     def test_check_rejects_a_pooling_implementation(self, y_X_factory):
         y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
         forecaster = SplitConformalForecaster(
