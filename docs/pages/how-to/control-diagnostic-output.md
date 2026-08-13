@@ -82,6 +82,22 @@ means the later steps are null.
 It subclasses `UserWarning`, so code that already catches `UserWarning` keeps
 working.
 
+## Diagnostics that used to be warnings
+
+Two diagnostics moved from the warning channel to the log channel, because both
+state what the library did rather than something you may need to act on. If you
+were catching either, catch the log record instead.
+
+| what | where it goes now |
+| --- | --- |
+| `PerVintageActualTransformer` dropped N vintages with too few rows | `yohou.compose.per_vintage`, at INFO |
+| `Interpolated N NaN value(s) before decomposition` | `yohou.plotting.forecasting`, at INFO |
+
+The first says "this is expected for the truncated tail of a forecast frame" in
+its own text, which is the clearest sign it was never a warning. Everything else
+that warns today still warns: a condition you may need to act on stays in the
+channel you cannot easily ignore.
+
 ## Estimator progress output
 
 `ColumnTransformer` and `FeatureUnion` accept `verbose`, matching the sklearn

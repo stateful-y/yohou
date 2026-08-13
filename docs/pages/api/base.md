@@ -17,3 +17,4 @@ Base classes for transformers and forecasters.
 | [`BaseStandardForecaster`](generated/yohou.base.BaseStandardForecaster.md) | Mixin providing standard (single DataFrame) forecaster operations. |
 | [`BaseStepTransformer`](generated/yohou.base.BaseStepTransformer.md) | Base class for ``"step"``-kind transformers over the derived step frame. |
 | [`BaseActualTransformer`](generated/yohou.base.BaseActualTransformer.md) | Base class for single-axis (``"actual"``-kind) time series transformers. |
+| [`ForecastCoverageWarning`](generated/yohou.base.ForecastCoverageWarning.md) | Raised when ``X_forecast`` covers fewer steps than the forecasting horizon. |
