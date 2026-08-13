@@ -349,6 +349,7 @@ nav:
       - yohou.testing: pages/api/testing.md
 
     - Changelog: pages/reference/changelog.md
+    - Citation: pages/reference/citation.md
     - Glossary: pages/explanation/glossary.md
     - Data Catalog: pages/reference/data-catalog.md
     - Extensions: pages/reference/extensions.md
