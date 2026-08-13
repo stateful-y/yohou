@@ -8,14 +8,14 @@ If you use Yohou in work you publish, please cite it.
 
 ## Plain text
 
-Guillaume Tauzin. Yohou. https://github.com/stateful-y/yohou
+Guillaume Tauzin. Yohou: A time series forecasting package based on Scikit-Learn and Polars. https://github.com/stateful-y/yohou
 
 ## BibTeX
 
 ```bibtex
 @software{yohou,
   author  = "Guillaume Tauzin",
-  title   = "{Yohou}",
+  title   = "{Yohou: A time series forecasting package based on Scikit-Learn and Polars}",
   url     = "https://github.com/stateful-y/yohou",
   license = "Apache-2.0"
 }

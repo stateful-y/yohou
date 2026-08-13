@@ -146,14 +146,14 @@ This project is licensed under the terms of the [Apache-2.0 License](https://git
 
 If you use Yohou in work you publish, please cite it:
 
-Guillaume Tauzin. Yohou. https://github.com/stateful-y/yohou
+Guillaume Tauzin. Yohou: A time series forecasting package based on Scikit-Learn and Polars. https://github.com/stateful-y/yohou
 
 Or in BibTeX:
 
 ```bibtex
 @software{yohou,
   author  = "Guillaume Tauzin",
-  title   = "{Yohou}",
+  title   = "{Yohou: A time series forecasting package based on Scikit-Learn and Polars}",
   url     = "https://github.com/stateful-y/yohou",
   license = "Apache-2.0"
 }
