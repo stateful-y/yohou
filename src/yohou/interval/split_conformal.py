@@ -18,7 +18,7 @@ from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, _fit_context
 
 from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
-from .utils import warn_if_weights_collapsed, weighted_quantile
+from .utils import warn_if_calibration_too_small, warn_if_weights_collapsed, weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
 
@@ -596,7 +596,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         if self.similarity is not None and hasattr(self, "similarities_"):
             weight_matrix = self.similarities_[step_key].predict(y_pred=scored_pred).astype(np.float64)
         else:
-            weight_matrix = np.ones((scores_new.height, n_calib), dtype=np.float64)
+            # Uniform weights that reserve mass for the test point, mirroring
+            # BaseSimilarity._reserve_mass. weighted_quantile does not
+            # renormalize, so 1/(n+1) each is what reproduces the standard
+            # ceil((n+1) * q) conformal order statistic.
+            weight_matrix = np.full((scores_new.height, n_calib), 1.0 / (n_calib + 1), dtype=np.float64)
 
         row_index = {t: i for i, t in enumerate(y["time"].to_list())}
         scored_values = {c: scores_new[c].to_numpy().astype(np.float64) for c in value_cols}
@@ -1415,8 +1419,18 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scorer_step = self.conformity_scorers_[f"step_{step}"]
             conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step).drop("step")
 
+            # One scorer per step, so its symmetry is fixed for every rate below.
+            step_tags = conformity_scorer_step.__sklearn_tags__()
+            assert step_tags.scorer_tags is not None
+            step_symmetric = step_tags.scorer_tags.symmetric
+
             rate_parts: list[pl.DataFrame] = []
             for coverage_rate in coverage_rates:
+                # Checked once per (step, rate), before any path computes a
+                # quantile, so it covers the static, weighted and adapted paths
+                # alike rather than being repeated in each.
+                warn_if_calibration_too_small(conformity_scores_step.height, coverage_rate, step_symmetric, step)
+
                 adapter_active = hasattr(self, "adapters_") and coverage_rate in tracked_rates
                 # Empty unless the adapter is active, in which case it carries one
                 # effective level per value column.
@@ -1454,7 +1468,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                             step=step,
                         )
                 elif adapter_active:
-                    uniform_weights = np.ones(conformity_scores_step.height, dtype=np.float64)
+                    n_calib = conformity_scores_step.height
+                    # Reserved-mass uniform weights; see _adapter_step_errors.
+                    uniform_weights = np.full(n_calib, 1.0 / (n_calib + 1), dtype=np.float64)
                     y_pred_interval_rate_step = self._adapter_inverse_score(
                         y_pred_step=y_pred_step,
                         conformity_scores_step=conformity_scores_step,

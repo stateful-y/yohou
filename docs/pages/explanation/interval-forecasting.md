@@ -409,13 +409,30 @@ large one, and the sharing would be invisible: both intervals are well-formed, o
 is simply too wide and the other too narrow.
 
 There is deliberately no option to pool calibration scores across entities, and no
-`calibration_pooling` parameter. Pooling raw residuals from entities of different
-magnitude is what produces the failure above, and pooling is only defensible with a
-scale-free conformity score such as
-[`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/).
-The same reasoning is why the adapter has no `entity_pooling` parameter alongside
-its `alpha_pooling`. Both were considered and deferred rather than rejected: the
-default had to settle first, and both could be added later without moving it.
+`calibration_pooling` parameter. Three things stand in the way, and they are not
+equally tractable.
+
+The first is magnitude. Pooling raw residuals from entities of different size is what
+produces the failure above, and a scale-free score such as
+[`GammaResidual`](/pages/api/generated/yohou.metrics.conformity.GammaResidual/), which
+divides by the predicted level, removes it.
+
+The second is volatility, and the level-based score does not remove it. Two entities of
+the same size whose errors differ threefold in spread still contribute incomparable
+scores. Making them comparable needs a score divided by a per-entity dispersion
+estimate, which yohou does not currently provide.
+
+The third is dependence, and no conformity score removes it. Entities observed at the
+same timestamp share shocks, so their scores are correlated within a timestamp and much
+less so across timestamps. A pooled sequence with that block structure is not
+exchangeable, which is the assumption the finite-sample guarantee rests on. It also
+means pooling buys far less than the entity count suggests: under same-timestamp
+correlation `rho` the effective gain saturates near `1 / rho`, so two hundred entities
+that move together are worth about as much as ten.
+
+The same reasoning is why the adapter has no `entity_pooling` parameter alongside its
+`alpha_pooling`. Both were considered and deferred rather than rejected, but the
+prerequisite is a dispersion-normalized conformity score, not merely a scale-free one.
 
 Note also that entity count never starves calibration here. `calibration_size` slices
 rows, and every entity shares the time index, so each entity receives the full
@@ -436,6 +453,22 @@ scores are stored and the quantile computation is applied at prediction time; no
 re-calibration is needed. For `IntervalReductionForecaster`, new coverage rates
 require that the underlying estimator can produce predictions at the corresponding
 quantile levels.
+
+### How many calibration scores a rate needs
+
+A conformal bound is an order statistic of the calibration scores, specifically the
+`ceil((n + 1) * q)`-th, where `q` is the tail level. That index exists only while it
+stays within `n`, which means a rate needs at least `q / (1 - q)` scores per value
+column to be representable at all: 9 for a symmetric 90%, 99 for a symmetric 99%, and
+roughly double each for an asymmetric scorer, which splits the miscoverage across two
+tails. Beyond that point the correct bound is unbounded, and any finite number the
+implementation returns under-covers.
+
+`SplitConformalForecaster` warns when you ask for a rate its calibration set cannot
+express, naming the horizon step and the count you would need. Note that the constraint
+is per value column but `calibration_size` slices rows, so every entity of a panel gets
+the full count no matter how many entities there are. A short history is what runs you
+out, not a wide panel.
 
 The right coverage rate reflects the cost asymmetry of the decision. Safety-critical
 applications (capacity planning, risk management) warrant high coverage because the

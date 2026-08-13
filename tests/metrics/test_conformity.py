@@ -314,10 +314,10 @@ class TestMultiColumnInverseScore:
         scorer = Residual().fit(self.scores)
         intervals = scorer.inverse_score(self.y_pred, self.scores, 0.6)
 
-        # At coverage 0.6 the tails are taken at 0.2 (method="lower") and 0.8
-        # (method="higher"). On five points those land on index 0 and index 4,
-        # so the bounds use each column's most extreme score: -0.1/0.1 added to
-        # a prediction of 1.0, and -10/10 added to 100.0.
+        # At coverage 0.6 the conformal tail indices on five scores are
+        # floor(6 * 0.2) = 1 and ceil(6 * 0.8) = 5, so the bounds use each
+        # column's most extreme score: -0.1/0.1 added to a prediction of 1.0,
+        # and -10/10 added to 100.0.
         assert intervals["small_lower_0.6"][0] == pytest.approx(0.9)
         assert intervals["small_upper_0.6"][0] == pytest.approx(1.1)
         assert intervals["big_lower_0.6"][0] == pytest.approx(90.0)
@@ -328,12 +328,13 @@ class TestMultiColumnInverseScore:
         scorer = AbsoluteResidual().fit(scores)
         intervals = scorer.inverse_score(self.y_pred, scores, 0.6)
 
-        # Symmetric: the 0.6 quantile (method="lower") of each column's sorted
-        # absolute scores, so one half-width per column, 0.05 and 5.0.
-        assert intervals["small_lower_0.6"][0] == pytest.approx(0.95)
-        assert intervals["small_upper_0.6"][0] == pytest.approx(1.05)
-        assert intervals["big_lower_0.6"][0] == pytest.approx(95.0)
-        assert intervals["big_upper_0.6"][0] == pytest.approx(105.0)
+        # Symmetric: one half-width per column at the conformal index
+        # ceil((n+1) * rate) = ceil(6 * 0.6) = 4, so the 4th smallest absolute
+        # score of each column, 0.1 and 10.0.
+        assert intervals["small_lower_0.6"][0] == pytest.approx(0.9)
+        assert intervals["small_upper_0.6"][0] == pytest.approx(1.1)
+        assert intervals["big_lower_0.6"][0] == pytest.approx(90.0)
+        assert intervals["big_upper_0.6"][0] == pytest.approx(110.0)
 
     def test_gamma_residual_scales_each_column_by_its_own_prediction(self):
         """The multiplicative path: per-column quantile times per-column denominator."""

@@ -383,33 +383,15 @@ class SeasonalSimilarity(BaseSimilarity):
         Distance metric for ``scipy.spatial.distance.cdist``.
     metric_params : dict or None, default=None
         Additional keyword arguments forwarded to the distance metric.
-
     bandwidth : float > 0, default=0.5
         Multiplier on the fitted distance scale. Values below 1 concentrate
         weight on nearer calibration rows, values above 1 flatten the weights
         toward uniform.
 
-        The default is below 1 here, unlike `DistanceSimilarity`, because
-        harmonic features are bounded on the unit circle. Their median pairwise
-        distance is around 1.5, so dividing by it flattens an already narrow
-        spread: at ``bandwidth=1.0`` a weekly seasonality retains about 41 of 50
-        calibration rows as effective sample size, close enough to uniform that
-        the weighted quantile usually selects the same order statistic as the
-        unweighted one. At ``0.5`` it retains about 25 of 50, which discriminates
-        while still averaging over a useful neighbourhood.
-
-        This default does not reproduce the behaviour from before the distance
-        scale was introduced, and cannot: expressed in this parameterisation the
-        old concentration was 0.64 for a weekly seasonality, 0.47 with two
-        harmonics, 0.71 monthly, and 1.66 annually. It varied with the
-        configuration precisely because it was unscaled, which is what this
-        parameterisation removes.
-
     Attributes
     ----------
     first_time_ : datetime
         Reference timestamp from the first calibration prediction.
-
     _distance_scale_ : float
         Median pairwise distance among the fit-time harmonic features. Unlike
         `DistanceSimilarity`, no per-column standardization is applied: the

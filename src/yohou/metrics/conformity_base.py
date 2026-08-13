@@ -110,9 +110,24 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
             medians = np.quantile(scores_array, 0.5, axis=0, method="lower")
             return list(np.atleast_1d(medians)), list(np.atleast_1d(medians))
 
-        lower_quantiles = np.quantile(scores_array, alpha / 2.0, axis=0, method="lower")
+        # Split conformal takes the ceil((n+1) * q)-th order statistic, not the
+        # plain empirical quantile. The (n+1) accounts for the test point being
+        # exchangeable with the calibration scores, and is what makes coverage
+        # at least the nominal rate. Without it the bound is one order statistic
+        # short and under-covers by construction, at every sample size.
+        n = scores_array.shape[0]
+        ordered = np.sort(scores_array, axis=0)
 
-        upper_quantiles = np.quantile(scores_array, 1.0 - alpha / 2.0, axis=0, method="higher")
+        upper_index = int(np.ceil((n + 1) * (1.0 - alpha / 2.0)))
+        lower_index = int(np.floor((n + 1) * (alpha / 2.0)))
+
+        # Beyond the resolvable range the true bound is unbounded; the widest
+        # observed score is the closest finite stand-in. Callers warn.
+        upper_index = min(max(upper_index, 1), n)
+        lower_index = min(max(lower_index, 1), n)
+
+        upper_quantiles = ordered[upper_index - 1]
+        lower_quantiles = ordered[lower_index - 1]
 
         return list(np.atleast_1d(lower_quantiles)), list(np.atleast_1d(upper_quantiles))
 
@@ -153,7 +168,12 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
                 "Increase calibration_size or reduce forecasting_horizon."
             )
 
-        quantiles = np.quantile(conformity_array, coverage_rate, axis=0, method="lower")
+        # Same (n+1) conformal correction as the asymmetric variant, applied to
+        # the single half-width instead of two tails.
+        n = conformity_array.shape[0]
+        ordered = np.sort(conformity_array, axis=0)
+        index = min(max(int(np.ceil((n + 1) * coverage_rate)), 1), n)
+        quantiles = ordered[index - 1]
 
         return list(np.atleast_1d(quantiles))
 

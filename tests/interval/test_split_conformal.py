@@ -1913,11 +1913,13 @@ class TestPerColumnCalibration:
 
         scores = forecaster.conformity_scores_.filter(pl.col("step") == 1).drop("step", "time")
         for column, width in widths.items():
-            column_scores = scores[column].to_numpy()
-            expected = float(
-                np.quantile(column_scores, 0.95, method="higher") - np.quantile(column_scores, 0.05, method="lower")
-            )
-            assert width == pytest.approx(expected), f"{column} width should come from its own scores"
+            ordered = np.sort(scores[column].to_numpy())
+            # Split conformal order statistics at 90%: the tails are
+            # floor((n+1) * 0.05) and ceil((n+1) * 0.95), one-indexed.
+            n = ordered.size
+            lower = ordered[max(int(np.floor((n + 1) * 0.05)), 1) - 1]
+            upper = ordered[min(int(np.ceil((n + 1) * 0.95)), n) - 1]
+            assert width == pytest.approx(float(upper - lower)), f"{column} width should come from its own scores"
 
     @pytest.mark.parametrize(
         "kwargs",
