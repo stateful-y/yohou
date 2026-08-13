@@ -5,6 +5,7 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 ## Setup
 
 - [Installation](installation.md): Install Yohou with pip, uv, or conda, including optional extras and development setup.
+- [Control Diagnostic Output](control-diagnostic-output.md): Route Yohou's log records, filter its warnings, and read the coverage warning's per-column detail.
 
 ## Forecasting
 
