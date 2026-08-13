@@ -1,5 +1,6 @@
 """Tests for SplitConformalForecaster."""
 
+import warnings
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -2002,3 +2003,70 @@ class TestCalibrationIndependenceCheck:
         # that catches this: the small column's width moves with it.
         with pytest.raises(AssertionError, match=r"(own conformity scores|pooled across value columns)"):
             check_per_column_calibration_independence(forecaster, y_train=y[:180])
+
+
+class TestConformalCoverage:
+    """Realized coverage must reach the nominal rate, not sit below it.
+
+    The existing tests pin order-statistic indices, which move together with an
+    off-by-one in the quantile convention and so cannot detect one. This asserts
+    the property the convention exists to deliver: with the ``(n + 1)``
+    correction the bound covers at least the nominal rate; without it every
+    sample size under-covers.
+    """
+
+    @staticmethod
+    def _series(n: int = 500, seed: int = 3) -> pl.DataFrame:
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        rng = np.random.default_rng(seed)
+        return pl.DataFrame({
+            "time": dates,
+            "value": [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + rng.normal(0, 1.0) for i in range(n)],
+        })
+
+    @pytest.mark.parametrize("scorer", [Residual(), AbsoluteResidual()], ids=["asymmetric", "symmetric"])
+    @pytest.mark.parametrize("rate", [0.8, 0.9])
+    def test_realized_coverage_reaches_the_nominal_rate(self, scorer, rate):
+        y = self._series()
+        n_train, n_steps = 300, 150
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=clone(scorer),
+        ).fit(y[:n_train], forecasting_horizon=1, coverage_rates=[rate])
+
+        covered = 0
+        for k in range(n_steps):
+            intervals = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[rate])
+            row = y[n_train + k : n_train + k + 1]
+            truth = float(row["value"][0])
+            lower = float(intervals[f"value_lower_{rate}"][0])
+            upper = float(intervals[f"value_upper_{rate}"][0])
+            covered += int(lower <= truth <= upper)
+            forecaster.observe(y=row)
+
+        realized = covered / n_steps
+        # Split conformal is conservative, so the bound is one-sided. The slack
+        # below nominal absorbs sampling noise over 150 steps without admitting
+        # the systematic one-order-statistic shortfall this guards against.
+        assert realized >= rate - 0.03, f"realized {realized:.1%} against nominal {rate:.0%}"
+
+    def test_warns_through_predict_interval_when_the_rate_is_unreachable(self):
+        """The guard must be wired into the emitting path, not only importable."""
+        y = self._series(n=200)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=20).fit(
+            y[:180], forecasting_horizon=1, coverage_rates=[0.99]
+        )
+
+        with pytest.warns(UserWarning, match="needs at least .* calibration scores per value column"):
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.99])
+
+    def test_reachable_rate_is_silent_through_predict_interval(self):
+        y = self._series(n=300)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=100).fit(
+            y[:250], forecasting_horizon=1, coverage_rates=[0.9]
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])

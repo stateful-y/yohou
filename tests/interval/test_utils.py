@@ -3,6 +3,7 @@
 import warnings
 
 import numpy as np
+import polars as pl
 import pytest
 
 from yohou.interval.utils import (
@@ -178,3 +179,23 @@ class TestConformalCorrection:
         x = np.arange(n, dtype=float)
         # Total mass 5/21 never reaches 0.99.
         assert weighted_quantile(x, 0.01, np.full(n, 1.0 / 21.0)) == pytest.approx(x[-1])
+
+    @pytest.mark.parametrize("rate", [0.5, 0.8, 0.9, 0.95])
+    def test_weighted_and_unweighted_paths_select_the_same_score(self, rate):
+        """The two reductions must agree, or configuring a similarity would shift the bound.
+
+        The unweighted path takes ``ceil((n + 1) * rate)`` directly; the weighted
+        path reaches the same index because uniform reserved-mass weights of
+        ``1 / (n + 1)`` accumulate to ``rate`` at exactly that point.
+        """
+        from yohou.metrics.conformity_base import BaseConformityScorer
+
+        rng = np.random.default_rng(5)
+        scores = np.sort(rng.normal(0, 1, 40))
+        frame = pl.DataFrame({"value": scores})
+
+        unweighted = BaseConformityScorer._compute_symmetric_quantiles(frame, rate)[0]
+        reserved = np.full(scores.size, 1.0 / (scores.size + 1))
+        weighted = weighted_quantile(scores, 1.0 - rate, reserved)
+
+        assert weighted == pytest.approx(unweighted)
