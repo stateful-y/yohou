@@ -1,5 +1,6 @@
 """Tests for PerVintageActualTransformer and the actual/forecast kind split."""
 
+import logging
 from datetime import datetime, timedelta
 
 import polars as pl
@@ -330,7 +331,7 @@ def test_get_feature_names_out_delegates_to_inner():
     assert tx.get_feature_names_out() == ["net_load"]
 
 
-def test_sub_two_row_vintages_are_dropped_with_a_warning():
+def test_sub_two_row_vintages_are_dropped_and_reported(caplog):
     """A vintage too small to fit per vintage is dropped, with a warning, not transformed.
 
     The truncated tail of a real forecast frame is full of single-row vintages
@@ -354,8 +355,12 @@ def test_sub_two_row_vintages_are_dropped_with_a_warning():
     })
     tx = PerVintageActualTransformer(StandardScaler())
 
-    with pytest.warns(UserWarning, match="dropped 1 vintage"):
+    # A record rather than a warning: the message itself says the condition is
+    # expected for a truncated tail, so it states what the transformer did.
+    with caplog.at_level(logging.INFO, logger="yohou.compose.per_vintage"):
         out = tx.fit_transform(frame)
+
+    assert [r for r in caplog.records if "dropped 1 vintage" in r.getMessage()]
 
     # the two full vintages survive; the single-row vintage is gone
     assert out["vintage_time"].unique().sort().to_list() == [datetime(2020, 1, 1), datetime(2020, 1, 2)]

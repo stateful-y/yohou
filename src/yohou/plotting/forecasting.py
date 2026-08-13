@@ -1,5 +1,6 @@
 """Forecast visualization functions."""
 
+import logging
 import re
 from typing import Literal
 
@@ -35,6 +36,8 @@ from yohou.plotting._utils import (
 )
 from yohou.plotting.evaluation import _discover_proba_targets
 from yohou.utils import inspect_panel, validate_plotting_data, validate_plotting_params
+
+logger = logging.getLogger(__name__)
 
 # The full palette list is used as the default effective palette in every
 # plot_forecast code path. Slots 0/1/2 are reserved for the three semantic
@@ -2428,7 +2431,6 @@ def _clean_series(series: pl.Series) -> np.ndarray:
         1-D float64 array with no missing values.
 
     """
-    import warnings  # noqa: PLC0415
 
     def _n_missing(s: pl.Series) -> int:
         """Count null and (for float columns) NaN entries in ``s``."""
@@ -2440,11 +2442,11 @@ def _clean_series(series: pl.Series) -> np.ndarray:
     clean = series.interpolate().forward_fill().backward_fill()
     n_interpolated = _n_missing(series) - _n_missing(clean)
     if n_interpolated > 0:
-        warnings.warn(
-            f"Interpolated {n_interpolated} NaN value(s) before decomposition.",
-            UserWarning,
-            stacklevel=4,
-        )
+        # A record, not a warning: it states what the helper did, not something
+        # the caller may need to act on. The interpolation is the documented
+        # behaviour of this path, so warning about it every time trained readers
+        # to skim a channel that should mean "look at this".
+        logger.info("Interpolated %d NaN value(s) before decomposition.", n_interpolated)
     return clean.to_numpy().astype(float)
 
 
