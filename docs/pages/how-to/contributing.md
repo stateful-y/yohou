@@ -240,6 +240,47 @@ Run all quality checks by combining the fix and test steps above:
     uv run prek run --all-files --show-diff-on-failure && uv run pytest
     ```
 
+### Diagnostics: warning or log record
+
+Yohou has two channels and they mean different things.
+
+- `warnings.warn` means **this may be wrong and you should look**. It is the
+  channel a consumer cannot easily ignore, so putting a statement of fact in it
+  trains readers to skim the one place that should always be worth reading.
+- `logging` under the `yohou` namespace means **here is what I did**. Use
+  `logging.getLogger(__name__)` at module level so the submodule hierarchy comes
+  for free and an application can turn one subsystem down without silencing the
+  rest.
+
+The library attaches only a `NullHandler` and **sets no level anywhere**. Routing
+and levels belong to the application.
+
+Moving a diagnostic between channels is a **breaking change** for anyone catching
+it, so name it explicitly in the pull request body with a `BREAKING CHANGE:`
+footer. `CHANGELOG.md` is generated from merged pull requests, so a hand-written
+entry there does not survive.
+
+**A log call in a hot path costs even when the level is disabled**, because the
+arguments are evaluated before the call decides to discard them. Pass values
+rather than pre-formatted strings, so the formatting happens only if a handler
+wants it:
+
+```python
+logger.info("Dropped %d vintage(s) below %d rows", dropped, minimum)   # cheap
+logger.info(f"Dropped {dropped} vintage(s) below {minimum} rows")      # not
+```
+
+The same applies to warnings, with an extra trap: repetition. Python's filter
+deduplicates per raise site, but that registry is per module and a fresh worker
+process does not inherit it, so a warning that looks like it fires once locally
+can fire once per worker. Audited at the time of writing: no warning site sits in
+a per-row or per-fold loop. Every one that sits in a loop at all iterates
+something bounded, such as columns, pipeline steps or coverage rates. The high
+counts seen downstream (134 occurrences of the forecast-coverage warning in one
+tuning step) came from repeated *calls* across trials and folds, not from a loop,
+which is why the fix there was aggregation in the consumer rather than anything
+here.
+
 ### Docstring Standards
 
 All public functions, methods, and classes require **NumPy-style** docstrings. Coverage is enforced at 100% by `interrogate`.

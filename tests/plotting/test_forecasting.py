@@ -444,8 +444,12 @@ class TestPlotDecompositionStl:
         )
         assert len(fig.data) == 2
 
-    def test_nan_interpolation_warning(self):
-        """STL mode warns when NaN values are interpolated."""
+    def test_nan_interpolation_is_logged_not_warned(self, caplog):
+        """Interpolating states what the helper did, so it is a record.
+
+        It was a warning, which diluted a channel a consumer cannot easily
+        ignore with something that is the documented behaviour of this path.
+        """
         dates = pl.date_range(
             pl.date(2018, 1, 1),
             pl.date(2022, 12, 31),
@@ -457,8 +461,12 @@ class TestPlotDecompositionStl:
         values[5] = None
         values[10] = None
         df = pl.DataFrame({"time": dates, "y": values})
-        with pytest.warns(UserWarning, match="Interpolated"):
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="yohou.plotting.forecasting"):
             fig = plot_decomposition(df, ["trend", "residual"], method="stl")
+
+        assert [r for r in caplog.records if "Interpolated" in r.getMessage()]
         assert_figure_valid(fig)
 
     def test_unsupported_interval_error(self):

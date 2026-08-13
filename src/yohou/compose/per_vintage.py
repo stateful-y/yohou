@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import warnings
+import logging
 
 import polars as pl
 from sklearn.base import clone
@@ -10,6 +10,8 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTransformer
 from yohou.base.transformer import BaseActualTransformer
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["PerVintageActualTransformer"]
 
@@ -241,12 +243,16 @@ class PerVintageActualTransformer(BaseForecastTransformer):
             parts.append(transformed)
 
         if dropped:
-            warnings.warn(
-                f"PerVintageActualTransformer dropped {dropped} vintage(s) with fewer than "
-                f"{_MIN_VINTAGE_ROWS} rows, which cannot be fitted per vintage. This is expected "
-                f"for the truncated tail of a forecast frame; those vintages are absent from the output.",
-                UserWarning,
-                stacklevel=3,
+            # A record, not a warning. The condition is expected for the truncated
+            # tail of a forecast frame, so it states what the transformer did rather
+            # than something the caller may need to act on. As a warning it diluted
+            # the channel a consumer cannot easily ignore.
+            logger.info(
+                "PerVintageActualTransformer dropped %d vintage(s) with fewer than %d rows, which "
+                "cannot be fitted per vintage. This is expected for the truncated tail of a forecast "
+                "frame; those vintages are absent from the output.",
+                dropped,
+                _MIN_VINTAGE_ROWS,
             )
 
         if not parts:
