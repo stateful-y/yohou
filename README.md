@@ -142,6 +142,25 @@ For questions and discussions, you can also open a [discussion](https://github.c
 
 This project is licensed under the terms of the [Apache-2.0 License](https://github.com/stateful-y/yohou/blob/main/LICENSE).
 
+## How do I cite Yohou?
+
+If you use Yohou in work you publish, please cite it:
+
+Guillaume Tauzin. Yohou: A time series forecasting package based on Scikit-Learn and Polars. https://github.com/stateful-y/yohou
+
+Or in BibTeX:
+
+```bibtex
+@software{yohou,
+  author  = "Guillaume Tauzin",
+  title   = "{Yohou: A time series forecasting package based on Scikit-Learn and Polars}",
+  url     = "https://github.com/stateful-y/yohou",
+  license = "Apache-2.0"
+}
+```
+
+Reference managers can read [CITATION.cff](https://github.com/stateful-y/yohou/blob/main/CITATION.cff) directly. To cite a specific version, see the [citation page](https://yohou.readthedocs.io/en/latest/pages/reference/citation/).
+
 ## Acknowledgements
 
 We would like to thank [Evolta Technologies](https://www.evolta-technologies.com/) for their support to the project.
