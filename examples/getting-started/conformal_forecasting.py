@@ -146,8 +146,6 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage_rates,
     )
-    _y_point = conformal.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_int = y_pred_int.hstack(_y_point.drop("time", "vintage_time"))
 
     print(f"Prediction columns: {y_pred_int.columns}")
     y_pred_int.head()
@@ -282,8 +280,6 @@ def _(SeasonalNaive, SplitConformalForecaster, forecasting_horizon, y_train):
         forecasting_horizon=forecasting_horizon,
         coverage_rates=[0.9],
     )
-    _y_point = conformal_naive.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_naive_int = y_pred_naive_int.hstack(_y_point.drop("time", "vintage_time"))
     y_pred_naive_int.head()
     return (y_pred_naive_int,)
 
