@@ -39,7 +39,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.10
+        run: uv tool install nox==2026.8.17
 
       - name: Set up Python
         run: uv python install 3.11
