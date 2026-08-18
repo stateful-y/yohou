@@ -148,8 +148,6 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    _y_point = conformal_standard.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_standard = y_pred_standard.hstack(_y_point.drop("time", "vintage_time"))
     return coverage, y_pred_standard
 
 
@@ -215,8 +213,6 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    _y_point = conformal_euclidean.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_euclidean = y_pred_euclidean.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_euclidean,)
 
 
@@ -420,8 +416,6 @@ def _(
         forecasting_horizon=forecasting_horizon,
         coverage_rates=coverage,
     )
-    _y_point = conformal_minkowski.predict(forecasting_horizon=forecasting_horizon)
-    y_pred_minkowski = y_pred_minkowski.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_minkowski,)
 
 

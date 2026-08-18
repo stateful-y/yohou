@@ -1842,3 +1842,141 @@ class TestReplayLeftTheBlockObserved:
         """
         with pytest.raises(RuntimeError, match=r"at \[datetime\.datetime\(2024, 1, 2"):
             self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 2)})
+
+
+class TestSplitConformalBarePointColumn:
+    """predict_interval emits the point forecast the bands are centred on.
+
+    The bands are built as an offset around the wrapped point forecaster's
+    prediction, and that prediction used to be discarded once the bounds were
+    derived. Callers wanting it had to re-derive it from the bounds, which only
+    recovers it when the conformity scorer is symmetric. It is now emitted
+    directly, at no extra ``predict`` call.
+    """
+
+    def test_bare_column_present_global(self, conformal_data):
+        """Global data carries a bare target column beside the bounds."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_pred_interval = scf.predict_interval(coverage_rates=[0.9])
+
+        assert "value" in y_pred_interval.columns
+        assert "value_lower_0.9" in y_pred_interval.columns
+        assert "value_upper_0.9" in y_pred_interval.columns
+
+    def test_bare_column_present_panel(self, y_X_factory):
+        """Panel data carries one bare column per group, prefixed."""
+        y, _ = y_X_factory(length=250, n_targets=1, n_features=0, seed=42, panel=True, n_groups=2)
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(y, forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_pred_interval = scf.predict_interval(coverage_rates=[0.9])
+
+        # Derive the expected names rather than hardcoding the fixture's, so the
+        # test states the contract (one bare column per group per target) instead
+        # of restating the fixture.
+        for group in scf.groups_:
+            for target in scf.local_y_schema_:
+                bare = f"{group}__{target}"
+                assert bare in y_pred_interval.columns, (
+                    f"missing bare point column {bare!r} in {sorted(y_pred_interval.columns)}"
+                )
+                assert f"{bare}_lower_0.9" in y_pred_interval.columns
+                assert f"{bare}_upper_0.9" in y_pred_interval.columns
+
+    def test_bare_column_equals_point_forecaster_prediction(self, conformal_data):
+        """The emitted column is the wrapped forecaster's own prediction."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data, forecasting_horizon=3, coverage_rates=[0.9])
+
+        y_pred_interval = scf.predict_interval(forecasting_horizon=3, coverage_rates=[0.9])
+        y_pred_point = scf.predict(forecasting_horizon=3)
+
+        np.testing.assert_allclose(
+            y_pred_interval["value"].to_numpy(),
+            y_pred_point["value"].to_numpy(),
+        )
+
+    def test_bare_column_survives_observe_predict_interval(self, conformal_data):
+        """The walk-forward loop concatenates vintages without dropping it."""
+        train = conformal_data.head(200)
+        test = conformal_data.tail(50)
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(train, forecasting_horizon=5, coverage_rates=[0.9])
+
+        predictions = scf.observe_predict_interval(y=test, forecasting_horizon=5, coverage_rates=[0.9])
+
+        assert "value" in predictions.columns
+
+    def test_bare_column_is_not_re_derived_from_the_bounds(self, conformal_data):
+        """An asymmetric scorer separates the point forecast from the midpoint.
+
+        With a signed ``Residual`` scorer the bands are not centred on the point
+        forecast, so the bound midpoint is a different number. This is the case
+        the bare column exists for: the midpoint is only equal to the point
+        forecast under a symmetric scorer, and nothing guarantees that.
+        """
+        scf = SplitConformalForecaster(calibration_size=50, conformity_scorer=Residual())
+        scf.fit(conformal_data, forecasting_horizon=3, coverage_rates=[0.9])
+
+        y_pred_interval = scf.predict_interval(forecasting_horizon=3, coverage_rates=[0.9])
+
+        bare = y_pred_interval["value"].to_numpy()
+        midpoint = (y_pred_interval["value_lower_0.9"].to_numpy() + y_pred_interval["value_upper_0.9"].to_numpy()) / 2
+
+        np.testing.assert_allclose(bare, scf.predict(forecasting_horizon=3)["value"].to_numpy())
+        assert not np.allclose(bare, midpoint), (
+            "signed Residual should not centre the bands on the point forecast; "
+            "if this passes the test no longer distinguishes the two"
+        )
+
+
+class TestSplitConformalStrategy:
+    """``strategy`` describes this forecaster instead of being silently inert.
+
+    The parameter selects how a recursive step derives its next observation
+    from the previous step's bounds. This class has no such step: the wrapped
+    point forecaster produces the whole horizon and the bands are draped over
+    it, so recursion, where it happens at all, is on point values. ``"point"``
+    is therefore the accurate default, and the two values that would mean
+    bound-midpoint recursion are refused rather than ignored.
+    """
+
+    def test_default_is_point(self):
+        """The signature advertises what the class actually does."""
+        import inspect
+
+        for method in (SplitConformalForecaster.predict_interval, SplitConformalForecaster.observe_predict_interval):
+            assert inspect.signature(method).parameters["strategy"].default == "point", (
+                f"{method.__name__} should default to 'point'"
+            )
+
+    @pytest.mark.parametrize("strategy", ["mean", "median"])
+    def test_unhonourable_strategy_raises(self, conformal_data, strategy):
+        """Asking for bound-midpoint recursion fails instead of being ignored."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.9])
+
+        with pytest.raises(ValueError, match="always recurses on the point forecast"):
+            scf.predict_interval(coverage_rates=[0.9], strategy=strategy)
+
+    @pytest.mark.parametrize("strategy", [None, "point"])
+    def test_point_and_none_are_accepted(self, conformal_data, strategy):
+        """The two values that do describe this class are accepted."""
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_pred_interval = scf.predict_interval(coverage_rates=[0.9], strategy=strategy)
+
+        assert "value" in y_pred_interval.columns
+
+    def test_observe_predict_interval_rejects_too(self, conformal_data):
+        """The guard is on both entry points, not just the direct one."""
+        train = conformal_data.head(200)
+        test = conformal_data.tail(50)
+        scf = SplitConformalForecaster(calibration_size=50)
+        scf.fit(train, forecasting_horizon=5, coverage_rates=[0.9])
+
+        with pytest.raises(ValueError, match="always recurses on the point forecast"):
+            scf.observe_predict_interval(y=test, forecasting_horizon=5, coverage_rates=[0.9], strategy="mean")

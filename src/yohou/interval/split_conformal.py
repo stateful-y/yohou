@@ -1025,7 +1025,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -1096,6 +1096,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             [0, 1], or ``groups`` contains names not seen during fit.
 
         """
+        self._validate_strategy(strategy)
+
         check_is_fitted(
             self,
             ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
@@ -1270,11 +1272,42 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         upper_bound = pl.DataFrame(upper_data)
         return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
+    @staticmethod
+    def _validate_strategy(strategy: str | None) -> None:
+        """Reject a recursion strategy this forecaster cannot honour.
+
+        ``strategy`` selects how a recursive step derives its next observation
+        from the previous step's bounds. This forecaster has no such step, so
+        only ``"point"`` (and ``None``, meaning the default) describes it.
+        Silently accepting ``"mean"`` or ``"median"`` would let a caller ask for
+        bound-midpoint recursion, receive point-based behaviour, and never learn
+        the difference.
+
+        Parameters
+        ----------
+        strategy : str or None
+            The requested strategy.
+
+        Raises
+        ------
+        ValueError
+            If ``strategy`` is neither ``None`` nor ``"point"``.
+
+        """
+        if strategy not in (None, "point"):
+            raise ValueError(
+                f"SplitConformalForecaster always recurses on the point forecast, so "
+                f"strategy={strategy!r} cannot be honoured. The wrapped point forecaster "
+                f"produces the whole horizon in one call and the conformal bands are "
+                f"derived from it, so bound midpoints are never fed back. Pass "
+                f"strategy='point' (the default) or omit it."
+            )
+
     def predict_interval(  # ty: ignore[invalid-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -1294,10 +1327,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"mean", "median", "point"} or None, default=None
-            Strategy for deriving point predictions from prediction intervals
-            during recursive multi-step forecasting.  If ``None``, defaults
-            to ``"mean"``.
+        strategy : {"point"} or None, default="point"
+            Retained for interface parity with
+            [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster],
+            where it selects how a recursive step derives its next observation.
+            This forecaster has no such step: the wrapped ``point_forecaster_``
+            produces the whole horizon in one call and the bands are draped over
+            the result, so any multi-step recursion happens inside that
+            forecaster and always on point values, never on bound midpoints.
+            ``"point"`` therefore describes what this class does, and is the
+            default. ``"mean"`` and ``"median"`` cannot be honoured and raise.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.  Ignored when the forecaster was not fitted on panel
@@ -1315,10 +1354,17 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         pl.DataFrame
-            Interval predictions with ``"vintage_time"``, ``"time"``, and
-            lower/upper bound columns for each target at each coverage rate.
+            Interval predictions with ``"vintage_time"``, ``"time"``, a bare
+            point-forecast column per target, and lower/upper bound columns for
+            each target at each coverage rate. The bare column is the wrapped
+            point forecaster's prediction, the value the bands are centred on.
+            Reading it is exact for any conformity scorer, whereas re-deriving
+            the point forecast from the bounds only recovers it when the scorer
+            is symmetric.
 
         """
+        self._validate_strategy(strategy)
+
         check_is_fitted(
             self,
             ["local_y_schema_", "local_X_actual_schema_", "shared_X_actual_schema_", "groups_"],
@@ -1420,8 +1466,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
                 rate_parts.append(y_pred_interval_rate_step)
 
-            # Add time column once at the front
-            y_pred_intervals_step = pl.concat([y_pred_step_time, *rate_parts], how="horizontal")
+            # Add time column once at the front, then the bare point columns.
+            # ``y_pred_step_values`` is the wrapped point forecaster's own output
+            # for this step, already sliced above for conformity scoring, so
+            # emitting it costs no second ``predict`` call. It lets a caller read
+            # the point forecast the bands were built around, rather than
+            # re-deriving it from the bounds, which only recovers the point
+            # forecast when the conformity scorer is symmetric.
+            y_pred_intervals_step = pl.concat([y_pred_step_time, y_pred_step_values, *rate_parts], how="horizontal")
 
             y_pred_intervals_list.append(y_pred_intervals_step)
 

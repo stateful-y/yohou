@@ -171,8 +171,6 @@ def _(
     _horizon = len(y_test)
     fc_residual.fit(y_train, forecasting_horizon=_horizon)
     y_pred_residual = fc_residual.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
-    _y_point = fc_residual.predict(forecasting_horizon=_horizon)
-    y_pred_residual = y_pred_residual.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -213,8 +211,6 @@ def _(
     _horizon = len(y_test)
     fc_abs.fit(y_train, forecasting_horizon=_horizon)
     y_pred_abs = fc_abs.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
-    _y_point = fc_abs.predict(forecasting_horizon=_horizon)
-    y_pred_abs = y_pred_abs.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -256,8 +252,6 @@ def _(
     _horizon = len(y_test)
     fc_gamma.fit(y_train, forecasting_horizon=_horizon)
     y_pred_gamma = fc_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
-    _y_point = fc_gamma.predict(forecasting_horizon=_horizon)
-    y_pred_gamma = y_pred_gamma.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -296,8 +290,6 @@ def _(
     _horizon = len(y_test)
     fc_abs_gamma.fit(y_train, forecasting_horizon=_horizon)
     y_pred_abs_gamma = fc_abs_gamma.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
-    _y_point = fc_abs_gamma.predict(forecasting_horizon=_horizon)
-    y_pred_abs_gamma = y_pred_abs_gamma.hstack(_y_point.drop("time", "vintage_time"))
 
     plot_forecast(
         y_test,
@@ -451,8 +443,6 @@ def _(
     _horizon = len(y_test)
     fc_sim.fit(y_train, forecasting_horizon=_horizon)
     _y_pred_sim = fc_sim.predict_interval(forecasting_horizon=_horizon, coverage_rates=[0.9])
-    _y_point = fc_sim.predict(forecasting_horizon=_horizon)
-    _y_pred_sim = _y_pred_sim.hstack(_y_point.drop("time", "vintage_time"))
     plot_forecast(
         y_test,
         _y_pred_sim,

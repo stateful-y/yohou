@@ -54,12 +54,34 @@ bound columns for each requested coverage rate:
 
 ```python
 y_pred = interval_forecaster.predict_interval()
-# columns include: nsw__demand_lower_0.9, nsw__demand_upper_0.9, ...
+# columns include: nsw__demand, nsw__demand_lower_0.9, nsw__demand_upper_0.9, ...
 ```
 
-The column naming pattern is `{component}_lower_{rate}` and
+The bound naming pattern is `{component}_lower_{rate}` and
 `{component}_upper_{rate}`. For multiple components or coverage rates,
 one pair of columns is produced per combination.
+
+`SplitConformalForecaster` also returns a bare `{component}` column holding the
+point forecast its bands are centred on. Read that column when you want the
+model's own estimate. Do not re-derive it by averaging the bounds: that only
+recovers the point forecast when the conformity scorer is symmetric, and returns
+a different number for a signed scorer such as `Residual`.
+
+An interval forecaster with no point forecaster inside it, such as
+`IntervalReductionForecaster`, has no such value to report and returns bound
+columns only.
+
+### A note on `strategy`
+
+`predict_interval` accepts a `strategy` argument that selects how a recursive
+step derives its next observation from the previous step's bounds. It applies to
+forecasters that recurse at the interval level.
+
+`SplitConformalForecaster` does not: the wrapped point forecaster produces the
+whole horizon in one call, and any recursion inside it runs on point values
+rather than bound midpoints. `strategy` therefore defaults to `"point"` on this
+class, which is what it has always done, and `"mean"` or `"median"` raise rather
+than being silently ignored.
 
 ## 3. Score Coverage and Sharpness
 
