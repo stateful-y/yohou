@@ -1,5 +1,6 @@
 """Implementation of conformal forecasters."""
 
+import math
 import numbers
 import warnings
 from typing import Literal
@@ -22,6 +23,15 @@ from .utils import weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
 
+# Fewest conformity scores the deepest horizon step may collect under a strided
+# calibration replay. Below this the tail quantiles of the score distribution
+# are estimated from a handful of samples, so intervals get wide and unstable
+# in a way that surfaces weeks later as bad coverage rather than at fit. The
+# value is a judgment call: 30 keeps the 90th percentile estimate inside the
+# sample rather than at its extremes, while staying reachable with a few weeks
+# of daily origins.
+MIN_STRIDED_SCORES_PER_STEP = 30
+
 
 class SplitConformalForecaster(BaseIntervalForecaster):
     """Split conformal forecaster implementation.
@@ -35,7 +45,19 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     point_forecaster : BasePointForecaster, default=SeasonalNaive()
         Point forecaster used to generate point predictions.
     calibration_size : int >= 1, default=100
-        Number of observations to use for calibration.
+        Number of observations to use for calibration. Always counted in
+        rows, whatever ``calibration_stride`` is set to.
+    calibration_stride : int >= 1 or None, default=None
+        Rows observed between successive calibration replay origins. ``None``
+        keeps the stride-1 replay: one conformity score per calibration row
+        per horizon step. When set, the replay still observes every
+        calibration row but scores only origins ``calibration_stride`` rows
+        apart, ending on the last calibration row, so the scores match a
+        production cadence of one forecast per stride. ``calibration_size``
+        must be a multiple of the stride. Step ``h`` then collects
+        ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
+        scores; fit refuses a configuration whose deepest step falls below
+        ``MIN_STRIDED_SCORES_PER_STEP``.
     conformity_scorer : BaseConformityScorer, default=Residual()
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
@@ -75,6 +97,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         **BaseIntervalForecaster._parameter_constraints,
         "point_forecaster": [BasePointForecaster],
         "calibration_size": [Interval(numbers.Integral, 1, None, closed="left")],
+        "calibration_stride": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "conformity_scorer": [BaseConformityScorer],
         "similarity": [BaseSimilarity, None],
         "adapter": [BaseConformalAdapter, None],
@@ -104,6 +127,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         similarity: BaseSimilarity | None = None,
         adapter: BaseConformalAdapter | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        calibration_stride: StrictInt | None = None,
     ):
         BaseIntervalForecaster.__init__(self, panel_strategy=panel_strategy)
 
@@ -112,6 +136,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.similarity = similarity
         self.adapter = adapter
         self.calibration_size = calibration_size
+        self.calibration_stride = calibration_stride
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -178,6 +203,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # Validate interval-specific parameters (coverage rates)
         _, self.fit_coverage_rates_ = self._validate_interval_fit_params(self.fit_forecasting_horizon_, coverage_rates)
 
+        self._validate_calibration_stride(forecasting_horizon)
+
         # Handle splitting with optional X
         if X_actual is None:
             y_train, y_calib = train_test_split(y, test_size=self.calibration_size, shuffle=False)
@@ -195,17 +222,19 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             X_forecast=X_forecast,
         )
 
-        # stride=1: each row of y_calib produces one prediction window of length
-        # forecasting_horizon.  This yields calibration_size - step + 1 conformity
-        # scores for each horizon step k, instead of the ~2-3 scores that result
-        # from stride=forecasting_horizon.  More calibration scores per step gives
-        # quantiles that are stable and well-separated.
+        # At the default calibration_stride=None the replay runs at stride 1: each row
+        # of y_calib produces one prediction window of length forecasting_horizon,
+        # yielding calibration_size - step + 1 conformity scores per horizon step
+        # instead of the ~2-3 that stride=forecasting_horizon would leave. More
+        # calibration scores per step gives quantiles that are stable and
+        # well-separated.
         #
-        # The stride is not a cost knob, which is why there is no trade to make here.
-        # Each origin yields exactly one score per horizon step, so scores, origins and
-        # predictions are the same number: raising the stride buys speed only by
-        # discarding scores one for one.  With a weighted quantile over
-        # similarity-concentrated scores, that budget is already close to its floor.
+        # The stride is not a cost knob: each origin yields exactly one score per
+        # horizon step, so raising it buys speed only by discarding scores one for
+        # one. A configured calibration_stride is a *cadence* knob instead: it
+        # restricts scores to origins matching a production decision cadence (one
+        # forecast per day), and _validate_calibration_stride has already refused a
+        # configuration whose score budget could not hold.
         #
         # X_future and X_forecast are forwarded, not withheld.  Given either,
         # `_observe_predict_loop` derives step columns once over every observation time
@@ -224,6 +253,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         direct = getattr(point, "reduction_strategy", None) == "direct"
         bulk = getattr(point, "_observe_predict_bulk_origins", None)
         batched = getattr(point, "_observe_predict_batched_origins", None)
+        replay_stride = self.calibration_stride or 1
 
         # Three paths, most to least aggressive. The bulk one additionally skips the
         # rolling observe, which is sound only where every transformer declares
@@ -234,7 +264,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # state the forecaster is left in, so a state defect is only attributable to a
         # path if the fitted object can say which one it took. Establishing that for the
         # 2026-08-08 regression cost a bisect across two submodule bumps.
-        if direct and bulk is not None and point._chains_are_batch_invariant():
+        # The bulk path replays every origin by construction, so a configured
+        # calibration_stride routes to the batched or rolling path, both of which
+        # take the stride and still observe every calibration row.
+        if direct and bulk is not None and replay_stride == 1 and point._chains_are_batch_invariant():
             replay_path = "bulk"
         elif direct and batched is not None:
             replay_path = "batched"
@@ -242,7 +275,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             replay_path = "rolling"
         self.replay_path_ = replay_path
 
-        if direct and bulk is not None and point._chains_are_batch_invariant():
+        if replay_path == "bulk":
             y_pred_calib = bulk(
                 y=y_calib,
                 X_actual=X_actual_calib,
@@ -251,12 +284,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 X_forecast=X_forecast,
                 predict_transformed=False,
             )
-        elif direct and batched is not None:
+        elif replay_path == "batched":
             y_pred_calib = batched(
                 y=y_calib,
                 X_actual=X_actual_calib,
                 groups=point.groups_ or [],
-                stride=1,
+                stride=replay_stride,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 predict_transformed=False,
@@ -266,7 +299,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y=y_calib,
                 X_actual=X_actual_calib,
                 forecasting_horizon=None,
-                stride=1,
+                stride=replay_stride,
                 predict_transformed=False,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -330,6 +363,50 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 )
 
         return self
+
+    def _validate_calibration_stride(self, forecasting_horizon: int) -> None:
+        """Reject a strided calibration whose score budget cannot hold.
+
+        Two failure modes are caught at fit time rather than surfacing as bad
+        intervals later. A ``calibration_size`` that is not a multiple of the
+        stride would leave the last replay origin short of the block end, so
+        the origins would drift off the production cadence the stride exists
+        to match. And a block too small for the stride leaves the deepest
+        horizon step with too few conformity scores: step ``h`` collects
+        ``C/k - ceil(h/k) + 1`` scores (``C`` rows, stride ``k``), so the
+        deepest step is always the binding one.
+
+        Raises
+        ------
+        ValueError
+            If ``calibration_size`` is not a multiple of ``calibration_stride``,
+            or the deepest step's score count falls below
+            ``MIN_STRIDED_SCORES_PER_STEP``.
+        """
+        if self.calibration_stride is None:
+            return
+        k = self.calibration_stride
+        c = self.calibration_size
+
+        if c % k != 0:
+            raise ValueError(
+                f"calibration_size={c} is not a multiple of calibration_stride={k}. "
+                f"The strided replay tail-anchors its origins on the last calibration "
+                f"row, so the block must hold a whole number of strides."
+            )
+
+        depth = math.ceil(forecasting_horizon / k)
+        worst = c // k - depth + 1
+        if worst < MIN_STRIDED_SCORES_PER_STEP:
+            needed = (MIN_STRIDED_SCORES_PER_STEP - 1 + depth) * k
+            binding_lo = (depth - 1) * k + 1
+            raise ValueError(
+                f"calibration_stride={k} with calibration_size={c} leaves "
+                f"{worst} conformity scores at the binding deep steps "
+                f"({binding_lo} to {forecasting_horizon}), below the floor of "
+                f"{MIN_STRIDED_SCORES_PER_STEP}. The smallest calibration_size "
+                f"whose worst step clears the floor is {needed}."
+            )
 
     def _check_replay_left_the_block_observed(self, y: pl.DataFrame, replay_path: str) -> None:
         """Fail here if the replay did not leave the point forecaster where fit ends.

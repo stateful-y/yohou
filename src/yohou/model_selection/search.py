@@ -708,10 +708,19 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         router = MetadataRouter(owner=self)
 
         # Add forecaster routing
+        # The fit-to-predict_interval mapping is what lets fit(**params) carry
+        # predict-side metadata (e.g. the walk-forward ``stride``) into the
+        # bucket the inner CV loop reads via
+        # ``getattr(routed_params.forecaster, response_method)``. Only
+        # predict_interval is mapped: sklearn resolves ``__metadata_request__*``
+        # class attributes by substring, so the ``stride`` key declared for
+        # predict_interval also appears (unrequested) on ``predict``, and a
+        # fit-to-predict mapping would reject routed fit params against it.
         router.add(
             forecaster=self.forecaster,
             method_mapping=MethodMapping()
             .add(caller="fit", callee="fit")
+            .add(caller="fit", callee="predict_interval")
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
             .add(caller="predict_class_proba", callee="predict_class_proba")

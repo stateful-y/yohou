@@ -400,6 +400,19 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     _parameter_constraints: dict = {}
 
+    # ``stride`` is walk-forward metadata consumed by ``observe_predict_interval``,
+    # but search CV routing buckets predict-side parameters under the scorer's
+    # response method, which is ``predict_interval``. Declaring the key here (not
+    # in the ``predict_interval`` signature, which never takes a stride) is what
+    # lets a caller opt in with ``set_predict_interval_request(stride=True)`` so
+    # the search's fit can route the value into its inner walk-forward. The alias
+    # stays None (unset): conformance requires empty default requests, so a
+    # caller that routes OTHER fit metadata sharing a predict_interval key
+    # (coverage_rates) must pair its ``set_fit_request(coverage_rates=True)``
+    # with ``set_predict_interval_request(coverage_rates=False)`` on the
+    # instance.
+    __metadata_request__predict_interval = {"stride": None}
+
     def __init__(
         self,
         *,

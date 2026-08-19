@@ -82,6 +82,26 @@ Because the calibration scores are computed per horizon step, step 1 and step 7
 predictions can have different interval widths. This reflects the natural behavior
 that uncertainty grows with the forecast horizon.
 
+### Strided Calibration
+
+The stride-1 replay scores every calibration row as an origin. A production
+system that forecasts once per day never predicts from most of those origins,
+so their scores describe decisions the system does not make. The optional
+`calibration_stride` parameter (default `None`, meaning the stride-1 replay)
+restricts scoring to origins `calibration_stride` rows apart, tail-anchored on
+the last calibration row, while the replay still observes every row so the
+wrapped forecaster ends fit observed through the block.
+
+`calibration_size` keeps meaning rows, whatever the stride. With block size $C$
+and stride $k$, horizon step $h$ collects $C/k - \lceil h/k \rceil + 1$ scores:
+origins near the block end contribute nothing for steps whose targets fall past
+it, so the deepest step always has the fewest. Fit validates that $C$ is a
+multiple of $k$ and refuses a configuration whose deepest step would fall below
+`MIN_STRIDED_SCORES_PER_STEP` (30), reporting the smallest `calibration_size`
+that would pass. A strided calibration therefore needs a longer window than a
+stride-1 one: daily origins at a 48-step horizon need at least 744 hourly rows
+where 100 might otherwise do.
+
 An important nuance: the coverage guarantee is marginal, meaning it holds on average
 across the calibration set. It does not guarantee that any specific individual
 prediction interval will contain the true value. In regions where the model performs

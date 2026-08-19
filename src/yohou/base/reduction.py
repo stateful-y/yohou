@@ -137,6 +137,16 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         per output, so it needs them all. ``"dir-rec"`` *could* filter (before
         each step's feature augmentation) but does not; that is a deliberate
         scope decision rather than a structural limit.
+    training_stride : int, default=1
+        Keep one tabularized training instance every ``training_stride`` rows,
+        tail-anchored: the most recent instance is always kept and kept
+        origins sit ``training_stride`` rows apart counting back from it. The
+        default 1 keeps every instance. Combined with data whose last row sits
+        on a production origin, a stride of one day in rows trains only on
+        instances whose origin matches the production decision cadence. The
+        mask applies to the feature matrix, the target matrix, and
+        ``sample_weight`` in lockstep, before ``nan_handling``, and on panel
+        data it is built per group and stacked in group order.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -220,6 +230,7 @@ default="first_step"
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
+        "training_stride": [Interval(numbers.Integral, 1, None, closed="left")],
         "nan_handling": [StrOptions({"drop", "pass"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
         "time_weighter": [BaseWeighter, None],
@@ -247,6 +258,7 @@ default="first_step"
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
+        training_stride: int = 1,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         time_weighter: BaseWeighter | None = None,
@@ -266,6 +278,7 @@ default="first_step"
         self.estimator = estimator
         self.reduction_strategy = reduction_strategy
         self.step_feature_alignment = step_feature_alignment
+        self.training_stride = training_stride
         self.nan_handling = nan_handling
         self.n_jobs = n_jobs
         self.time_weighter = time_weighter
@@ -696,6 +709,74 @@ default="first_step"
             forecasting_horizon=forecasting_horizon,
         )
 
+    def _training_stride_mask(
+        self,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        forecasting_horizon: int,
+    ) -> np.ndarray | None:
+        """Build the tail-anchored keep mask over tabularized instances.
+
+        Instance ``i`` of a series with ``n`` instances is kept when
+        ``i % k == (n - 1) % k``, so the most recent instance is always kept
+        and kept origins sit ``k`` rows apart counting back from it. Tail
+        anchoring is the point: the data tail is what upstream preparation
+        aligns to the production origin, while the head depends on the
+        configured training window and carries no anchor.
+
+        Returns ``None`` when ``training_stride == 1`` so callers skip the
+        filter entirely. On panel data one mask is built per group and
+        concatenated in ``groups_`` order, matching how
+        ``_get_stacked_tabularized_data`` and ``_process_fit_weights`` stack
+        frames and weights.
+        """
+        if self.training_stride == 1:
+            return None
+        k = self.training_stride
+
+        def one(n_instances: int) -> np.ndarray:
+            return np.arange(n_instances) % k == (n_instances - 1) % k
+
+        if self.groups_ is None:
+            assert isinstance(y_t, pl.DataFrame)
+            return one(len(y_t) - forecasting_horizon)
+        assert isinstance(y_t, dict)
+        return np.concatenate([one(len(y_t[g]) - forecasting_horizon) for g in self.groups_])
+
+    def _apply_training_stride(
+        self,
+        X_tab: pl.DataFrame,
+        y_tab: pl.DataFrame,
+        sample_weight: np.ndarray | None,
+        y_t: pl.DataFrame | dict[str, pl.DataFrame],
+        forecasting_horizon: int,
+    ) -> tuple[pl.DataFrame, pl.DataFrame, np.ndarray | None]:
+        """Filter tabularized data to strided instances, weights in lockstep.
+
+        Runs once per estimator-fit call, before any ``nan_handling``, so the
+        NaN-drop statistics reflect only kept instances and every reduction
+        strategy sees the same strided dataset.
+        """
+        mask = self._training_stride_mask(y_t, forecasting_horizon)
+        if mask is None:
+            return X_tab, y_tab, sample_weight
+
+        keep = pl.Series(mask)
+        X_tab = X_tab.filter(keep)
+        y_tab = y_tab.filter(keep)
+        if sample_weight is not None:
+            sample_weight = sample_weight[mask]
+
+        if len(X_tab) == 0:
+            # Unreachable when the pre-stride dataset is non-empty: the mask is
+            # tail-anchored, so the last instance is always kept. Guarded anyway
+            # so a future mask change cannot fail downstream in silence.
+            raise ValueError(
+                f"Training dataset is empty (0 samples) after applying "
+                f"training_stride={self.training_stride}. Check that the input "
+                f"series is long enough for the forecasting horizon and the stride."
+            )
+        return X_tab, y_tab, sample_weight
+
     def _apply_nan_handling(
         self,
         X_tab: pl.DataFrame,
@@ -763,9 +844,17 @@ default="first_step"
 
         if n_dropped > 0:
             if n_dropped == n_total:
+                stride_hint = (
+                    f" The {n_total} instances are the ones kept by "
+                    f"training_stride={self.training_stride}; a coarser stride "
+                    f"leaves fewer instances to survive NaN handling."
+                    if self.training_stride > 1
+                    else ""
+                )
                 raise ValueError(
                     f"All {n_total} training instances contain NaN{context}. "
                     f"Cannot fit with nan_handling='drop' and 0 samples remaining."
+                    f"{stride_hint}"
                 )
             pct = 100 * n_dropped / n_total
             warnings.warn(
@@ -958,6 +1047,7 @@ default="first_step"
             y_t,
             forecasting_horizon,
         )
+        X_tab, y_tab, sample_weight = self._apply_training_stride(X_tab, y_tab, sample_weight, y_t, forecasting_horizon)
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         return self._fit_single_estimator(
             X_tab,
@@ -1100,6 +1190,7 @@ default="first_step"
             y_t,
             forecasting_horizon,
         )
+        X_tab, y_tab, sample_weight = self._apply_training_stride(X_tab, y_tab, sample_weight, y_t, forecasting_horizon)
 
         if self.groups_ is None:
             y_columns = list(self.local_y_t_schema_.keys())
@@ -1178,6 +1269,7 @@ default="first_step"
             y_t,
             forecasting_horizon,
         )
+        X_tab, y_tab, sample_weight = self._apply_training_stride(X_tab, y_tab, sample_weight, y_t, forecasting_horizon)
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         assert isinstance(y_tab, pl.DataFrame)
 
