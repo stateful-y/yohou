@@ -322,16 +322,26 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             scorer_tags = self.conformity_scorer.__sklearn_tags__()
             assert scorer_tags.scorer_tags is not None
             self._adapter_symmetric_ = scorer_tags.scorer_tags.symmetric
-            # One clone per (step, value column). The level modulates a quantile
+            # One clone per distinct pooling slot. The level modulates a quantile
             # that is already per column, so a level shared across columns would
-            # let one entity's misses widen every other entity's interval.
+            # let one entity's misses widen every other entity's interval; the
+            # column axis is therefore never pooled. The step axis is, when
+            # alpha_pooling="shared", in which case every step key points at the
+            # same object rather than at horizon-many identical copies of it.
             adapter_columns = [c for c in conformity_scores.columns if c not in ("time", "step")]
-            self.adapters_ = {}
-            for step in range(1, 1 + forecasting_horizon):
-                key = f"step_{step}"
-                self.adapters_[key] = {
-                    column: clone(self.adapter).fit(self.fit_coverage_rates_, symmetric=self._adapter_symmetric_)
-                    for column in adapter_columns
+            self.adapter_pooling_ = self.adapter.alpha_pooling
+            steps = range(1, 1 + forecasting_horizon)
+
+            def _new_adapter():
+                """Return one freshly seeded adapter clone for a pooling slot."""
+                return clone(self.adapter).fit(self.fit_coverage_rates_, symmetric=self._adapter_symmetric_)
+
+            if self.adapter_pooling_ == "shared":
+                shared = {column: _new_adapter() for column in adapter_columns}
+                self.adapters_ = {f"step_{step}": dict(shared) for step in steps}
+            else:
+                self.adapters_ = {
+                    f"step_{step}": {column: _new_adapter() for column in adapter_columns} for step in steps
                 }
 
         return self
@@ -726,15 +736,46 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 n_rows=n_rows,
             )
 
-        if getattr(self.adapter, "alpha_pooling", "per_step") == "shared":
+        if self.adapter_pooling_ == "shared":
             pooled = self._pool_adapter_errors(per_step_errors, coverage_rates, symmetric, n_rows)
-            for key in per_step_errors:
-                for column, adapter in self.adapters_[key].items():
+            # One object per column under sharing, so drive each column once from
+            # the pooled trajectory. Walking the step keys would advance the same
+            # object once per horizon step, moving the level fh times too far per
+            # observed row.
+            seen: set[int] = set()
+            for step_adapters in self.adapters_.values():
+                for column, adapter in step_adapters.items():
+                    if id(adapter) in seen:
+                        continue
+                    seen.add(id(adapter))
                     adapter.observe([row[column] for row in pooled])
         else:
             for key, errors in per_step_errors.items():
                 for column, adapter in self.adapters_[key].items():
                     adapter.observe([row[column] for row in errors])
+
+    def _distinct_adapters(self) -> list:
+        """Return each adapter object once, however many keys point at it.
+
+        Under ``alpha_pooling="shared"`` one object serves every horizon step of
+        a column, so the nested mapping holds ``fh`` references to it. Anything
+        that advances or rolls back state must walk objects rather than
+        references, or a single row moves the level ``fh`` times.
+
+        Returns
+        -------
+        list
+            The distinct adapter objects, in first-seen order.
+
+        """
+        seen: set[int] = set()
+        distinct = []
+        for step_adapters in self.adapters_.values():
+            for adapter in step_adapters.values():
+                if id(adapter) not in seen:
+                    seen.add(id(adapter))
+                    distinct.append(adapter)
+        return distinct
 
     def _rewind_adapter(self, y: pl.DataFrame) -> None:
         """Roll each per-step adapter back by ``len(y)`` observations.
@@ -749,11 +790,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             return
 
         n_rewind = len(y)
-        # Every clone advanced by the same row count, so every clone rolls back
-        # by it too, keeping the per-column histories aligned.
-        for step_adapters in self.adapters_.values():
-            for adapter in step_adapters.values():
-                adapter.rewind(n_rewind)
+        # Every distinct clone advanced by the same row count, so every distinct
+        # clone rolls back by it too. Iterating the mapping rather than the
+        # objects would roll a shared adapter back once per step key, and the
+        # overshoot would not cancel the matching one in observe because rewind
+        # floors at the fit-time seed while observe has no ceiling.
+        for adapter in self._distinct_adapters():
+            adapter.rewind(n_rewind)
 
     def observe(
         self,

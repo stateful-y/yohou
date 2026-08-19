@@ -13,7 +13,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransformer, BaseStepTransformer
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
-from yohou.utils._compat import _fit_context
+from yohou.utils._compat import StrOptions, _fit_context
 
 __all__ = ["BaseConformalAdapter", "BaseIntervalForecaster", "BaseSimilarity"]
 
@@ -310,14 +310,34 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     forecaster feeds it per-row miscoverage indicators and reads back the
     effective level to use when constructing intervals.
 
-    The adapter owns a single horizon step. The forecaster clones one
-    adapter per step into a ``adapters_`` dict (mirroring ``similarities_``)
-    and drives the per-step lifecycle. Inside its step the adapter tracks
-    one effective level per coverage rate for symmetric conformity scorers,
-    and two (lower and upper) for asymmetric ones. The forecaster, which
-    holds the calibration scores and any similarity weights, computes the
-    miscoverage indicators; the adapter is the level-recursion state
+    The adapter owns a single pooling slot. The forecaster clones one
+    adapter per slot into an ``adapters_`` dict (mirroring ``similarities_``)
+    and drives its lifecycle: one clone per ``(horizon step, value column)``
+    under ``alpha_pooling="per_step"``, and one per value column shared
+    across the step keys under ``"shared"``. Inside its slot the adapter
+    tracks one effective level per coverage rate for symmetric conformity
+    scorers, and two (lower and upper) for asymmetric ones. The forecaster,
+    which holds the calibration scores and any similarity weights, computes
+    the miscoverage indicators; the adapter is the level-recursion state
     machine only.
+
+    Parameters
+    ----------
+    alpha_pooling : {"per_step", "shared"}, default="per_step"
+        Which axis the effective level lives on. ``"per_step"`` tracks an
+        independent level per horizon step, respecting horizon-dependent
+        coverage. ``"shared"`` pools miscoverage across steps into one
+        trajectory per value column, which stays closer to the single-sequence
+        setting the underlying theory covers. Pooling never crosses value
+        columns under either value.
+
+        Declared here so every adapter in the family carries it and the
+        enclosing forecaster can read it as a contract rather than probing
+        for it. A subclass MUST still accept it in its own constructor and
+        forward it here: estimator parameter discovery reads the most derived
+        constructor only, so omitting it would drop the setting from
+        ``get_params``, make ``adapter__alpha_pooling`` unaddressable in a
+        search, and let ``clone`` silently reset a configured ``"shared"``.
 
     Notes
     -----
@@ -335,7 +355,12 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
 
     """
 
-    _parameter_constraints: dict = {}
+    _parameter_constraints: dict = {
+        "alpha_pooling": [StrOptions({"per_step", "shared"})],
+    }
+
+    def __init__(self, alpha_pooling: Literal["per_step", "shared"] = "per_step") -> None:
+        self.alpha_pooling = alpha_pooling
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.

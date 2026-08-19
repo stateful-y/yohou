@@ -306,6 +306,18 @@ each side separately. `alpha_pooling` pools along the horizon axis only: two
 entities' levels are never fused, so a chronically miscovered entity widens its own
 intervals and nobody else's.
 
+Which value to pick is a question about what you are willing to assume. The default
+resolves each horizon separately, which matches the intuition that a one-step and a
+twelve-step forecast drift differently, but running one recursion per horizon over
+overlapping data is a pragmatic extension rather than something the original result
+covers. `"shared"` collapses them to a single trajectory per entity, which stays
+inside the single-sequence setting the theory addresses, at the cost of horizon
+resolution.
+
+Under `"shared"` the forecaster allocates one adapter per value column and points
+every horizon-step key at that same object, so `adapters_["step_1"][col]` and
+`adapters_["step_2"][col]` are the same adapter rather than identical copies of it.
+
 ## Quantile Reduction Intervals
 
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)

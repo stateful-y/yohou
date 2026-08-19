@@ -63,6 +63,14 @@ scorer's `symmetric` tag and passes it to `fit`.
   and the `estimator_type="conformal_adapter"` tags.
 - `src/yohou/interval/adapter.py` -> `AdaptiveConformalInference`: the full
   Gibbs-Candes update, `alpha_pooling`, `epsilon` clipping, per-tail logic.
+
+    Note on `alpha_pooling`: it is declared on `BaseConformalAdapter`, but your
+    subclass must still accept it in its own `__init__` and forward it with
+    `super().__init__(alpha_pooling=alpha_pooling)`. Estimator parameter
+    discovery reads the most derived constructor only, so omitting it drops the
+    setting from `get_params`, makes `adapter__alpha_pooling` unaddressable in a
+    search, and lets `clone` silently reset a configured `"shared"` to the
+    default. Nothing raises if you get this wrong.
 - `src/yohou/interval/split_conformal.py` -> `_observe_adapter`,
   `_rewind_adapter`, `_adapter_step_errors`, `_pool_adapter_errors`,
   `_adapter_inverse_score`, and the `predict_interval` adapter branch: how the

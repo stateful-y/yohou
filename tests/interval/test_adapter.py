@@ -327,3 +327,113 @@ class TestAdapterEntityAxis:
             step_1 = forecaster.adapters_["step_1"][column].predict()[0.9]
             step_2 = forecaster.adapters_["step_2"][column].predict()[0.9]
             assert step_1 == pytest.approx(step_2), f"{column} steps should share one trajectory"
+
+    def test_shared_pooling_allocates_one_adapter_per_column(self):
+        """Sharing across steps must share the object, not copy it per step."""
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1, alpha_pooling="shared"),
+        ).fit(y[:180], forecasting_horizon=3, coverage_rates=[0.9])
+
+        distinct = {id(a) for step in forecaster.adapters_.values() for a in step.values()}
+        assert len(distinct) == 2, "two columns at horizon 3 should need two adapters, not six"
+        for column in ("a__value", "b__value"):
+            assert forecaster.adapters_["step_1"][column] is forecaster.adapters_["step_3"][column]
+
+    def test_per_step_pooling_allocates_one_adapter_per_step_and_column(self):
+        """Deduplication must not merge adapters that are genuinely distinct.
+
+        Asserted on the object count rather than on divergence: a bug that
+        merged two adapters would leave the survivors still adapting
+        independently, so a divergence check alone would not notice.
+        """
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1, alpha_pooling="per_step"),
+        ).fit(y[:180], forecasting_horizon=3, coverage_rates=[0.9])
+
+        distinct = {id(a) for step in forecaster.adapters_.values() for a in step.values()}
+        assert len(distinct) == 6, "two columns at horizon 3 should hold six independent adapters"
+
+    def test_shared_adapter_advances_once_per_observed_row(self):
+        """The assertion that catches an un-deduplicated observe loop.
+
+        Walking the step keys would advance a shared adapter once per horizon
+        step, so a single row would move the level three times at horizon 3.
+        That does not raise; it just adapts three times too fast.
+        """
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1, alpha_pooling="shared"),
+        ).fit(y[:180], forecasting_horizon=3, coverage_rates=[0.9])
+
+        before = len(forecaster.adapters_["step_1"]["a__value"]._level_history[0.9])
+        forecaster.observe(y=y[180:181])
+        after = len(forecaster.adapters_["step_1"]["a__value"]._level_history[0.9])
+
+        assert after - before == 1, f"one row should be one update, got {after - before}"
+
+    def test_shared_observe_rewind_round_trip(self):
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            adapter=AdaptiveConformalInference(step_size=0.1, alpha_pooling="shared"),
+        ).fit(y[:180], forecasting_horizon=3, coverage_rates=[0.9])
+
+        # At least the point forecaster's observation horizon of rows: rewind
+        # rebuilds its buffers from the window it is given.
+        window = y[180:188]
+        before = {c: forecaster.adapters_["step_1"][c].predict()[0.9] for c in ("a__value", "b__value")}
+        forecaster.observe(y=window)
+        forecaster.rewind(y=window)
+        after = {c: forecaster.adapters_["step_1"][c].predict()[0.9] for c in ("a__value", "b__value")}
+
+        assert after == before
+
+    def test_fitted_pooling_axis_is_inspectable(self):
+        y = _two_column_series()
+        for mode in ("per_step", "shared"):
+            forecaster = SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=7),
+                calibration_size=50,
+                adapter=AdaptiveConformalInference(alpha_pooling=mode),
+            ).fit(y[:180], forecasting_horizon=2, coverage_rates=[0.9])
+            assert forecaster.adapter_pooling_ == mode
+
+
+class TestAdapterPoolingIsDeclared:
+    """`alpha_pooling` is part of the contract, not a duck-typed side channel."""
+
+    def test_every_adapter_carries_the_setting(self):
+        assert AdaptiveConformalInference().alpha_pooling == "per_step"
+
+    def test_setting_is_addressable_through_the_forecaster(self):
+        """The path with no coverage before: search, set_params, and clone."""
+        forecaster = SplitConformalForecaster(adapter=AdaptiveConformalInference(alpha_pooling="shared"))
+
+        assert forecaster.get_params(deep=True)["adapter__alpha_pooling"] == "shared"
+        forecaster.set_params(adapter__alpha_pooling="per_step")
+        assert forecaster.adapter.alpha_pooling == "per_step"
+        assert clone(AdaptiveConformalInference(alpha_pooling="shared")).alpha_pooling == "shared"
+
+    def test_an_adapter_without_the_setting_fails_visibly(self):
+        """No silent fallback to per-step for an adapter that omits it."""
+
+        class _NoPooling(AdaptiveConformalInference):
+            def __init__(self):
+                self.step_size = 0.05
+                self.epsilon = 0.0
+
+        y = _two_column_series()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7), calibration_size=50, adapter=_NoPooling()
+        )
+        with pytest.raises(AttributeError, match="alpha_pooling"):
+            forecaster.fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])

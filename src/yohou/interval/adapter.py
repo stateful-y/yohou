@@ -5,7 +5,7 @@ from typing import Literal
 
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils._compat import Interval, StrOptions, _fit_context
+from yohou.utils._compat import Interval, _fit_context
 
 from .base import BaseConformalAdapter
 
@@ -45,10 +45,18 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     alpha_pooling : {"per_step", "shared"}, default="per_step"
         How the enclosing forecaster pools miscoverage across horizon steps
         before updating. ``"per_step"`` lets each step's level evolve
-        independently; ``"shared"`` makes the forecaster pool the per-step
-        indicators and feed every step the same update, yielding one shared
-        trajectory. The adapter stores this so the forecaster can read it;
-        the update itself is identical either way.
+        independently, which respects horizon-dependent coverage but is a
+        pragmatic extension rather than something the underlying theory
+        covers. ``"shared"`` pools the per-step indicators into one trajectory
+        per value column, staying closer to the single-sequence setting the
+        theory does cover. Pooling never crosses value columns under either
+        value.
+
+        Declared on `BaseConformalAdapter` and forwarded from here. The
+        adapter stores it so the forecaster can read it; the update itself is
+        identical either way. Under ``"shared"`` the forecaster allocates one
+        adapter per value column and points every horizon-step key at it, so
+        ``adapters_["step_1"][col] is adapters_["step_2"][col]``.
     epsilon : float, default=0.0
         Clips the effective level to ``[epsilon, 1 - epsilon]``. The default
         ``0.0`` reproduces the paper-exact ``[0, 1]`` clipping; a positive
@@ -94,8 +102,8 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     """
 
     _parameter_constraints: dict = {
+        **BaseConformalAdapter._parameter_constraints,
         "step_size": [Interval(numbers.Real, 0, None, closed="neither")],
-        "alpha_pooling": [StrOptions({"per_step", "shared"})],
         "epsilon": [Interval(numbers.Real, 0, 0.5, closed="left")],
     }
 
@@ -105,8 +113,13 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         alpha_pooling: Literal["per_step", "shared"] = "per_step",
         epsilon: float = 0.0,
     ) -> None:
+        # alpha_pooling is declared on the base class but must stay in this
+        # signature: estimator parameter discovery reads the most derived
+        # constructor only, so dropping it here would remove the setting from
+        # get_params, make adapter__alpha_pooling unaddressable in a search,
+        # and let clone silently reset a configured "shared" to the default.
+        super().__init__(alpha_pooling=alpha_pooling)
         self.step_size = step_size
-        self.alpha_pooling = alpha_pooling
         self.epsilon = epsilon
 
     def _clip(self, level: float) -> float:
