@@ -23,6 +23,34 @@ _YOHOU_ROOT = str(Path(__file__).resolve().parents[1])
 _SKLEARN_ROOT = str(Path(sklearn.__file__).resolve().parent)
 
 
+class ForecastCoverageWarning(UserWarning):
+    """Raised when ``X_forecast`` covers fewer steps than the forecasting horizon.
+
+    Carries the per-column breakdown the check computed rather than only the
+    worst number, because which channel is starved is what tells a reader what
+    to do. A consumer aggregating these across a long run can then report the
+    affected columns instead of only a count.
+
+    Subclasses ``UserWarning`` so existing ``pytest.warns(UserWarning)`` and
+    application ``filterwarnings`` entries keep matching.
+
+    Attributes
+    ----------
+    coverage : dict[str, int]
+        Base column name mapped to the worst number of covered forecast steps
+        observed for it. A value of 0 means every step feature derived from that
+        column is null.
+    forecasting_horizon : int
+        The number of steps full coverage would mean, so a reader can judge the
+        counts without holding the call's configuration in mind.
+    """
+
+    def __init__(self, message: str, *, coverage: dict[str, int], forecasting_horizon: int) -> None:
+        super().__init__(message)
+        self.coverage = coverage
+        self.forecasting_horizon = forecasting_horizon
+
+
 def _caller_stacklevel() -> int:
     """Return the ``stacklevel`` that points at the nearest frame outside the library.
 
@@ -1045,7 +1073,13 @@ def _derive_step_columns(
         # path passes warn_coverage=False and reports per column instead.
         if warn_coverage:
             coverage = _forecast_step_coverage(forecast_pivoted, list(value_cols_info), forecasting_horizon)
-            worst = min((min(counts) for counts in coverage.values()), default=forecasting_horizon)
+            # Worst per column, kept rather than collapsed. The single ``worst``
+            # below still decides which branch fires, but the breakdown rides on
+            # the warning so a reader learns which channel is starved and not
+            # merely that one is.
+            per_column = {base: min(counts) for base, counts in coverage.items()}
+            worst = min(per_column.values(), default=forecasting_horizon)
+            starved = sorted(base for base, count in per_column.items() if count < forecasting_horizon)
             if coverage and worst == 0:
                 # Distinct from partial coverage rather than its extreme: nothing
                 # derived from X_forecast carries a value, so a model relying on
@@ -1056,21 +1090,28 @@ def _derive_step_columns(
                 # the newest available vintage. Stated as a measurement rather than
                 # an error: a caller may reach this deliberately.
                 warnings.warn(
-                    f"X_forecast covers 0 of {forecasting_horizon} forecast steps, so every "
-                    f"step feature derived from it is null and a model relying on that channel "
-                    f"is predicting without it. This happens when the newest usable vintage is "
-                    f"at least {forecasting_horizon} intervals older than the observation point, "
-                    f"which a cached frame reaches once serving advances past the vintages it holds.",
-                    UserWarning,
+                    ForecastCoverageWarning(
+                        f"X_forecast covers 0 of {forecasting_horizon} forecast steps for "
+                        f"{', '.join(starved)}, so every step feature derived from those columns is "
+                        f"null and a model relying on them is predicting without them. This happens "
+                        f"when the newest usable vintage is at least {forecasting_horizon} intervals "
+                        f"older than the observation point, which a cached frame reaches once serving "
+                        f"advances past the vintages it holds.",
+                        coverage=per_column,
+                        forecasting_horizon=forecasting_horizon,
+                    ),
                     stacklevel=_caller_stacklevel(),
                 )
             elif coverage and worst < forecasting_horizon:
                 warnings.warn(
-                    f"X_forecast covers {worst} of {forecasting_horizon} "
-                    f"forecast steps. The remaining step features will be null. "
-                    f"This arises for short-range forecasts and when the "
-                    f"observation point has advanced past some forecast timestamps.",
-                    UserWarning,
+                    ForecastCoverageWarning(
+                        f"X_forecast covers {worst} of {forecasting_horizon} forecast steps, worst "
+                        f"over {', '.join(starved)}. The remaining step features will be null. This "
+                        f"arises for short-range forecasts and when the observation point has "
+                        f"advanced past some forecast timestamps.",
+                        coverage=per_column,
+                        forecasting_horizon=forecasting_horizon,
+                    ),
                     stacklevel=_caller_stacklevel(),
                 )
 

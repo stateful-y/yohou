@@ -306,13 +306,24 @@ earlier observation whose horizon does reach it. Where the resolved vintage
 carries no value at a step's target time, that step column is padded with null
 and a `UserWarning` is emitted.
 
-Coverage is measured per observation and per base column. At fit, a column
-that fails to cover some training observations is named in a per-column
-`UserWarning`, with the count of observations it misses, so a channel that is
-dead for most of the batch is visible rather than hidden behind a single
-covered row. On the observe and predict paths the per-call warning reports the
-worst-covered observation, distinguishing zero coverage (the channel
-contributes nothing) from partial coverage (a short-range forecast).
+Coverage is measured per observation and per base column, and both paths report
+at that granularity. At fit, a column that fails to cover some training
+observations is named in a per-column warning, with the count of observations it
+misses, so a channel that is dead for most of the batch is visible rather than
+hidden behind a single covered row. On the observe and predict paths the
+per-call warning is a
+[`ForecastCoverageWarning`](/pages/api/generated/yohou.base.ForecastCoverageWarning/),
+which names the starved columns in its message and carries the whole per-column
+breakdown on its `coverage` attribute. It still distinguishes zero coverage (the
+channel contributes nothing) from partial coverage (a short-range forecast),
+because those are different conditions rather than degrees of one.
+
+The two paths previously disagreed about how much to say: fit reported per
+column while observe and predict reduced the same measurement to a single worst
+number one line after computing it. Which channel is starved is what tells a
+reader what to do, so that detail is no longer discarded, and a consumer
+aggregating these across a long run can report the affected columns rather than
+only a count.
 
 ## Heterogeneous Vintage Cadence
 

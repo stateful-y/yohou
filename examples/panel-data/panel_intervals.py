@@ -125,8 +125,6 @@ def _(
     )
     fc_conformal.fit(y_train, forecasting_horizon=horizon, coverage_rates=coverage_rates)
     y_pred_conf = fc_conformal.predict_interval(forecasting_horizon=horizon, coverage_rates=coverage_rates)
-    _y_point = fc_conformal.predict(forecasting_horizon=horizon)
-    y_pred_conf = y_pred_conf.hstack(_y_point.drop("time", "vintage_time"))
     return (y_pred_conf,)
 
 

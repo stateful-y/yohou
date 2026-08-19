@@ -305,6 +305,59 @@ class TestForecastCoverageDiagnostic:
         assert _zero_coverage_warnings(record), "expected the dead-channel warning"
         assert not _partial_coverage_warnings(record)
 
+    def test_the_warning_carries_the_per_column_breakdown(self):
+        """Which channel is starved is what tells a reader what to do.
+
+        The check computes coverage per column and used to reduce it to the
+        worst number one line later, so a consumer aggregating these across a
+        run could report how often the condition occurred but never which
+        column caused it.
+        """
+        from yohou import ForecastCoverageWarning
+
+        forecaster = self._fitted(n_vintages=20)
+        later = pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON),
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON + 1),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.arange(2, dtype=float),
+        })
+        with _captured_warnings() as record:
+            forecaster.observe(y=later)
+
+        warned = [w for w in record if issubclass(w.category, ForecastCoverageWarning)]
+        assert warned, "the coverage warning no longer carries its own type"
+        payload = warned[0].message
+        assert payload.coverage, "the per-column breakdown was dropped"
+        assert payload.forecasting_horizon == self.HORIZON
+        assert all(isinstance(count, int) for count in payload.coverage.values())
+        assert "temp" in payload.coverage
+        assert "temp" in str(payload), "the starved column should also be named in the text"
+
+    def test_the_warning_is_still_catchable_as_a_user_warning(self):
+        """Existing `pytest.warns(UserWarning)` and filterwarnings must keep working."""
+        from yohou import ForecastCoverageWarning
+
+        assert issubclass(ForecastCoverageWarning, UserWarning)
+
+        forecaster = self._fitted(n_vintages=20)
+        later = pl.DataFrame({
+            "time": pl.datetime_range(
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON),
+                datetime(2021, 1, 21) + timedelta(days=self.HORIZON + 1),
+                interval="1d",
+                eager=True,
+            ),
+            "value": np.arange(2, dtype=float),
+        })
+        with _captured_warnings() as record:
+            forecaster.observe(y=later)
+
+        assert [w for w in record if issubclass(w.category, UserWarning) and "X_forecast covers" in str(w.message)]
+
     def test_partial_coverage_reports_the_column_at_fit(self):
         """A vintage carrying fewer steps than the horizon is short-range, not dead.
 
