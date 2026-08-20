@@ -51,12 +51,15 @@ per-class key sets are pinned by a conformance test.
 
 ### The substring contract
 
-sklearn resolves `__metadata_request__{method}` class attributes by substring
-over mangled attribute names, so a declaration for `predict_interval` also
-places its keys (unset) on the `predict` of any class that defines one. yohou
-treats this as a stated contract rather than an accident: the pinned tables in
-the conformance suite record every effective key, leaks included, and the
-request discipline below pairs them off.
+Modern sklearn resolves `__metadata_request__{method}` class attributes by
+substring over mangled attribute names, so a declaration for
+`predict_interval` also places its keys (unset) on the `predict` of any class
+that defines one; older versions (1.6) resolve exactly and no such carrier
+exists. yohou treats this as a stated, version-aware contract rather than an
+accident: the conformance suite probes which behavior is installed and pins
+every effective key accordingly, and the request discipline below pairs
+carriers off by discovering them from the live request surface, so the same
+caller code is correct under either resolution behavior.
 
 ### The per-callee request discipline
 

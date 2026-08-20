@@ -10,6 +10,7 @@ resolution change fails here rather than silently altering the surface.
 """
 
 import pytest
+from sklearn.base import BaseEstimator
 
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.ensemble import VotingIntervalForecaster
@@ -21,6 +22,33 @@ def _request_keys(estimator, method: str) -> set[str]:
     """Effective request keys of one method on one instance."""
     return set(getattr(estimator._get_metadata_request(), method).requests)
 
+
+def _substring_leak_active() -> bool:
+    """Probe whether this sklearn resolves request attributes by substring.
+
+    Newer sklearn matches ``__metadata_request__{method}`` class attributes by
+    substring over mangled names, so a predict_interval declaration also lands
+    on a defined ``predict``; older versions (1.6) match exactly and no leak
+    exists. The pinned tables adapt to whichever behavior is installed, so the
+    compat matrix and the current version pin the same contract.
+    """
+
+    class _Probe(BaseEstimator):
+        __metadata_request__predict_interval = {"probe_key": None}
+
+        def predict(self, X):
+            """Exist so the leak has a landing method."""
+
+        def predict_interval(self, X):
+            """Exist so the declaration has its own method."""
+
+    return "probe_key" in _Probe()._get_metadata_request().predict.requests
+
+
+LEAK = _substring_leak_active()
+#: Present only under substring resolution: the stride key carried onto a
+#: defined ``predict`` by a longer method's declaration.
+_LEAKED_STRIDE = {"stride"} if LEAK else set()
 
 _DATA_ARGS_PREDICT = {"X_future", "X_forecast"}
 
@@ -55,12 +83,13 @@ _SURFACE: list[tuple[object, str, set[str]]] = [
         _DATA_ARGS_PREDICT | {"forecasting_horizon", "coverage_rates", "strategy", "groups", "stride"},
     ),
     (IntervalReductionForecaster(), "predict", set()),
-    # SplitConformalForecaster defines predict, so the predict_interval
-    # declaration leaks stride onto it: pinned as deliberate.
+    # SplitConformalForecaster defines predict, so under substring resolution
+    # the predict_interval declaration leaks stride onto it: pinned as
+    # deliberate, and absent on exact-match sklearn versions.
     (
         SplitConformalForecaster(),
         "predict",
-        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "predict_transformed", "stride"},
+        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "predict_transformed"} | _LEAKED_STRIDE,
     ),
     (
         SplitConformalForecaster(),
@@ -70,10 +99,10 @@ _SURFACE: list[tuple[object, str, set[str]]] = [
     (
         VotingIntervalForecaster(forecasters=[("a", SeasonalNaive(seasonality=24))]),
         "predict",
-        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "predict_transformed", "stride"},
+        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "predict_transformed"} | _LEAKED_STRIDE,
     ),
-    # Class-proba family: stride declared on predict_class_proba; the substring
-    # resolution also places it on the family's predict, pinned as deliberate.
+    # Class-proba family: stride declared on predict_class_proba; substring
+    # resolution also places it on the family's predict where active.
     (
         ClassProbaReductionForecaster(),
         "predict_class_proba",
@@ -82,7 +111,7 @@ _SURFACE: list[tuple[object, str, set[str]]] = [
     (
         ClassProbaReductionForecaster(),
         "predict",
-        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "stride"},
+        _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups"} | _LEAKED_STRIDE,
     ),
 ]
 

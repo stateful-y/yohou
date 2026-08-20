@@ -35,6 +35,18 @@ def _series(n: int) -> pl.DataFrame:
     return pl.DataFrame({"time": times, "value": [float(i % 24) for i in range(n)]})
 
 
+def _pair_off_if_carried(forecaster, method: str, key: str) -> None:
+    """Set ``key`` not-requested on ``method`` only where the key exists.
+
+    The leaked sibling carrier exists only under substring resolution of
+    request attributes (absent on exact-match sklearn versions such as 1.6),
+    so the pairing is conditional, mirroring the discovery-based pairing a
+    production caller uses.
+    """
+    if key in getattr(forecaster._get_metadata_request(), method).requests:
+        getattr(forecaster, f"set_{method}_request")(**{key: False})
+
+
 def _categorical_series(n: int) -> pl.DataFrame:
     times = pl.datetime_range(
         datetime(2026, 1, 1),
@@ -87,9 +99,10 @@ class TestStrideRoutesForEveryScoringFamily:
         forecaster = _RecordingClassProba(reduction_strategy="direct")
         _RecordingClassProba.recorded_strides.clear()
         forecaster.set_predict_class_proba_request(stride=True)
-        # The class-proba family's predict also carries the leaked stride key,
-        # and fit maps onto predict too, so the sibling carrier is paired off.
-        forecaster.set_predict_request(stride=False)
+        # Under substring resolution the family's predict also carries the
+        # leaked stride key and fit maps onto predict, so the sibling carrier
+        # is paired off where it exists.
+        _pair_off_if_carried(forecaster, "predict", "stride")
         search = GridSearchCV(
             forecaster=forecaster,
             param_grid={"target_as_feature": ["transformed", None]},
@@ -106,6 +119,8 @@ class TestPerCalleeDiscipline:
     def test_unpaired_request_fails_naming_the_unset_method(self):
         """SplitConformal carries stride on predict too; leaving it unset raises."""
         forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=24), calibration_size=12)
+        if "stride" not in forecaster._get_metadata_request().predict.requests:
+            pytest.skip("no substring leak on this sklearn: no sibling carrier exists to leave unpaired")
         forecaster.set_predict_interval_request(stride=True)
         search = GridSearchCV(
             forecaster=forecaster,
@@ -130,7 +145,7 @@ class TestPerCalleeDiscipline:
         """
         forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=24), calibration_size=12)
         forecaster.set_predict_interval_request(stride=True)
-        forecaster.set_predict_request(stride=False)
+        _pair_off_if_carried(forecaster, "predict", "stride")
         search = GridSearchCV(
             forecaster=forecaster,
             param_grid={"point_forecaster__seasonality": [12, 24]},
