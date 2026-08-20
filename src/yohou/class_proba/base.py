@@ -50,6 +50,15 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
     n_classes_: dict[str, int]
     label_to_code_: dict[str, dict[str, int]]
 
+    # ``stride`` is walk-forward metadata consumed by
+    # ``observe_predict_class_proba``; search CV routing buckets predict-side
+    # parameters under the scorer's response method, ``predict_class_proba``
+    # for this family. Declared here with alias None so a caller opts in with
+    # ``set_predict_class_proba_request(stride=True)``. sklearn's substring
+    # resolution also places the key (unset) on this family's ``predict``,
+    # which the pinned request-surface test records as deliberate.
+    __metadata_request__predict_class_proba = {"stride": None}
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 

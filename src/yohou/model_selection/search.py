@@ -182,6 +182,25 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     Warning: This class should not be used directly. Use derived classes
     ``GridSearchCV`` and ``RandomizedSearchCV`` instead.
 
+    Notes
+    -----
+    **Routing predict-side metadata into the inner walk-forward.** Extra
+    keyword arguments to ``fit`` are routed via sklearn metadata routing, and
+    predict-side metadata (such as the walk-forward ``stride``) is delivered
+    to the bucket named by the scorers' resolved response method. Because fit
+    params validate against every mapped predict-family callee that carries a
+    key, the request must be set True on the response method and explicitly
+    False on every other carrier:
+
+    >>> from yohou.interval import SplitConformalForecaster
+    >>> fc = SplitConformalForecaster()
+    >>> _ = fc.set_predict_interval_request(stride=True)  # the response method
+    >>> _ = fc.set_predict_request(stride=False)  # sibling carrier, paired off
+
+    then ``search.fit(y, ..., stride=24)`` reaches the inner walk-forward. An
+    unpaired carrier raises a routing error naming the method and the
+    ``set_*_request`` call that resolves it.
+
     Attributes
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
@@ -708,19 +727,26 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         router = MetadataRouter(owner=self)
 
         # Add forecaster routing
-        # The fit-to-predict_interval mapping is what lets fit(**params) carry
+        # The fit-to-predict-family mappings are what let fit(**params) carry
         # predict-side metadata (e.g. the walk-forward ``stride``) into the
         # bucket the inner CV loop reads via
-        # ``getattr(routed_params.forecaster, response_method)``. Only
-        # predict_interval is mapped: sklearn resolves ``__metadata_request__*``
-        # class attributes by substring, so the ``stride`` key declared for
-        # predict_interval also appears (unrequested) on ``predict``, and a
-        # fit-to-predict mapping would reject routed fit params against it.
+        # ``getattr(routed_params.forecaster, response_method)``, whichever
+        # response method the scorers resolve. All three are mapped, which
+        # makes the per-callee discipline load-bearing: sklearn resolves
+        # ``__metadata_request__*`` class attributes by substring, so a key
+        # declared for predict_interval also appears (unset) on the ``predict``
+        # of any class defining one, and a passed key validates against every
+        # mapped callee carrying it. A caller therefore sets the resolved
+        # response method's request True and every other carrier's explicitly
+        # False; the routing error for an unpaired carrier names the method
+        # and the set_*_request call that fixes it.
         router.add(
             forecaster=self.forecaster,
             method_mapping=MethodMapping()
             .add(caller="fit", callee="fit")
+            .add(caller="fit", callee="predict")
             .add(caller="fit", callee="predict_interval")
+            .add(caller="fit", callee="predict_class_proba")
             .add(caller="predict", callee="predict")
             .add(caller="predict_interval", callee="predict_interval")
             .add(caller="predict_class_proba", callee="predict_class_proba")
