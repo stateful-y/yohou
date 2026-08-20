@@ -747,7 +747,8 @@ class CalibrationError(BaseIntervalScorer):
         y_pred : pl.DataFrame
             Predicted intervals with "{col}_lower_{rate}", "{col}_upper_{rate}" columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -992,7 +993,8 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
         y_pred : pl.DataFrame
             Predicted intervals with "{col}_lower_{rate}", "{col}_upper_{rate}" columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------

@@ -19,6 +19,7 @@ from typing import Any
 
 import polars as pl
 from sklearn.base import BaseEstimator
+from sklearn.utils.metadata_routing import UNUSED
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.utils import _require_actual_memory_api
@@ -131,7 +132,8 @@ class _BaseTransformer(BaseEstimator, metaclass=abc.ABCMeta):
         y : pl.DataFrame or None, default=None
             Ignored.  Present for API compatibility.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -236,6 +238,12 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
 
     """
 
+    # ``inverse_transform(X_t, X_p)`` takes two data frames whose names miss
+    # sklearn's {X, y, Y, Xt, yt} exclusion set, so signature scraping would
+    # register them as requestable metadata on 40+ subclasses. They are data,
+    # not metadata; UNUSED removes the keys from the request surface.
+    __metadata_request__inverse_transform = {"X_t": UNUSED, "X_p": UNUSED}
+
     _tags: dict = {"kind": "actual"}
 
     # Fitted attributes specific to single-axis transformers (set during fit()).
@@ -325,7 +333,8 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         y : pl.DataFrame or None, default=None
             Ignored.  Present for API compatibility.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -433,7 +442,8 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -502,7 +512,8 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -552,7 +563,8 @@ class BaseActualTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------

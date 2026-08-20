@@ -9,6 +9,7 @@ from typing import Literal
 import numpy as np
 import polars as pl
 import polars.selectors as cs
+from sklearn.utils.metadata_routing import UNUSED
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
@@ -132,6 +133,11 @@ class FunctionTransformer(BaseActualTransformer):
     values within a tolerance of ``rtol=1e-5``, ``atol=1e-8``.
 
     """
+
+    # ``transform(X, X_p)`` carries a second data frame; UNUSED keeps it off
+    # the request surface. Only X_p: this signature has no X_t, and UNUSED on
+    # a nonexistent key raises at class creation.
+    __metadata_request__transform = {"X_p": UNUSED}
 
     _parameter_constraints: dict = {
         "func": [callable, None],
@@ -267,7 +273,8 @@ class FunctionTransformer(BaseActualTransformer):
         y : pl.DataFrame or None, default=None
             Ignored.  Present for API compatibility.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -305,7 +312,8 @@ class FunctionTransformer(BaseActualTransformer):
         y : pl.DataFrame or None, default=None
             Ignored.  Present for API compatibility.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -401,7 +409,8 @@ class FunctionTransformer(BaseActualTransformer):
             and ``_observation_horizon > 0``, the function is applied to the
             concatenation of X_p and X, then only the X portion is returned.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -453,7 +462,8 @@ class FunctionTransformer(BaseActualTransformer):
             ``_observation_horizon > 0``, the stored ``_X_observed`` is
             used instead.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------

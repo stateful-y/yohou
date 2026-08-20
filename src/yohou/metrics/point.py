@@ -494,7 +494,8 @@ class RootMeanSquaredScaledError(BasePointScorer):
             If provided, metadata is extracted directly from the fitted
             forecaster instead of being re-inferred from ``y_train``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -930,7 +931,8 @@ class MeanAbsoluteScaledError(BasePointScorer):
             If provided, metadata is extracted directly from the fitted
             forecaster instead of being re-inferred from ``y_train``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1119,7 +1121,8 @@ class MedianAbsoluteError(BasePointScorer):
         y_pred : pl.DataFrame
             Predicted values with "time" column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1417,7 +1420,8 @@ class R2Score(BasePointScorer):
         y_pred : pl.DataFrame
             Predicted values with "time" column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1598,7 +1602,8 @@ class MeanDirectionalAccuracy(BasePointScorer):
         y_pred : pl.DataFrame
             Predicted values with "time" column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------

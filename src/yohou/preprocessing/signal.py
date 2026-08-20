@@ -243,7 +243,8 @@ class NumericalFilter(BaseActualTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -461,7 +462,8 @@ class NumericalIntegrator(BaseActualTransformer):
             Input time series with a ``"time"`` column (datetime) and one or
             more numeric columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
