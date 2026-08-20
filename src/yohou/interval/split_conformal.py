@@ -275,7 +275,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             replay_path = "rolling"
         self.replay_path_ = replay_path
 
+        # The asserts restate what the path selection above guarantees; the string
+        # dispatch hides that narrowing from the type checker.
         if replay_path == "bulk":
+            assert bulk is not None
             y_pred_calib = bulk(
                 y=y_calib,
                 X_actual=X_actual_calib,
@@ -285,6 +288,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 predict_transformed=False,
             )
         elif replay_path == "batched":
+            assert batched is not None
             y_pred_calib = batched(
                 y=y_calib,
                 X_actual=X_actual_calib,
