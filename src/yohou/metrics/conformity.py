@@ -646,15 +646,15 @@ class NormalizedResidual(BaseConformityScorer):
     >>> from yohou.metrics.conformity import NormalizedResidual
     >>> y_train = pl.DataFrame({
     ...     "time": [date(2020, 1, d) for d in range(1, 6)],
-    ...     "y": [1.0, 3.0, 5.0, 7.0, 9.0],
+    ...     "y": [1.0, 3.0, 2.0, 4.0, 3.0],
     ... })
     >>> scorer = NormalizedResidual().fit(y_train)
     >>> round(scorer.column_scales_["y"], 6)
-    1e-06
+    1.5
     >>> y_truth = pl.DataFrame({"time": [date(2020, 1, 6)], "y": [11.0]})
     >>> y_pred = pl.DataFrame({"time": [date(2020, 1, 6)], "y": [10.0]})
-    >>> float(scorer.score(y_truth, y_pred).drop("time").to_series().item()) > 0
-    True
+    >>> round(scorer.score(y_truth, y_pred).drop("time").to_series().item(), 6)
+    0.666667
 
     """
 
@@ -829,13 +829,13 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
     >>> from yohou.metrics.conformity import AbsoluteNormalizedResidual
     >>> y_train = pl.DataFrame({
     ...     "time": [date(2020, 1, d) for d in range(1, 6)],
-    ...     "y": [1.0, 3.0, 5.0, 7.0, 9.0],
+    ...     "y": [1.0, 3.0, 2.0, 4.0, 3.0],
     ... })
     >>> scorer = AbsoluteNormalizedResidual().fit(y_train)
-    >>> y_truth = pl.DataFrame({"time": [date(2020, 1, 6)], "y": [11.0]})
+    >>> y_truth = pl.DataFrame({"time": [date(2020, 1, 6)], "y": [9.0]})
     >>> y_pred = pl.DataFrame({"time": [date(2020, 1, 6)], "y": [10.0]})
-    >>> float(scorer.score(y_truth, y_pred).drop("time").to_series().item()) > 0
-    True
+    >>> round(scorer.score(y_truth, y_pred).drop("time").to_series().item(), 6)
+    0.666667
 
     """
 
