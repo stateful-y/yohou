@@ -734,6 +734,7 @@ default="first_step"
         k = self.training_stride
 
         def one(n_instances: int) -> np.ndarray:
+            """Tail-anchored keep mask for one series of ``n_instances`` rows."""
             return np.arange(n_instances) % k == (n_instances - 1) % k
 
         if self.groups_ is None:
