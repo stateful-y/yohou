@@ -166,3 +166,81 @@ class TestCalibrationStrideValidation:
 
     def test_floor_constant_is_the_documented_default(self):
         assert MIN_STRIDED_SCORES_PER_STEP == 30
+
+
+class TestCoverageAwareFloor:
+    """The per-step requirement scales with the requested coverage rates.
+
+    The flat floor keeps tail quantiles stable at moderate coverage; the
+    coverage-driven validity minimum ``ceil(1/t) - 1`` keeps the tail
+    quantile an interior order statistic, with tail mass ``t = 1 - cr``
+    for a symmetric conformity scorer and ``(1 - cr) / 2`` for an
+    asymmetric one.
+    """
+
+    def test_high_coverage_raises_the_requirement_above_the_flat_floor(self):
+        """0.99 with a symmetric scorer needs 99 scores, not 30."""
+        from yohou.metrics.conformity import AbsoluteResidual
+
+        fc = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(),
+            conformity_scorer=AbsoluteResidual(),
+            calibration_size=120,
+            calibration_stride=2,
+        )
+        # worst = 120/2 - 2 + 1 = 59: clears the flat floor of 30, but the
+        # 0.99 tail (mass 0.01) needs ceil(1/0.01) - 1 = 99 scores.
+        with pytest.raises(ValueError, match=r"coverage rate 0\.99") as excinfo:
+            fc.fit(y=_series(240), forecasting_horizon=4, coverage_rates=[0.5, 0.99])
+        assert "99 scores" in str(excinfo.value)
+
+    def test_high_coverage_passes_with_enough_scores(self):
+        """A window sized for the 0.99 tail fits."""
+        from yohou.metrics.conformity import AbsoluteResidual
+
+        fc = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=24),
+            conformity_scorer=AbsoluteResidual(),
+            calibration_size=204,
+            calibration_stride=2,
+        )
+        # worst = 204/2 - 2 + 1 = 101 >= 99.
+        fc.fit(y=_series(320), forecasting_horizon=4, coverage_rates=[0.99])
+        assert fc.replay_path_ in {"bulk", "batched", "rolling"}
+
+    def test_asymmetric_scorer_doubles_the_tail_requirement(self, monkeypatch):
+        """The same coverage rate needs twice the scores under signed residuals."""
+        from yohou.metrics.conformity import AbsoluteResidual, Residual
+
+        # Lower the flat floor so only the coverage term decides: the block
+        # yields worst = 22/2 - 2 + 1 = 10 scores. Coverage 0.9 needs 9 with a
+        # symmetric scorer (tail 0.1) and 19 with an asymmetric one (tail 0.05).
+        monkeypatch.setattr(sc_module, "MIN_STRIDED_SCORES_PER_STEP", 2)
+
+        symmetric = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=24),
+            conformity_scorer=AbsoluteResidual(),
+            calibration_size=22,
+            calibration_stride=2,
+        )
+        symmetric.fit(y=_series(90), forecasting_horizon=4, coverage_rates=[0.9])
+
+        asymmetric = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=24),
+            conformity_scorer=Residual(),
+            calibration_size=22,
+            calibration_stride=2,
+        )
+        with pytest.raises(ValueError, match="asymmetric") as excinfo:
+            asymmetric.fit(y=_series(90), forecasting_horizon=4, coverage_rates=[0.9])
+        assert "19 scores" in str(excinfo.value)
+
+    def test_flat_floor_message_survives_when_it_binds(self):
+        """Moderate coverage keeps the stability floor as the named bound."""
+        fc = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(),
+            calibration_size=20,
+            calibration_stride=2,
+        )
+        with pytest.raises(ValueError, match="stability floor of 30"):
+            fc.fit(y=_series(60), forecasting_horizon=4, coverage_rates=[0.5])

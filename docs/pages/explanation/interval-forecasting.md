@@ -95,12 +95,33 @@ wrapped forecaster ends fit observed through the block.
 `calibration_size` keeps meaning rows, whatever the stride. With block size $C$
 and stride $k$, horizon step $h$ collects $C/k - \lceil h/k \rceil + 1$ scores:
 origins near the block end contribute nothing for steps whose targets fall past
-it, so the deepest step always has the fewest. Fit validates that $C$ is a
-multiple of $k$ and refuses a configuration whose deepest step would fall below
-`MIN_STRIDED_SCORES_PER_STEP` (30), reporting the smallest `calibration_size`
-that would pass. A strided calibration therefore needs a longer window than a
-stride-1 one: daily origins at a 48-step horizon need at least 744 hourly rows
-where 100 might otherwise do.
+it, so the deepest step always has the fewest.
+
+Fit validates that $C$ is a multiple of $k$ and refuses a configuration whose
+deepest step would fall below the required score count, reporting the binding
+bound and the smallest `calibration_size` that would pass. The requirement is
+the larger of two bounds:
+
+- the flat stability floor `MIN_STRIDED_SCORES_PER_STEP` (30), below which any
+  tail quantile is estimated from too few samples to be stable;
+- the validity minimum the requested coverage rates impose. The empirical
+  quantile at tail mass $t$ is an interior order statistic only when the step
+  holds at least $\lceil 1/t \rceil - 1$ scores; with fewer, it degenerates to
+  the sample maximum and the interval carries no tail information. The tail
+  mass is $1 - cr$ for a symmetric conformity scorer (absolute residuals fold
+  both tails into one quantile) and $(1 - cr)/2$ for an asymmetric one, so the
+  same coverage rate needs roughly twice the scores under signed residuals.
+
+Concretely: coverage 0.9 with absolute residuals is bound by the flat floor
+(30), coverage 0.99 needs 99 scores at the deepest step, and 0.99 with signed
+residuals needs 199. A strided calibration therefore needs a longer window
+than a stride-1 one: daily origins at a 48-step horizon and 0.9 coverage need
+at least 744 hourly rows where 100 might otherwise do, and higher coverage
+scales the window further.
+
+Both bounds are lower bounds on sanity rather than coverage guarantees:
+similarity weighting concentrates the effective sample size, and an adaptive
+conformal adapter can push the effective level tighter than nominal.
 
 An important nuance: the coverage guarantee is marginal, meaning it holds on average
 across the calibration set. It does not guarantee that any specific individual

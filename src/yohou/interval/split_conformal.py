@@ -23,13 +23,21 @@ from .utils import weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
 
-# Fewest conformity scores the deepest horizon step may collect under a strided
-# calibration replay. Below this the tail quantiles of the score distribution
-# are estimated from a handful of samples, so intervals get wide and unstable
-# in a way that surfaces weeks later as bad coverage rather than at fit. The
-# value is a judgment call: 30 keeps the 90th percentile estimate inside the
-# sample rather than at its extremes, while staying reachable with a few weeks
-# of daily origins.
+# Flat stability floor on the conformity scores the deepest horizon step may
+# collect under a strided calibration replay. Below this the tail quantiles of
+# the score distribution are estimated from a handful of samples, so intervals
+# get wide and unstable in a way that surfaces weeks later as bad coverage
+# rather than at fit. The value is a judgment call: 30 keeps a 90th percentile
+# estimate inside the sample rather than at its extremes, while staying
+# reachable with a few weeks of daily origins.
+#
+# This floor is not the whole requirement. The requested coverage rates set a
+# validity minimum of their own: the empirical tail quantile at tail mass t is
+# an interior order statistic only when the step holds at least ceil(1/t) - 1
+# scores, where t = (1 - cr) for a symmetric conformity scorer (absolute
+# residuals fold both tails into one) and t = (1 - cr) / 2 for an asymmetric
+# one (each tail is estimated separately). Fit enforces the larger of the two;
+# see _required_scores_per_step.
 MIN_STRIDED_SCORES_PER_STEP = 30
 
 
@@ -57,7 +65,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         must be a multiple of the stride. Step ``h`` then collects
         ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
         scores; fit refuses a configuration whose deepest step falls below
-        ``MIN_STRIDED_SCORES_PER_STEP``.
+        the required count: the larger of ``MIN_STRIDED_SCORES_PER_STEP`` and
+        the validity minimum ``ceil(1/t) - 1`` imposed by the requested
+        coverage rates, where the tail mass ``t`` is ``1 - cr`` for a
+        symmetric conformity scorer and ``(1 - cr) / 2`` for an asymmetric
+        one. Higher coverage therefore needs a longer calibration window:
+        0.9 with absolute residuals is bound by the flat floor of 30, while
+        0.99 needs 99 scores at the deepest step.
     conformity_scorer : BaseConformityScorer, default=Residual()
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
@@ -368,6 +382,61 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         return self
 
+    def _required_scores_per_step(self) -> tuple[int, str]:
+        """Resolve the per-step score requirement for a strided calibration.
+
+        The larger of two bounds, with a phrase naming the one that binds:
+
+        - the flat stability floor ``MIN_STRIDED_SCORES_PER_STEP``, below
+          which tail quantiles are estimated from too few samples to be
+          stable at any coverage rate;
+        - the validity minimum the requested coverage rates impose. The
+          empirical quantile at tail mass ``t`` is an interior order
+          statistic only when the step holds at least ``ceil(1/t) - 1``
+          scores; with fewer, the quantile degenerates to the sample
+          maximum and the interval carries no tail information at all.
+          ``t = (1 - cr)`` for a symmetric conformity scorer (absolute
+          residuals fold both tails into one quantile) and
+          ``t = (1 - cr) / 2`` for an asymmetric one (each tail is
+          estimated separately), so the same coverage rate needs roughly
+          twice the scores under an asymmetric scorer.
+
+        Both bounds are lower bounds on sanity, not coverage guarantees:
+        similarity weighting concentrates the effective sample size further,
+        and an adaptive conformal adapter can push the effective level
+        tighter than nominal.
+
+        Returns
+        -------
+        tuple[int, str]
+            The required per-step score count and a human-readable phrase
+            naming the binding bound, for the fit-time error message.
+        """
+        required = MIN_STRIDED_SCORES_PER_STEP
+        reason = f"the stability floor of {MIN_STRIDED_SCORES_PER_STEP}"
+
+        scorer_tags = self.conformity_scorer.__sklearn_tags__()
+        assert scorer_tags.scorer_tags is not None
+        symmetric = scorer_tags.scorer_tags.symmetric
+        kind = "symmetric" if symmetric else "asymmetric"
+
+        for coverage_rate in self.fit_coverage_rates_:
+            tail = (1.0 - coverage_rate) if symmetric else (1.0 - coverage_rate) / 2.0
+            if tail <= 0.0:
+                # Coverage rates are validated below 1 upstream; guarded so a
+                # future relaxation cannot divide by zero here.
+                continue
+            # Round before the ceil: 1 - 0.9 is 0.0999...98 in binary floating
+            # point, so a bare ceil(1/tail) would overstate the minimum by one.
+            needed = math.ceil(round(1.0 / tail, 9)) - 1
+            if needed > required:
+                required = needed
+                reason = (
+                    f"coverage rate {coverage_rate} with a {kind} conformity "
+                    f"scorer (tail mass {tail:g} needs {needed} scores)"
+                )
+        return required, reason
+
     def _validate_calibration_stride(self, forecasting_horizon: int) -> None:
         """Reject a strided calibration whose score budget cannot hold.
 
@@ -378,14 +447,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         to match. And a block too small for the stride leaves the deepest
         horizon step with too few conformity scores: step ``h`` collects
         ``C/k - ceil(h/k) + 1`` scores (``C`` rows, stride ``k``), so the
-        deepest step is always the binding one.
+        deepest step is always the binding one. The score requirement is the
+        larger of the flat stability floor and the validity minimum the
+        requested coverage rates impose; see ``_required_scores_per_step``.
 
         Raises
         ------
         ValueError
             If ``calibration_size`` is not a multiple of ``calibration_stride``,
-            or the deepest step's score count falls below
-            ``MIN_STRIDED_SCORES_PER_STEP``.
+            or the deepest step's score count falls below the requirement
+            resolved by ``_required_scores_per_step``.
         """
         if self.calibration_stride is None:
             return
@@ -399,17 +470,18 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 f"row, so the block must hold a whole number of strides."
             )
 
+        required, reason = self._required_scores_per_step()
         depth = math.ceil(forecasting_horizon / k)
         worst = c // k - depth + 1
-        if worst < MIN_STRIDED_SCORES_PER_STEP:
-            needed = (MIN_STRIDED_SCORES_PER_STEP - 1 + depth) * k
+        if worst < required:
+            needed = (required - 1 + depth) * k
             binding_lo = (depth - 1) * k + 1
             raise ValueError(
                 f"calibration_stride={k} with calibration_size={c} leaves "
                 f"{worst} conformity scores at the binding deep steps "
-                f"({binding_lo} to {forecasting_horizon}), below the floor of "
-                f"{MIN_STRIDED_SCORES_PER_STEP}. The smallest calibration_size "
-                f"whose worst step clears the floor is {needed}."
+                f"({binding_lo} to {forecasting_horizon}), below the required "
+                f"{required} ({reason}). The smallest calibration_size whose "
+                f"worst step clears the requirement is {needed}."
             )
 
     def _check_replay_left_the_block_observed(self, y: pl.DataFrame, replay_path: str) -> None:
