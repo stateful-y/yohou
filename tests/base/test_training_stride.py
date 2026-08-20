@@ -26,7 +26,9 @@ class _RecordingRegressor(RegressorMixin, BaseEstimator):
 
     def fit(self, X, y, sample_weight=None):
         self.received_ = (X, y, sample_weight)
-        self.n_outputs_ = 1 if getattr(y, "ndim", 1) == 1 else y.shape[1]
+        # polars frames carry shape but not ndim; a (n, c) shape means c outputs.
+        shape = getattr(y, "shape", None)
+        self.n_outputs_ = shape[1] if shape is not None and len(shape) == 2 else 1
         return self
 
     def predict(self, X):
@@ -160,7 +162,9 @@ class _MultiOutputRecording(RegressorMixin, BaseEstimator):
 
     def fit(self, X, y, sample_weight=None):
         self.received_ = (X, y, sample_weight)
-        self.n_outputs_ = 1 if getattr(y, "ndim", 1) == 1 else y.shape[1]
+        # polars frames carry shape but not ndim; a (n, c) shape means c outputs.
+        shape = getattr(y, "shape", None)
+        self.n_outputs_ = shape[1] if shape is not None and len(shape) == 2 else 1
         return self
 
     def predict(self, X):
@@ -198,3 +202,161 @@ class TestTrainingStrideValidation:
         )
         with pytest.raises(ValueError, match="training_stride=6"):
             fc.fit(y=y, forecasting_horizon=2)
+
+
+def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, horizon: int = 3) -> None:
+    """Assert strided sample weights are the tail-anchored subset of the full ones.
+
+    Weights are computed on the full instance set and masked in lockstep with
+    the training rows, so the strided fit's weight vector must equal the
+    unstrided fit's vector filtered by the stride mask, for any weighter.
+    """
+    y = _series(n)
+    full = PointReductionForecaster(estimator=_RecordingRegressor(), **weighter_kwargs)
+    full.fit(y=y, forecasting_horizon=horizon)
+    full_weights = full.estimator_.received_[2]
+    assert full_weights is not None
+
+    strided = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=stride, **weighter_kwargs)
+    strided.fit(y=y, forecasting_horizon=horizon)
+    strided_weights = strided.estimator_.received_[2]
+    assert strided_weights is not None
+
+    n_instances = n - horizon
+    mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+    np.testing.assert_allclose(strided_weights, full_weights[mask])
+
+
+class TestTrainingStrideWeighterCompatibility:
+    """The stride composes with every weighter family and alignment.
+
+    The invariant under test is positional: the mask filters instances,
+    targets, and weights together, so the strided weight vector is exactly
+    the strided subset of the full one, whatever produced the weights.
+    """
+
+    @pytest.mark.parametrize(
+        "alignment",
+        ["first_step", "mean_step", "weighted_mean_step", "max_weight_step", "min_weight_step"],
+    )
+    def test_time_weighter_alignments(self, alignment):
+        from yohou.weighting import ExponentialDecayWeighter
+
+        _weight_correspondence(
+            {"time_weighter": ExponentialDecayWeighter(half_life=12), "sample_weight_alignment": alignment},
+            stride=5,
+        )
+
+    def test_linear_decay_weighter(self):
+        from yohou.weighting import LinearDecayWeighter
+
+        _weight_correspondence({"time_weighter": LinearDecayWeighter(max_steps=48)}, stride=6)
+
+    def test_seasonal_emphasis_weighter(self):
+        from yohou.weighting import SeasonalEmphasisWeighter
+
+        _weight_correspondence({"time_weighter": SeasonalEmphasisWeighter(seasonality=24, emphasis=3.0)}, stride=4)
+
+    def test_vintage_weighter(self):
+        from yohou.weighting import ExponentialDecayWeighter
+
+        _weight_correspondence({"vintage_weighter": ExponentialDecayWeighter(half_life=24)}, stride=5)
+
+    def test_combined_time_and_vintage_weighters(self):
+        from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
+
+        _weight_correspondence(
+            {
+                "time_weighter": LinearDecayWeighter(max_steps=72),
+                "vintage_weighter": ExponentialDecayWeighter(half_life=18),
+            },
+            stride=7,
+        )
+
+    def test_table_weighter_covering_every_timestamp(self):
+        """A join-keyed weighter needs the full time axis; the stride subsets after."""
+        from yohou.weighting import TableWeighter
+
+        n = 60
+        y = _series(n)
+        frame = pl.DataFrame({"time": y["time"], "weight": [1.0 + (i % 5) for i in range(n)]})
+        _weight_correspondence({"vintage_weighter": TableWeighter(frame=frame)}, stride=5, n=n)
+
+    def test_panel_weighted_stride(self):
+        """Panel stacking keeps per-group weights aligned with per-group masks."""
+        from yohou.weighting import ExponentialDecayWeighter
+
+        n, horizon, stride = 40, 2, 6
+        base = _series(n)
+        y = pl.DataFrame({
+            "time": base["time"],
+            "a__value": base["value"],
+            "b__value": base["value"] + 100.0,
+        })
+
+        def fit(training_stride):
+            fc = PointReductionForecaster(
+                estimator=_RecordingRegressor(),
+                panel_strategy="global",
+                time_weighter=ExponentialDecayWeighter(half_life=10),
+                training_stride=training_stride,
+            )
+            fc.fit(y=y, forecasting_horizon=horizon)
+            return fc.estimator_.received_
+
+        full_X, _, full_w = fit(1)
+        strided_X, _, strided_w = fit(stride)
+
+        n_instances = n - horizon
+        group_mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+        mask = np.concatenate([group_mask, group_mask])
+        assert len(full_X) == 2 * n_instances
+        assert len(strided_X) == int(mask.sum())
+        np.testing.assert_allclose(strided_w, full_w[mask])
+
+    def test_interval_reduction_weighted_stride(self):
+        """Every per-quantile estimator sees the same strided weight subset."""
+        from yohou.weighting import ExponentialDecayWeighter
+
+        n, horizon, stride = 50, 2, 5
+        y = _series(n)
+        fc = IntervalReductionForecaster(
+            estimator=_MultiOutputRecording(),
+            time_weighter=ExponentialDecayWeighter(half_life=12),
+            training_stride=stride,
+        )
+        fc.fit(y=y, forecasting_horizon=horizon, coverage_rates=[0.5])
+        n_instances = n - horizon
+        kept = int((np.arange(n_instances) % stride == (n_instances - 1) % stride).sum())
+        weight_vectors = [est.received_[2] for est in fc.estimator_.values()]
+        for w in weight_vectors:
+            assert w is not None and len(w) == kept
+        for w in weight_vectors[1:]:
+            np.testing.assert_allclose(w, weight_vectors[0])
+
+    def test_conformal_wrapper_with_weighted_strided_point_forecaster(self):
+        """Both strides and a weighter compose end to end through fit and predict."""
+        import yohou.interval.split_conformal as sc_module
+        from yohou.interval import SplitConformalForecaster
+        from yohou.weighting import ExponentialDecayWeighter
+
+        point = PointReductionForecaster(
+            estimator=_RecordingRegressor(),
+            time_weighter=ExponentialDecayWeighter(half_life=24),
+            training_stride=3,
+        )
+        fc = SplitConformalForecaster(
+            point_forecaster=point,
+            calibration_size=24,
+            calibration_stride=3,
+        )
+        y = _series(120)
+        original_floor = sc_module.MIN_STRIDED_SCORES_PER_STEP
+        sc_module.MIN_STRIDED_SCORES_PER_STEP = 2
+        try:
+            fc.fit(y=y, forecasting_horizon=3, coverage_rates=[0.5])
+        finally:
+            sc_module.MIN_STRIDED_SCORES_PER_STEP = original_floor
+        intervals = fc.predict_interval(coverage_rates=[0.5])
+        assert len(intervals) == 3
+        assert fc.point_forecaster_.estimator_.received_[2] is not None
