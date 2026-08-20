@@ -612,7 +612,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Router with mappings for all base forecasters.
 
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         for name, forecaster in self.forecasters:
             router.add(

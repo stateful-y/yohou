@@ -1101,7 +1101,11 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             forecaster for ``fit``, ``predict``, and ``observe_predict``.
 
         """
-        router = MetadataRouter(owner=self)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         method_mapping = (
             MethodMapping()

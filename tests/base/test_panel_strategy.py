@@ -333,7 +333,9 @@ class TestGlobalOnlyExogenous:
             calibration_size=20,
         )
         f.fit(y[:80], X[:80], forecasting_horizon=5)
-        y_pred = f.predict(forecasting_horizon=5, coverage_rates=[0.9])
+        # predict takes no coverage_rates; the stray kwarg used to be
+        # swallowed by **params and now raises as unrouted metadata.
+        y_pred = f.predict(forecasting_horizon=5)
         assert y_pred.shape[0] == 5
 
     def test_grid_search_cv(self, panel_y_global_X):

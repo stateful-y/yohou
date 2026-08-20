@@ -9,7 +9,6 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.base import clone
 from sklearn.utils.metadata_routing import (
-    MetadataRouter,
     MethodMapping,
     process_routing,
 )
@@ -1302,7 +1301,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
             Router with mappings for target_forecaster and feature_forecaster.
 
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         router.add(
             target_forecaster=self.target_forecaster,

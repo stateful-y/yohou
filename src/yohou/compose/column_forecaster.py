@@ -9,7 +9,6 @@ import polars.selectors as cs
 from sklearn.base import clone
 from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
-    MetadataRouter,
     MethodMapping,
     process_routing,
 )
@@ -903,7 +902,9 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         groups : list of str or None, default=None
             Group prefixes for panel data.
         predict_transformed : bool, default=False
-            Return transformed predictions.
+            Accepted for signature symmetry with ``predict`` and not
+            forwarded: interval children emit original-scale bounds by
+            design and their ``predict_interval`` takes no such flag.
         X_future : pl.DataFrame or None, default=None
             Known future features override. Re-derives step columns
             without mutating forecaster state.
@@ -937,11 +938,15 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Predict with each forecaster
         for name, forecaster, _cols in self.forecasters_:
             forecaster_params = routed_params.get(name, Bunch(predict_interval={}))
+            # predict_transformed is not forwarded: no interval child accepts
+            # it on predict_interval (bounds are emitted on the original scale
+            # by design), so the old forwarding landed in **params and was
+            # silently swallowed. Kept out rather than surfaced as an
+            # unrequested-metadata error now that children route their params.
             y_pred = forecaster.predict_interval(
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 groups=groups,
-                predict_transformed=predict_transformed,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **forecaster_params.predict_interval,
@@ -958,7 +963,6 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 groups=groups,
-                predict_transformed=predict_transformed,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 **remainder_params.predict_interval,
@@ -1197,7 +1201,11 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
             Metadata routing configuration.
 
         """
-        router = MetadataRouter(owner=self)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         # Create method mapping for forecasters
         method_mapping = (
