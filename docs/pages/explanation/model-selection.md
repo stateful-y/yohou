@@ -190,7 +190,7 @@ Passing a dictionary of scorers (for example `{"mae": MeanAbsoluteError(), "rmse
 
 Both search classes parallelize fold evaluation via `n_jobs` and control dispatch with `pre_dispatch` to limit memory usage. When a candidate fails to fit, `error_score` determines the behavior: set it to `np.nan` (the default) to record the failure and continue, or to `"raise"` to abort immediately. Failed fits produce a `FitFailedWarning` with the traceback.
 
-Both classes integrate with sklearn's metadata routing so that `coverage_rates` and `groups` flow through to the correct estimators automatically. Time-axis weighting lives on constructor parameters, not on metadata, so no routing configuration is needed for weighters.
+Both classes integrate with sklearn's metadata routing: `coverage_rates` routes to the forecaster's fit, and the predict-side keys (`stride`, `strategy`, `predict_transformed`, `groups`, where the scoring family's walk-forward accepts them) route into the inner loop through the bucket named by the scorers' response method. A routed key is validated against every predict-family method that carries it, so the request is set `True` on the response method and `False` on the other carriers; see [Metadata Routing](metadata-routing.md) for the discipline and the per-method key tables. Time-axis weighting lives on constructor parameters, not on metadata, so no routing configuration is needed for weighters.
 
 ## Choosing a Forecasting Method
 

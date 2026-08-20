@@ -22,9 +22,68 @@ The metadata a caller can supply at a top-level call includes:
   interval forecaster's `predict_interval` (and `fit`).
 - **`groups`**: panel group names, used by `predict`/`observe_predict` to
   operate on a subset of panel groups.
+- **`stride`**: the walk-forward cadence of the observe-predict loop,
+  declarable on each response method (`predict`, `predict_interval`,
+  `predict_class_proba`) so a search can route it into its inner loop.
+- **`strategy`** (`predict_interval` only) and **`predict_transformed`**
+  (`predict` only): routable where the family's walk-forward accepts them.
 
 Any consumer can additionally request its own arbitrary metadata key; the
 routing infrastructure is generic and not limited to the parameters above.
+
+### The three-layer model
+
+A key is routable end to end only when three independent layers line up:
+
+1. **Declarable**: the key exists on the callee's request, either scraped
+   from the method signature or declared with a `__metadata_request__*`
+   class attribute (how `stride` exists on methods whose signature never
+   takes it).
+2. **Routed**: a router maps the calling method onto that callee. The search
+   maps `fit` onto `fit` and all three response methods, so fit-passed
+   metadata can reach whichever bucket the scorers resolve.
+3. **Consumed**: something reads the bucket into a method that accepts the
+   key. The search's inner loop reads the response-method bucket and splats
+   it into the dispatched observe method.
+
+A key failing any layer silently goes nowhere, which is why the effective
+per-class key sets are pinned by a conformance test.
+
+### The substring contract
+
+sklearn resolves `__metadata_request__{method}` class attributes by substring
+over mangled attribute names, so a declaration for `predict_interval` also
+places its keys (unset) on the `predict` of any class that defines one. yohou
+treats this as a stated contract rather than an accident: the pinned tables in
+the conformance suite record every effective key, leaks included, and the
+request discipline below pairs them off.
+
+### The per-callee request discipline
+
+A key passed to a search's `fit` is validated against every mapped callee
+that carries it. Set the request `True` on the response method your scorers
+resolve and explicitly `False` on every other carrier:
+
+```python
+forecaster.set_predict_interval_request(stride=True)   # interval scoring
+forecaster.set_predict_request(stride=False)           # leaked sibling carrier
+search.fit(y, forecasting_horizon=48, stride=24)
+```
+
+An unpaired carrier raises an error naming the method and the
+`set_*_request` call that resolves it. `cross_validate` and
+`cross_val_score` deliberately bypass routing: they take `predict_stride`
+and `predict_forecasting_horizon` as explicit parameters, so no request
+declarations are involved on that path.
+
+### Known limits in yohou-optuna
+
+Two follow-ups live in the external `yohou-optuna` package rather than here:
+its per-trial objective re-splits without the routed splitter bucket (the
+grid searches pass it; the bucket is empty today, so the divergence is
+latent until a splitter gains a real metadata key), and its fit would raise
+reading the scorer bucket under `scoring=None` (unreachable from callers
+that always configure scoring).
 
 ### `sample_weight` is not a caller-supplied parameter
 
