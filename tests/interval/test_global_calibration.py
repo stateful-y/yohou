@@ -297,3 +297,55 @@ class TestAdapterStaysPerColumn:
             calibration_strategy="global",
         )
         assert set(forecaster.adapters_["step_1"]) == {"e0__v", "e1__v"}
+
+
+class TestAbsoluteNormalizedScorer:
+    """The symmetric variant, end to end."""
+
+    def test_scores_are_absolute(self):
+        y = _panel()
+        scorer = AbsoluteNormalizedResidual().fit(y)
+        over = scorer.score(y[:1], y[:1].with_columns(pl.col("e0__v") + 5.0, pl.col("e1__v") + 500.0))
+        under = scorer.score(y[:1], y[:1].with_columns(pl.col("e0__v") - 5.0, pl.col("e1__v") - 500.0))
+        assert (over.drop("time").to_numpy() >= 0).all()
+        assert (under.drop("time").to_numpy() >= 0).all()
+
+    def test_intervals_are_symmetric_about_the_prediction(self):
+        """Its whole point: equidistant bounds, each scaled by its column."""
+        y = _panel(scales=(1.0, 100.0))
+        forecaster = _fit(y, conformity_scorer=AbsoluteNormalizedResidual())
+        iv = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+        point = forecaster.point_forecaster_.predict(forecasting_horizon=1).drop("vintage_time", strict=False)
+        for column in ("e0__v", "e1__v"):
+            lower = float(iv[f"{column}_lower_0.9"][0])
+            upper = float(iv[f"{column}_upper_0.9"][0])
+            centre = float(point[column][0])
+            assert centre - lower == pytest.approx(upper - centre)
+
+    def test_widths_still_track_each_column(self):
+        y = _panel(scales=(1.0, 100.0))
+        widths = _widths(_fit(y, conformity_scorer=AbsoluteNormalizedResidual()), ["e0__v", "e1__v"])
+        assert 50 < widths["e1__v"] / widths["e0__v"] < 200
+
+    def test_pooling_works_with_the_symmetric_variant(self):
+        y = _panel(scales=(1.0, 100.0))
+        widths = _widths(
+            _fit(y, conformity_scorer=AbsoluteNormalizedResidual(), calibration_strategy="global"),
+            ["e0__v", "e1__v"],
+        )
+        assert all(w > 0 for w in widths.values())
+        assert 50 < widths["e1__v"] / widths["e0__v"] < 200
+
+
+def test_pooled_weights_accepts_rows_without_reserved_mass():
+    """A weight row that already sums to 1 or more carries no reservation to undo.
+
+    Nothing in the library produces such a row, since `_reserve_mass` always
+    holds some back, but the helper is public and should not divide by a
+    negative remainder if handed raw affinities.
+    """
+    raw = np.ones(10)
+    pooled = pooled_weights(raw, 2)
+
+    assert pooled.sum() < 1.0
+    assert np.allclose(pooled, pooled[0])
