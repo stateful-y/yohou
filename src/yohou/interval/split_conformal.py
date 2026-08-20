@@ -10,6 +10,7 @@ import polars as pl
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import clone
 from sklearn.model_selection import train_test_split
+from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping, process_routing
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
@@ -133,6 +134,36 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         tags.forecaster_tags.forecaster_type = POINT_INTERVAL
         return tags
 
+    def get_metadata_routing(self) -> MetadataRouter:
+        """Get metadata routing including the wrapped point forecaster.
+
+        Built on the inherited router (which carries this class's own
+        ``$self_request`` and the transformer slots) and registers
+        ``point_forecaster`` for the methods the wrapper actually delegates:
+        ``fit`` onto the child's fit, and every predict-family entry point
+        onto the child's ``predict``, because both ``predict_interval`` and
+        the observe variants ultimately call the point forecaster's
+        ``predict``. The conformity scorer, similarity, and adapters consume
+        their parameters internally and are deliberately not routing
+        children.
+
+        Returns
+        -------
+        MetadataRouter
+            Router with the inherited entries plus the point forecaster.
+        """
+        router = super().get_metadata_routing()
+        router.add(
+            point_forecaster=self.point_forecaster,
+            method_mapping=MethodMapping()
+            .add(caller="fit", callee="fit")
+            .add(caller="predict", callee="predict")
+            .add(caller="predict_interval", callee="predict")
+            .add(caller="observe_predict", callee="predict")
+            .add(caller="observe_predict_interval", callee="predict"),
+        )
+        return router
+
     def __init__(
         self,
         point_forecaster: BasePointForecaster = SeasonalNaive(),
@@ -195,7 +226,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             feature transformation is the responsibility of that inner
             estimator, reachable as ``point_forecaster__forecast_transformer``.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -228,12 +262,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y, X_actual, test_size=self.calibration_size, shuffle=False
             )
 
+        # Route received metadata to the wrapped point forecaster instead of
+        # discarding it; with no params this resolves to an empty bucket.
+        routed = process_routing(self, "fit", **params)
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
             X_actual=X_actual_train,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            **routed.point_forecaster.fit,
         )
 
         # At the default calibration_stride=None the replay runs at stride 1: each row
@@ -1045,7 +1083,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``"time"`` columns. Re-derives step columns without mutating
             forecaster state.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1067,12 +1108,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             groups=groups,
         )
 
+        routed = process_routing(self, "predict", **params)
         return self.point_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             predict_transformed=predict_transformed,
             X_future=X_future,
             X_forecast=X_forecast,
+            **routed.point_forecaster.predict,
         )
 
     def observe_predict(
@@ -1122,7 +1165,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1232,7 +1278,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1502,7 +1551,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``"time"`` columns. Re-derives step columns without mutating
             forecaster state.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1533,7 +1585,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
-        y_pred_full = self.point_forecaster_.predict(X_future=X_future, X_forecast=X_forecast)
+        routed = process_routing(self, "predict_interval", **params)
+        y_pred_full = self.point_forecaster_.predict(
+            X_future=X_future, X_forecast=X_forecast, **routed.point_forecaster.predict
+        )
         has_vintage_time = "vintage_time" in y_pred_full.columns
         if has_vintage_time:
             vintage_time_col = y_pred_full["vintage_time"]
