@@ -259,6 +259,19 @@ class ScorerTags:
         magnitude (e.g. gamma residuals).  When ``True``, weighted
         interval reconstruction scales quantiles by
         ``(prediction + epsilon)``.
+    comparable_across_columns : bool, default=False
+        Whether scores from different value columns are on a common
+        footing, so that pooling them into one quantile is meaningful.
+        This is a stronger claim than being scale-free: normalising by
+        the predicted level removes differences in magnitude but leaves
+        differences in volatility, so two columns of equal size but
+        unequal noise still produce incomparable scores.  Only a scorer
+        that divides by a per-column dispersion estimate should set it.
+
+        Deliberately separate from ``multiplicative``, which selects a
+        reconstruction by ``(prediction + epsilon)``.  A scorer with a
+        fitted per-column scale reconstructs differently, so overloading
+        the one tag would make it mean two incompatible things.
 
     """
 
@@ -267,6 +280,7 @@ class ScorerTags:
     requires_calibration: bool = False
     symmetric: bool = False
     multiplicative: bool = False
+    comparable_across_columns: bool = False
 
 
 @dataclass

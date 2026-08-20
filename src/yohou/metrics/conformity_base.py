@@ -50,7 +50,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     @staticmethod
     def _compute_asymmetric_quantiles(
-        conformity_scores: pl.DataFrame, coverage_rate: float
+        conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
     ) -> tuple[list[float], list[float]]:
         """Compute lower and upper quantiles per value column.
 
@@ -115,6 +115,14 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         # exchangeable with the calibration scores, and is what makes coverage
         # at least the nominal rate. Without it the bound is one order statistic
         # short and under-covers by construction, at every sample size.
+        n_columns = scores_array.shape[1] if scores_array.ndim > 1 else 1
+        if pooled:
+            # One quantile over every column's scores, then handed back once per
+            # column so each caller's reconstruction still applies that column's
+            # own scale. Pooling changes which scores the quantile is drawn from,
+            # never the axis the bound is rebuilt on.
+            scores_array = scores_array.reshape(-1, 1)
+
         n = scores_array.shape[0]
         ordered = np.sort(scores_array, axis=0)
 
@@ -129,10 +137,16 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         upper_quantiles = ordered[upper_index - 1]
         lower_quantiles = ordered[lower_index - 1]
 
-        return list(np.atleast_1d(lower_quantiles)), list(np.atleast_1d(upper_quantiles))
+        lower = list(np.atleast_1d(lower_quantiles))
+        upper = list(np.atleast_1d(upper_quantiles))
+        if pooled:
+            lower, upper = lower * n_columns, upper * n_columns
+        return lower, upper
 
     @staticmethod
-    def _compute_symmetric_quantiles(conformity_scores: pl.DataFrame, coverage_rate: float) -> list[float]:
+    def _compute_symmetric_quantiles(
+        conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+    ) -> list[float]:
         """Compute the symmetric half-width quantile per value column.
 
         As with the asymmetric variant, the reduction runs down each column so
@@ -170,12 +184,17 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         # Same (n+1) conformal correction as the asymmetric variant, applied to
         # the single half-width instead of two tails.
+        n_columns = conformity_array.shape[1] if conformity_array.ndim > 1 else 1
+        if pooled:
+            conformity_array = conformity_array.reshape(-1, 1)
+
         n = conformity_array.shape[0]
         ordered = np.sort(conformity_array, axis=0)
         index = min(max(int(np.ceil((n + 1) * coverage_rate)), 1), n)
         quantiles = ordered[index - 1]
 
-        return list(np.atleast_1d(quantiles))
+        result = list(np.atleast_1d(quantiles))
+        return result * n_columns if pooled else result
 
     @staticmethod
     def _format_y_pred_interval(
@@ -209,7 +228,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float
+        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
     ) -> pl.DataFrame:
         """Transform conformity scores into prediction intervals.
 
@@ -223,6 +242,12 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
 
         coverage_rate : float
             Target coverage probability.
+
+        pooled : bool, default=False
+            When True, draw one quantile from every value column's scores
+            together instead of one per column, and apply it to each column's
+            own reconstruction. Only meaningful for scorers whose scores are
+            comparable across columns.
 
         Returns
         -------

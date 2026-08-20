@@ -15,10 +15,10 @@ from yohou.base.panel import BasePanelForecaster
 from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval, StrOptions, _fit_context
 
 from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
-from .utils import warn_if_calibration_too_small, warn_if_weights_collapsed, weighted_quantile
+from .utils import pooled_weights, warn_if_calibration_too_small, warn_if_weights_collapsed, weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
 
@@ -48,7 +48,29 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         coverage. Composes with ``similarity``: the adapter sets the level,
         the similarity sets the weights.
     panel_strategy : {"global", "multivariate"}, default="global"
-        How to handle panel data. See `BaseForecaster` for details.
+        How to handle panel data. See `BaseForecaster` for details. This
+        governs the wrapped *point model* and the per-group state, not the
+        calibration.
+    calibration_strategy : {"local", "global"}, default="local"
+        Which conformity scores a value column's quantile is drawn from.
+        ``"local"`` (the default) uses that column's own scores, so each
+        entity is calibrated independently. ``"global"`` draws one quantile
+        from every column's scores together and rebuilds each column's bound
+        with its own scale, which lifts the ceiling on the coverage rates a
+        short series can express.
+
+        Note that ``panel_strategy`` and ``calibration_strategy`` both accept
+        ``"global"`` and neither implies the other. ``panel_strategy="global"``
+        shares the *point model* across entities; ``calibration_strategy="global"``
+        shares the *calibration*. The default pairing, a shared point model with
+        per-entity calibration, is a sensible and common configuration.
+
+        ``"global"`` requires a conformity scorer whose scores are comparable
+        across columns, and raises at ``fit`` otherwise: pooling scores of
+        different magnitude or volatility produces a systematically
+        miscalibrated interval rather than a merely imprecise one. Whether
+        pooling helps at all depends on how correlated your entities are; see
+        the interval-forecasting explanation page.
 
     Attributes
     ----------
@@ -78,6 +100,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         "conformity_scorer": [BaseConformityScorer],
         "similarity": [BaseSimilarity, None],
         "adapter": [BaseConformalAdapter, None],
+        "calibration_strategy": [StrOptions({"local", "global"})],
     }
 
     def __sklearn_tags__(self) -> Tags:
@@ -104,6 +127,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         similarity: BaseSimilarity | None = None,
         adapter: BaseConformalAdapter | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        calibration_strategy: Literal["local", "global"] = "local",
     ):
         BaseIntervalForecaster.__init__(self, panel_strategy=panel_strategy)
 
@@ -112,6 +136,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.similarity = similarity
         self.adapter = adapter
         self.calibration_size = calibration_size
+        self.calibration_strategy = calibration_strategy
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -271,6 +296,22 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 X_future=X_future,
                 X_forecast=X_forecast,
             )
+
+        # Pooling scores that are not comparable across columns produces a
+        # systematically miscalibrated interval, not a merely imprecise one, so
+        # this refuses rather than warns.
+        if self.calibration_strategy == "global":
+            scorer_tags = self.conformity_scorer.__sklearn_tags__()
+            assert scorer_tags.scorer_tags is not None
+            if not scorer_tags.scorer_tags.comparable_across_columns:
+                raise ValueError(
+                    f"calibration_strategy='global' pools conformity scores across value columns, "
+                    f"which requires a scorer whose scores are comparable across them. "
+                    f"{type(self.conformity_scorer).__name__} does not declare that: its scores carry "
+                    f"each column's own magnitude or volatility, so one pooled quantile would be too "
+                    f"wide for some columns and too narrow for others. Use a dispersion-normalized "
+                    f"scorer such as NormalizedResidual, or keep calibration_strategy='local'."
+                )
 
         conformity_scorers = {}
         conformity_scores_list: list[pl.DataFrame] = []
@@ -1257,19 +1298,33 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         lower_data: dict[str, list[float]] = {}
         upper_data: dict[str, list[float]] = {}
 
+        # Under pooling one quantile is drawn from every column's scores, with each
+        # column at a calibration time carrying that time's affinity. The tiling has
+        # to run on the raw affinities, which pooled_weights handles.
+        pooled = self.calibration_strategy == "global"
+        empty = np.empty(0, dtype=np.float64)
+        pooled_scores = scores_no_time.to_numpy().astype(np.float64).reshape(-1) if pooled else empty
+        pooled_w = pooled_weights(weights, len(value_cols)) if pooled else empty
+        column_scales = getattr(conformity_scorer_step, "column_scales_", None)
+
         for col in value_cols:
-            scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+            scores_col = pooled_scores if pooled else scores_no_time[col].to_numpy().astype(np.float64)
+            col_weights = pooled_w if pooled else weights
             pred_val = float(y_pred_values[col][0])
             scale = (pred_val + epsilon) if multiplicative else 1.0
+            if pooled and column_scales is not None:
+                # A dispersion-normalized scorer rebuilds the bound with the
+                # column's own fitted scale, which keeps pooled widths per column.
+                scale = column_scales[col]
 
             if symmetric:
-                q = weighted_quantile(scores_col, 1.0 - coverage_rate, weights)
+                q = weighted_quantile(scores_col, 1.0 - coverage_rate, col_weights)
                 lower_data[col] = [pred_val - q * scale]
                 upper_data[col] = [pred_val + q * scale]
             else:
                 alpha = 1.0 - coverage_rate
-                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
-                upper_q = weighted_quantile(scores_col, alpha / 2.0, weights)
+                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, col_weights)
+                upper_q = weighted_quantile(scores_col, alpha / 2.0, col_weights)
                 lower_data[col] = [pred_val + lower_q * scale]
                 upper_data[col] = [pred_val + upper_q * scale]
 
@@ -1518,7 +1573,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 # Checked once per (step, rate), before any path computes a
                 # quantile, so it covers the static, weighted and adapted paths
                 # alike rather than being repeated in each.
-                warn_if_calibration_too_small(conformity_scores_step.height, coverage_rate, step_symmetric, step)
+                # Under pooling the quantile draws from every column's scores, so
+                # the resolution ceiling is the pooled count. Counting per column
+                # would report a rate unreachable exactly when pooling made it
+                # reachable, which is the point of the mode.
+                n_value_columns = len([c for c in conformity_scores_step.columns if c != "time"])
+                available = conformity_scores_step.height * (
+                    n_value_columns if self.calibration_strategy == "global" else 1
+                )
+                warn_if_calibration_too_small(available, coverage_rate, step_symmetric, step)
 
                 adapter_active = hasattr(self, "adapters_") and coverage_rate in tracked_rates
                 # Empty unless the adapter is active, in which case it carries one
@@ -1574,6 +1637,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                         y_pred=y_pred_step,
                         conformity_scores=conformity_scores_step,
                         coverage_rate=coverage_rate,
+                        pooled=self.calibration_strategy == "global",
                     ).drop("time")
 
                 rate_parts.append(y_pred_interval_rate_step)

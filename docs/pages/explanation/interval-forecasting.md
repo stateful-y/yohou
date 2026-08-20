@@ -131,6 +131,16 @@ or heteroscedastic variance that grows proportionally with the signal.
 [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.AbsoluteGammaResidual/)
 is the symmetric variant.
 
+**Dispersion-normalised residuals**:
+[`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/)
+computes $s = (y - \hat{y}) / \sigma_c$, dividing by a scale fitted per value column at
+`fit` time. Where gamma residuals remove differences in *magnitude* between columns, this
+also removes differences in *volatility*, so two columns of equal size but unequal noise
+still produce comparable scores. That is what makes pooled calibration possible, and it is
+also useful on its own: the interval width tracks each column's own dispersion.
+[`AbsoluteNormalizedResidual`](/pages/api/generated/yohou.metrics.AbsoluteNormalizedResidual/)
+is the symmetric variant.
+
 Switching scorers requires no changes to the forecaster; pass a different
 `conformity_scorer` to the
 [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
@@ -420,9 +430,9 @@ one calibration across them would over-cover the small entity and under-cover th
 large one, and the sharing would be invisible: both intervals are well-formed, one
 is simply too wide and the other too narrow.
 
-There is deliberately no option to pool calibration scores across entities, and no
-`calibration_pooling` parameter. Three things stand in the way, and they are not
-equally tractable.
+Calibration can optionally be pooled across entities, with `calibration_strategy="global"`.
+It is off by default, and whether it helps depends entirely on your data. Three things
+govern that, and they are not equally tractable.
 
 The first is magnitude. Pooling raw residuals from entities of different size is what
 produces the failure above, and a scale-free score such as
@@ -442,9 +452,44 @@ means pooling buys far less than the entity count suggests: under same-timestamp
 correlation `rho` the effective gain saturates near `1 / rho`, so two hundred entities
 that move together are worth about as much as ten.
 
-The same reasoning is why the adapter has no `entity_pooling` parameter alongside its
-`alpha_pooling`. Both were considered and deferred rather than rejected, but the
-prerequisite is a dispersion-normalized conformity score, not merely a scale-free one.
+The first is solved by
+[`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/), which
+divides each residual by that column's own dispersion rather than by its predicted
+level. Pooling requires it, or another scorer declaring cross-column comparability, and
+`calibration_strategy="global"` raises at fit otherwise: pooling incomparable scores
+produces an interval that is wrong rather than merely imprecise.
+
+The second and third are not solved, only bounded, which is why the mode is opt-in.
+
+### Deciding whether to pool
+
+Do not decide from the numbers above. Measure your own data with
+[`diagnose_pooling`](/pages/api/generated/yohou.interval.diagnose_pooling/), which
+reports the cross-sectional correlation of a fitted forecaster's conformity scores and
+how comparable those scores are across columns. It reports and does not choose, because
+the right answer also depends on which coverage rates you need.
+
+Pooling earns its place when a coverage rate is out of reach per column. On
+`fetch_hospital`, 40 series with 28 calibration scores each at a nominal 99%:
+
+| strategy | realized coverage |
+| --- | --- |
+| `"local"` | 92.3%, and the forecaster warns the rate is unreachable |
+| `"global"` | 99.6% |
+
+It costs something when an entity's errors differ in shape from its neighbours, not just
+in scale, since normalization equalizes dispersion and not tail weight. With nine
+light-tailed series and one heavy-tailed one at a nominal 90%, the heavy-tailed entity
+falls from 88.9% under `"local"` to 85.9% under `"global"`: its interval is drawn largely
+from better-behaved neighbours. The light-tailed nine are unaffected.
+
+Note that `panel_strategy` and `calibration_strategy` both accept `"global"` and neither
+implies the other. The first shares the point *model* across entities, the second shares
+the *calibration*. A shared model with per-entity calibration is the default and a
+perfectly sensible pairing.
+
+The adapter has no `entity_pooling` parameter alongside its `alpha_pooling`, and the
+adaptive level stays per entity under both calibration strategies.
 
 Note also that entity count never starves calibration here. `calibration_size` slices
 rows, and every entity shares the time index, so each entity receives the full

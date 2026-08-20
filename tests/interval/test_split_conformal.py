@@ -1955,7 +1955,7 @@ class _PoolingResidual(Residual):
     it detects anything.
     """
 
-    def inverse_score(self, y_pred, conformity_scores, coverage_rate):  # noqa: D102
+    def inverse_score(self, y_pred, conformity_scores, coverage_rate, pooled=False):  # noqa: D102
         from yohou.utils.validate_data import validate_scorer_data
 
         y_pred, conformity_scores, context = validate_scorer_data(

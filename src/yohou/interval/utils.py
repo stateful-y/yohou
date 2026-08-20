@@ -4,8 +4,12 @@ import warnings
 
 import numpy as np
 import numpy.typing as npt
+import polars as pl
+from sklearn.utils.validation import check_is_fitted
 
 __all__ = [
+    "diagnose_pooling",
+    "pooled_weights",
     "required_calibration_size",
     "warn_if_calibration_too_small",
     "warn_if_weights_collapsed",
@@ -221,3 +225,123 @@ def warn_if_weights_collapsed(weights: npt.NDArray[np.float64], step: int, cover
         )
 
     return effective_sample_size
+
+
+def pooled_weights(weights: npt.NDArray[np.float64], n_columns: int) -> npt.NDArray[np.float64]:
+    """Extend a per-column weight row over a pooled calibration set.
+
+    A similarity produces one weight per calibration *time*, entity-blind by
+    construction: its features describe the prediction context at a moment, not
+    how like one value column another is. Pooling indexes scores by
+    ``(time, column)``, so every column at a time inherits that time's affinity.
+    That is the same interchangeability pooling already assumes.
+
+    The arithmetic has to run on the raw affinities, not on the weights the
+    similarity returns. Those already hold mass back for the test point against
+    a *per-column* calibration set, and tiling them however rescaled keeps that
+    reservation when a pooled set of ``times * columns`` needs its own. The
+    reservation is invertible, so this recovers the affinities, tiles them, and
+    re-reserves over the pooled set. Skipping that step leaves every pooled
+    interval too wide with nothing raised.
+
+    Parameters
+    ----------
+    weights : np.ndarray
+        Per-column weight row of shape ``(n_times,)``, carrying reserved
+        test-point mass and therefore summing to less than 1.
+    n_columns : int
+        Number of value columns being pooled.
+
+    Returns
+    -------
+    np.ndarray
+        Pooled weight row of shape ``(n_times * n_columns,)``, ordered to match
+        a row-major flattening of the ``(time, column)`` score frame.
+
+    """
+    total = float(np.sum(weights))
+    if total >= 1.0:
+        # No reservation to undo: treat the row as raw affinities.
+        raw = np.asarray(weights, dtype=np.float64)
+    else:
+        raw = np.asarray(weights, dtype=np.float64) / (1.0 - total)
+
+    tiled = np.repeat(raw, n_columns)
+    return tiled / (tiled.sum() + 1.0)
+
+
+def diagnose_pooling(forecaster, step: int = 1) -> dict[str, float]:
+    """Report whether a fitted forecaster's data suits pooled calibration.
+
+    Whether ``calibration_strategy="global"`` helps depends on the data, and not
+    in a way the library can infer. Two things decide it, and this reports both
+    for the forecaster's own conformity scores rather than for a dataset someone
+    else measured.
+
+    Cross-sectional correlation sets what pooling can buy: entities that move
+    together at the same timestamp carry less independent information than their
+    count suggests, and the gain saturates near ``1 / correlation``. Measured
+    correlations vary widely, from about 0.02 on some real panels to 0.6 on
+    entities driven by a shared shock, so the same feature is worth 50x on one
+    dataset and 1.7x on another.
+
+    Score heterogeneity says whether pooling is sound at all. Pooling scores that
+    are not on a common footing gives one quantile that is too wide for some
+    columns and too narrow for others.
+
+    This reports and does not decide. The right choice also depends on which
+    coverage rates are needed, which is not visible here.
+
+    Parameters
+    ----------
+    forecaster : SplitConformalForecaster
+        A fitted forecaster holding conformity scores for several value columns.
+    step : int, default=1
+        Horizon step whose scores to examine.
+
+    Returns
+    -------
+    dict
+        ``cross_sectional_correlation``: mean pairwise correlation between
+        columns' scores at the same timestamp. ``effective_gain``: how many
+        columns' worth of independent information pooling would add, given that
+        correlation. ``score_heterogeneity``: ratio of the 90th to the 10th
+        percentile of per-column score magnitude, where 1 means fully
+        comparable. ``n_columns`` and ``n_times``: the shape examined.
+
+    Raises
+    ------
+    ValueError
+        If the forecaster holds fewer than two value columns, where pooling has
+        nothing to pool.
+
+    """
+    check_is_fitted(forecaster, ["conformity_scores_"])
+
+    scores = forecaster.conformity_scores_.filter(pl.col("step") == step).drop("step", "time", strict=False)
+    matrix = scores.to_numpy().astype(np.float64)
+    n_times, n_columns = matrix.shape
+    if n_columns < 2:
+        raise ValueError(
+            f"Pooling diagnostics need at least two value columns, got {n_columns}. "
+            "With one column there is nothing to pool."
+        )
+
+    standardized = (matrix - matrix.mean(axis=0)) / (matrix.std(axis=0) + 1e-12)
+    correlations = np.corrcoef(standardized.T)
+    upper = np.triu_indices(n_columns, k=1)
+    rho = float(np.nanmean(correlations[upper]))
+
+    effective_gain = n_columns / (1.0 + (n_columns - 1) * rho) if rho > 0 else float(n_columns)
+
+    magnitude = np.abs(matrix).mean(axis=0)
+    low, high = np.percentile(magnitude, [10, 90])
+    heterogeneity = float(high / low) if low > 0 else float("inf")
+
+    return {
+        "cross_sectional_correlation": rho,
+        "effective_gain": float(effective_gain),
+        "score_heterogeneity": heterogeneity,
+        "n_columns": float(n_columns),
+        "n_times": float(n_times),
+    }
