@@ -71,17 +71,17 @@ An interval forecaster with no point forecaster inside it, such as
 `IntervalReductionForecaster`, has no such value to report and returns bound
 columns only.
 
-### A note on `strategy`
+### A note on `recursion_strategy`
 
-`predict_interval` accepts a `strategy` argument that selects how a recursive
-step derives its next observation from the previous step's bounds. It applies to
-forecasters that recurse at the interval level.
+`predict_interval` accepts a `recursion_strategy` argument that selects how a
+recursive step derives its next observation from the previous step's bounds. It
+applies to forecasters that recurse at the interval level.
 
 `SplitConformalForecaster` does not: the wrapped point forecaster produces the
 whole horizon in one call, and any recursion inside it runs on point values
-rather than bound midpoints. `strategy` therefore defaults to `"point"` on this
-class, which is what it has always done, and `"mean"` or `"median"` raise rather
-than being silently ignored.
+rather than bound midpoints. `recursion_strategy` therefore defaults to
+`"point"` on this class, which is what it has always done, and `"mean"` or
+`"median"` raise rather than being silently ignored.
 
 ## 3. Score Coverage and Sharpness
 

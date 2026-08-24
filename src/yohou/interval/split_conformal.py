@@ -1,5 +1,6 @@
 """Implementation of conformal forecasters."""
 
+import math
 import numbers
 import warnings
 from typing import Literal
@@ -9,6 +10,7 @@ import polars as pl
 from pydantic import StrictFloat, StrictInt
 from sklearn.base import clone
 from sklearn.model_selection import train_test_split
+from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping, process_routing
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base.panel import BasePanelForecaster
@@ -21,6 +23,13 @@ from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
 from .utils import pooled_weights, warn_if_calibration_too_small, warn_if_weights_collapsed, weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
+
+# Minimum number of calibration scores that must land in the estimated tail,
+# per horizon step, under a strided calibration replay. The value is a judgment
+# call: 3 tail samples keep the estimate interior with a margin while staying
+# reachable at production rates. How this scales into the per-step requirement
+# is documented in _required_scores_per_step.
+MIN_TAIL_SAMPLES = 3
 
 
 class SplitConformalForecaster(BaseIntervalForecaster):
@@ -35,7 +44,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     point_forecaster : BasePointForecaster, default=SeasonalNaive()
         Point forecaster used to generate point predictions.
     calibration_size : int >= 1, default=100
-        Number of observations to use for calibration.
+        Number of observations to use for calibration. Always counted in
+        rows, whatever ``calibration_stride`` is set to.
+    calibration_stride : int >= 1 or None, default=None
+        Rows observed between successive calibration replay origins.
+        ``None`` keeps the stride-1 replay: one conformity score per
+        calibration row per horizon step. When set, ``calibration_size``
+        must be a multiple of the stride. See Notes for the replay
+        mechanics and the score-count requirement.
     conformity_scorer : BaseConformityScorer, default=Residual()
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
@@ -76,14 +92,51 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     ----------
     fit_coverage_rates_ : list of float
         Coverage rates used during fit.
+    replay_path_ : {"bulk", "batched", "rolling"}
+        Which calibration replay path fit took. See Notes.
 
     Notes
     -----
     The data is split into a training portion and a calibration portion
     of size ``calibration_size``.  The point forecaster is fit on the
-    training portion, then conformity scores are computed on the
-    calibration portion.  At prediction time, interval bounds are
+    training portion, then conformity scores are computed by replaying
+    the calibration portion.  At prediction time, interval bounds are
     derived from the empirical quantiles of these scores.
+
+    **Calibration stride.** At the default ``calibration_stride=None``
+    the replay runs at stride 1: every calibration row is a forecast
+    origin, so horizon step ``h`` collects ``calibration_size - h + 1``
+    conformity scores. The stride is not a cost knob: each origin yields
+    exactly one score per horizon step, so raising it discards scores one
+    for one. A configured stride is a cadence knob instead. The replay
+    still observes every calibration row but scores only origins
+    ``calibration_stride`` rows apart, ending on the last calibration
+    row, so the scores match a production cadence of one forecast per
+    stride. Step ``h`` then collects
+    ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
+    scores. Fit refuses a strided configuration whose deepest step falls
+    below the required count ``ceil(MIN_TAIL_SAMPLES / t)``: enough
+    scores for the estimated tail to hold ``MIN_TAIL_SAMPLES`` samples at
+    every requested coverage rate, where the tail mass ``t`` is
+    ``1 - cr`` for a symmetric conformity scorer and ``(1 - cr) / 2`` for
+    an asymmetric one. Higher coverage therefore needs a longer
+    calibration window: 0.9 with absolute residuals needs 30 scores at
+    the deepest step, 0.99 needs 300, and signed residuals double both.
+
+    **Replay paths.** The point forecaster is frozen for the whole
+    replay, so no origin depends on having predicted at the one before
+    it. Where the wrapped forecaster supports it, the origins are
+    recorded first and predicted in one pass per horizon step, so the
+    estimator call count stops scaling with the origin count. The most
+    aggressive path also skips the rolling observe, which moves
+    rolling-statistic columns by about one ULP and is therefore taken
+    only at stride 1 on a stack whose transformers all declare
+    ``batch_invariant``; anything undeclared keeps a bit-identical path,
+    so a missing declaration costs speed alone. The path taken is
+    recorded in ``replay_path_``. ``X_future`` and ``X_forecast`` are
+    forwarded to the replay so step columns are derived once over every
+    observation time; the two branches resolve vintages as-of per
+    observation time either way, so the predictions are identical.
 
     See Also
     --------
@@ -97,6 +150,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         **BaseIntervalForecaster._parameter_constraints,
         "point_forecaster": [BasePointForecaster],
         "calibration_size": [Interval(numbers.Integral, 1, None, closed="left")],
+        "calibration_stride": [Interval(numbers.Integral, 1, None, closed="left"), None],
         "conformity_scorer": [BaseConformityScorer],
         "similarity": [BaseSimilarity, None],
         "adapter": [BaseConformalAdapter, None],
@@ -119,6 +173,36 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         tags.forecaster_tags.forecaster_type = POINT_INTERVAL
         return tags
 
+    def get_metadata_routing(self) -> MetadataRouter:
+        """Get metadata routing including the wrapped point forecaster.
+
+        Built on the inherited router (which carries this class's own
+        ``$self_request`` and the transformer slots) and registers
+        ``point_forecaster`` for the methods the wrapper actually delegates:
+        ``fit`` onto the child's fit, and every predict-family entry point
+        onto the child's ``predict``, because both ``predict_interval`` and
+        the observe variants ultimately call the point forecaster's
+        ``predict``. The conformity scorer, similarity, and adapters consume
+        their parameters internally and are deliberately not routing
+        children.
+
+        Returns
+        -------
+        MetadataRouter
+            Router with the inherited entries plus the point forecaster.
+        """
+        router = super().get_metadata_routing()
+        router.add(
+            point_forecaster=self.point_forecaster,
+            method_mapping=MethodMapping()
+            .add(caller="fit", callee="fit")
+            .add(caller="predict", callee="predict")
+            .add(caller="predict_interval", callee="predict")
+            .add(caller="observe_predict", callee="predict")
+            .add(caller="observe_predict_interval", callee="predict"),
+        )
+        return router
+
     def __init__(
         self,
         point_forecaster: BasePointForecaster = SeasonalNaive(),
@@ -128,6 +212,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         adapter: BaseConformalAdapter | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
         calibration_strategy: Literal["local", "global"] = "local",
+        calibration_stride: StrictInt | None = None,
     ):
         BaseIntervalForecaster.__init__(self, panel_strategy=panel_strategy)
 
@@ -137,6 +222,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.adapter = adapter
         self.calibration_size = calibration_size
         self.calibration_strategy = calibration_strategy
+        self.calibration_stride = calibration_stride
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -181,7 +267,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             feature transformation is the responsibility of that inner
             estimator, reachable as ``point_forecaster__forecast_transformer``.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -203,6 +292,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # Validate interval-specific parameters (coverage rates)
         _, self.fit_coverage_rates_ = self._validate_interval_fit_params(self.fit_forecasting_horizon_, coverage_rates)
 
+        self._validate_calibration_stride(forecasting_horizon)
+
         # Handle splitting with optional X
         if X_actual is None:
             y_train, y_calib = train_test_split(y, test_size=self.calibration_size, shuffle=False)
@@ -212,54 +303,26 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y, X_actual, test_size=self.calibration_size, shuffle=False
             )
 
+        # Route received metadata to the wrapped point forecaster instead of
+        # discarding it; with no params this resolves to an empty bucket.
+        routed = process_routing(self, "fit", **params)
         self.point_forecaster_ = clone(self.point_forecaster).fit(
             y=y_train,
             X_actual=X_actual_train,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            **routed.point_forecaster.fit,
         )
 
-        # stride=1: each row of y_calib produces one prediction window of length
-        # forecasting_horizon.  This yields calibration_size - step + 1 conformity
-        # scores for each horizon step k, instead of the ~2-3 scores that result
-        # from stride=forecasting_horizon.  More calibration scores per step gives
-        # quantiles that are stable and well-separated.
-        #
-        # The stride is not a cost knob, which is why there is no trade to make here.
-        # Each origin yields exactly one score per horizon step, so scores, origins and
-        # predictions are the same number: raising the stride buys speed only by
-        # discarding scores one for one.  With a weighted quantile over
-        # similarity-concentrated scores, that budget is already close to its floor.
-        #
-        # X_future and X_forecast are forwarded, not withheld.  Given either,
-        # `_observe_predict_loop` derives step columns once over every observation time
-        # and each origin selects its row; given neither, it falls through to `observe`,
-        # which re-derives them one timestamp at a time.  Withholding them cost one
-        # `_derive_step_columns` call per calibration origin where one call covers them
-        # all.  The two branches resolve vintages as-of per observation time either way,
-        # so the predictions are identical rather than merely close.
-        # The point forecaster is frozen for the whole replay, so no origin depends on
-        # having predicted at the one before it. Where the wrapped forecaster can say so,
-        # the origins are recorded first and predicted in one pass per horizon step, so
-        # the estimator call count stops scaling with the origin count. That is the same
-        # rows through the same estimators, and it is bit-identical for tree models.
-        # Anything that cannot make the guarantee keeps the rolling path.
+        # Path selection and stride semantics are covered in the class docstring Notes.
         point = self.point_forecaster_
         direct = getattr(point, "reduction_strategy", None) == "direct"
         bulk = getattr(point, "_observe_predict_bulk_origins", None)
         batched = getattr(point, "_observe_predict_batched_origins", None)
+        replay_stride = self.calibration_stride or 1
 
-        # Three paths, most to least aggressive. The bulk one additionally skips the
-        # rolling observe, which is sound only where every transformer declares
-        # `batch_invariant`; that path moves rolling-statistic columns by about one ULP,
-        # so it is taken only on a declared stack. Anything undeclared keeps a
-        # bit-identical path, which is what makes a missing declaration cost speed alone.
-        # Recorded as a fitted attribute, not just chosen. Which path ran decides what
-        # state the forecaster is left in, so a state defect is only attributable to a
-        # path if the fitted object can say which one it took. Establishing that for the
-        # 2026-08-08 regression cost a bisect across two submodule bumps.
-        if direct and bulk is not None and point._chains_are_batch_invariant():
+        if direct and bulk is not None and replay_stride == 1 and point._chains_are_batch_invariant():
             replay_path = "bulk"
         elif direct and batched is not None:
             replay_path = "batched"
@@ -267,7 +330,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             replay_path = "rolling"
         self.replay_path_ = replay_path
 
-        if direct and bulk is not None and point._chains_are_batch_invariant():
+        # The asserts restate what the path selection above guarantees; the string
+        # dispatch hides that narrowing from the type checker.
+        if replay_path == "bulk":
+            assert bulk is not None
             y_pred_calib = bulk(
                 y=y_calib,
                 X_actual=X_actual_calib,
@@ -276,12 +342,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 X_forecast=X_forecast,
                 predict_transformed=False,
             )
-        elif direct and batched is not None:
+        elif replay_path == "batched":
+            assert batched is not None
             y_pred_calib = batched(
                 y=y_calib,
                 X_actual=X_actual_calib,
                 groups=point.groups_ or [],
-                stride=1,
+                stride=replay_stride,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 predict_transformed=False,
@@ -291,7 +358,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 y=y_calib,
                 X_actual=X_actual_calib,
                 forecasting_horizon=None,
-                stride=1,
+                stride=replay_stride,
                 predict_transformed=False,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -386,6 +453,108 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 }
 
         return self
+
+    def _required_scores_per_step(self) -> tuple[int, str]:
+        """Resolve the per-step score requirement for a strided calibration.
+
+        Each requested coverage rate requires ``ceil(MIN_TAIL_SAMPLES / t)``
+        scores, enough for the estimated tail to hold ``MIN_TAIL_SAMPLES``
+        samples, and the largest requirement binds. The tail mass is
+        ``t = (1 - cr)`` for a symmetric conformity scorer (absolute
+        residuals fold both tails into one quantile) and
+        ``t = (1 - cr) / 2`` for an asymmetric one (each tail is estimated
+        separately), so the same coverage rate needs twice the scores under
+        an asymmetric scorer.
+
+        Scaling by tail mass keeps the requirement proportionate at every
+        rate: a median needs 6 scores where a 99th percentile needs 300. It
+        also strictly dominates the degeneracy bound ``ceil(1/t) - 1``,
+        below which the empirical quantile collapses to the sample maximum
+        and the interval carries no tail information at all.
+
+        The requirement is a lower bound on sanity, not a coverage
+        guarantee: similarity weighting concentrates the effective sample
+        size further, and an adaptive conformal adapter can push the
+        effective level tighter than nominal.
+
+        Returns
+        -------
+        tuple[int, str]
+            The required per-step score count and a human-readable phrase
+            naming the binding coverage rate, for the fit-time error message.
+        """
+        required = MIN_TAIL_SAMPLES
+        reason = f"the tail-sample floor of {MIN_TAIL_SAMPLES}"
+
+        scorer_tags = self.conformity_scorer.__sklearn_tags__()
+        assert scorer_tags.scorer_tags is not None
+        symmetric = scorer_tags.scorer_tags.symmetric
+        kind = "a symmetric" if symmetric else "an asymmetric"
+
+        for coverage_rate in self.fit_coverage_rates_:
+            tail = (1.0 - coverage_rate) if symmetric else (1.0 - coverage_rate) / 2.0
+            if tail <= 0.0:
+                # Coverage rates are validated below 1 upstream; guarded so a
+                # future relaxation cannot divide by zero here.
+                continue
+            # Round before the ceil: 1 - 0.9 is 0.0999...98 in binary floating
+            # point, so a bare ceil(m/tail) would misstate the requirement.
+            needed = math.ceil(round(MIN_TAIL_SAMPLES / tail, 9))
+            if needed > required:
+                required = needed
+                reason = (
+                    f"coverage rate {coverage_rate} with {kind} conformity "
+                    f"scorer (tail mass {tail:g} needs {needed} scores to "
+                    f"hold {MIN_TAIL_SAMPLES} tail samples)"
+                )
+        return required, reason
+
+    def _validate_calibration_stride(self, forecasting_horizon: int) -> None:
+        """Reject a strided calibration whose score budget cannot hold.
+
+        Two failure modes are caught at fit time rather than surfacing as bad
+        intervals later. A ``calibration_size`` that is not a multiple of the
+        stride would leave the last replay origin short of the block end, so
+        the origins would drift off the production cadence the stride exists
+        to match. And a block too small for the stride leaves the deepest
+        horizon step with too few conformity scores: step ``h`` collects
+        ``C/k - ceil(h/k) + 1`` scores (``C`` rows, stride ``k``), so the
+        deepest step is always the binding one. The score requirement scales
+        with the requested coverage rates so that the estimated tail holds
+        ``MIN_TAIL_SAMPLES`` samples; see ``_required_scores_per_step``.
+
+        Raises
+        ------
+        ValueError
+            If ``calibration_size`` is not a multiple of ``calibration_stride``,
+            or the deepest step's score count falls below the requirement
+            resolved by ``_required_scores_per_step``.
+        """
+        if self.calibration_stride is None:
+            return
+        k = self.calibration_stride
+        c = self.calibration_size
+
+        if c % k != 0:
+            raise ValueError(
+                f"calibration_size={c} is not a multiple of calibration_stride={k}. "
+                f"The strided replay tail-anchors its origins on the last calibration "
+                f"row, so the block must hold a whole number of strides."
+            )
+
+        required, reason = self._required_scores_per_step()
+        depth = math.ceil(forecasting_horizon / k)
+        worst = c // k - depth + 1
+        if worst < required:
+            needed = (required - 1 + depth) * k
+            binding_lo = (depth - 1) * k + 1
+            raise ValueError(
+                f"calibration_stride={k} with calibration_size={c} leaves "
+                f"{worst} conformity scores at the binding deep steps "
+                f"({binding_lo} to {forecasting_horizon}), below the required "
+                f"{required} ({reason}). The smallest calibration_size whose "
+                f"worst step clears the requirement is {needed}."
+            )
 
     def _check_replay_left_the_block_observed(self, y: pl.DataFrame, replay_path: str) -> None:
         """Fail here if the replay did not leave the point forecaster where fit ends.
@@ -1005,7 +1174,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``"time"`` columns. Re-derives step columns without mutating
             forecaster state.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1027,12 +1199,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             groups=groups,
         )
 
+        routed = process_routing(self, "predict", **params)
         return self.point_forecaster_.predict(
             forecasting_horizon=forecasting_horizon,
             groups=groups,
             predict_transformed=predict_transformed,
             X_future=X_future,
             X_forecast=X_forecast,
+            **routed.point_forecaster.predict,
         )
 
     def observe_predict(
@@ -1082,7 +1256,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1138,7 +1315,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = "point",
+        recursion_strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -1170,15 +1347,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default="point"
             Strategy for deriving point predictions from prediction intervals
-            during recursive multi-step forecasting:
-
-            - ``"mean"``: use the mean of the interval bounds
-            - ``"median"``: use the median of the interval bounds
-            - ``"point"``: use the point forecast directly (if available)
-
-            If ``None``, defaults to ``"mean"``.
+            during recursive multi-step forecasting. This forecaster always
+            recurses on the point forecast, so only ``"point"`` (and ``None``,
+            meaning the default) is accepted; ``"mean"`` and ``"median"``
+            raise ``ValueError``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -1192,7 +1366,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1209,7 +1386,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             [0, 1], or ``groups`` contains names not seen during fit.
 
         """
-        self._validate_strategy(strategy)
+        self._validate_recursion_strategy(recursion_strategy)
 
         check_is_fitted(
             self,
@@ -1242,7 +1419,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             observe_fn=self.observe,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
-            strategy=strategy,
+            recursion_strategy=recursion_strategy,
             **params,
         )
 
@@ -1413,10 +1590,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
     @staticmethod
-    def _validate_strategy(strategy: str | None) -> None:
+    def _validate_recursion_strategy(recursion_strategy: str | None) -> None:
         """Reject a recursion strategy this forecaster cannot honour.
 
-        ``strategy`` selects how a recursive step derives its next observation
+        ``recursion_strategy`` selects how a recursive step derives its next observation
         from the previous step's bounds. This forecaster has no such step, so
         only ``"point"`` (and ``None``, meaning the default) describes it.
         Silently accepting ``"mean"`` or ``"median"`` would let a caller ask for
@@ -1425,29 +1602,29 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         Parameters
         ----------
-        strategy : str or None
-            The requested strategy.
+        recursion_strategy : str or None
+            The requested recursion strategy.
 
         Raises
         ------
         ValueError
-            If ``strategy`` is neither ``None`` nor ``"point"``.
+            If ``recursion_strategy`` is neither ``None`` nor ``"point"``.
 
         """
-        if strategy not in (None, "point"):
+        if recursion_strategy not in (None, "point"):
             raise ValueError(
                 f"SplitConformalForecaster always recurses on the point forecast, so "
-                f"strategy={strategy!r} cannot be honoured. The wrapped point forecaster "
+                f"recursion_strategy={recursion_strategy!r} cannot be honoured. The wrapped point forecaster "
                 f"produces the whole horizon in one call and the conformal bands are "
                 f"derived from it, so bound midpoints are never fed back. Pass "
-                f"strategy='point' (the default) or omit it."
+                f"recursion_strategy='point' (the default) or omit it."
             )
 
     def predict_interval(  # ty: ignore[invalid-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = "point",
+        recursion_strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -1467,7 +1644,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"point"} or None, default="point"
+        recursion_strategy : {"point"} or None, default="point"
             Retained for interface parity with
             [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster],
             where it selects how a recursive step derives its next observation.
@@ -1489,7 +1666,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             ``"time"`` columns. Re-derives step columns without mutating
             forecaster state.
         **params : dict
-            Metadata to route to nested estimators.
+            Metadata routed to the wrapped point forecaster per
+            ``get_metadata_routing``. The conformity scorer, similarity, and
+            adapters are configured on the constructor and receive no routed
+            metadata.
 
         Returns
         -------
@@ -1503,7 +1683,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             is symmetric.
 
         """
-        self._validate_strategy(strategy)
+        self._validate_recursion_strategy(recursion_strategy)
 
         check_is_fitted(
             self,
@@ -1520,7 +1700,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         forecasting_horizon, coverage_rates = self._validate_predict_params(forecasting_horizon, coverage_rates)
 
-        y_pred_full = self.point_forecaster_.predict(X_future=X_future, X_forecast=X_forecast)
+        routed = process_routing(self, "predict_interval", **params)
+        y_pred_full = self.point_forecaster_.predict(
+            X_future=X_future, X_forecast=X_forecast, **routed.point_forecaster.predict
+        )
         has_vintage_time = "vintage_time" in y_pred_full.columns
         if has_vintage_time:
             vintage_time_col = y_pred_full["vintage_time"]

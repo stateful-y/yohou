@@ -48,6 +48,12 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         a feature.
     panel_strategy : {"global", "multivariate"}, default="global"
         How to handle panel data. See `BaseForecaster` for details.
+    training_stride : int, default=1
+        Keep one tabularized training instance every ``training_stride`` rows,
+        tail-anchored so the most recent instance is always kept. The default 1
+        keeps every instance. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the full semantics.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -185,6 +191,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         step_transformer: BaseStepTransformer | None = None,
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
+        training_stride: int = 1,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -202,6 +209,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             forecast_transformer=forecast_transformer,
             step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
+            training_stride=training_stride,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,

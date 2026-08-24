@@ -923,6 +923,8 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
                 .add(caller="fit_transform", callee="fit")
                 .add(caller="fit_transform", callee="transform")
                 .add(caller="transform", callee="transform")
+                # Caller registration for process_routing dispatch, not key
+                # routing: no transformer exposes a requestable key here.
                 .add(caller="observe_transform", callee="observe_transform")
                 .add(caller="rewind_transform", callee="rewind_transform"),
             )

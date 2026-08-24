@@ -257,7 +257,8 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
         groups : list of str
             Panel group names to predict for.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------

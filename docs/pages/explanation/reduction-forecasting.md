@@ -271,6 +271,34 @@ sum equals the number of samples. The combined weight vector is passed to the
 estimator as `sample_weight` during fitting, so the estimator must support that
 parameter (most sklearn regressors do).
 
+## Training Stride
+
+By default every tabularized row becomes a training instance: hourly data yields
+one instance per hour. A production system that decides once per day never
+predicts from most of those origins, and their feature availability pattern can
+differ from the one origin that matters. The `training_stride` constructor
+parameter (default 1) keeps one instance every `training_stride` rows instead.
+
+The mask is **tail-anchored**: the most recent instance is always kept, and kept
+origins sit `training_stride` rows apart counting back from it. Tail anchoring
+is deliberate. The data's last row is what a caller aligns to the production
+origin (by trimming the series to end on it), while the first row depends on the
+configured training window and carries no anchor. With the tail on the
+production origin and a stride of one day in rows, every kept instance matches
+the production decision cadence.
+
+Ordering matters and is fixed: the stride is applied once per estimator fit,
+after sample weights are computed and **before** NaN handling, with the feature
+matrix, target matrix, and `sample_weight` filtered in lockstep. NaN-drop
+statistics therefore describe only the kept instances, and every reduction
+strategy (multi-output, direct, dir-rec) trains on the same strided dataset. On
+panel data the mask is built per group and stacked in group order, matching how
+the tabularized frames and weights stack.
+
+The stride subsamples instances drawn from the series; it never resamples the
+series itself. The input grid stays regular, `interval_` inference is
+unaffected, and `step_k` keeps meaning "k grid intervals ahead".
+
 ## NaN Handling
 
 After tabularization, the training matrix may contain NaN values. These can originate

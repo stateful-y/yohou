@@ -2175,8 +2175,8 @@ class TestSplitConformalBarePointColumn:
         )
 
 
-class TestSplitConformalStrategy:
-    """``strategy`` describes this forecaster instead of being silently inert.
+class TestSplitConformalRecursionStrategy:
+    """``recursion_strategy`` describes this forecaster instead of being silently inert.
 
     The parameter selects how a recursive step derives its next observation
     from the previous step's bounds. This class has no such step: the wrapped
@@ -2191,26 +2191,26 @@ class TestSplitConformalStrategy:
         import inspect
 
         for method in (SplitConformalForecaster.predict_interval, SplitConformalForecaster.observe_predict_interval):
-            assert inspect.signature(method).parameters["strategy"].default == "point", (
+            assert inspect.signature(method).parameters["recursion_strategy"].default == "point", (
                 f"{method.__name__} should default to 'point'"
             )
 
-    @pytest.mark.parametrize("strategy", ["mean", "median"])
-    def test_unhonourable_strategy_raises(self, conformal_data, strategy):
+    @pytest.mark.parametrize("recursion_strategy", ["mean", "median"])
+    def test_unhonourable_strategy_raises(self, conformal_data, recursion_strategy):
         """Asking for bound-midpoint recursion fails instead of being ignored."""
         scf = SplitConformalForecaster(calibration_size=50)
         scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.9])
 
         with pytest.raises(ValueError, match="always recurses on the point forecast"):
-            scf.predict_interval(coverage_rates=[0.9], strategy=strategy)
+            scf.predict_interval(coverage_rates=[0.9], recursion_strategy=recursion_strategy)
 
-    @pytest.mark.parametrize("strategy", [None, "point"])
-    def test_point_and_none_are_accepted(self, conformal_data, strategy):
+    @pytest.mark.parametrize("recursion_strategy", [None, "point"])
+    def test_point_and_none_are_accepted(self, conformal_data, recursion_strategy):
         """The two values that do describe this class are accepted."""
         scf = SplitConformalForecaster(calibration_size=50)
         scf.fit(conformal_data, forecasting_horizon=1, coverage_rates=[0.9])
 
-        y_pred_interval = scf.predict_interval(coverage_rates=[0.9], strategy=strategy)
+        y_pred_interval = scf.predict_interval(coverage_rates=[0.9], recursion_strategy=recursion_strategy)
 
         assert "value" in y_pred_interval.columns
 
@@ -2222,4 +2222,4 @@ class TestSplitConformalStrategy:
         scf.fit(train, forecasting_horizon=5, coverage_rates=[0.9])
 
         with pytest.raises(ValueError, match="always recurses on the point forecast"):
-            scf.observe_predict_interval(y=test, forecasting_horizon=5, coverage_rates=[0.9], strategy="mean")
+            scf.observe_predict_interval(y=test, forecasting_horizon=5, coverage_rates=[0.9], recursion_strategy="mean")
