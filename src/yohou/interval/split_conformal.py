@@ -25,25 +25,10 @@ from .utils import weighted_quantile
 __all__ = ["SplitConformalForecaster"]
 
 # Minimum number of calibration scores that must land in the estimated tail,
-# per horizon step, under a strided calibration replay. The per-step score
-# requirement scales this by the tail mass: each step must hold at least
-# ceil(MIN_TAIL_SAMPLES / t) scores for every requested coverage rate, where
-# t = (1 - cr) for a symmetric conformity scorer (absolute residuals fold both
-# tails into one quantile) and t = (1 - cr) / 2 for an asymmetric one (each
-# tail is estimated separately).
-#
-# A tail quantile estimated from fewer samples rides on the sample extremes,
-# so intervals get wide and unstable in a way that surfaces weeks later as bad
-# coverage rather than at fit. Scaling by tail mass keeps the requirement
-# honest at every rate where a flat count is not: a median needs 6 scores, a
-# 90th percentile 30, a 99th percentile 300. It also strictly dominates the
-# degeneracy bound ceil(1/t) - 1, below which the empirical quantile collapses
-# to the sample maximum and carries no tail information at all.
-#
-# The value is a judgment call: 3 tail samples keep the estimate interior with
-# a margin while staying reachable at production rates. Coverage 0.9 with
-# absolute residuals needs 30 scores at the deepest step, a few weeks of daily
-# origins. See _required_scores_per_step.
+# per horizon step, under a strided calibration replay. The value is a judgment
+# call: 3 tail samples keep the estimate interior with a margin while staying
+# reachable at production rates. How this scales into the per-step requirement
+# is documented in _required_scores_per_step.
 MIN_TAIL_SAMPLES = 3
 
 
@@ -62,22 +47,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Number of observations to use for calibration. Always counted in
         rows, whatever ``calibration_stride`` is set to.
     calibration_stride : int >= 1 or None, default=None
-        Rows observed between successive calibration replay origins. ``None``
-        keeps the stride-1 replay: one conformity score per calibration row
-        per horizon step. When set, the replay still observes every
-        calibration row but scores only origins ``calibration_stride`` rows
-        apart, ending on the last calibration row, so the scores match a
-        production cadence of one forecast per stride. ``calibration_size``
-        must be a multiple of the stride. Step ``h`` then collects
-        ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
-        scores; fit refuses a configuration whose deepest step falls below
-        the required count ``ceil(MIN_TAIL_SAMPLES / t)``: enough scores
-        for the estimated tail to hold ``MIN_TAIL_SAMPLES`` samples at
-        every requested coverage rate, where the tail mass ``t`` is
-        ``1 - cr`` for a symmetric conformity scorer and ``(1 - cr) / 2``
-        for an asymmetric one. Higher coverage therefore needs a longer
-        calibration window: 0.9 with absolute residuals needs 30 scores at
-        the deepest step, 0.99 needs 300, and signed residuals double both.
+        Rows observed between successive calibration replay origins.
+        ``None`` keeps the stride-1 replay: one conformity score per
+        calibration row per horizon step. When set, ``calibration_size``
+        must be a multiple of the stride. See Notes for the replay
+        mechanics and the score-count requirement.
     conformity_scorer : BaseConformityScorer, default=Residual()
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
@@ -96,14 +70,51 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     ----------
     fit_coverage_rates_ : list of float
         Coverage rates used during fit.
+    replay_path_ : {"bulk", "batched", "rolling"}
+        Which calibration replay path fit took. See Notes.
 
     Notes
     -----
     The data is split into a training portion and a calibration portion
     of size ``calibration_size``.  The point forecaster is fit on the
-    training portion, then conformity scores are computed on the
-    calibration portion.  At prediction time, interval bounds are
+    training portion, then conformity scores are computed by replaying
+    the calibration portion.  At prediction time, interval bounds are
     derived from the empirical quantiles of these scores.
+
+    **Calibration stride.** At the default ``calibration_stride=None``
+    the replay runs at stride 1: every calibration row is a forecast
+    origin, so horizon step ``h`` collects ``calibration_size - h + 1``
+    conformity scores. The stride is not a cost knob: each origin yields
+    exactly one score per horizon step, so raising it discards scores one
+    for one. A configured stride is a cadence knob instead. The replay
+    still observes every calibration row but scores only origins
+    ``calibration_stride`` rows apart, ending on the last calibration
+    row, so the scores match a production cadence of one forecast per
+    stride. Step ``h`` then collects
+    ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
+    scores. Fit refuses a strided configuration whose deepest step falls
+    below the required count ``ceil(MIN_TAIL_SAMPLES / t)``: enough
+    scores for the estimated tail to hold ``MIN_TAIL_SAMPLES`` samples at
+    every requested coverage rate, where the tail mass ``t`` is
+    ``1 - cr`` for a symmetric conformity scorer and ``(1 - cr) / 2`` for
+    an asymmetric one. Higher coverage therefore needs a longer
+    calibration window: 0.9 with absolute residuals needs 30 scores at
+    the deepest step, 0.99 needs 300, and signed residuals double both.
+
+    **Replay paths.** The point forecaster is frozen for the whole
+    replay, so no origin depends on having predicted at the one before
+    it. Where the wrapped forecaster supports it, the origins are
+    recorded first and predicted in one pass per horizon step, so the
+    estimator call count stops scaling with the origin count. The most
+    aggressive path also skips the rolling observe, which moves
+    rolling-statistic columns by about one ULP and is therefore taken
+    only at stride 1 on a stack whose transformers all declare
+    ``batch_invariant``; anything undeclared keeps a bit-identical path,
+    so a missing declaration costs speed alone. The path taken is
+    recorded in ``replay_path_``. ``X_future`` and ``X_forecast`` are
+    forwarded to the replay so step columns are derived once over every
+    observation time; the two branches resolve vintages as-of per
+    observation time either way, so the predictions are identical.
 
     See Also
     --------
@@ -279,51 +290,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             **routed.point_forecaster.fit,
         )
 
-        # At the default calibration_stride=None the replay runs at stride 1: each row
-        # of y_calib produces one prediction window of length forecasting_horizon,
-        # yielding calibration_size - step + 1 conformity scores per horizon step
-        # instead of the ~2-3 that stride=forecasting_horizon would leave. More
-        # calibration scores per step gives quantiles that are stable and
-        # well-separated.
-        #
-        # The stride is not a cost knob: each origin yields exactly one score per
-        # horizon step, so raising it buys speed only by discarding scores one for
-        # one. A configured calibration_stride is a *cadence* knob instead: it
-        # restricts scores to origins matching a production decision cadence (one
-        # forecast per day), and _validate_calibration_stride has already refused a
-        # configuration whose score budget could not hold.
-        #
-        # X_future and X_forecast are forwarded, not withheld.  Given either,
-        # `_observe_predict_loop` derives step columns once over every observation time
-        # and each origin selects its row; given neither, it falls through to `observe`,
-        # which re-derives them one timestamp at a time.  Withholding them cost one
-        # `_derive_step_columns` call per calibration origin where one call covers them
-        # all.  The two branches resolve vintages as-of per observation time either way,
-        # so the predictions are identical rather than merely close.
-        # The point forecaster is frozen for the whole replay, so no origin depends on
-        # having predicted at the one before it. Where the wrapped forecaster can say so,
-        # the origins are recorded first and predicted in one pass per horizon step, so
-        # the estimator call count stops scaling with the origin count. That is the same
-        # rows through the same estimators, and it is bit-identical for tree models.
-        # Anything that cannot make the guarantee keeps the rolling path.
+        # Path selection and stride semantics are covered in the class docstring Notes.
         point = self.point_forecaster_
         direct = getattr(point, "reduction_strategy", None) == "direct"
         bulk = getattr(point, "_observe_predict_bulk_origins", None)
         batched = getattr(point, "_observe_predict_batched_origins", None)
         replay_stride = self.calibration_stride or 1
 
-        # Three paths, most to least aggressive. The bulk one additionally skips the
-        # rolling observe, which is sound only where every transformer declares
-        # `batch_invariant`; that path moves rolling-statistic columns by about one ULP,
-        # so it is taken only on a declared stack. Anything undeclared keeps a
-        # bit-identical path, which is what makes a missing declaration cost speed alone.
-        # Recorded as a fitted attribute, not just chosen. Which path ran decides what
-        # state the forecaster is left in, so a state defect is only attributable to a
-        # path if the fitted object can say which one it took. Establishing that for the
-        # 2026-08-08 regression cost a bisect across two submodule bumps.
-        # The bulk path replays every origin by construction, so a configured
-        # calibration_stride routes to the batched or rolling path, both of which
-        # take the stride and still observe every calibration row.
         if direct and bulk is not None and replay_stride == 1 and point._chains_are_batch_invariant():
             replay_path = "bulk"
         elif direct and batched is not None:
