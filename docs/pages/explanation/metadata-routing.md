@@ -80,15 +80,6 @@ An unpaired carrier raises an error naming the method and the
 and `predict_forecasting_horizon` as explicit parameters, so no request
 declarations are involved on that path.
 
-### Known limits in yohou-optuna
-
-Two follow-ups live in the external `yohou-optuna` package rather than here:
-its per-trial objective re-splits without the routed splitter bucket (the
-grid searches pass it; the bucket is empty today, so the divergence is
-latent until a splitter gains a real metadata key), and its fit would raise
-reading the scorer bucket under `scoring=None` (unreachable from callers
-that always configure scoring).
-
 ### `sample_weight` is not a caller-supplied parameter
 
 `sample_weight` rides the same machinery but you never pass it. A reduction
