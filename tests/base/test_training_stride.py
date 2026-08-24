@@ -351,12 +351,12 @@ class TestTrainingStrideWeighterCompatibility:
             calibration_stride=3,
         )
         y = _series(120)
-        original_floor = sc_module.MIN_STRIDED_SCORES_PER_STEP
-        sc_module.MIN_STRIDED_SCORES_PER_STEP = 2
+        original_floor = sc_module.MIN_TAIL_SAMPLES
+        sc_module.MIN_TAIL_SAMPLES = 1
         try:
             fc.fit(y=y, forecasting_horizon=3, coverage_rates=[0.5])
         finally:
-            sc_module.MIN_STRIDED_SCORES_PER_STEP = original_floor
+            sc_module.MIN_TAIL_SAMPLES = original_floor
         intervals = fc.predict_interval(coverage_rates=[0.5])
         assert len(intervals) == 3
         assert fc.point_forecaster_.estimator_.received_[2] is not None

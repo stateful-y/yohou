@@ -24,22 +24,27 @@ from .utils import weighted_quantile
 
 __all__ = ["SplitConformalForecaster"]
 
-# Flat stability floor on the conformity scores the deepest horizon step may
-# collect under a strided calibration replay. Below this the tail quantiles of
-# the score distribution are estimated from a handful of samples, so intervals
-# get wide and unstable in a way that surfaces weeks later as bad coverage
-# rather than at fit. The value is a judgment call: 30 keeps a 90th percentile
-# estimate inside the sample rather than at its extremes, while staying
-# reachable with a few weeks of daily origins.
+# Minimum number of calibration scores that must land in the estimated tail,
+# per horizon step, under a strided calibration replay. The per-step score
+# requirement scales this by the tail mass: each step must hold at least
+# ceil(MIN_TAIL_SAMPLES / t) scores for every requested coverage rate, where
+# t = (1 - cr) for a symmetric conformity scorer (absolute residuals fold both
+# tails into one quantile) and t = (1 - cr) / 2 for an asymmetric one (each
+# tail is estimated separately).
 #
-# This floor is not the whole requirement. The requested coverage rates set a
-# validity minimum of their own: the empirical tail quantile at tail mass t is
-# an interior order statistic only when the step holds at least ceil(1/t) - 1
-# scores, where t = (1 - cr) for a symmetric conformity scorer (absolute
-# residuals fold both tails into one) and t = (1 - cr) / 2 for an asymmetric
-# one (each tail is estimated separately). Fit enforces the larger of the two;
-# see _required_scores_per_step.
-MIN_STRIDED_SCORES_PER_STEP = 30
+# A tail quantile estimated from fewer samples rides on the sample extremes,
+# so intervals get wide and unstable in a way that surfaces weeks later as bad
+# coverage rather than at fit. Scaling by tail mass keeps the requirement
+# honest at every rate where a flat count is not: a median needs 6 scores, a
+# 90th percentile 30, a 99th percentile 300. It also strictly dominates the
+# degeneracy bound ceil(1/t) - 1, below which the empirical quantile collapses
+# to the sample maximum and carries no tail information at all.
+#
+# The value is a judgment call: 3 tail samples keep the estimate interior with
+# a margin while staying reachable at production rates. Coverage 0.9 with
+# absolute residuals needs 30 scores at the deepest step, a few weeks of daily
+# origins. See _required_scores_per_step.
+MIN_TAIL_SAMPLES = 3
 
 
 class SplitConformalForecaster(BaseIntervalForecaster):
@@ -66,13 +71,13 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         must be a multiple of the stride. Step ``h`` then collects
         ``calibration_size / calibration_stride - ceil(h / calibration_stride) + 1``
         scores; fit refuses a configuration whose deepest step falls below
-        the required count: the larger of ``MIN_STRIDED_SCORES_PER_STEP`` and
-        the validity minimum ``ceil(1/t) - 1`` imposed by the requested
-        coverage rates, where the tail mass ``t`` is ``1 - cr`` for a
-        symmetric conformity scorer and ``(1 - cr) / 2`` for an asymmetric
-        one. Higher coverage therefore needs a longer calibration window:
-        0.9 with absolute residuals is bound by the flat floor of 30, while
-        0.99 needs 99 scores at the deepest step.
+        the required count ``ceil(MIN_TAIL_SAMPLES / t)``: enough scores
+        for the estimated tail to hold ``MIN_TAIL_SAMPLES`` samples at
+        every requested coverage rate, where the tail mass ``t`` is
+        ``1 - cr`` for a symmetric conformity scorer and ``(1 - cr) / 2``
+        for an asymmetric one. Higher coverage therefore needs a longer
+        calibration window: 0.9 with absolute residuals needs 30 scores at
+        the deepest step, 0.99 needs 300, and signed residuals double both.
     conformity_scorer : BaseConformityScorer, default=Residual()
         Scorer used to compute conformity scores.
     similarity : BaseSimilarity or None, default=None
@@ -423,40 +428,39 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     def _required_scores_per_step(self) -> tuple[int, str]:
         """Resolve the per-step score requirement for a strided calibration.
 
-        The larger of two bounds, with a phrase naming the one that binds:
+        Each requested coverage rate requires ``ceil(MIN_TAIL_SAMPLES / t)``
+        scores, enough for the estimated tail to hold ``MIN_TAIL_SAMPLES``
+        samples, and the largest requirement binds. The tail mass is
+        ``t = (1 - cr)`` for a symmetric conformity scorer (absolute
+        residuals fold both tails into one quantile) and
+        ``t = (1 - cr) / 2`` for an asymmetric one (each tail is estimated
+        separately), so the same coverage rate needs twice the scores under
+        an asymmetric scorer.
 
-        - the flat stability floor ``MIN_STRIDED_SCORES_PER_STEP``, below
-          which tail quantiles are estimated from too few samples to be
-          stable at any coverage rate;
-        - the validity minimum the requested coverage rates impose. The
-          empirical quantile at tail mass ``t`` is an interior order
-          statistic only when the step holds at least ``ceil(1/t) - 1``
-          scores; with fewer, the quantile degenerates to the sample
-          maximum and the interval carries no tail information at all.
-          ``t = (1 - cr)`` for a symmetric conformity scorer (absolute
-          residuals fold both tails into one quantile) and
-          ``t = (1 - cr) / 2`` for an asymmetric one (each tail is
-          estimated separately), so the same coverage rate needs roughly
-          twice the scores under an asymmetric scorer.
+        Scaling by tail mass keeps the requirement proportionate at every
+        rate: a median needs 6 scores where a 99th percentile needs 300. It
+        also strictly dominates the degeneracy bound ``ceil(1/t) - 1``,
+        below which the empirical quantile collapses to the sample maximum
+        and the interval carries no tail information at all.
 
-        Both bounds are lower bounds on sanity, not coverage guarantees:
-        similarity weighting concentrates the effective sample size further,
-        and an adaptive conformal adapter can push the effective level
-        tighter than nominal.
+        The requirement is a lower bound on sanity, not a coverage
+        guarantee: similarity weighting concentrates the effective sample
+        size further, and an adaptive conformal adapter can push the
+        effective level tighter than nominal.
 
         Returns
         -------
         tuple[int, str]
             The required per-step score count and a human-readable phrase
-            naming the binding bound, for the fit-time error message.
+            naming the binding coverage rate, for the fit-time error message.
         """
-        required = MIN_STRIDED_SCORES_PER_STEP
-        reason = f"the stability floor of {MIN_STRIDED_SCORES_PER_STEP}"
+        required = MIN_TAIL_SAMPLES
+        reason = f"the tail-sample floor of {MIN_TAIL_SAMPLES}"
 
         scorer_tags = self.conformity_scorer.__sklearn_tags__()
         assert scorer_tags.scorer_tags is not None
         symmetric = scorer_tags.scorer_tags.symmetric
-        kind = "symmetric" if symmetric else "asymmetric"
+        kind = "a symmetric" if symmetric else "an asymmetric"
 
         for coverage_rate in self.fit_coverage_rates_:
             tail = (1.0 - coverage_rate) if symmetric else (1.0 - coverage_rate) / 2.0
@@ -465,13 +469,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 # future relaxation cannot divide by zero here.
                 continue
             # Round before the ceil: 1 - 0.9 is 0.0999...98 in binary floating
-            # point, so a bare ceil(1/tail) would overstate the minimum by one.
-            needed = math.ceil(round(1.0 / tail, 9)) - 1
+            # point, so a bare ceil(m/tail) would misstate the requirement.
+            needed = math.ceil(round(MIN_TAIL_SAMPLES / tail, 9))
             if needed > required:
                 required = needed
                 reason = (
-                    f"coverage rate {coverage_rate} with a {kind} conformity "
-                    f"scorer (tail mass {tail:g} needs {needed} scores)"
+                    f"coverage rate {coverage_rate} with {kind} conformity "
+                    f"scorer (tail mass {tail:g} needs {needed} scores to "
+                    f"hold {MIN_TAIL_SAMPLES} tail samples)"
                 )
         return required, reason
 
@@ -485,9 +490,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         to match. And a block too small for the stride leaves the deepest
         horizon step with too few conformity scores: step ``h`` collects
         ``C/k - ceil(h/k) + 1`` scores (``C`` rows, stride ``k``), so the
-        deepest step is always the binding one. The score requirement is the
-        larger of the flat stability floor and the validity minimum the
-        requested coverage rates impose; see ``_required_scores_per_step``.
+        deepest step is always the binding one. The score requirement scales
+        with the requested coverage rates so that the estimated tail holds
+        ``MIN_TAIL_SAMPLES`` samples; see ``_required_scores_per_step``.
 
         Raises
         ------

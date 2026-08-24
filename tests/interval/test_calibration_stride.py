@@ -4,7 +4,8 @@ A configured stride restricts the calibration replay to origins
 ``calibration_stride`` rows apart, tail-anchored on the last calibration row,
 while still observing every calibration row. Step ``h`` collects
 ``C/k - ceil(h/k) + 1`` conformity scores, and fit refuses configurations
-whose deepest step falls below ``MIN_STRIDED_SCORES_PER_STEP``.
+whose deepest step falls below ``ceil(MIN_TAIL_SAMPLES / t)`` scores for any
+requested coverage rate, ``t`` being that rate's tail mass.
 """
 
 import math
@@ -17,7 +18,7 @@ from sklearn.linear_model import LinearRegression
 
 import yohou.interval.split_conformal as sc_module
 from yohou.interval import SplitConformalForecaster
-from yohou.interval.split_conformal import MIN_STRIDED_SCORES_PER_STEP
+from yohou.interval.split_conformal import MIN_TAIL_SAMPLES
 from yohou.point import PointReductionForecaster, SeasonalNaive
 from yohou.preprocessing import LagTransformer
 
@@ -39,9 +40,9 @@ def _per_step_counts(fc) -> dict[int, int]:
 
 class TestCalibrationStrideReplay:
     @pytest.fixture(autouse=True)
-    def _tiny_floor(self, monkeypatch):
-        """Lower the score floor so small fixtures exercise the replay, not the guard."""
-        monkeypatch.setattr(sc_module, "MIN_STRIDED_SCORES_PER_STEP", 2)
+    def _no_guard(self, monkeypatch):
+        """Disable the score guard so small fixtures exercise the replay, not the guard."""
+        monkeypatch.setattr(sc_module, "MIN_TAIL_SAMPLES", 0)
 
     def test_default_none_keeps_stride_one_counts(self):
         """Without a stride every calibration row scores: C - h + 1 per step."""
@@ -127,32 +128,24 @@ class TestCalibrationStrideValidation:
         with pytest.raises(ValueError, match="not a multiple"):
             fc.fit(y=_series(40), forecasting_horizon=2, coverage_rates=[0.5])
 
-    def test_floor_guardrail_names_binding_step_and_passing_size(self):
+    def test_guardrail_names_binding_step_and_passing_size(self):
         """Thin strided calibration raises with the worst step and the fix."""
         fc = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(),
             calibration_size=20,
             calibration_stride=2,
         )
-        # worst = 20/2 - ceil(4/2) + 1 = 9; needed = (30 - 1 + 2) * 2 = 62.
-        with pytest.raises(ValueError, match=r"floor of 30") as excinfo:
+        # The default Residual scorer is asymmetric: cr 0.5 has tail mass 0.25,
+        # so ceil(3 / 0.25) = 12 scores are required. worst = 20/2 - 2 + 1 = 9;
+        # needed = (12 - 1 + 2) * 2 = 26.
+        with pytest.raises(ValueError, match=r"required 12") as excinfo:
             fc.fit(y=_series(60), forecasting_horizon=4, coverage_rates=[0.5])
-        assert "62" in str(excinfo.value)
+        assert "26" in str(excinfo.value)
         assert "3 to 4" in str(excinfo.value)
-
-    def test_nominal_count_clearing_the_floor_is_not_enough(self):
-        """The deepest step binds even when C/k itself clears the floor."""
-        fc = SplitConformalForecaster(
-            point_forecaster=SeasonalNaive(),
-            calibration_size=60,
-            calibration_stride=2,
-        )
-        # nominal 60/2 = 30 >= floor, but worst = 30 - 2 + 1 = 29 < 30.
-        with pytest.raises(ValueError, match=r"29 conformity scores"):
-            fc.fit(y=_series(120), forecasting_horizon=4, coverage_rates=[0.5])
+        assert "3 tail samples" in str(excinfo.value)
 
     def test_unstrided_thin_calibration_is_unaffected(self):
-        """The floor applies only when a stride is configured."""
+        """The requirement applies only when a stride is configured."""
         fc = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=24),
             calibration_size=12,
@@ -164,22 +157,21 @@ class TestCalibrationStrideValidation:
         fc = SplitConformalForecaster(calibration_stride=24)
         assert clone(fc).calibration_stride == 24
 
-    def test_floor_constant_is_the_documented_default(self):
-        assert MIN_STRIDED_SCORES_PER_STEP == 30
+    def test_tail_sample_constant_is_the_documented_default(self):
+        assert MIN_TAIL_SAMPLES == 3
 
 
-class TestCoverageAwareFloor:
+class TestCoverageScaledRequirement:
     """The per-step requirement scales with the requested coverage rates.
 
-    The flat floor keeps tail quantiles stable at moderate coverage; the
-    coverage-driven validity minimum ``ceil(1/t) - 1`` keeps the tail
-    quantile an interior order statistic, with tail mass ``t = 1 - cr``
-    for a symmetric conformity scorer and ``(1 - cr) / 2`` for an
-    asymmetric one.
+    Each rate requires ``ceil(MIN_TAIL_SAMPLES / t)`` scores, enough for
+    the estimated tail to hold ``MIN_TAIL_SAMPLES`` samples, with tail
+    mass ``t = 1 - cr`` for a symmetric conformity scorer and
+    ``(1 - cr) / 2`` for an asymmetric one. The largest requirement binds.
     """
 
-    def test_high_coverage_raises_the_requirement_above_the_flat_floor(self):
-        """0.99 with a symmetric scorer needs 99 scores, not 30."""
+    def test_high_coverage_scales_the_requirement(self):
+        """0.99 with a symmetric scorer needs 300 scores, not a flat count."""
         from yohou.metrics.conformity import AbsoluteResidual
 
         fc = SplitConformalForecaster(
@@ -188,59 +180,75 @@ class TestCoverageAwareFloor:
             calibration_size=120,
             calibration_stride=2,
         )
-        # worst = 120/2 - 2 + 1 = 59: clears the flat floor of 30, but the
-        # 0.99 tail (mass 0.01) needs ceil(1/0.01) - 1 = 99 scores.
+        # worst = 120/2 - 2 + 1 = 59: plenty for cr 0.5, but the 0.99 tail
+        # (mass 0.01) needs ceil(3/0.01) = 300 scores.
         with pytest.raises(ValueError, match=r"coverage rate 0\.99") as excinfo:
             fc.fit(y=_series(240), forecasting_horizon=4, coverage_rates=[0.5, 0.99])
-        assert "99 scores" in str(excinfo.value)
+        assert "300 scores" in str(excinfo.value)
 
-    def test_high_coverage_passes_with_enough_scores(self):
-        """A window sized for the 0.99 tail fits."""
+    def test_requirement_boundary_passes(self):
+        """A window whose worst step holds exactly ceil(3/t) scores fits."""
         from yohou.metrics.conformity import AbsoluteResidual
 
         fc = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=24),
             conformity_scorer=AbsoluteResidual(),
-            calibration_size=204,
+            calibration_size=62,
             calibration_stride=2,
         )
-        # worst = 204/2 - 2 + 1 = 101 >= 99.
-        fc.fit(y=_series(320), forecasting_horizon=4, coverage_rates=[0.99])
+        # cr 0.9 symmetric: tail 0.1 needs 30. worst = 62/2 - 2 + 1 = 30.
+        fc.fit(y=_series(120), forecasting_horizon=4, coverage_rates=[0.9])
         assert fc.replay_path_ in {"bulk", "batched", "rolling"}
 
-    def test_asymmetric_scorer_doubles_the_tail_requirement(self, monkeypatch):
+    def test_deepest_step_binds_at_the_boundary(self):
+        """The deepest step binds even when C/k itself clears the requirement."""
+        from yohou.metrics.conformity import AbsoluteResidual
+
+        fc = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(),
+            conformity_scorer=AbsoluteResidual(),
+            calibration_size=60,
+            calibration_stride=2,
+        )
+        # nominal 60/2 = 30 clears the cr 0.9 requirement of 30, but
+        # worst = 30 - 2 + 1 = 29.
+        with pytest.raises(ValueError, match=r"29 conformity scores"):
+            fc.fit(y=_series(120), forecasting_horizon=4, coverage_rates=[0.9])
+
+    def test_asymmetric_scorer_doubles_the_requirement(self):
         """The same coverage rate needs twice the scores under signed residuals."""
         from yohou.metrics.conformity import AbsoluteResidual, Residual
 
-        # Lower the flat floor so only the coverage term decides: the block
-        # yields worst = 22/2 - 2 + 1 = 10 scores. Coverage 0.9 needs 9 with a
-        # symmetric scorer (tail 0.1) and 19 with an asymmetric one (tail 0.05).
-        monkeypatch.setattr(sc_module, "MIN_STRIDED_SCORES_PER_STEP", 2)
-
+        # worst = 80/2 - 2 + 1 = 39. Coverage 0.9 needs 30 with a symmetric
+        # scorer (tail 0.1) and 60 with an asymmetric one (tail 0.05).
         symmetric = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=24),
             conformity_scorer=AbsoluteResidual(),
-            calibration_size=22,
+            calibration_size=80,
             calibration_stride=2,
         )
-        symmetric.fit(y=_series(90), forecasting_horizon=4, coverage_rates=[0.9])
+        symmetric.fit(y=_series(160), forecasting_horizon=4, coverage_rates=[0.9])
 
         asymmetric = SplitConformalForecaster(
             point_forecaster=SeasonalNaive(seasonality=24),
             conformity_scorer=Residual(),
-            calibration_size=22,
+            calibration_size=80,
             calibration_stride=2,
         )
         with pytest.raises(ValueError, match="asymmetric") as excinfo:
-            asymmetric.fit(y=_series(90), forecasting_horizon=4, coverage_rates=[0.9])
-        assert "19 scores" in str(excinfo.value)
+            asymmetric.fit(y=_series(160), forecasting_horizon=4, coverage_rates=[0.9])
+        assert "60 scores" in str(excinfo.value)
 
-    def test_flat_floor_message_survives_when_it_binds(self):
-        """Moderate coverage keeps the stability floor as the named bound."""
+    def test_median_only_calibration_is_cheap(self):
+        """A central quantile needs few scores: no flat floor inflates it."""
+        from yohou.metrics.conformity import AbsoluteResidual
+
         fc = SplitConformalForecaster(
-            point_forecaster=SeasonalNaive(),
-            calibration_size=20,
+            point_forecaster=SeasonalNaive(seasonality=24),
+            conformity_scorer=AbsoluteResidual(),
+            calibration_size=14,
             calibration_stride=2,
         )
-        with pytest.raises(ValueError, match="stability floor of 30"):
-            fc.fit(y=_series(60), forecasting_horizon=4, coverage_rates=[0.5])
+        # cr 0.5 symmetric: tail 0.5 needs ceil(3/0.5) = 6. worst = 7 - 2 + 1 = 6.
+        fc.fit(y=_series(60), forecasting_horizon=4, coverage_rates=[0.5])
+        assert fc.replay_path_ in {"bulk", "batched", "rolling"}
