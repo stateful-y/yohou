@@ -716,7 +716,7 @@ class LocalPanelForecaster(BaseForecaster):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -741,7 +741,7 @@ class LocalPanelForecaster(BaseForecaster):
             ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction
             intervals during recursive multi-step forecasting.
         groups : list of str or None, default=None
@@ -783,7 +783,7 @@ class LocalPanelForecaster(BaseForecaster):
                 X_actual=X_group,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
-                strategy=strategy,
+                recursion_strategy=recursion_strategy,
                 stride=stride,
                 X_future=X_future_group,
                 X_forecast=X_forecast_group,

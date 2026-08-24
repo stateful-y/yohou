@@ -574,7 +574,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_forecast: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         **params,
     ) -> pl.DataFrame:
@@ -596,7 +596,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction intervals
             during recursive multi-step forecasting:
 
@@ -660,15 +660,15 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
                 all_bound_cols = lower_cols + upper_cols
 
-                if strategy == "point":
+                if recursion_strategy == "point":
                     if col not in y_pred_step_inv.columns:
                         raise ValueError(
-                            f"strategy='point' requires a bare point column '{col}' in the "
+                            f"recursion_strategy='point' requires a bare point column '{col}' in the "
                             f"interval predictions, but {type(forecaster).__name__} did not "
-                            f"emit one. Use strategy='mean' or strategy='median' instead."
+                            f"emit one. Use recursion_strategy='mean' or recursion_strategy='median' instead."
                         )
                     y_data[col] = y_pred_step_inv[col]
-                elif strategy == "median":
+                elif recursion_strategy == "median":
                     y_data[col] = y_pred_step_inv.select(
                         pl.median_horizontal(all_bound_cols)  # ty: ignore[unresolved-attribute]
                     ).to_series()
@@ -710,7 +710,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -740,7 +740,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction intervals
             during recursive multi-step forecasting:
 
@@ -806,7 +806,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             stride=stride,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
-            strategy=strategy,
+            recursion_strategy=recursion_strategy,
             **params,
         )
 

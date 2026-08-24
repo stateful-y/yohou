@@ -73,14 +73,14 @@ _SURFACE: list[tuple[object, str, set[str]]] = [
         "predict",
         _DATA_ARGS_PREDICT | {"forecasting_horizon", "groups", "predict_transformed", "stride"},
     ),
-    # Interval family: stride declared on predict_interval; strategy and groups
+    # Interval family: stride declared on predict_interval; recursion_strategy and groups
     # are signature keys; predict_transformed is NOT declarable there because
     # observe_predict_interval rejects it. IntervalReductionForecaster defines
     # no predict function, so nothing leaks onto predict and its set is empty.
     (
         IntervalReductionForecaster(),
         "predict_interval",
-        _DATA_ARGS_PREDICT | {"forecasting_horizon", "coverage_rates", "strategy", "groups", "stride"},
+        _DATA_ARGS_PREDICT | {"forecasting_horizon", "coverage_rates", "recursion_strategy", "groups", "stride"},
     ),
     (IntervalReductionForecaster(), "predict", set()),
     # SplitConformalForecaster defines predict, so under substring resolution
@@ -94,7 +94,7 @@ _SURFACE: list[tuple[object, str, set[str]]] = [
     (
         SplitConformalForecaster(),
         "predict_interval",
-        _DATA_ARGS_PREDICT | {"forecasting_horizon", "coverage_rates", "strategy", "groups", "stride"},
+        _DATA_ARGS_PREDICT | {"forecasting_horizon", "coverage_rates", "recursion_strategy", "groups", "stride"},
     ),
     (
         VotingIntervalForecaster(forecasters=[("a", SeasonalNaive(seasonality=24))]),

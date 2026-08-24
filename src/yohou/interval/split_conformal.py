@@ -1229,7 +1229,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = "point",
+        recursion_strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -1261,15 +1261,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default="point"
             Strategy for deriving point predictions from prediction intervals
-            during recursive multi-step forecasting:
-
-            - ``"mean"``: use the mean of the interval bounds
-            - ``"median"``: use the median of the interval bounds
-            - ``"point"``: use the point forecast directly (if available)
-
-            If ``None``, defaults to ``"mean"``.
+            during recursive multi-step forecasting. This forecaster always
+            recurses on the point forecast, so only ``"point"`` (and ``None``,
+            meaning the default) is accepted; ``"mean"`` and ``"median"``
+            raise ``ValueError``.
         groups : list of str or None, default=None
             Panel group prefixes to operate on.  If ``None``, all groups
             are used.
@@ -1303,7 +1300,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             [0, 1], or ``groups`` contains names not seen during fit.
 
         """
-        self._validate_strategy(strategy)
+        self._validate_recursion_strategy(recursion_strategy)
 
         check_is_fitted(
             self,
@@ -1336,7 +1333,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             observe_fn=self.observe,
             forecasting_horizon=forecasting_horizon,
             coverage_rates=coverage_rates,
-            strategy=strategy,
+            recursion_strategy=recursion_strategy,
             **params,
         )
 
@@ -1480,10 +1477,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         return conformity_scorer_step._format_y_pred_interval(lower_bound, upper_bound, coverage_rate)
 
     @staticmethod
-    def _validate_strategy(strategy: str | None) -> None:
+    def _validate_recursion_strategy(recursion_strategy: str | None) -> None:
         """Reject a recursion strategy this forecaster cannot honour.
 
-        ``strategy`` selects how a recursive step derives its next observation
+        ``recursion_strategy`` selects how a recursive step derives its next observation
         from the previous step's bounds. This forecaster has no such step, so
         only ``"point"`` (and ``None``, meaning the default) describes it.
         Silently accepting ``"mean"`` or ``"median"`` would let a caller ask for
@@ -1492,29 +1489,29 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         Parameters
         ----------
-        strategy : str or None
-            The requested strategy.
+        recursion_strategy : str or None
+            The requested recursion strategy.
 
         Raises
         ------
         ValueError
-            If ``strategy`` is neither ``None`` nor ``"point"``.
+            If ``recursion_strategy`` is neither ``None`` nor ``"point"``.
 
         """
-        if strategy not in (None, "point"):
+        if recursion_strategy not in (None, "point"):
             raise ValueError(
                 f"SplitConformalForecaster always recurses on the point forecast, so "
-                f"strategy={strategy!r} cannot be honoured. The wrapped point forecaster "
+                f"recursion_strategy={recursion_strategy!r} cannot be honoured. The wrapped point forecaster "
                 f"produces the whole horizon in one call and the conformal bands are "
                 f"derived from it, so bound midpoints are never fed back. Pass "
-                f"strategy='point' (the default) or omit it."
+                f"recursion_strategy='point' (the default) or omit it."
             )
 
     def predict_interval(  # ty: ignore[invalid-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = "point",
+        recursion_strategy: Literal["mean", "median", "point"] | None = "point",
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -1534,7 +1531,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Coverage levels for prediction intervals (e.g., ``[0.9, 0.95]``
             for 90 % and 95 % intervals).  If ``None``, defaults to the rates
             used at fit time.
-        strategy : {"point"} or None, default="point"
+        recursion_strategy : {"point"} or None, default="point"
             Retained for interface parity with
             [`BaseIntervalForecaster`][yohou.interval.base.BaseIntervalForecaster],
             where it selects how a recursive step derives its next observation.
@@ -1573,7 +1570,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             is symmetric.
 
         """
-        self._validate_strategy(strategy)
+        self._validate_recursion_strategy(recursion_strategy)
 
         check_is_fitted(
             self,

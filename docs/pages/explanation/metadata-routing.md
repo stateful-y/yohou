@@ -25,8 +25,9 @@ The metadata a caller can supply at a top-level call includes:
 - **`stride`**: the walk-forward cadence of the observe-predict loop,
   declarable on each response method (`predict`, `predict_interval`,
   `predict_class_proba`) so a search can route it into its inner loop.
-- **`strategy`** (`predict_interval` only) and **`predict_transformed`**
-  (`predict` only): routable where the family's walk-forward accepts them.
+- **`recursion_strategy`** (`predict_interval` only) and
+  **`predict_transformed`** (`predict` only): routable where the family's
+  walk-forward accepts them.
 
 Any consumer can additionally request its own arbitrary metadata key; the
 routing infrastructure is generic and not limited to the parameters above.

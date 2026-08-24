@@ -107,24 +107,6 @@ residuals fold both tails into one quantile) and $(1 - cr)/2$ for an
 asymmetric one, so the same coverage rate needs twice the scores under signed
 residuals.
 
-The rule fixes the number of samples in the estimated tail rather than a
-total score count, so the requirement stays proportionate to the quantile
-being estimated. An empirical tail quantile needs at least
-$\lceil 1/t \rceil - 1$ scores to be an interior order statistic at all;
-below that it degenerates to the sample maximum and carries no tail
-information. Three tail samples keep a margin above that degeneracy bound at
-every rate: a median needs 6 scores, a 90th percentile 30, a 99th percentile
-300.
-
-Concretely: coverage 0.9 with absolute residuals needs 30 scores at the
-deepest step, so daily origins at a 48-step horizon need at least 744 hourly
-rows where 100 might otherwise do. Higher coverage scales the window in
-proportion: 0.99 needs 300 scores, and signed residuals double the count.
-
-The requirement is a lower bound on sanity rather than a coverage guarantee:
-similarity weighting concentrates the effective sample size, and an adaptive
-conformal adapter can push the effective level tighter than nominal.
-
 An important nuance: the coverage guarantee is marginal, meaning it holds on average
 across the calibration set. It does not guarantee that any specific individual
 prediction interval will contain the true value. In regions where the model performs
