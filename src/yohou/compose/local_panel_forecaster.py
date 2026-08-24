@@ -716,7 +716,7 @@ class LocalPanelForecaster(BaseForecaster):
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -741,7 +741,7 @@ class LocalPanelForecaster(BaseForecaster):
             ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions from prediction
             intervals during recursive multi-step forecasting.
         groups : list of str or None, default=None
@@ -783,7 +783,7 @@ class LocalPanelForecaster(BaseForecaster):
                 X_actual=X_group,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
-                strategy=strategy,
+                recursion_strategy=recursion_strategy,
                 stride=stride,
                 X_future=X_future_group,
                 X_forecast=X_forecast_group,
@@ -1010,7 +1010,11 @@ class LocalPanelForecaster(BaseForecaster):
             Metadata routing.
 
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
         router.add(
             forecaster=self.forecaster,
             method_mapping=MethodMapping()
@@ -1075,8 +1079,6 @@ class LocalPanelForecaster(BaseForecaster):
 
             # Call the appropriate predict method
             predict_kwargs: dict[str, Any] = {"forecasting_horizon": horizon}
-            # predict_transformed is a parameter of point predict only; the
-            # interval predict_interval signature does not accept it.
             if method == "predict":
                 predict_kwargs["predict_transformed"] = predict_transformed
             predict_kwargs.update(routed_params.forecaster.get(method, {}))

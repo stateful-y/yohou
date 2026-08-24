@@ -1662,8 +1662,12 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                         self, y_slice, X_obs_slice, X_step_slice, groups or []
                     )
             else:
-                # No step columns and no observe_fn: fall back to regular observe
-                self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups)
+                # No step columns and no observe_fn: fall back to regular observe.
+                # An empty groups list means global data here (the batched
+                # multi-origin helper passes [], the public path passes None),
+                # but observe's validation reads [] as an explicit panel-group
+                # request; normalize so a global replay does not trip it.
+                self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups or None)
 
             outputs.append(predict_fn(groups=groups, **predict_kwargs))
 

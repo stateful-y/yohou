@@ -160,6 +160,39 @@ print(results.select(["params", "mean_test_mae", "mean_test_rmse"]))
 All scorers are evaluated on every fold, but only the one named in `refit`
 determines which parameters are selected as best.
 
+## 8. Route Extra Metadata into the Inner Walk-Forward
+
+The search's inner loop scores each candidate with a rolling walk-forward.
+Extra keyword arguments to `fit` reach it through sklearn metadata routing:
+the value lands in the bucket named by your scorers' response method
+(`predict` for point scorers, `predict_interval` for interval scorers,
+`predict_class_proba` for class-probability scorers).
+
+One discipline applies: a routed key is validated against every predict-family
+method that carries it, so set the request `True` on the response method and
+explicitly `False` on any other carrier. For example, to score candidates at a
+daily walk-forward stride with an interval scorer:
+
+```python
+forecaster.set_predict_interval_request(stride=True)   # the response method
+forecaster.set_predict_request(stride=False)           # sibling carrier
+
+search = GridSearchCV(
+    forecaster=forecaster,
+    param_grid=param_grid,
+    scoring=IntervalScore(coverage_rates=[0.5, 0.9]),
+    cv=splitter,
+)
+search.fit(y_train, forecasting_horizon=48, stride=24)
+```
+
+Forgetting the `False` pairing raises a routing error that names the unset
+method and the `set_*_request` call that fixes it. The same pattern carries
+`strategy`, `predict_transformed`, or `groups` where the family's walk-forward
+accepts them. `cross_validate` and `cross_val_score` do not use routing: they
+take `predict_stride` and `predict_forecasting_horizon` as explicit
+parameters instead.
+
 ## See Also
 
 - [Choose a Forecasting Method](choose-forecasting-method.md): select a forecaster before tuning

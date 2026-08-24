@@ -314,7 +314,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
@@ -328,7 +328,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Number of steps ahead. If ``None``, uses value from ``fit``.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy each child uses to derive point predictions during
             recursive multi-step forecasting. Forwarded unchanged to every
             base forecaster's ``predict_interval``; it does not affect the
@@ -368,7 +368,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             y_pred = forecaster.predict_interval(  # ty: ignore[unresolved-attribute]
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
-                strategy=strategy,
+                recursion_strategy=recursion_strategy,
                 groups=groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
@@ -528,7 +528,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         X_actual: pl.DataFrame | None = None,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
-        strategy: Literal["mean", "median", "point"] | None = None,
+        recursion_strategy: Literal["mean", "median", "point"] | None = None,
         groups: list[str] | None = None,
         stride: StrictInt | None = None,
         X_future: pl.DataFrame | None = None,
@@ -552,7 +552,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Number of steps ahead.
         coverage_rates : list of float or None, default=None
             Coverage rates for prediction intervals.
-        strategy : {"mean", "median", "point"} or None, default=None
+        recursion_strategy : {"mean", "median", "point"} or None, default=None
             Strategy for deriving point predictions during recursive
             multi-step forecasting.
         groups : list of str or None, default=None
@@ -591,7 +591,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
-                strategy=strategy,
+                recursion_strategy=recursion_strategy,
                 groups=groups,
                 stride=stride,
                 X_future=X_future,
@@ -612,7 +612,11 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             Router with mappings for all base forecasters.
 
         """
-        router = MetadataRouter(owner=self.__class__.__name__)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         for name, forecaster in self.forecasters:
             router.add(

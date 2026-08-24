@@ -9,7 +9,6 @@ from pydantic import StrictInt
 from sklearn.base import clone
 from sklearn.utils import Bunch
 from sklearn.utils.metadata_routing import (
-    MetadataRouter,
     MethodMapping,
     process_routing,
 )
@@ -1244,7 +1243,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
             Metadata routing configuration.
 
         """
-        router = MetadataRouter(owner=self)
+        # Build on the inherited router rather than from scratch: the parent
+        # carries this class's own $self_request and the transformer children
+        # (target/actual/forecast), which a from-scratch MetadataRouter drops,
+        # making the class's own request keys invisible when nested.
+        router = super().get_metadata_routing()
 
         # Add routing for each forecaster
         for name, forecaster in self.forecasters:
@@ -1256,7 +1259,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
                 .add(caller="observe_predict", callee="observe_predict"),
             )
 
-        # Add routing for transformers
+        # Re-add the transformer slots with a RICHER mapping than the parent's:
+        # this class applies its transformers at predict too, so target and
+        # actual need predict->transform on top of the inherited fit mappings.
+        # MetadataRouter.add assigns by consumer name, so these overwrite the
+        # parent entries rather than duplicating them.
         if self.target_transformer is not None:
             router.add(
                 target_transformer=self.target_transformer,

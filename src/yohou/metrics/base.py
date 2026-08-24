@@ -10,6 +10,7 @@ from collections.abc import Callable
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
+from sklearn.utils.metadata_routing import UNUSED
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.utils import Tags, inspect_panel, validate_scorer_data
@@ -68,6 +69,14 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
     - [`BaseConformityScorer`][yohou.metrics.conformity_base.BaseConformityScorer] : Base class for conformity scorers.
 
     """
+
+    # ``fit(y_train, forecaster)`` and ``score(y_truth, y_pred)`` take data
+    # and object arguments whose names miss sklearn's exclusion set, so they
+    # would register as requestable metadata on every metric. A request for
+    # them would be inert anyway (score's are positional-only); UNUSED
+    # removes the keys from the request surface entirely.
+    __metadata_request__fit = {"y_train": UNUSED, "forecaster": UNUSED}
+    __metadata_request__score = {"y_truth": UNUSED, "y_pred": UNUSED}
 
     _lower_is_better: bool = True
 
@@ -151,7 +160,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             being inferred from ``y_train``. ``groups_`` is always inferred
             from ``y_train`` regardless of this argument.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1130,7 +1140,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             Predicted time series to evaluate.  Must have ``"vintage_time"``
             and ``"time"`` columns and columns matching ``y_truth``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1195,7 +1206,8 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             Predicted values.
 
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1284,7 +1296,8 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
             If provided, metadata is extracted directly from the fitted
             forecaster instead of being re-inferred from ``y_train``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1349,7 +1362,8 @@ class BasePointScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted values with ``"time"`` column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1540,7 +1554,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
             If provided, metadata is extracted directly from the fitted
             forecaster instead of being re-inferred from ``y_train``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1632,7 +1647,8 @@ class BaseIntervalScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted intervals with ``"time"`` column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1811,7 +1827,8 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
             If provided, metadata is extracted directly from the fitted
             forecaster instead of being re-inferred from ``y_train``.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -1966,7 +1983,8 @@ class BaseClassProbaScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted probabilities with ``"time"`` column.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators.
 
         Returns
         -------
@@ -2412,7 +2430,8 @@ class BaseRankingScorer(BaseClassProbaScorer, metaclass=abc.ABCMeta):
         y_pred : pl.DataFrame
             Predicted probabilities with ``"time"`` column.
         **params : dict
-            Metadata to route to nested estimators. Time-axis weighting is
+            Accepted for signature compatibility and ignored: scorers route no
+            metadata to nested estimators. Time-axis weighting is
             configured on ``__init__`` via the scorer's weighter parameters,
             not passed here.
 

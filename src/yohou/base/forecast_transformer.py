@@ -156,7 +156,8 @@ class BaseForecastTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
         y : pl.DataFrame or None, default=None
             Ignored.  Present for API compatibility.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -183,7 +184,8 @@ class BaseForecastTransformer(_BaseTransformer, metaclass=abc.ABCMeta):
             Input ``X_forecast`` frame with ``"vintage_time"`` and ``"time"``
             columns and one or more feature columns.
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------

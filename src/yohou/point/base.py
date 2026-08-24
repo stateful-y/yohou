@@ -48,6 +48,16 @@ class BasePointForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
     """
 
+    # ``stride`` is walk-forward metadata consumed by ``observe_predict``, but
+    # search CV routing buckets predict-side parameters under the scorer's
+    # response method, which is ``predict`` for point scoring. Declaring the
+    # key here (not in the ``predict`` signature, which never takes a stride)
+    # is what lets a caller opt in with ``set_predict_request(stride=True)``
+    # so the search's fit can route the value into its inner walk-forward.
+    # The alias stays None (unset): conformance requires empty default
+    # requests, and opt-in is per instance.
+    __metadata_request__predict = {"stride": None}
+
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
 

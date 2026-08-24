@@ -155,7 +155,8 @@ class SklearnTransformer(BaseClassWrapper, BaseActualTransformer):
             Target time series. Ignored and only present for API consistency.
 
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -194,7 +195,8 @@ class SklearnTransformer(BaseClassWrapper, BaseActualTransformer):
             Feature time series with "time" column.
 
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------
@@ -252,7 +254,8 @@ class SklearnTransformer(BaseClassWrapper, BaseActualTransformer):
             sklearn wrappers since sklearn transformers are stateless.
 
         **params : dict
-            Metadata to route to nested estimators.
+            Accepted for signature compatibility and ignored: this transformer
+            routes no metadata to nested estimators.
 
         Returns
         -------

@@ -1088,6 +1088,10 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
                 .add(caller="decision_function", callee="transform")
                 .add(caller="predict_log_proba", callee="transform")
                 .add(caller="transform", callee="transform")
+                # observe/rewind mappings are caller REGISTRATION: those
+                # methods dispatch through process_routing, which needs the
+                # mapping even though no transformer exposes a requestable
+                # key there today.
                 .add(caller="observe_transform", callee="observe_transform")
                 .add(caller="rewind_transform", callee="rewind_transform")
                 .add(caller="inverse_transform", callee="inverse_transform")
@@ -1110,6 +1114,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             method_mapping
             .add(caller="fit", callee="fit")
             .add(caller="transform", callee="transform")
+            # Same registration rationale as the per-step mappings above.
             .add(caller="observe_transform", callee="observe_transform")
             .add(caller="rewind_transform", callee="rewind_transform")
             .add(caller="inverse_transform", callee="inverse_transform")
