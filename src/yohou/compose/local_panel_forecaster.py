@@ -1079,8 +1079,6 @@ class LocalPanelForecaster(BaseForecaster):
 
             # Call the appropriate predict method
             predict_kwargs: dict[str, Any] = {"forecasting_horizon": horizon}
-            # predict_transformed is a parameter of point predict only; the
-            # interval predict_interval signature does not accept it.
             if method == "predict":
                 predict_kwargs["predict_transformed"] = predict_transformed
             predict_kwargs.update(routed_params.forecaster.get(method, {}))

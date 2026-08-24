@@ -938,11 +938,6 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         # Predict with each forecaster
         for name, forecaster, _cols in self.forecasters_:
             forecaster_params = routed_params.get(name, Bunch(predict_interval={}))
-            # predict_transformed is not forwarded: no interval child accepts
-            # it on predict_interval (bounds are emitted on the original scale
-            # by design), so the old forwarding landed in **params and was
-            # silently swallowed. Kept out rather than surfaced as an
-            # unrequested-metadata error now that children route their params.
             y_pred = forecaster.predict_interval(
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
