@@ -84,28 +84,26 @@ that uncertainty grows with the forecast horizon.
 
 ### Strided Calibration
 
-The stride-1 replay scores every calibration row as an origin. A production
-system that forecasts once per day never predicts from most of those origins,
-so their scores describe decisions the system does not make. The optional
-`calibration_stride` parameter (default `None`, meaning the stride-1 replay)
-restricts scoring to origins `calibration_stride` rows apart, tail-anchored on
-the last calibration row, while the replay still observes every row so the
-wrapped forecaster ends fit observed through the block.
+By default, the calibration replay uses every calibration row as a forecast
+origin. A production system that forecasts once per day never predicts from
+most of those origins. The optional `calibration_stride` parameter (default
+`None`, which keeps the default replay) scores only origins
+`calibration_stride` rows apart, ending on the last calibration row. The
+replay still observes every row, so the wrapped forecaster has seen the full
+calibration set when fit ends.
 
-`calibration_size` keeps meaning rows, whatever the stride. With block size $C$
-and stride $k$, horizon step $h$ collects $C/k - \lceil h/k \rceil + 1$ scores:
-origins near the block end contribute nothing for steps whose targets fall past
-it, so the deepest step always has the fewest.
+`calibration_size` always counts rows, whatever the stride. With block size
+$C$ and stride $k$, horizon step $h$ collects $C/k - \lceil h/k \rceil + 1$
+scores. Origins near the end of the block produce no score for steps whose
+targets fall past it, so the deepest step always has the fewest.
 
-Fit validates that $C$ is a multiple of $k$ and refuses a configuration whose
-deepest step would fall below the required score count, reporting the binding
-coverage rate and the smallest `calibration_size` that would pass. The
-requirement scales with the requested coverage rates: each step must hold at
-least $\lceil m/t \rceil$ scores, where $m$ is `MIN_TAIL_SAMPLES` (3) and the
-tail mass $t$ is $1 - cr$ for a symmetric conformity scorer (absolute
-residuals fold both tails into one quantile) and $(1 - cr)/2$ for an
-asymmetric one, so the same coverage rate needs twice the scores under signed
-residuals.
+Fit requires $C$ to be a multiple of $k$, and rejects a configuration whose
+deepest step would hold too few scores. The error names the coverage rate
+that fails and the smallest `calibration_size` that would pass. Each step
+must hold at least $\lceil m/t \rceil$ scores, where $m$ is
+`MIN_TAIL_SAMPLES` (3) and $t$ is the tail mass: $1 - cr$ for a symmetric
+conformity scorer and $(1 - cr)/2$ for an asymmetric one. An asymmetric
+scorer therefore needs twice as many scores for the same coverage rate.
 
 An important nuance: the coverage guarantee is marginal, meaning it holds on average
 across the calibration set. It does not guarantee that any specific individual
@@ -156,6 +154,16 @@ or heteroscedastic variance that grows proportionally with the signal.
 [`AbsoluteGammaResidual`](/pages/api/generated/yohou.metrics.AbsoluteGammaResidual/)
 is the symmetric variant.
 
+**Dispersion-normalised residuals**:
+[`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/)
+computes $s = (y - \hat{y}) / \sigma_c$, dividing by a scale fitted per value column at
+`fit` time. Where gamma residuals remove differences in *magnitude* between columns, this
+also removes differences in *volatility*, so two columns of equal size but unequal noise
+still produce comparable scores. That is what makes global calibration possible, and it is
+also useful on its own: the interval width tracks each column's own dispersion.
+[`AbsoluteNormalizedResidual`](/pages/api/generated/yohou.metrics.AbsoluteNormalizedResidual/)
+is the symmetric variant.
+
 Switching scorers requires no changes to the forecaster; pass a different
 `conformity_scorer` to the
 [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/)
@@ -179,15 +187,37 @@ then produces intervals that adapt to local conditions.
 [`DistanceSimilarity`](/pages/api/generated/yohou.interval.DistanceSimilarity/)
 computes distances between the current prediction context (the feature vector derived
 from the point forecaster's observation window at predict time) and each calibration
-feature vector stored during `fit()`. It then converts distances to weights using a
-numerically stable softmax of negative distances with uniform mass reserved for the
-test point:
+feature vector stored during `fit()`. Each feature column is first divided by its
+own spread, measured at `fit()` time. Then the distances are divided by a fitted
+distance scale (the median pairwise distance among the calibration features) and by
+the `bandwidth` parameter. Writing that scaled distance as
+$\tilde{d} = d / (\text{bandwidth} \cdot \text{distance scale})$, the weights are a
+numerically stable softmax of negative scaled distances with uniform mass reserved
+for the test point:
 
-$$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}{1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
+$$w_{ji} = \frac{\exp(-(\tilde{d}_{ji} - \min_k \tilde{d}_{jk}))}{1 + \sum_k \exp(-(\tilde{d}_{jk} - \min_k \tilde{d}_{jk}))}$$
 
 Calibration points close to the current prediction get exponentially higher weights
 than distant ones. The distance metric is configurable: euclidean, cityblock, cosine,
 or any metric supported by `scipy.spatial.distance.cdist`.
+
+The two scalings fix different problems. Dividing by the fitted distance
+scale makes the weights independent of the data's units. Without it, the
+same series measured in thousands instead of units would concentrate nearly
+all weight on one calibration row, and the interval would be built from a
+single conformity score. Dividing each feature column by its own spread
+prevents one large-magnitude column from dominating the distances of every
+other column, which is what happens on a panel whose entities differ in
+size.
+
+`bandwidth` controls how concentrated the weights are. Values below 1
+concentrate weight on the nearest calibration rows; values above 1 flatten
+the weights toward uniform. Use it when the default weighting is wider or
+narrower than the structure in your data. The defaults differ:
+`DistanceSimilarity` uses `1.0`, while `SeasonalSimilarity` uses `0.5`
+because its harmonic features lie on the unit circle, where distances are
+already small and uniform. At `1.0` its weights would stay close to uniform
+and the weighted quantile would rarely differ from the unweighted one.
 
 The leading `1` in the denominator reserves uniform mass for the hypothetical test
 point, so each weight row is non-negative and sums to a value strictly below 1. This
@@ -297,9 +327,24 @@ summarized below.
 | Similarity weighting | which residuals count | `similarity` |
 | Adaptive conformal inference | how far into their tail to reach | `adapter` |
 
-The adapter tracks one level per horizon step (or a single shared level with
-`alpha_pooling="shared"`), and one level per tail for asymmetric conformity
-scorers so a lopsided error distribution corrects each side separately.
+The adapter tracks one level per horizon step and value column, or one level
+per value column shared across steps with `alpha_pooling="shared"`. For
+asymmetric conformity scorers it tracks one level per tail, so each side of
+an asymmetric error distribution is corrected separately. `alpha_pooling`
+pools along the horizon axis only. Levels are never shared between entities,
+so an entity with poor coverage widens its own intervals and no other's.
+
+The choice is about assumptions. The default, `"per_step"`, updates each
+horizon separately. This matches the observation that one-step and
+twelve-step errors drift differently, but running one update per horizon
+over overlapping data goes beyond what the original theory covers.
+`"shared"` keeps a single level per entity, which stays within the
+single-sequence setting the theory does cover, but gives up per-horizon
+resolution.
+
+Under `"shared"` the forecaster allocates one adapter per value column, and
+every horizon-step key points to that same object: `adapters_["step_1"][col]`
+and `adapters_["step_2"][col]` are the same adapter, not copies.
 
 ## Quantile Reduction Intervals
 
@@ -379,15 +424,80 @@ and
 support panel data through the `panel_strategy` parameter:
 
 - **`"global"`** (default): fits a single shared model across all groups, but
-  maintains per-group transformer state and observation buffers. Groups share a
-  single calibration set or quantile model. For independent per-group models, use
+  maintains per-group transformer state and observation buffers. For independent
+  per-group models, use
   [`LocalPanelForecaster`](/pages/api/generated/yohou.compose.LocalPanelForecaster/).
-- **`"multivariate"`**: pools data across groups, sharing calibration scores or
-  quantile models. This is useful when individual groups have limited data and
-  borrowing strength across entities improves interval quality.
+- **`"multivariate"`**: skips panel detection entirely and treats `__`-prefixed
+  columns as ordinary multivariate columns, so one transformer and one model see
+  the full wide frame. Use it when cross-group feature interactions matter.
 
 The choice mirrors the panel strategies available in point forecasting. See
 [Panel Data](panel-data.md) for the full treatment.
+
+### What `panel_strategy` does not govern
+
+`panel_strategy` decides how the *point model* is fitted and how per-group state
+is kept. It does not decide the calibration axis. Conformal calibration is always
+per value column, under either strategy: each `{group}__{variable}` column takes
+the quantile of its own conformity scores, and the adaptive level, when an
+`adapter` is configured, is likewise tracked per column.
+
+This matters when entities differ in magnitude. An entity a hundred times
+larger than another needs intervals about a hundred times wider. Sharing one
+calibration between them would over-cover the small entity and under-cover
+the large one, and nothing would look wrong: both intervals are well formed,
+one is too wide and the other too narrow.
+
+Calibration can optionally be shared across entities with
+`calibration_strategy="global"`. It is off by default, and whether it helps
+depends on your data. Three properties of the entities decide it: magnitude,
+volatility, and dependence.
+
+Magnitude and volatility decide whether the pooled scores are comparable.
+[`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/)
+divides each residual by its column's own dispersion, which removes both
+differences. Global calibration requires it, or another scorer declaring the
+`supports_global_calibration` tag, and `calibration_strategy="global"`
+raises at fit otherwise: pooling incomparable scores produces an interval
+that is wrong, not merely imprecise.
+
+Dependence cannot be removed by any conformity score. Entities observed at
+the same timestamp share shocks, so their scores are correlated within a
+timestamp. The pooled sequence is then not exchangeable, which is the
+assumption the finite-sample guarantee rests on. Correlation also limits the
+benefit: strongly correlated entities add much less information than their
+count suggests. This is why the mode is opt-in.
+
+### Deciding whether to calibrate globally
+
+Measure your own data with
+[`diagnose_global_calibration`](/pages/api/generated/yohou.interval.diagnose_global_calibration/),
+which reports the cross-sectional correlation of a fitted forecaster's
+conformity scores and how comparable those scores are across columns. It
+reports and does not choose, because the right answer also depends on the
+coverage rates you need.
+
+Global calibration is most useful when a coverage rate cannot be reached per
+column. Pooling multiplies the number of scores a quantile can draw from, so
+a rate that a short series cannot express alone becomes reachable (see
+[how many calibration scores a rate needs](#how-many-calibration-scores-a-rate-needs)).
+It can hurt an entity whose error distribution differs in shape from the
+others, not only in scale: normalization equalizes dispersion, not tail
+weight, so a heavy-tailed entity calibrated mostly from light-tailed
+neighbours loses coverage.
+
+Note that `panel_strategy` and `calibration_strategy` both accept `"global"`
+and neither implies the other. The first shares the point *model* across
+entities; the second shares the *calibration*. The default pairing, a shared
+model with per-entity calibration, is a common and reasonable configuration.
+The adaptive level, when an `adapter` is configured, stays per entity under
+both calibration strategies.
+
+The number of entities never reduces the per-entity score count:
+`calibration_size` counts rows, and all entities share the time index, so
+each entity receives the full count however many entities there are. What
+limits calibration is a short history, as the section linked above
+explains.
 
 ## Coverage Rates
 
@@ -402,6 +512,22 @@ scores are stored and the quantile computation is applied at prediction time; no
 re-calibration is needed. For `IntervalReductionForecaster`, new coverage rates
 require that the underlying estimator can produce predictions at the corresponding
 quantile levels.
+
+### How many calibration scores a rate needs
+
+A conformal bound is an order statistic of the calibration scores: the
+`ceil((n + 1) * q)`-th, where `q` is the tail level. That index must stay
+within `n`, so a rate needs at least `q / (1 - q)` scores per value column
+to be representable: 9 for a symmetric 90%, 99 for a symmetric 99%, and
+about twice as many for an asymmetric scorer, which splits the miscoverage
+across two tails. With fewer scores the correct bound is unbounded, and any
+finite bound under-covers.
+
+`SplitConformalForecaster` warns when a requested rate cannot be expressed,
+naming the horizon step and the count that would be needed. The constraint
+is per value column, but `calibration_size` counts rows and every entity
+shares the time index, so a wide panel does not reduce the count. Only a
+short history does.
 
 The right coverage rate reflects the cost asymmetry of the decision. Safety-critical
 applications (capacity planning, risk management) warrant high coverage because the

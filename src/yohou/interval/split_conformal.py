@@ -17,10 +17,15 @@ from yohou.base.panel import BasePanelForecaster
 from yohou.metrics import BaseConformityScorer, Residual
 from yohou.point import BasePointForecaster, SeasonalNaive
 from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
-from yohou.utils._compat import Interval, _fit_context
+from yohou.utils._compat import Interval, StrOptions, _fit_context
 
 from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
-from .utils import weighted_quantile
+from .utils import (
+    global_calibration_weights,
+    warn_if_calibration_too_small,
+    warn_if_weights_collapsed,
+    weighted_quantile,
+)
 
 __all__ = ["SplitConformalForecaster"]
 
@@ -64,7 +69,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         coverage. Composes with ``similarity``: the adapter sets the level,
         the similarity sets the weights.
     panel_strategy : {"global", "multivariate"}, default="global"
-        How to handle panel data. See `BaseForecaster` for details.
+        How to handle panel data. See `BaseForecaster` for details. This
+        governs the wrapped *point model* and the per-group state, not the
+        calibration.
+    calibration_strategy : {"local", "global"}, default="local"
+        Which conformity scores a value column's quantile is drawn from:
+        ``"local"`` (the default) uses that column's own scores, so each
+        entity is calibrated independently; ``"global"`` pools every
+        column's scores into one quantile. See Notes.
 
     Attributes
     ----------
@@ -101,6 +113,22 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     calibration window: 0.9 with absolute residuals needs 30 scores at
     the deepest step, 0.99 needs 300, and signed residuals double both.
 
+    **Calibration strategy.** ``"global"`` draws one quantile from every
+    value column's scores together and rebuilds each column's bound with
+    its own scale, which lifts the ceiling on the coverage rates a short
+    series can express. It requires a conformity scorer that declares the
+    ``supports_global_calibration`` tag and raises at ``fit`` otherwise:
+    pooling scores of different magnitude or volatility produces a
+    systematically miscalibrated interval rather than a merely imprecise
+    one. Whether it helps at all depends on how correlated the entities
+    are; see the interval-forecasting explanation page. Note that
+    ``panel_strategy`` and ``calibration_strategy`` both accept
+    ``"global"`` and neither implies the other: ``panel_strategy="global"``
+    shares the *point model* across entities,
+    ``calibration_strategy="global"`` shares the *calibration*. The default
+    pairing, a shared point model with per-entity calibration, is a
+    sensible and common configuration.
+
     **Replay paths.** The point forecaster is frozen for the whole
     replay, so no origin depends on having predicted at the one before
     it. Where the wrapped forecaster supports it, the origins are
@@ -132,6 +160,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         "conformity_scorer": [BaseConformityScorer],
         "similarity": [BaseSimilarity, None],
         "adapter": [BaseConformalAdapter, None],
+        "calibration_strategy": [StrOptions({"local", "global"})],
     }
 
     def __sklearn_tags__(self) -> Tags:
@@ -188,6 +217,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         similarity: BaseSimilarity | None = None,
         adapter: BaseConformalAdapter | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
+        calibration_strategy: Literal["local", "global"] = "local",
         calibration_stride: StrictInt | None = None,
     ):
         BaseIntervalForecaster.__init__(self, panel_strategy=panel_strategy)
@@ -197,6 +227,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         self.similarity = similarity
         self.adapter = adapter
         self.calibration_size = calibration_size
+        self.calibration_strategy = calibration_strategy
         self.calibration_stride = calibration_stride
 
     @_fit_context(prefer_skip_nested_validation=True)
@@ -339,6 +370,23 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 X_forecast=X_forecast,
             )
 
+        # Pooling scores that are not comparable across columns produces a
+        # systematically miscalibrated interval, not a merely imprecise one, so
+        # this refuses rather than warns.
+        if self.calibration_strategy == "global":
+            scorer_tags = self.conformity_scorer.__sklearn_tags__()
+            assert scorer_tags.scorer_tags is not None
+            if not scorer_tags.scorer_tags.supports_global_calibration:
+                raise ValueError(
+                    f"calibration_strategy='global' pools conformity scores across value columns, "
+                    f"which requires a scorer that supports global calibration: one whose scores are "
+                    f"on a common footing across columns. {type(self.conformity_scorer).__name__} does "
+                    f"not declare that support: its scores carry each column's own magnitude or "
+                    f"volatility, so a single shared quantile would be too wide for some columns and "
+                    f"too narrow for others. Use a dispersion-normalized scorer such as "
+                    f"NormalizedResidual, or keep calibration_strategy='local'."
+                )
+
         conformity_scorers = {}
         conformity_scores_list: list[pl.DataFrame] = []
         similarities = {}
@@ -389,12 +437,27 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             scorer_tags = self.conformity_scorer.__sklearn_tags__()
             assert scorer_tags.scorer_tags is not None
             self._adapter_symmetric_ = scorer_tags.scorer_tags.symmetric
-            self.adapters_ = {}
-            for step in range(1, 1 + forecasting_horizon):
-                key = f"step_{step}"
-                self.adapters_[key] = clone(self.adapter).fit(
-                    self.fit_coverage_rates_, symmetric=self._adapter_symmetric_
-                )
+            # One clone per distinct pooling slot. The level modulates a quantile
+            # that is already per column, so a level shared across columns would
+            # let one entity's misses widen every other entity's interval; the
+            # column axis is therefore never pooled. The step axis is, when
+            # alpha_pooling="shared", in which case every step key points at the
+            # same object rather than at horizon-many identical copies of it.
+            adapter_columns = [c for c in conformity_scores.columns if c not in ("time", "step")]
+            self.adapter_pooling_ = self.adapter.alpha_pooling
+            steps = range(1, 1 + forecasting_horizon)
+
+            def _new_adapter():
+                """Return one freshly seeded adapter clone for a pooling slot."""
+                return clone(self.adapter).fit(self.fit_coverage_rates_, symmetric=self._adapter_symmetric_)
+
+            if self.adapter_pooling_ == "shared":
+                shared = {column: _new_adapter() for column in adapter_columns}
+                self.adapters_ = {f"step_{step}": dict(shared) for step in steps}
+            else:
+                self.adapters_ = {
+                    f"step_{step}": {column: _new_adapter() for column in adapter_columns} for step in steps
+                }
 
         return self
 
@@ -704,8 +767,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         coverage_rates: list[float],
         symmetric: bool,
         n_rows: int,
-    ) -> list[dict[float, object]]:
-        """Build one per-row miscoverage dict per observed row for a step.
+    ) -> list[dict[str, dict[float, object]]]:
+        """Build one per-row, per-column miscoverage dict for a step.
 
         Rows this step could not score (its prediction reached past the
         observed truth) receive a zero-update sentinel so every step advances
@@ -733,14 +796,14 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         list of dict
-            Length ``n_rows``; each dict maps a coverage rate to its
-            miscoverage signal.
+            Length ``n_rows``; each entry maps a value column to a dict from
+            coverage rate to that column's own miscoverage signal.
 
         """
         value_cols = [c for c in calib.columns if c != "time"]
         calib_cols = {c: calib[c].to_numpy().astype(np.float64) for c in value_cols}
         n_calib = calib.height
-        levels = self.adapters_[step_key].predict()
+        levels = {column: adapter.predict() for column, adapter in self.adapters_[step_key].items()}
 
         def sentinel(coverage_rate: float) -> object:
             """Return the zero-update error for a row this step could not score."""
@@ -748,7 +811,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             return alpha_target if symmetric else (alpha_target / 2.0, alpha_target / 2.0)
 
         # Default every row to the zero-update sentinel, then fill scored rows.
-        errors: list[dict[float, object]] = [{cr: sentinel(cr) for cr in coverage_rates} for _ in range(n_rows)]
+        errors: list[dict[str, dict[float, object]]] = [
+            {c: {cr: sentinel(cr) for cr in coverage_rates} for c in value_cols} for _ in range(n_rows)
+        ]
 
         if scores_new.height == 0:
             return errors
@@ -758,7 +823,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         if self.similarity is not None and hasattr(self, "similarities_"):
             weight_matrix = self.similarities_[step_key].predict(y_pred=scored_pred).astype(np.float64)
         else:
-            weight_matrix = np.ones((scores_new.height, n_calib), dtype=np.float64)
+            # Uniform weights that reserve mass for the test point, mirroring
+            # BaseSimilarity._reserve_mass. weighted_quantile does not
+            # renormalize, so 1/(n+1) each is what reproduces the standard
+            # ceil((n+1) * q) conformal order statistic.
+            weight_matrix = np.full((scores_new.height, n_calib), 1.0 / (n_calib + 1), dtype=np.float64)
 
         row_index = {t: i for i, t in enumerate(y["time"].to_list())}
         scored_values = {c: scores_new[c].to_numpy().astype(np.float64) for c in value_cols}
@@ -767,41 +836,48 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             i = row_index[t]
             weights = weight_matrix[j]
             for coverage_rate in coverage_rates:
-                level = levels[coverage_rate]
-                if symmetric:
-                    misses = []
-                    for c in value_cols:
+                # Each column is judged against its own level and its own
+                # threshold, and reports its own binary outcome. Averaging the
+                # outcomes across columns, as this once did, fed a fraction into
+                # a recursion the spec defines with an indicator, and coupled
+                # every entity's level to every other entity's misses.
+                for c in value_cols:
+                    level = levels[c][coverage_rate]
+                    score = scored_values[c][j]
+                    if symmetric:
                         q = float(self._adapter_thresholds(calib_cols[c], weights, level, True))  # ty: ignore[invalid-argument-type]
-                        misses.append(1.0 if scored_values[c][j] > q else 0.0)
-                    errors[i][coverage_rate] = float(np.mean(misses))
-                else:
-                    lower_misses, upper_misses = [], []
-                    for c in value_cols:
+                        errors[i][c][coverage_rate] = 1.0 if score > q else 0.0
+                    else:
                         lower_q, upper_q = self._adapter_thresholds(calib_cols[c], weights, level, False)  # ty: ignore[not-iterable]
-                        s = scored_values[c][j]
-                        lower_misses.append(1.0 if s < lower_q else 0.0)
-                        upper_misses.append(1.0 if s > upper_q else 0.0)
-                    errors[i][coverage_rate] = (float(np.mean(lower_misses)), float(np.mean(upper_misses)))
+                        errors[i][c][coverage_rate] = (
+                            1.0 if score < lower_q else 0.0,
+                            1.0 if score > upper_q else 0.0,
+                        )
 
         return errors
 
     @staticmethod
     def _pool_adapter_errors(
-        per_step_errors: dict[str, list[dict[float, object]]],
+        per_step_errors: dict[str, list[dict[str, dict[float, object]]]],
         coverage_rates: list[float],
         symmetric: bool,
         n_rows: int,
-    ) -> list[dict[float, object]]:
+    ) -> list[dict[str, dict[float, object]]]:
         """Average per-step miscoverage into one shared per-row trajectory.
 
         Used for ``alpha_pooling="shared"``: a single pooled update is fed to
         every step's adapter, so the per-step dict alone (which cannot see
         across steps) still yields one shared level.
 
+        Pooling runs along the horizon-step axis only. Each value column is
+        pooled with itself across steps and never with another column, so two
+        columns' levels stay free to diverge under ``"shared"``.
+
         Parameters
         ----------
         per_step_errors : dict
-            Maps each ``"step_k"`` key to its length-``n_rows`` error list.
+            Maps each ``"step_k"`` key to its length-``n_rows`` error list,
+            each entry keyed by value column then coverage rate.
         coverage_rates : list of float
             Tracked coverage rates.
         symmetric : bool
@@ -812,20 +888,26 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Returns
         -------
         list of dict
-            Length ``n_rows`` pooled error list.
+            Length ``n_rows`` pooled error list, still keyed by value column.
 
         """
         keys = list(per_step_errors)
-        pooled: list[dict[float, object]] = []
+        columns = list(per_step_errors[keys[0]][0]) if keys and n_rows else []
+        pooled: list[dict[str, dict[float, object]]] = []
         for i in range(n_rows):
-            row: dict[float, object] = {}
-            for coverage_rate in coverage_rates:
-                if symmetric:
-                    row[coverage_rate] = float(np.mean([per_step_errors[k][i][coverage_rate] for k in keys]))
-                else:
-                    lowers = [per_step_errors[k][i][coverage_rate][0] for k in keys]  # ty: ignore[not-subscriptable]
-                    uppers = [per_step_errors[k][i][coverage_rate][1] for k in keys]  # ty: ignore[not-subscriptable]
-                    row[coverage_rate] = (float(np.mean(lowers)), float(np.mean(uppers)))
+            row: dict[str, dict[float, object]] = {}
+            for column in columns:
+                column_row: dict[float, object] = {}
+                for coverage_rate in coverage_rates:
+                    if symmetric:
+                        column_row[coverage_rate] = float(
+                            np.mean([per_step_errors[k][i][column][coverage_rate] for k in keys])
+                        )
+                    else:
+                        lowers = [per_step_errors[k][i][column][coverage_rate][0] for k in keys]  # ty: ignore[not-subscriptable]
+                        uppers = [per_step_errors[k][i][column][coverage_rate][1] for k in keys]  # ty: ignore[not-subscriptable]
+                        column_row[coverage_rate] = (float(np.mean(lowers)), float(np.mean(uppers)))
+                row[column] = column_row
             pooled.append(row)
         return pooled
 
@@ -853,7 +935,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
 
         y_pred = self.point_forecaster_.predict(forecasting_horizon=fh)
 
-        per_step_errors: dict[str, list[dict[float, object]]] = {}
+        per_step_errors: dict[str, list[dict[str, dict[float, object]]]] = {}
         for step in range(1, 1 + fh):
             key = f"step_{step}"
             scorer = self.conformity_scorers_[key]
@@ -871,13 +953,46 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 n_rows=n_rows,
             )
 
-        if getattr(self.adapter, "alpha_pooling", "per_step") == "shared":
+        if self.adapter_pooling_ == "shared":
             pooled = self._pool_adapter_errors(per_step_errors, coverage_rates, symmetric, n_rows)
-            for key in per_step_errors:
-                self.adapters_[key].observe(pooled)
+            # One object per column under sharing, so drive each column once from
+            # the pooled trajectory. Walking the step keys would advance the same
+            # object once per horizon step, moving the level fh times too far per
+            # observed row.
+            seen: set[int] = set()
+            for step_adapters in self.adapters_.values():
+                for column, adapter in step_adapters.items():
+                    if id(adapter) in seen:
+                        continue
+                    seen.add(id(adapter))
+                    adapter.observe([row[column] for row in pooled])
         else:
             for key, errors in per_step_errors.items():
-                self.adapters_[key].observe(errors)
+                for column, adapter in self.adapters_[key].items():
+                    adapter.observe([row[column] for row in errors])
+
+    def _distinct_adapters(self) -> list:
+        """Return each adapter object once, however many keys point at it.
+
+        Under ``alpha_pooling="shared"`` one object serves every horizon step of
+        a column, so the nested mapping holds ``fh`` references to it. Anything
+        that advances or rolls back state must walk objects rather than
+        references, or a single row moves the level ``fh`` times.
+
+        Returns
+        -------
+        list
+            The distinct adapter objects, in first-seen order.
+
+        """
+        seen: set[int] = set()
+        distinct = []
+        for step_adapters in self.adapters_.values():
+            for adapter in step_adapters.values():
+                if id(adapter) not in seen:
+                    seen.add(id(adapter))
+                    distinct.append(adapter)
+        return distinct
 
     def _rewind_adapter(self, y: pl.DataFrame) -> None:
         """Roll each per-step adapter back by ``len(y)`` observations.
@@ -892,7 +1007,12 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             return
 
         n_rewind = len(y)
-        for adapter in self.adapters_.values():
+        # Every distinct clone advanced by the same row count, so every distinct
+        # clone rolls back by it too. Iterating the mapping rather than the
+        # objects would roll a shared adapter back once per step key, and the
+        # overshoot would not cancel the matching one in observe because rewind
+        # floors at the fit-time seed while observe has no ceiling.
+        for adapter in self._distinct_adapters():
             adapter.rewind(n_rewind)
 
     def observe(
@@ -1317,6 +1437,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         coverage_rate: float,
         weights: np.ndarray,
         conformity_scorer_step: BaseConformityScorer,
+        step: int = 1,
     ) -> pl.DataFrame:
         """Compute prediction intervals using similarity-weighted quantiles.
 
@@ -1346,6 +1467,11 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         scores_no_time = conformity_scores_step.drop("time", strict=False)
         y_pred_values = y_pred_step.drop("time")
 
+        # One weight row serves every value column, so the collapse check runs
+        # once here rather than inside the per-column loop below. Checking it
+        # per column would emit the same warning n times for one event.
+        warn_if_weights_collapsed(weights, step, coverage_rate)
+
         # Read scorer characteristics from tags instead of checking types
         tags = conformity_scorer_step.__sklearn_tags__()
         assert tags.scorer_tags is not None
@@ -1356,19 +1482,34 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         lower_data: dict[str, list[float]] = {}
         upper_data: dict[str, list[float]] = {}
 
+        # Under global calibration one quantile is drawn from every column's scores,
+        # with each column at a calibration time carrying that time's affinity. The
+        # tiling has to run on the raw affinities, which global_calibration_weights
+        # handles.
+        global_cal = self.calibration_strategy == "global"
+        empty = np.empty(0, dtype=np.float64)
+        stacked_scores = scores_no_time.to_numpy().astype(np.float64).reshape(-1) if global_cal else empty
+        stacked_weights = global_calibration_weights(weights, len(value_cols)) if global_cal else empty
+        column_scales = getattr(conformity_scorer_step, "column_scales_", None)
+
         for col in value_cols:
-            scores_col = scores_no_time[col].to_numpy().astype(np.float64)
+            scores_col = stacked_scores if global_cal else scores_no_time[col].to_numpy().astype(np.float64)
+            col_weights = stacked_weights if global_cal else weights
             pred_val = float(y_pred_values[col][0])
             scale = (pred_val + epsilon) if multiplicative else 1.0
+            if global_cal and column_scales is not None:
+                # A dispersion-normalized scorer rebuilds the bound with the
+                # column's own fitted scale, which keeps widths per column.
+                scale = column_scales[col]
 
             if symmetric:
-                q = weighted_quantile(scores_col, 1.0 - coverage_rate, weights)
+                q = weighted_quantile(scores_col, 1.0 - coverage_rate, col_weights)
                 lower_data[col] = [pred_val - q * scale]
                 upper_data[col] = [pred_val + q * scale]
             else:
                 alpha = 1.0 - coverage_rate
-                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, weights)
-                upper_q = weighted_quantile(scores_col, alpha / 2.0, weights)
+                lower_q = weighted_quantile(scores_col, 1.0 - alpha / 2.0, col_weights)
+                upper_q = weighted_quantile(scores_col, alpha / 2.0, col_weights)
                 lower_data[col] = [pred_val + lower_q * scale]
                 upper_data[col] = [pred_val + upper_q * scale]
 
@@ -1381,9 +1522,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         y_pred_step: pl.DataFrame,
         conformity_scores_step: pl.DataFrame,
         coverage_rate: float,
-        level: object,
+        levels: dict[str, object],
         weights: np.ndarray,
         conformity_scorer_step: BaseConformityScorer,
+        step: int = 1,
     ) -> pl.DataFrame:
         """Build an interval at the adapter's effective level.
 
@@ -1402,13 +1544,16 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             Conformity scores for this step with ``"time"``.
         coverage_rate : float
             Nominal coverage rate used only to label the output columns.
-        level : float or tuple of float
-            Effective level from the adapter: ``alpha`` for symmetric
+        levels : dict of str to (float or tuple of float)
+            Effective level per value column: ``alpha`` for symmetric
             scorers, ``(beta_lower, beta_upper)`` for asymmetric ones.
         weights : np.ndarray
             Per-calibration weights (similarity weights, or uniform).
         conformity_scorer_step : BaseConformityScorer
             Fitted conformity scorer (for tags and formatting).
+        step : int, default=1
+            Horizon step, used only to name the step in a collapsed-weight
+            warning.
 
         Returns
         -------
@@ -1420,6 +1565,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         value_cols = [c for c in conformity_scores_step.columns if c != "time"]
         scores_no_time = conformity_scores_step.drop("time", strict=False)
         y_pred_values = y_pred_step.drop("time")
+
+        # Once per weight row, for the same reason as in _weighted_inverse_score.
+        warn_if_weights_collapsed(weights, step, coverage_rate)
 
         tags = conformity_scorer_step.__sklearn_tags__()
         assert tags.scorer_tags is not None
@@ -1435,7 +1583,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             pred_val = float(y_pred_values[col][0])
             scale = (pred_val + epsilon) if multiplicative else 1.0
 
-            thresholds = self._adapter_thresholds(scores_col, weights, level, symmetric)
+            thresholds = self._adapter_thresholds(scores_col, weights, levels[col], symmetric)
             if symmetric:
                 q = float(thresholds)  # ty: ignore[invalid-argument-type]
                 lower_data[col] = [pred_val - q * scale]
@@ -1580,7 +1728,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # so the fallback is never silent.
         tracked_rates: set[float] = set()
         if hasattr(self, "adapters_"):
-            tracked_rates = set(self.adapters_["step_1"].predict().keys())
+            # Every clone is seeded with the same rates at fit, so any one of
+            # them answers which rates are tracked.
+            any_adapter = next(iter(self.adapters_["step_1"].values()))
+            tracked_rates = set(any_adapter.predict().keys())
             for coverage_rate in coverage_rates:
                 if coverage_rate not in tracked_rates:
                     warnings.warn(
@@ -1603,10 +1754,37 @@ class SplitConformalForecaster(BaseIntervalForecaster):
             conformity_scorer_step = self.conformity_scorers_[f"step_{step}"]
             conformity_scores_step = self.conformity_scores_.filter(pl.col("step") == step).drop("step")
 
+            # One scorer per step, so its symmetry is fixed for every rate below.
+            step_tags = conformity_scorer_step.__sklearn_tags__()
+            assert step_tags.scorer_tags is not None
+            step_symmetric = step_tags.scorer_tags.symmetric
+
             rate_parts: list[pl.DataFrame] = []
             for coverage_rate in coverage_rates:
+                # Checked once per (step, rate), before any path computes a
+                # quantile, so it covers the static, weighted and adapted paths
+                # alike rather than being repeated in each.
+                # Under global calibration the quantile draws from every column's
+                # scores, so the resolution ceiling is the combined count. Counting
+                # per column would report a rate unreachable exactly when global
+                # calibration made it reachable, which is the point of the mode.
+                n_value_columns = len([c for c in conformity_scores_step.columns if c != "time"])
+                available = conformity_scores_step.height * (
+                    n_value_columns if self.calibration_strategy == "global" else 1
+                )
+                warn_if_calibration_too_small(available, coverage_rate, step_symmetric, step)
+
                 adapter_active = hasattr(self, "adapters_") and coverage_rate in tracked_rates
-                effective_level = self.adapters_[f"step_{step}"].predict()[coverage_rate] if adapter_active else None
+                # Empty unless the adapter is active, in which case it carries one
+                # effective level per value column.
+                effective_levels: dict[str, object] = (
+                    {
+                        column: adapter.predict()[coverage_rate]
+                        for column, adapter in self.adapters_[f"step_{step}"].items()
+                    }
+                    if adapter_active
+                    else {}
+                )
 
                 if self.similarity is not None and hasattr(self, "similarities_"):
                     similarity_step = self.similarities_[f"step_{step}"]
@@ -1618,9 +1796,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                             y_pred_step=y_pred_step,
                             conformity_scores_step=conformity_scores_step,
                             coverage_rate=coverage_rate,
-                            level=effective_level,
+                            levels=effective_levels,
                             weights=step_weights,
                             conformity_scorer_step=conformity_scorer_step,
+                            step=step,
                         )
                     else:
                         y_pred_interval_rate_step = self._weighted_inverse_score(
@@ -1629,22 +1808,27 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                             coverage_rate=coverage_rate,
                             weights=step_weights,
                             conformity_scorer_step=conformity_scorer_step,
+                            step=step,
                         )
                 elif adapter_active:
-                    uniform_weights = np.ones(conformity_scores_step.height, dtype=np.float64)
+                    n_calib = conformity_scores_step.height
+                    # Reserved-mass uniform weights; see _adapter_step_errors.
+                    uniform_weights = np.full(n_calib, 1.0 / (n_calib + 1), dtype=np.float64)
                     y_pred_interval_rate_step = self._adapter_inverse_score(
                         y_pred_step=y_pred_step,
                         conformity_scores_step=conformity_scores_step,
                         coverage_rate=coverage_rate,
-                        level=effective_level,
+                        levels=effective_levels,
                         weights=uniform_weights,
                         conformity_scorer_step=conformity_scorer_step,
+                        step=step,
                     )
                 else:
                     y_pred_interval_rate_step = conformity_scorer_step.inverse_score(
                         y_pred=y_pred_step,
                         conformity_scores=conformity_scores_step,
                         coverage_rate=coverage_rate,
+                        calibration_strategy=self.calibration_strategy,
                     ).drop("time")
 
                 rate_parts.append(y_pred_interval_rate_step)

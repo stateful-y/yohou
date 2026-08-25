@@ -26,9 +26,11 @@ Scoring functions for point, interval, class-probability, and conformity predict
 | [`Recall`](generated/yohou.metrics.Recall.md) | Recall (sensitivity) from class-probability forecasts. |
 | [`ROCAuC`](generated/yohou.metrics.ROCAuC.md) | ROC AUC from class-probability forecasts. |
 | [`AbsoluteGammaResidual`](generated/yohou.metrics.AbsoluteGammaResidual.md) | Absolute gamma residual scorer using absolute relative errors. |
+| [`AbsoluteNormalizedResidual`](generated/yohou.metrics.AbsoluteNormalizedResidual.md) | Symmetric variant of `NormalizedResidual` using absolute scores. |
 | [`AbsoluteQuantileResidual`](generated/yohou.metrics.AbsoluteQuantileResidual.md) | Absolute quantile residual scorer for interval forecasts. |
 | [`AbsoluteResidual`](generated/yohou.metrics.AbsoluteResidual.md) | Absolute residual conformity scorer using unsigned prediction errors. |
 | [`GammaResidual`](generated/yohou.metrics.GammaResidual.md) | Gamma residual scorer using relative prediction errors. |
+| [`NormalizedResidual`](generated/yohou.metrics.NormalizedResidual.md) | Residual scorer normalised by each column's own dispersion. |
 | [`QuantileResidual`](generated/yohou.metrics.QuantileResidual.md) | Quantile residual scorer for interval forecasts. |
 | [`Residual`](generated/yohou.metrics.Residual.md) | Residual-based conformity scorer using signed prediction errors. |
 | [`BaseConformityScorer`](generated/yohou.metrics.BaseConformityScorer.md) | Base class for conformal prediction conformity scorers. |

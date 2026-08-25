@@ -1,5 +1,6 @@
 """Tests for similarity measures in interval forecasting."""
 
+import warnings
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -455,7 +456,17 @@ class TestSeasonalSimilarityIntegration:
         assert "time" in intervals.columns
 
     def test_produces_different_intervals_than_unweighted(self):
-        """Test that temporal similarity changes intervals vs unweighted."""
+        """Seasonal weighting changes the interval at the default bandwidth.
+
+        Left at the default deliberately, so this also pins that the default is
+        not a no-op. `SeasonalSimilarity` defaults `bandwidth` to 0.5 rather
+        than 1.0 because harmonic features are bounded on the unit circle: at
+        1.0 the weights retain about 41 of 50 calibration rows as effective
+        sample size, close enough to uniform that the weighted quantile picks
+        the same order statistic as the unweighted one and the bounds come out
+        bit-identical. At 0.5 the effective sample size is about 25 and the
+        bound moves.
+        """
         from yohou.interval import SplitConformalForecaster
         from yohou.metrics.conformity import AbsoluteResidual
         from yohou.point import SeasonalNaive
@@ -917,3 +928,226 @@ class TestCompositeNamedAccess:
     def test_distinct_names_still_validate(self, train_data):
         y, y_pred = train_data
         assert self._composite().fit(y, y_pred) is not None
+
+
+class TestMixedScaleFrames:
+    """Weight concentration must not depend on the magnitude of the data.
+
+    Regression coverage for the unscaled softmax: on a frame mixing scale 1 and
+    scale 100 the distance spread was large enough that all weight mass landed on
+    a single calibration row, both tail quantiles returned that same score, and
+    ``predict_interval`` emitted intervals of width exactly zero at nominal 90%.
+    """
+
+    @staticmethod
+    def _mixed_scale_frame(n: int = 200) -> pl.DataFrame:
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+
+        def series(scale: float, seed: int) -> list[float]:
+            rng = np.random.default_rng(seed)
+            return [scale * (10.0 + 5.0 * np.sin(2 * np.pi * i / 7)) + rng.normal(0, 0.5 * scale) for i in range(n)]
+
+        return pl.DataFrame({"time": dates, "small__sales": series(1.0, 1), "big__sales": series(100.0, 2)})
+
+    def test_distance_similarity_keeps_intervals_non_degenerate(self):
+        from yohou.interval import SplitConformalForecaster
+        from yohou.point import SeasonalNaive
+
+        y = self._mixed_scale_frame()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            similarity=DistanceSimilarity(),
+        ).fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])
+
+        intervals = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+        for column in ("small__sales", "big__sales"):
+            width = float(intervals[f"{column}_upper_0.9"][0] - intervals[f"{column}_lower_0.9"][0])
+            assert width > 0.0, f"{column} received a zero-width 90% interval"
+
+    def test_distance_similarity_weights_do_not_collapse(self):
+        """The cause, not the symptom: mass must not concentrate on one row."""
+        from yohou.interval import SplitConformalForecaster
+        from yohou.point import SeasonalNaive
+
+        y = self._mixed_scale_frame()
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            similarity=DistanceSimilarity(),
+        ).fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])
+
+        y_pred = forecaster.point_forecaster_.predict(forecasting_horizon=1).drop("vintage_time", strict=False)
+        weights = np.asarray(forecaster.similarities_["step_1"].predict(y_pred=y_pred)[0], dtype=float)
+        effective_sample_size = weights.sum() ** 2 / (weights**2).sum()
+
+        assert effective_sample_size > 2.0, f"weights collapsed to {effective_sample_size:.2f} effective rows"
+
+
+class TestWeightScaling:
+    """The fitted distance scale, the bandwidth knob, and their fallbacks."""
+
+    @staticmethod
+    def _series(scale: float, n: int = 120, seed: int = 7) -> tuple[pl.DataFrame, pl.DataFrame]:
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        rng = np.random.default_rng(seed)
+        truth = [scale * (10.0 + 5.0 * np.sin(2 * np.pi * i / 7)) for i in range(n)]
+        pred = [v + rng.normal(0, 0.05 * scale) for v in truth]
+        return (
+            pl.DataFrame({"time": dates, "value": truth}),
+            pl.DataFrame({"time": dates, "value": pred}),
+        )
+
+    @staticmethod
+    def _effective_sample_size(similarity: DistanceSimilarity, y_pred: pl.DataFrame) -> float:
+        weights = np.asarray(similarity.predict(y_pred=y_pred)[0], dtype=float)
+        return float(weights.sum() ** 2 / (weights**2).sum())
+
+    def test_effective_sample_size_is_equal_across_scales(self):
+        """Weight concentration must not depend on the units of the data.
+
+        Promoted from the exploration probe that established the defect: before
+        the fitted distance scale, effective sample size ran 49.9, 13.4 and 2.9
+        at data scales 0.01, 1 and 100 respectively.
+        """
+        sizes = []
+        for scale in (0.01, 1.0, 100.0, 10_000.0):
+            y, y_pred = self._series(scale)
+            similarity = DistanceSimilarity().fit(y, y_pred)
+            sizes.append(self._effective_sample_size(similarity, y_pred[:1]))
+
+        assert sizes[0] == pytest.approx(sizes[1], rel=1e-6), f"scale changed concentration: {sizes}"
+        assert sizes[0] == pytest.approx(sizes[2], rel=1e-6), f"scale changed concentration: {sizes}"
+        assert sizes[0] == pytest.approx(sizes[3], rel=1e-6), f"scale changed concentration: {sizes}"
+
+    def test_smaller_bandwidth_concentrates_weight(self):
+        y, y_pred = self._series(1.0)
+        tight = DistanceSimilarity(bandwidth=0.25).fit(y, y_pred)
+        loose = DistanceSimilarity(bandwidth=4.0).fit(y, y_pred)
+
+        assert self._effective_sample_size(tight, y_pred[:1]) < self._effective_sample_size(loose, y_pred[:1])
+
+    def test_bandwidth_is_tunable_through_a_forecaster(self):
+        """``similarity__bandwidth`` must reach the sub-estimator like any nested param."""
+        from yohou.interval import SplitConformalForecaster
+
+        forecaster = SplitConformalForecaster(similarity=DistanceSimilarity())
+        assert "similarity__bandwidth" in forecaster.get_params(deep=True)
+
+        forecaster.set_params(similarity__bandwidth=0.5)
+        assert forecaster.similarity.bandwidth == 0.5
+
+    def test_scales_are_frozen_at_fit(self):
+        """Observing must not move either scale, so predict stays reproducible."""
+        y, y_pred = self._series(1.0)
+        similarity = DistanceSimilarity().fit(y[:100], y_pred[:100])
+        before = (similarity._feature_scale_.copy(), similarity._distance_scale_)
+
+        # A batch an order of magnitude larger than the fit window.
+        similarity.observe(y=y[100:] * 10, y_pred=y_pred[100:].with_columns(pl.col("value") * 10))
+
+        assert np.array_equal(similarity._feature_scale_, before[0])
+        assert similarity._distance_scale_ == before[1]
+
+    def test_rewind_reproduces_the_earlier_weight_matrix(self):
+        y, y_pred = self._series(1.0)
+        similarity = DistanceSimilarity().fit(y[:100], y_pred[:100])
+        target = y_pred[:1]
+        before = similarity.predict(y_pred=target).copy()
+
+        similarity.observe(y=y[100:110], y_pred=y_pred[100:110])
+        similarity.rewind(y=y[100:110], y_pred=y_pred[100:110])
+
+        assert np.allclose(similarity.predict(y_pred=target), before)
+
+    def test_zero_variance_column_falls_back_to_unit_scale(self):
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(20)]
+        rng = np.random.default_rng(0)
+        y_pred = pl.DataFrame({
+            "time": dates,
+            "constant": [3.0] * 20,
+            "varying": rng.normal(0, 1, 20).tolist(),
+        })
+        similarity = DistanceSimilarity().fit(y_pred, y_pred)
+
+        assert similarity._feature_scale_[0] == 1.0
+        assert np.isfinite(similarity.predict(y_pred=y_pred[:1])).all()
+
+    def test_identical_features_fall_back_to_unit_distance_scale(self):
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(20)]
+        y_pred = pl.DataFrame({"time": dates, "value": [3.0] * 20})
+        similarity = DistanceSimilarity().fit(y_pred, y_pred)
+
+        assert similarity._distance_scale_ == 1.0
+        assert np.isfinite(similarity.predict(y_pred=y_pred[:1])).all()
+
+
+class TestCollapsedWeightWarning:
+    """A weight row that has collapsed onto one calibration score is reported."""
+
+    @staticmethod
+    def _frame(n: int = 200) -> pl.DataFrame:
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+
+        def series(scale: float, seed: int) -> list[float]:
+            rng = np.random.default_rng(seed)
+            return [scale * (10.0 + 5.0 * np.sin(2 * np.pi * i / 7)) + rng.normal(0, 0.5 * scale) for i in range(n)]
+
+        return pl.DataFrame({"time": dates, "a__sales": series(1.0, 1), "b__sales": series(1.0, 2)})
+
+    def _fit(self, bandwidth: float):
+        from yohou.interval import SplitConformalForecaster
+        from yohou.point import SeasonalNaive
+
+        return SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            similarity=DistanceSimilarity(bandwidth=bandwidth),
+        ).fit(self._frame()[:180], forecasting_horizon=1, coverage_rates=[0.9])
+
+    def test_collapsed_weights_warn_exactly_once_for_a_multi_column_frame(self):
+        """A tiny bandwidth forces all mass onto the nearest calibration row."""
+        forecaster = self._fit(bandwidth=1e-3)
+
+        with pytest.warns(UserWarning, match="effective calibration rows") as record:
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+        collapse_warnings = [w for w in record if "effective calibration rows" in str(w.message)]
+        assert len(collapse_warnings) == 1, "one weight row serves both columns, so one warning is expected"
+        assert "step 1" in str(collapse_warnings[0].message)
+        assert "0.9" in str(collapse_warnings[0].message)
+
+    def test_healthy_weights_are_silent(self):
+        forecaster = self._fit(bandwidth=1.0)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
+
+    def test_distance_similarity_default_bandwidth_discriminates(self):
+        """The other class's default must not be a no-op either.
+
+        `DistanceSimilarity` keeps `bandwidth=1.0` where `SeasonalSimilarity`
+        drops to 0.5, because its features carry the data's own spread rather
+        than sitting on the unit circle. Pinned so a future change to either
+        default cannot quietly turn the weighting off.
+        """
+        from yohou.interval import SplitConformalForecaster
+        from yohou.point import SeasonalNaive
+
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(200)]
+        rng = np.random.default_rng(42)
+        y = pl.DataFrame({
+            "time": dates,
+            "value": [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + rng.normal(0, 0.5) for i in range(200)],
+        })
+
+        def upper_bound(similarity) -> float:
+            forecaster = SplitConformalForecaster(
+                point_forecaster=SeasonalNaive(seasonality=7),
+                calibration_size=50,
+                similarity=similarity,
+            ).fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])
+            return float(forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])["value_upper_0.9"][0])
+
+        assert upper_bound(DistanceSimilarity()) != pytest.approx(upper_bound(None))

@@ -1,5 +1,6 @@
 """Tests for SplitConformalForecaster."""
 
+import warnings
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -9,11 +10,11 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 
 from conftest import run_checks
-from yohou.interval import DistanceSimilarity, SplitConformalForecaster
+from yohou.interval import AdaptiveConformalInference, DistanceSimilarity, SplitConformalForecaster
 from yohou.interval.similarity import SeasonalSimilarity
 from yohou.metrics import AbsoluteResidual, Residual
 from yohou.point import SeasonalNaive
-from yohou.testing import _yield_yohou_forecaster_checks
+from yohou.testing import _yield_yohou_forecaster_checks, check_per_column_calibration_independence
 
 
 @pytest.fixture
@@ -1842,6 +1843,248 @@ class TestReplayLeftTheBlockObserved:
         """
         with pytest.raises(RuntimeError, match=r"at \[datetime\.datetime\(2024, 1, 2"):
             self._check({"p0": datetime(2024, 1, 5), "p1": datetime(2024, 1, 2)})
+
+
+def _mixed_scale_frame(n: int = 200, *, panel: bool = True, factor: float = 100.0) -> pl.DataFrame:
+    """Two seasonal series whose residual spreads differ by ``factor``.
+
+    Both columns share a 7-step seasonality so ``SeasonalNaive(7)`` leaves only
+    noise behind, which makes each column's conformity scores a clean readout of
+    its own noise level.
+    """
+    dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+
+    def series(scale: float, seed: int) -> list[float]:
+        rng = np.random.default_rng(seed)
+        return [scale * (10.0 + 5.0 * np.sin(2 * np.pi * i / 7)) + rng.normal(0, 0.5 * scale) for i in range(n)]
+
+    small, big = "small__sales", "big__sales"
+    if not panel:
+        small, big = "small_sales", "big_sales"
+    return pl.DataFrame({"time": dates, small: series(1.0, 1), big: series(factor, 2)})
+
+
+def _fit_conformal(y: pl.DataFrame, **kwargs) -> SplitConformalForecaster:
+    """Fit a conformal forecaster over the first 180 rows of ``y``."""
+    forecaster = SplitConformalForecaster(
+        point_forecaster=SeasonalNaive(seasonality=7),
+        calibration_size=50,
+        **kwargs,
+    )
+    return forecaster.fit(y[:180], forecasting_horizon=1, coverage_rates=[0.9])
+
+
+def _widths(forecaster: SplitConformalForecaster, columns: list[str], rate: float = 0.9) -> dict[str, float]:
+    """Interval width per value column at one coverage rate."""
+    intervals = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[rate])
+    return {c: float(intervals[f"{c}_upper_{rate}"][0] - intervals[f"{c}_lower_{rate}"][0]) for c in columns}
+
+
+class TestPerColumnCalibration:
+    """Each value column is calibrated from its own conformity scores.
+
+    Regression coverage for the whole-frame ``np.quantile`` reduction that gave
+    every column one shared width: a 100x scale gap between two columns produced
+    identical intervals for both, over-covering the small column and
+    under-covering the large one.
+    """
+
+    def test_panel_columns_of_differing_scale_get_different_widths(self):
+        y = _mixed_scale_frame()
+        forecaster = _fit_conformal(y)
+        widths = _widths(forecaster, ["small__sales", "big__sales"])
+
+        ratio = widths["big__sales"] / widths["small__sales"]
+        assert 50.0 < ratio < 200.0, f"expected widths to track each column's own scale, got {widths}"
+
+    def test_plain_multivariate_columns_of_differing_scale_get_different_widths(self):
+        """The defect was never panel-specific: it hit any multi-column frame."""
+        y = _mixed_scale_frame(panel=False)
+        forecaster = _fit_conformal(y)
+        widths = _widths(forecaster, ["small_sales", "big_sales"])
+
+        ratio = widths["big_sales"] / widths["small_sales"]
+        assert 50.0 < ratio < 200.0, f"expected widths to track each column's own scale, got {widths}"
+
+    def test_each_width_matches_its_own_columns_quantile(self):
+        """The width is the column's own score quantile, not any pooled statistic."""
+        y = _mixed_scale_frame()
+        forecaster = _fit_conformal(y)
+        widths = _widths(forecaster, ["small__sales", "big__sales"])
+
+        scores = forecaster.conformity_scores_.filter(pl.col("step") == 1).drop("step", "time")
+        for column, width in widths.items():
+            ordered = np.sort(scores[column].to_numpy())
+            # Split conformal order statistics at 90%: the tails are
+            # floor((n+1) * 0.05) and ceil((n+1) * 0.95), one-indexed.
+            n = ordered.size
+            lower = ordered[max(int(np.floor((n + 1) * 0.05)), 1) - 1]
+            upper = ordered[min(int(np.ceil((n + 1) * 0.95)), n) - 1]
+            assert width == pytest.approx(float(upper - lower)), f"{column} width should come from its own scores"
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param({}, id="static"),
+            pytest.param({"similarity": SeasonalSimilarity(seasonality=[7.0])}, id="similarity"),
+            pytest.param({"adapter": AdaptiveConformalInference()}, id="adapter"),
+        ],
+    )
+    def test_calibration_axis_is_the_same_on_every_path(self, kwargs):
+        """Configuring a similarity or an adapter must not change what is calibrated from what.
+
+        The three ``predict_interval`` paths used to disagree: the static one
+        reduced the whole conformity frame to a single quantile while the other
+        two reduced per column. Whichever path runs, a column's width must track
+        that column's own scores.
+        """
+        y = _mixed_scale_frame()
+        forecaster = _fit_conformal(y, **kwargs)
+        widths = _widths(forecaster, ["small__sales", "big__sales"])
+
+        ratio = widths["big__sales"] / widths["small__sales"]
+        assert 50.0 < ratio < 200.0, f"path {kwargs or 'static'} pooled across columns, got {widths}"
+
+
+class _PoolingResidual(Residual):
+    """A scorer that reduces the whole conformity frame to one quantile.
+
+    Reproduces the pre-fix behaviour deliberately, so the systematic check has
+    something known-broken to reject. Without this the check is only ever run
+    against a correct implementation, which proves it does not crash, not that
+    it detects anything.
+    """
+
+    def inverse_score(self, y_pred, conformity_scores, coverage_rate, calibration_strategy="local"):  # noqa: D102
+        from yohou.utils.validate_data import validate_scorer_data
+
+        y_pred, conformity_scores, context = validate_scorer_data(
+            self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
+        )
+        alpha = 1.0 - coverage_rate
+        flat = conformity_scores.to_numpy()
+        lower = float(np.quantile(flat, alpha / 2.0, method="lower"))
+        upper = float(np.quantile(flat, 1.0 - alpha / 2.0, method="higher"))
+        interval = self._format_y_pred_interval(y_pred + lower, y_pred + upper, coverage_rate)
+        return pl.DataFrame({"time": context.time_values}).hstack(interval)
+
+
+class TestCalibrationIndependenceCheck:
+    """The systematic check that enforces per-column calibration."""
+
+    def test_check_is_yielded_for_split_conformal(self, y_X_factory):
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=50).fit(
+            y[:180], forecasting_horizon=1
+        )
+
+        names = [name for name, _, _ in _yield_yohou_forecaster_checks(forecaster, y[:180], None, y[180:], None)]
+        assert "check_per_column_calibration_independence" in names
+
+    def test_check_passes_on_the_fixed_implementation(self, y_X_factory):
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=50).fit(
+            y[:180], forecasting_horizon=1
+        )
+
+        check_per_column_calibration_independence(forecaster, y_train=y[:180])
+
+    def test_check_skips_a_history_too_short_to_judge(self, y_X_factory):
+        """Under 60 timestamps the check cannot fit and calibrate, so it declines.
+
+        Returning rather than asserting keeps the systematic sweep usable on the
+        short fixtures other checks run on, instead of failing them for a reason
+        unrelated to calibration scope.
+        """
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=50).fit(
+            y[:180], forecasting_horizon=1
+        )
+
+        # No assertion error despite the frame being far too short to calibrate.
+        check_per_column_calibration_independence(forecaster, y_train=y[:40])
+
+    def test_check_rejects_a_pooling_implementation(self, y_X_factory):
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=_PoolingResidual(),
+        ).fit(y[:180], forecasting_horizon=1)
+
+        # Either half of the invariant may fire first. Under pooling the large
+        # column's width does still scale with its own data, because the pooled
+        # quantile is dominated by that column, so it is the independence half
+        # that catches this: the small column's width moves with it.
+        with pytest.raises(AssertionError, match=r"(own conformity scores|pooled across value columns)"):
+            check_per_column_calibration_independence(forecaster, y_train=y[:180])
+
+
+class TestConformalCoverage:
+    """Realized coverage must reach the nominal rate, not sit below it.
+
+    The existing tests pin order-statistic indices, which move together with an
+    off-by-one in the quantile convention and so cannot detect one. This asserts
+    the property the convention exists to deliver: with the ``(n + 1)``
+    correction the bound covers at least the nominal rate; without it every
+    sample size under-covers.
+    """
+
+    @staticmethod
+    def _series(n: int = 500, seed: int = 3) -> pl.DataFrame:
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]
+        rng = np.random.default_rng(seed)
+        return pl.DataFrame({
+            "time": dates,
+            "value": [10.0 + 5.0 * np.sin(2 * np.pi * i / 7) + rng.normal(0, 1.0) for i in range(n)],
+        })
+
+    @pytest.mark.parametrize("scorer", [Residual(), AbsoluteResidual()], ids=["asymmetric", "symmetric"])
+    @pytest.mark.parametrize("rate", [0.8, 0.9])
+    def test_realized_coverage_reaches_the_nominal_rate(self, scorer, rate):
+        y = self._series()
+        n_train, n_steps = 300, 150
+        forecaster = SplitConformalForecaster(
+            point_forecaster=SeasonalNaive(seasonality=7),
+            calibration_size=50,
+            conformity_scorer=clone(scorer),
+        ).fit(y[:n_train], forecasting_horizon=1, coverage_rates=[rate])
+
+        covered = 0
+        for k in range(n_steps):
+            intervals = forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[rate])
+            row = y[n_train + k : n_train + k + 1]
+            truth = float(row["value"][0])
+            lower = float(intervals[f"value_lower_{rate}"][0])
+            upper = float(intervals[f"value_upper_{rate}"][0])
+            covered += int(lower <= truth <= upper)
+            forecaster.observe(y=row)
+
+        realized = covered / n_steps
+        # Split conformal is conservative, so the bound is one-sided. The slack
+        # below nominal absorbs sampling noise over 150 steps without admitting
+        # the systematic one-order-statistic shortfall this guards against.
+        assert realized >= rate - 0.03, f"realized {realized:.1%} against nominal {rate:.0%}"
+
+    def test_warns_through_predict_interval_when_the_rate_is_unreachable(self):
+        """The guard must be wired into the emitting path, not only importable."""
+        y = self._series(n=200)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=20).fit(
+            y[:180], forecasting_horizon=1, coverage_rates=[0.99]
+        )
+
+        with pytest.warns(UserWarning, match="needs at least .* calibration scores per value column"):
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.99])
+
+    def test_reachable_rate_is_silent_through_predict_interval(self):
+        y = self._series(n=300)
+        forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=7), calibration_size=100).fit(
+            y[:250], forecasting_horizon=1, coverage_rates=[0.9]
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.9])
 
 
 class TestSplitConformalBarePointColumn:

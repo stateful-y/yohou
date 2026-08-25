@@ -259,6 +259,22 @@ class ScorerTags:
         magnitude (e.g. gamma residuals).  When ``True``, weighted
         interval reconstruction scales quantiles by
         ``(prediction + epsilon)``.
+    supports_global_calibration : bool, default=False
+        Whether the scorer may serve ``calibration_strategy="global"``,
+        which pools scores from every value column into one quantile.
+        That is sound only when the scorer's construction puts scores
+        from different columns on a common footing, a property of the
+        transformation and not of any dataset.  It is a stronger claim
+        than being scale-free: normalising by the predicted level
+        removes differences in magnitude but leaves differences in
+        volatility, so two columns of equal size but unequal noise
+        still produce incomparable scores.  Only a scorer that divides
+        by a per-column dispersion estimate should set it.
+
+        Deliberately separate from ``multiplicative``, which selects a
+        reconstruction by ``(prediction + epsilon)``.  A scorer with a
+        fitted per-column scale reconstructs differently, so overloading
+        the one tag would make it mean two incompatible things.
 
     """
 
@@ -267,6 +283,7 @@ class ScorerTags:
     requires_calibration: bool = False
     symmetric: bool = False
     multiplicative: bool = False
+    supports_global_calibration: bool = False
 
 
 @dataclass

@@ -16,9 +16,11 @@ from .class_proba import BrierScore, LogLoss, RankedProbabilityScore
 from .classification import Accuracy, FBetaScore, PRAuC, Precision, Recall, ROCAuC
 from .conformity import (
     AbsoluteGammaResidual,
+    AbsoluteNormalizedResidual,
     AbsoluteQuantileResidual,
     AbsoluteResidual,
     GammaResidual,
+    NormalizedResidual,
     QuantileResidual,
     Residual,
 )
@@ -173,9 +175,11 @@ __all__ = [
     "SymmetricMeanAbsolutePercentageError",
     # Conformity scorers
     "AbsoluteGammaResidual",
+    "AbsoluteNormalizedResidual",
     "AbsoluteQuantileResidual",
     "AbsoluteResidual",
     "GammaResidual",
+    "NormalizedResidual",
     "QuantileResidual",
     "Residual",
     # Interval scorers

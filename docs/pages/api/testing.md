@@ -54,6 +54,7 @@ Testing utilities for Yohou estimators.
 | [`check_interval_bounds`](generated/yohou.testing.check_interval_bounds.md) | Check upper >= lower for all coverage rates and time steps. |
 | [`check_interval_prediction_columns`](generated/yohou.testing.check_interval_prediction_columns.md) | Check interval predictions have {col}_lower_{rate} and {col}_upper_{rate} format. |
 | [`check_interval_prediction_types`](generated/yohou.testing.check_interval_prediction_types.md) | Check interval forecaster has 'interval' in forecaster_type tag. |
+| [`check_per_column_calibration_independence`](generated/yohou.testing.check_per_column_calibration_independence.md) | Check each value column's interval is calibrated from that column alone. |
 | [`assert_request_equal`](generated/yohou.testing.assert_request_equal.md) | Assert metadata request matches expected dictionary. |
 | [`assert_request_is_empty`](generated/yohou.testing.assert_request_is_empty.md) | Check if a metadata request dict is empty. |
 | [`check_recorded_metadata`](generated/yohou.testing.check_recorded_metadata.md) | Check whether the expected metadata is passed to the object's method. |

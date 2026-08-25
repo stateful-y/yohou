@@ -7,12 +7,13 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 from pydantic import StrictFloat, StrictInt
+from scipy.spatial.distance import pdist
 from sklearn.base import BaseEstimator
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer, BaseForecaster, BaseForecastTransformer, BaseStepTransformer
 from yohou.utils import INTERVAL, Tags, cast, validate_forecaster_data
-from yohou.utils._compat import _fit_context
+from yohou.utils._compat import StrOptions, _fit_context
 
 __all__ = ["BaseConformalAdapter", "BaseIntervalForecaster", "BaseSimilarity"]
 
@@ -39,27 +40,100 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
     _parameter_constraints: dict = {}
 
     @staticmethod
+    def _fit_feature_scale(features: np.ndarray) -> np.ndarray:
+        """Fit a per-column spread for standardizing a feature matrix.
+
+        Without this, a distance over columns of mixed magnitude is decided
+        almost entirely by the largest column, so every other column's
+        neighbourhood is chosen for it.
+
+        Parameters
+        ----------
+        features : numpy.ndarray
+            Fit-time feature matrix of shape ``(n_rows, n_features)``.
+
+        Returns
+        -------
+        numpy.ndarray
+            One positive scale per column. A column with zero or non-finite
+            spread (a constant feature) scales by ``1.0`` rather than
+            dividing by zero.
+
+        """
+        scale = np.std(np.asarray(features, dtype=np.float64), axis=0)
+        scale = np.atleast_1d(scale)
+        scale[~np.isfinite(scale) | (scale <= 0.0)] = 1.0
+        return scale
+
+    @staticmethod
+    def _fit_distance_scale(features: np.ndarray, metric: str, metric_params: dict[str, object] | None) -> float:
+        """Fit the distance scale as the median pairwise fit-time distance.
+
+        The softmax below has no width of its own, so without dividing by a
+        fitted scale the weight concentration is a function of the units of
+        the data: the same series at 100x the magnitude collapses onto its
+        single nearest calibration row.
+
+        Parameters
+        ----------
+        features : numpy.ndarray
+            Fit-time feature matrix, already standardized where the caller
+            standardizes.
+        metric : str
+            Distance metric, matching the one used at predict time.
+        metric_params : dict or None
+            Extra keyword arguments forwarded to the metric.
+
+        Returns
+        -------
+        float
+            The median pairwise distance, or ``1.0`` when it is zero, not
+            finite, or undefined for fewer than two rows.
+
+        """
+        features = np.asarray(features, dtype=np.float64)
+        if features.shape[0] < 2:
+            return 1.0
+
+        pairwise = pdist(features, metric=metric, **(metric_params or {}))  # ty: ignore[no-matching-overload]
+        if pairwise.size == 0:
+            return 1.0
+
+        median = float(np.median(pairwise))
+        return median if np.isfinite(median) and median > 0.0 else 1.0
+
+    @staticmethod
     def _to_weights(
         distances: np.ndarray,
+        distance_scale: float = 1.0,
+        bandwidth: float = 1.0,
     ) -> np.ndarray[tuple[int, int], np.dtype[np.floating[Any]]]:
         r"""Convert a distance matrix to calibration weights.
 
-        Applies a numerically-stable softmax of negative distances and
-        reserves uniform mass for the (hypothetical) test point over the
-        calibration axis:
+        Divides distances by the fitted scale and the bandwidth, then applies
+        a numerically-stable softmax of negative scaled distances, reserving
+        uniform mass for the (hypothetical) test point over the calibration
+        axis. Writing $\tilde{d} = d / (\text{bandwidth} \cdot
+        \text{distance\_scale})$:
 
-        $$w_{ji} = \frac{\exp(-(d_{ji} - \min_k d_{jk}))}
-        {1 + \sum_k \exp(-(d_{jk} - \min_k d_{jk}))}$$
+        $$w_{ji} = \frac{\exp(-(\tilde{d}_{ji} - \min_k \tilde{d}_{jk}))}
+        {1 + \sum_k \exp(-(\tilde{d}_{jk} - \min_k \tilde{d}_{jk}))}$$
 
-        Each output row is non-negative and sums to a value strictly less
-        than 1; the remainder ``1 / (1 + \sum_k raw)`` is the mass reserved
-        for the new test point, following the non-exchangeable conformal
-        construction (Barber et al., 2023).
+        Dividing by the fitted scale is what makes the weights invariant to a
+        rescaling of the data. Each output row is non-negative and sums to a
+        value strictly less than 1; the remainder ``1 / (1 + \sum_k raw)`` is
+        the mass reserved for the new test point, following the
+        non-exchangeable conformal construction (Barber et al., 2023).
 
         Parameters
         ----------
         distances : numpy.ndarray
             Distance matrix of shape ``(n_pred, n_calibration)``.
+        distance_scale : float, default=1.0
+            Fitted distance scale from :meth:`_fit_distance_scale`.
+        bandwidth : float, default=1.0
+            Multiplier on the scale. Below 1 concentrates weight on nearer
+            rows, above 1 flattens toward uniform.
 
         Returns
         -------
@@ -67,9 +141,10 @@ class BaseSimilarity(BaseEstimator, metaclass=abc.ABCMeta):
             Weight matrix of shape ``(n_pred, n_calibration)``.
 
         """
+        scaled = distances / (bandwidth * distance_scale)
         # Stable softmax of the exponent -d: subtract its row max (= -min(d)),
         # so every exponent is <= 0 and exp() cannot overflow.
-        neg_d = -distances
+        neg_d = -scaled
         neg_d = neg_d - neg_d.max(axis=1, keepdims=True)
         return BaseSimilarity._reserve_mass(np.exp(neg_d))
 
@@ -235,14 +310,24 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     forecaster feeds it per-row miscoverage indicators and reads back the
     effective level to use when constructing intervals.
 
-    The adapter owns a single horizon step. The forecaster clones one
-    adapter per step into a ``adapters_`` dict (mirroring ``similarities_``)
-    and drives the per-step lifecycle. Inside its step the adapter tracks
-    one effective level per coverage rate for symmetric conformity scorers,
-    and two (lower and upper) for asymmetric ones. The forecaster, which
-    holds the calibration scores and any similarity weights, computes the
-    miscoverage indicators; the adapter is the level-recursion state
+    The adapter owns a single pooling slot. The forecaster clones one
+    adapter per slot into an ``adapters_`` dict (mirroring ``similarities_``)
+    and drives its lifecycle: one clone per ``(horizon step, value column)``
+    under ``alpha_pooling="per_step"``, and one per value column shared
+    across the step keys under ``"shared"``. Inside its slot the adapter
+    tracks one effective level per coverage rate for symmetric conformity
+    scorers, and two (lower and upper) for asymmetric ones. The forecaster,
+    which holds the calibration scores and any similarity weights, computes
+    the miscoverage indicators; the adapter is the level-recursion state
     machine only.
+
+    Parameters
+    ----------
+    alpha_pooling : {"per_step", "shared"}, default="per_step"
+        Which axis the effective level lives on: ``"per_step"`` tracks an
+        independent level per horizon step, ``"shared"`` pools miscoverage
+        across steps into one trajectory per value column. Pooling never
+        crosses value columns. See Notes for the subclass contract.
 
     Notes
     -----
@@ -250,6 +335,17 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     from the target coverage, ``observe`` advances it per newly observed
     row, ``predict`` returns the current level, and ``rewind`` rolls it
     back so backtests and production replay share one code path.
+
+    ``alpha_pooling`` is declared here so every adapter in the family
+    carries it and the enclosing forecaster can read it as a contract
+    rather than probing for it. A subclass must still accept it in its own
+    constructor and forward it here: estimator parameter discovery reads
+    the most derived constructor only, so omitting it would drop the
+    setting from ``get_params``, make ``adapter__alpha_pooling``
+    unaddressable in a search, and let ``clone`` silently reset a
+    configured ``"shared"``.
+    ``check_conformal_adapter_alpha_pooling_forwarded`` in the systematic
+    adapter checks enforces this.
 
     See Also
     --------
@@ -260,7 +356,12 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
 
     """
 
-    _parameter_constraints: dict = {}
+    _parameter_constraints: dict = {
+        "alpha_pooling": [StrOptions({"per_step", "shared"})],
+    }
+
+    def __init__(self, alpha_pooling: Literal["per_step", "shared"] = "per_step") -> None:
+        self.alpha_pooling = alpha_pooling
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.

@@ -5,7 +5,7 @@ from typing import Literal
 
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils._compat import Interval, StrOptions, _fit_context
+from yohou.utils._compat import Interval, _fit_context
 
 from .base import BaseConformalAdapter
 
@@ -29,10 +29,13 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     conformity scorer is asymmetric, a lower and an upper level are tracked
     separately, each targeting $\alpha^{*}/2$.
 
-    This adapter owns one horizon step; ``SplitConformalForecaster`` clones
-    one per step and supplies the miscoverage indicators (it holds the
-    calibration scores and any similarity weights). The adapter is the
-    level-recursion state machine only.
+    This adapter owns one horizon step and one value column;
+    ``SplitConformalForecaster`` clones one per pair and supplies that column's
+    own miscoverage indicators (it holds the calibration scores and any
+    similarity weights). The adapter is the level-recursion state machine only.
+    Keying by column as well as step is what keeps one entity's misses from
+    moving another entity's interval, since the quantile the level modulates is
+    itself per column.
 
     Parameters
     ----------
@@ -41,11 +44,8 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         faster to coverage drift but track more noisily.
     alpha_pooling : {"per_step", "shared"}, default="per_step"
         How the enclosing forecaster pools miscoverage across horizon steps
-        before updating. ``"per_step"`` lets each step's level evolve
-        independently; ``"shared"`` makes the forecaster pool the per-step
-        indicators and feed every step the same update, yielding one shared
-        trajectory. The adapter stores this so the forecaster can read it;
-        the update itself is identical either way.
+        before updating: independently per step, or into one trajectory per
+        value column shared across steps. See Notes.
     epsilon : float, default=0.0
         Clips the effective level to ``[epsilon, 1 - epsilon]``. The default
         ``0.0`` reproduces the paper-exact ``[0, 1]`` clipping; a positive
@@ -60,6 +60,19 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         The coverage rates seeded at fit time.
     symmetric_ : bool
         Whether the tracked scorer is symmetric.
+
+    Notes
+    -----
+    The level update is identical under both ``alpha_pooling`` values; the
+    setting only changes how the forecaster allocates and feeds adapters.
+    ``"per_step"`` lets each step's level evolve independently, which
+    respects horizon-dependent coverage but is a pragmatic extension of the
+    theory. ``"shared"`` pools the per-step indicators into one trajectory
+    per value column, staying closer to the single-sequence setting of [1];
+    the forecaster then allocates one adapter per value column and points
+    every horizon-step key at it, so
+    ``adapters_["step_1"][col] is adapters_["step_2"][col]``. Pooling never
+    crosses value columns under either value.
 
     References
     ----------
@@ -91,8 +104,8 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     """
 
     _parameter_constraints: dict = {
+        **BaseConformalAdapter._parameter_constraints,
         "step_size": [Interval(numbers.Real, 0, None, closed="neither")],
-        "alpha_pooling": [StrOptions({"per_step", "shared"})],
         "epsilon": [Interval(numbers.Real, 0, 0.5, closed="left")],
     }
 
@@ -102,8 +115,9 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         alpha_pooling: Literal["per_step", "shared"] = "per_step",
         epsilon: float = 0.0,
     ) -> None:
+        # alpha_pooling must stay in this signature: see BaseConformalAdapter.
+        super().__init__(alpha_pooling=alpha_pooling)
         self.step_size = step_size
-        self.alpha_pooling = alpha_pooling
         self.epsilon = epsilon
 
     def _clip(self, level: float) -> float:

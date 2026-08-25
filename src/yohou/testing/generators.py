@@ -29,6 +29,7 @@ from .common import (
 )
 from .composite import _yield_composite_reducer_checks
 from .conformal_adapter import (
+    check_conformal_adapter_alpha_pooling_forwarded,
     check_conformal_adapter_clipping,
     check_conformal_adapter_methods_call_check_is_fitted,
     check_conformal_adapter_observe_rewind_round_trip,
@@ -69,6 +70,7 @@ from .interval import (
     check_interval_bounds,
     check_interval_prediction_columns,
     check_interval_prediction_types,
+    check_per_column_calibration_independence,
 )
 from .panel import (
     check_panel_data,
@@ -638,6 +640,15 @@ def _yield_yohou_forecaster_checks(
             check_coverage_rates_validation,
             {"y": y_train, "X_actual": X_actual_train, "X_future": X_future_train, "X_forecast": X_forecast_train},
         )
+        # Gated on conformity-score calibration: the invariant is about which
+        # scores a column's quantile comes from, so a forecaster that predicts
+        # its bounds directly (quantile regression) has nothing to check.
+        if hasattr(forecaster, "conformity_scorer"):
+            yield (
+                "check_per_column_calibration_independence",
+                check_per_column_calibration_independence,
+                {"y_train": y_train},
+            )
 
     # Class-probability forecaster checks
     if forecaster_type is not None and "class_proba" in forecaster_type:
@@ -1527,9 +1538,10 @@ def _yield_yohou_conformal_adapter_checks(
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a conformal adapter.
 
-    Yields the conformal-adapter-family lifecycle checks (predict shape,
-    observe/rewind round-trip, update direction, clipping, and unfitted
-    guards) followed by the shared sklearn estimator-contract checks.
+    Yields the conformal-adapter-family lifecycle checks (alpha_pooling
+    forwarding, predict shape, observe/rewind round-trip, update direction,
+    clipping, and unfitted guards) followed by the shared sklearn
+    estimator-contract checks.
 
     Parameters
     ----------
@@ -1542,6 +1554,11 @@ def _yield_yohou_conformal_adapter_checks(
         ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
+    yield (
+        "check_conformal_adapter_alpha_pooling_forwarded",
+        check_conformal_adapter_alpha_pooling_forwarded,
+        {},
+    )
     yield "check_conformal_adapter_predict_returns_levels", check_conformal_adapter_predict_returns_levels, {}
     yield (
         "check_conformal_adapter_observe_rewind_round_trip",

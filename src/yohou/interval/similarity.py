@@ -1,6 +1,7 @@
 """Similarity measures for interval forecasting."""
 
 import math
+import numbers
 from datetime import timedelta
 from typing import Any, Literal
 
@@ -11,7 +12,7 @@ from sklearn.base import clone
 from sklearn.utils import Bunch
 from sklearn.utils.validation import check_is_fitted
 
-from yohou.utils._compat import _BaseComposition, _fit_context
+from yohou.utils._compat import Interval, _BaseComposition, _fit_context
 
 from .base import BaseSimilarity
 
@@ -27,13 +28,15 @@ class DistanceSimilarity(BaseSimilarity):
     by interval forecasters to weight conformity scores when constructing
     prediction intervals.
 
-    The weight for the *i*-th historical observation given prediction
-    *j* is computed with a numerically-stable softmax of negative
-    distances that reserves uniform mass for the (hypothetical) test
-    point over the calibration axis:
+    Each feature column is divided by its fit-time spread before distances
+    are computed, and the distances are then divided by ``bandwidth`` times a
+    fitted distance scale. Writing that scaled distance as $\tilde{d}$, the
+    weight for the *i*-th historical observation given prediction *j* is a
+    numerically-stable softmax of negative scaled distances that reserves
+    uniform mass for the (hypothetical) test point over the calibration axis:
 
-    $$w_{ji} = \frac{\exp(-(d_{ji} - \max_k d_{jk}))}
-    {1 + \sum_k \exp(-(d_{jk} - \max_k d_{jk}))}$$
+    $$w_{ji} = \frac{\exp(-(\tilde{d}_{ji} - \min_k \tilde{d}_{jk}))}
+    {1 + \sum_k \exp(-(\tilde{d}_{jk} - \min_k \tilde{d}_{jk}))}$$
 
     where $d_{ji} = d(x_j, x_i)$ for the chosen distance metric. The
     ``+1`` in the denominator reserves mass for the new test point
@@ -50,12 +53,32 @@ class DistanceSimilarity(BaseSimilarity):
         Additional keyword arguments forwarded to the distance metric
         function.
 
+    bandwidth : float > 0, default=1.0
+        Multiplier on the fitted distance scale. Values below 1 concentrate
+        weight on nearer calibration rows, values above 1 flatten the weights
+        toward uniform.
+
+    Attributes
+    ----------
+    _feature_scale_ : numpy.ndarray
+        Per-column spread fitted at ``fit``, used to standardize features
+        before distances are computed.
+
+    _distance_scale_ : float
+        Median pairwise distance among the standardized fit-time features.
+
     Notes
     -----
     The distance-to-weight conversion uses the softmax of negative
     distances, so distant observations contribute exponentially less
     than nearby ones. The weights are further normalised so that each
     prediction row sums to a value in (0, 1).
+
+    Both scales are fitted once and frozen: ``observe`` does not re-estimate
+    them, so ``predict`` is a function of the fitted state and the prediction
+    alone and ``rewind`` has no scale history to undo. Dividing by them is what
+    makes the weights invariant to a rescaling of the data, and stops a single
+    high-magnitude column from choosing the neighbourhood for the others.
 
     References
     ----------
@@ -114,15 +137,35 @@ class DistanceSimilarity(BaseSimilarity):
     _parameter_constraints: dict = {
         "metric": [str],
         "metric_params": [dict, None],
+        "bandwidth": [Interval(numbers.Real, 0, None, closed="neither")],
     }
 
     def __init__(
         self,
         metric: str = "euclidean",
         metric_params: dict[str, object] | None = None,
+        bandwidth: float = 1.0,
     ) -> None:
         self.metric = metric
         self.metric_params = metric_params
+        self.bandwidth = bandwidth
+
+    def _standardize(self, features: pl.DataFrame) -> np.ndarray:
+        """Divide each feature column by its fitted spread.
+
+        Parameters
+        ----------
+        features : pl.DataFrame
+            Feature matrix including its ``"time"`` column.
+
+        Returns
+        -------
+        numpy.ndarray
+            Standardized values with ``"time"`` dropped.
+
+        """
+        values = features.select(pl.exclude("time")).to_numpy().astype(np.float64)
+        return values / self._feature_scale_
 
     def _get_X(
         self,
@@ -204,6 +247,14 @@ class DistanceSimilarity(BaseSimilarity):
         """
         X_features = self._get_X(y_pred, X_actual)
         self._X_observed = X_features
+
+        # Both scales are fitted once here and never re-estimated by observe.
+        # A moving denominator would make predict depend on observation history
+        # in a way rewind would have to undo exactly, and would make two runs
+        # over the same data disagree.
+        raw = X_features.select(pl.exclude("time")).to_numpy().astype(np.float64)
+        self._feature_scale_ = self._fit_feature_scale(raw)
+        self._distance_scale_ = self._fit_distance_scale(raw / self._feature_scale_, self.metric, self.metric_params)
 
         return self
 
@@ -295,10 +346,12 @@ class DistanceSimilarity(BaseSimilarity):
         check_is_fitted(self, "_X_observed")
         X_features = self._get_X(y_pred, X_actual)
 
-        XA = X_features.select(pl.exclude("time")).to_numpy()
-        XB = self._X_observed.select(pl.exclude("time")).to_numpy()
+        # Standardized on both sides with the same fitted spread, so no single
+        # high-magnitude column decides the neighbourhood for the others.
+        XA = self._standardize(X_features)
+        XB = self._standardize(self._X_observed)
         distances: np.ndarray = cdist(XA, XB, metric=self.metric, **(self.metric_params or {}))  # ty: ignore[no-matching-overload]
-        return self._to_weights(distances)
+        return self._to_weights(distances, self._distance_scale_, self.bandwidth)
 
 
 class SeasonalSimilarity(BaseSimilarity):
@@ -330,11 +383,19 @@ class SeasonalSimilarity(BaseSimilarity):
         Distance metric for ``scipy.spatial.distance.cdist``.
     metric_params : dict or None, default=None
         Additional keyword arguments forwarded to the distance metric.
+    bandwidth : float > 0, default=0.5
+        Multiplier on the fitted distance scale. Values below 1 concentrate
+        weight on nearer calibration rows, values above 1 flatten the weights
+        toward uniform.
 
     Attributes
     ----------
     first_time_ : datetime
         Reference timestamp from the first calibration prediction.
+    _distance_scale_ : float
+        Median pairwise distance among the fit-time harmonic features. Unlike
+        `DistanceSimilarity`, no per-column standardization is applied: the
+        harmonics are already on a common scale.
     interval_td_ : timedelta
         Time interval between consecutive timestamps, auto-detected
         from calibration data. When ``fit`` receives a single timestamp the
@@ -350,11 +411,19 @@ class SeasonalSimilarity(BaseSimilarity):
 
     The weight normalisation matches ``DistanceSimilarity`` exactly, via the
     shared [`BaseSimilarity._to_weights`][yohou.interval.base.BaseSimilarity]:
-    a numerically-stable softmax of negative distances with uniform mass
-    reserved for the test point, ``w_{ji} = raw_{ji} / (1 + \sum_k raw_{jk})``
-    where ``raw_{ji} = \exp(-(d_{ji} - \max_k d_{jk}))``. Each row is
-    non-negative and sums below 1, following the non-exchangeable conformal
-    construction (Barber et al., 2023).
+    distances are divided by ``bandwidth`` times the fitted distance scale,
+    then converted by a numerically-stable softmax of negative scaled distances
+    with uniform mass reserved for the test point,
+    ``w_{ji} = raw_{ji} / (1 + \sum_k raw_{jk})`` where
+    ``raw_{ji} = \exp(-(\tilde{d}_{ji} - \min_k \tilde{d}_{jk}))`` and
+    ``\tilde{d} = d / (bandwidth \cdot distance\_scale)``. Note the baseline is
+    the row *minimum*. Each row is non-negative and sums below 1, following the
+    non-exchangeable conformal construction (Barber et al., 2023).
+
+    What differs from ``DistanceSimilarity`` is the input to that shared
+    conversion, not the conversion: features here are harmonics of time rather
+    than data values, so there is no per-column standardization step, and the
+    default ``bandwidth`` is lower.
 
     References
     ----------
@@ -398,6 +467,7 @@ class SeasonalSimilarity(BaseSimilarity):
         "harmonics": [dict, None],
         "metric": [str],
         "metric_params": [dict, None],
+        "bandwidth": [Interval(numbers.Real, 0, None, closed="neither")],
     }
 
     def __init__(
@@ -406,11 +476,13 @@ class SeasonalSimilarity(BaseSimilarity):
         harmonics: dict[float, list[int]] | None = None,
         metric: str = "euclidean",
         metric_params: dict[str, object] | None = None,
+        bandwidth: float = 0.5,
     ) -> None:
         self.seasonality = seasonality
         self.harmonics = harmonics
         self.metric = metric
         self.metric_params = metric_params
+        self.bandwidth = bandwidth
 
     def _resolve_harmonics(self) -> dict[float, list[int]]:
         """Resolve harmonics, defaulting to first harmonic per seasonality.
@@ -506,6 +578,10 @@ class SeasonalSimilarity(BaseSimilarity):
             self.interval_td_ = timedelta(0)
 
         self._features_observed = self._extract_features(times)
+        # Harmonic features are bounded and commensurate by construction, so
+        # there is nothing to standardize; only the distance scale is fitted,
+        # which gives this class the same bandwidth control as the others.
+        self._distance_scale_ = self._fit_distance_scale(self._features_observed, self.metric, self.metric_params)
 
         return self
 
@@ -597,7 +673,7 @@ class SeasonalSimilarity(BaseSimilarity):
             metric=self.metric,
             **(self.metric_params or {}),
         )  # ty: ignore[no-matching-overload]
-        return self._to_weights(distances)
+        return self._to_weights(distances, self._distance_scale_, self.bandwidth)
 
 
 class CompositeSimilarity(BaseSimilarity, _BaseComposition):
