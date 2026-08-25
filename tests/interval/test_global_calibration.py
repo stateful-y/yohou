@@ -1,4 +1,4 @@
-"""Tests for pooled (global) conformal calibration and its prerequisites."""
+"""Tests for global conformal calibration and its prerequisites."""
 
 import warnings
 from datetime import datetime, timedelta
@@ -8,9 +8,9 @@ import polars as pl
 import pytest
 from sklearn.base import clone
 
-from yohou.interval import SplitConformalForecaster, diagnose_pooling
+from yohou.interval import SplitConformalForecaster, diagnose_global_calibration
 from yohou.interval.similarity import SeasonalSimilarity
-from yohou.interval.utils import pooled_weights, weighted_quantile
+from yohou.interval.utils import global_calibration_weights, weighted_quantile
 from yohou.metrics.conformity import (
     AbsoluteGammaResidual,
     AbsoluteNormalizedResidual,
@@ -64,7 +64,7 @@ class TestDefaultIsUnchanged:
 
 
 class TestComparabilityTag:
-    """Only a dispersion-normalized scorer may be pooled."""
+    """Only a dispersion-normalized scorer may calibrate globally."""
 
     @pytest.mark.parametrize("scorer", [Residual(), AbsoluteResidual(), GammaResidual(), AbsoluteGammaResidual()])
     def test_existing_scorers_are_not_comparable(self, scorer):
@@ -75,7 +75,7 @@ class TestComparabilityTag:
     def test_normalized_scorers_declare_comparability(self, scorer):
         assert scorer.__sklearn_tags__().scorer_tags.comparable_across_columns is True
 
-    def test_pooling_with_an_incomparable_scorer_raises(self):
+    def test_global_calibration_with_an_incomparable_scorer_raises(self):
         """An error, not a warning: the result would be wrong, not imprecise."""
         with pytest.raises(ValueError, match="comparable across them"):
             _fit(_panel(), calibration_strategy="global")
@@ -98,7 +98,7 @@ class TestComparabilityTag:
 
 
 class TestNormalizedScorer:
-    """The scorer that makes pooling sound."""
+    """The scorer that makes global calibration sound."""
 
     def test_scale_is_fitted_per_column(self):
         y = _panel(scales=(1.0, 100.0))
@@ -137,19 +137,19 @@ class TestNormalizedScorer:
             scorer.score(y[:1], y[:1])
 
 
-class TestPooledCalibration:
-    """What pooling does to the emitted interval."""
+class TestGlobalCalibration:
+    """What global calibration does to the emitted interval."""
 
-    def test_pooling_keeps_per_column_widths(self):
+    def test_global_calibration_keeps_per_column_widths(self):
         """One quantile, but each column's bound uses its own fitted scale."""
         y = _panel(scales=(1.0, 100.0))
         widths = _widths(
             _fit(y, conformity_scorer=NormalizedResidual(), calibration_strategy="global"), ["e0__v", "e1__v"]
         )
         ratio = widths["e1__v"] / widths["e0__v"]
-        assert 50 < ratio < 200, f"pooled widths should still track each column's scale, got {widths}"
+        assert 50 < ratio < 200, f"global-calibration widths should still track each column's scale, got {widths}"
 
-    def test_pooling_changes_the_quantile_not_the_axis(self):
+    def test_global_calibration_changes_the_quantile_not_the_axis(self):
         """Both modes emit one lower and one upper bound per column."""
         y = _panel()
         for strategy in ("local", "global"):
@@ -159,57 +159,57 @@ class TestPooledCalibration:
                 assert f"{column}_lower_0.9" in iv.columns
                 assert f"{column}_upper_0.9" in iv.columns
 
-    def test_pooling_draws_on_more_scores_than_one_column_has(self):
+    def test_global_calibration_draws_on_more_scores_than_one_column_has(self):
         """The point of the mode: the two strategies do not agree."""
         y = _panel(scales=(1.0, 1.0), noise=(0.3, 1.2))
         local = _widths(_fit(y, conformity_scorer=NormalizedResidual(), calibration_strategy="local"), ["e0__v"])
-        pooled = _widths(_fit(y, conformity_scorer=NormalizedResidual(), calibration_strategy="global"), ["e0__v"])
-        assert local["e0__v"] != pooled["e0__v"]
+        global_cal = _widths(_fit(y, conformity_scorer=NormalizedResidual(), calibration_strategy="global"), ["e0__v"])
+        assert local["e0__v"] != global_cal["e0__v"]
 
 
-class TestPooledWeights:
-    """The construction that lets a similarity compose with pooling."""
+class TestGlobalCalibrationWeights:
+    """The construction that lets a similarity compose with global calibration."""
 
-    def test_uniform_affinities_reduce_to_the_plain_pooled_quantile(self):
+    def test_uniform_affinities_reduce_to_the_plain_stacked_quantile(self):
         """The property that separates the correct construction from naive tiling."""
         n_times, n_columns = 40, 3
-        n_pooled = n_times * n_columns
+        n_stacked = n_times * n_columns
         rng = np.random.default_rng(0)
         scores = rng.normal(0, 1, (n_times, n_columns)).reshape(-1)
 
         uniform = np.full(n_times, 1.0 / (n_times + 1))
-        plain = np.full(n_pooled, 1.0 / (n_pooled + 1))
+        plain = np.full(n_stacked, 1.0 / (n_stacked + 1))
         for alpha in (0.1, 0.05, 0.01):
-            assert weighted_quantile(scores, alpha, pooled_weights(uniform, n_columns)) == pytest.approx(
+            assert weighted_quantile(scores, alpha, global_calibration_weights(uniform, n_columns)) == pytest.approx(
                 weighted_quantile(scores, alpha, plain)
             )
 
-    def test_reserved_mass_reflects_the_pooled_count(self):
+    def test_reserved_mass_reflects_the_stacked_count(self):
         n_times, n_columns = 40, 3
         uniform = np.full(n_times, 1.0 / (n_times + 1))
-        pooled = pooled_weights(uniform, n_columns)
-        assert 1.0 - pooled.sum() == pytest.approx(1.0 / (n_times * n_columns + 1))
+        stacked = global_calibration_weights(uniform, n_columns)
+        assert 1.0 - stacked.sum() == pytest.approx(1.0 / (n_times * n_columns + 1))
 
     def test_every_column_at_a_time_shares_that_time_affinity(self):
         n_columns = 3
         raw = np.exp(-np.arange(40) / 8.0)
         weights = raw / (raw.sum() + 1.0)
-        pooled = pooled_weights(weights, n_columns)
-        assert np.allclose(pooled[:n_columns], pooled[0])
+        stacked = global_calibration_weights(weights, n_columns)
+        assert np.allclose(stacked[:n_columns], stacked[0])
 
     def test_informative_affinities_still_shift_the_quantile(self):
-        """Pooling must not quietly discard the weighting."""
+        """Global calibration must not quietly discard the weighting."""
         n_times, n_columns = 40, 3
         rng = np.random.default_rng(1)
         scores = rng.normal(0, 1, (n_times, n_columns)).reshape(-1)
         raw = np.exp(-np.arange(n_times) / 5.0)
         concentrated = raw / (raw.sum() + 1.0)
         uniform = np.full(n_times, 1.0 / (n_times + 1))
-        assert weighted_quantile(scores, 0.1, pooled_weights(concentrated, n_columns)) != pytest.approx(
-            weighted_quantile(scores, 0.1, pooled_weights(uniform, n_columns))
+        assert weighted_quantile(scores, 0.1, global_calibration_weights(concentrated, n_columns)) != pytest.approx(
+            weighted_quantile(scores, 0.1, global_calibration_weights(uniform, n_columns))
         )
 
-    def test_similarity_composes_with_pooling_end_to_end(self):
+    def test_similarity_composes_with_global_calibration_end_to_end(self):
         y = _panel()
         forecaster = _fit(
             y,
@@ -221,8 +221,8 @@ class TestPooledWeights:
         assert all(w > 0 for w in widths.values())
 
 
-class TestResolutionGuardCountsPooledScores:
-    """A rate the pooled set can express must not be reported as unreachable."""
+class TestResolutionGuardCountsStackedScores:
+    """A rate the stacked set can express must not be reported as unreachable."""
 
     @staticmethod
     def _many_columns(n_cols: int = 12, n: int = 120) -> pl.DataFrame:
@@ -244,19 +244,19 @@ class TestResolutionGuardCountsPooledScores:
         with pytest.warns(UserWarning, match="calibration scores per value column"):
             forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.99])
 
-    def test_pooling_lifts_the_rate_into_range(self):
+    def test_global_calibration_lifts_the_rate_into_range(self):
         forecaster = self._fit_small(conformity_scorer=NormalizedResidual(), calibration_strategy="global")
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
             forecaster.predict_interval(forecasting_horizon=1, coverage_rates=[0.99])
 
 
-class TestPoolingDiagnostic:
+class TestGlobalCalibrationDiagnostic:
     """It reports the two figures that decide the choice, and decides nothing."""
 
     def test_reports_correlation_and_heterogeneity(self):
         forecaster = _fit(_panel(), conformity_scorer=NormalizedResidual())
-        report = diagnose_pooling(forecaster)
+        report = diagnose_global_calibration(forecaster)
         assert {"cross_sectional_correlation", "effective_gain", "score_heterogeneity"} <= set(report)
         assert report["n_columns"] == 2
 
@@ -265,7 +265,7 @@ class TestPoolingDiagnostic:
         forecaster = _fit(y, conformity_scorer=NormalizedResidual())
         before = _widths(forecaster, ["e0__v", "e1__v"])
         params_before = forecaster.get_params()
-        diagnose_pooling(forecaster)
+        diagnose_global_calibration(forecaster)
         assert forecaster.get_params() == params_before
         assert _widths(forecaster, ["e0__v", "e1__v"]) == before
 
@@ -280,13 +280,13 @@ class TestPoolingDiagnostic:
             y[:180], forecasting_horizon=1, coverage_rates=[0.9]
         )
         with pytest.raises(ValueError, match="at least two value columns"):
-            diagnose_pooling(forecaster)
+            diagnose_global_calibration(forecaster)
 
 
 class TestAdapterStaysPerColumn:
-    """Pooling applies to the quantile, never to the adaptive level."""
+    """Global calibration applies to the quantile, never to the adaptive level."""
 
-    def test_levels_remain_per_column_under_pooling(self):
+    def test_levels_remain_per_column_under_global_calibration(self):
         from yohou.interval import AdaptiveConformalInference
 
         y = _panel()
@@ -327,7 +327,7 @@ class TestAbsoluteNormalizedScorer:
         widths = _widths(_fit(y, conformity_scorer=AbsoluteNormalizedResidual()), ["e0__v", "e1__v"])
         assert 50 < widths["e1__v"] / widths["e0__v"] < 200
 
-    def test_pooling_works_with_the_symmetric_variant(self):
+    def test_global_calibration_works_with_the_symmetric_variant(self):
         y = _panel(scales=(1.0, 100.0))
         widths = _widths(
             _fit(y, conformity_scorer=AbsoluteNormalizedResidual(), calibration_strategy="global"),
@@ -337,7 +337,7 @@ class TestAbsoluteNormalizedScorer:
         assert 50 < widths["e1__v"] / widths["e0__v"] < 200
 
 
-def test_pooled_weights_accepts_rows_without_reserved_mass():
+def test_global_calibration_weights_accepts_rows_without_reserved_mass():
     """A weight row that already sums to 1 or more carries no reservation to undo.
 
     Nothing in the library produces such a row, since `_reserve_mass` always
@@ -345,7 +345,7 @@ def test_pooled_weights_accepts_rows_without_reserved_mass():
     negative remainder if handed raw affinities.
     """
     raw = np.ones(10)
-    pooled = pooled_weights(raw, 2)
+    stacked = global_calibration_weights(raw, 2)
 
-    assert pooled.sum() < 1.0
-    assert np.allclose(pooled, pooled[0])
+    assert stacked.sum() < 1.0
+    assert np.allclose(stacked, stacked[0])

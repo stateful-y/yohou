@@ -5,7 +5,7 @@ from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
 from .reduction import IntervalReductionForecaster
 from .similarity import CompositeSimilarity, DistanceSimilarity, SeasonalSimilarity
 from .split_conformal import SplitConformalForecaster
-from .utils import diagnose_pooling, weighted_quantile
+from .utils import diagnose_global_calibration, weighted_quantile
 
 __all__ = [
     "AdaptiveConformalInference",
@@ -17,6 +17,6 @@ __all__ = [
     "IntervalReductionForecaster",
     "SplitConformalForecaster",
     "SeasonalSimilarity",
-    "diagnose_pooling",
+    "diagnose_global_calibration",
     "weighted_quantile",
 ]

@@ -161,7 +161,7 @@ is the symmetric variant.
 computes $s = (y - \hat{y}) / \sigma_c$, dividing by a scale fitted per value column at
 `fit` time. Where gamma residuals remove differences in *magnitude* between columns, this
 also removes differences in *volatility*, so two columns of equal size but unequal noise
-still produce comparable scores. That is what makes pooled calibration possible, and it is
+still produce comparable scores. That is what makes global calibration possible, and it is
 also useful on its own: the interval width tracks each column's own dispersion.
 [`AbsoluteNormalizedResidual`](/pages/api/generated/yohou.metrics.AbsoluteNormalizedResidual/)
 is the symmetric variant.
@@ -455,9 +455,9 @@ one calibration across them would over-cover the small entity and under-cover th
 large one, and the sharing would be invisible: both intervals are well-formed, one
 is simply too wide and the other too narrow.
 
-Calibration can optionally be pooled across entities, with `calibration_strategy="global"`.
-It is off by default, and whether it helps depends entirely on your data. Three things
-govern that, and they are not equally tractable.
+Calibration can optionally be shared across entities: global calibration, enabled with
+`calibration_strategy="global"`. It is off by default, and whether it helps depends
+entirely on your data. Three things govern that, and they are not equally tractable.
 
 The first is magnitude. Pooling raw residuals from entities of different size is what
 produces the failure above, and a scale-free score such as
@@ -471,30 +471,30 @@ estimate, which yohou does not currently provide.
 
 The third is dependence, and no conformity score removes it. Entities observed at the
 same timestamp share shocks, so their scores are correlated within a timestamp and much
-less so across timestamps. A pooled sequence with that block structure is not
+less so across timestamps. A combined sequence with that block structure is not
 exchangeable, which is the assumption the finite-sample guarantee rests on. It also
-means pooling buys far less than the entity count suggests: under same-timestamp
+means global calibration buys far less than the entity count suggests: under same-timestamp
 correlation `rho` the effective gain saturates near `1 / rho`, so two hundred entities
 that move together are worth about as much as ten.
 
 The first is solved by
 [`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/), which
 divides each residual by that column's own dispersion rather than by its predicted
-level. Pooling requires it, or another scorer declaring cross-column comparability, and
+level. Global calibration requires it, or another scorer declaring cross-column comparability, and
 `calibration_strategy="global"` raises at fit otherwise: pooling incomparable scores
 produces an interval that is wrong rather than merely imprecise.
 
 The second and third are not solved, only bounded, which is why the mode is opt-in.
 
-### Deciding whether to pool
+### Deciding whether to calibrate globally
 
 Do not decide from the numbers above. Measure your own data with
-[`diagnose_pooling`](/pages/api/generated/yohou.interval.diagnose_pooling/), which
+[`diagnose_global_calibration`](/pages/api/generated/yohou.interval.diagnose_global_calibration/), which
 reports the cross-sectional correlation of a fitted forecaster's conformity scores and
 how comparable those scores are across columns. It reports and does not choose, because
 the right answer also depends on which coverage rates you need.
 
-Pooling earns its place when a coverage rate is out of reach per column. On
+Global calibration earns its place when a coverage rate is out of reach per column. On
 `fetch_hospital`, 40 series with 28 calibration scores each at a nominal 99%:
 
 | strategy | realized coverage |

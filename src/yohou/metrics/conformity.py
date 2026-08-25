@@ -115,7 +115,11 @@ class Residual(BaseConformityScorer):
         return scores
 
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+        self,
+        y_pred: pl.DataFrame,
+        conformity_scores: pl.DataFrame,
+        coverage_rate: float,
+        global_calibration: bool = False,
     ) -> pl.DataFrame:
         """Construct prediction intervals from conformity scores.
 
@@ -146,7 +150,7 @@ class Residual(BaseConformityScorer):
         # Compute intervals. The quantiles arrive one per value column, in the
         # score frame's column order, which matches y_pred's positionally.
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, pooled=pooled
+            conformity_scores, coverage_rate, global_calibration=global_calibration
         )
         lower_bound = y_pred.with_columns([
             pl.col(col) + q for col, q in zip(y_pred.columns, lower_quantiles, strict=True)
@@ -258,7 +262,11 @@ class AbsoluteResidual(Residual):
         return scores
 
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+        self,
+        y_pred: pl.DataFrame,
+        conformity_scores: pl.DataFrame,
+        coverage_rate: float,
+        global_calibration: bool = False,
     ) -> pl.DataFrame:
         """Construct symmetric prediction intervals from absolute conformity scores.
 
@@ -287,7 +295,9 @@ class AbsoluteResidual(Residual):
         )
 
         # Compute symmetric intervals, one half-width per value column
-        quantiles = self._compute_symmetric_quantiles(conformity_scores, coverage_rate, pooled=pooled)
+        quantiles = self._compute_symmetric_quantiles(
+            conformity_scores, coverage_rate, global_calibration=global_calibration
+        )
         lower_bound = y_pred.with_columns([pl.col(col) - q for col, q in zip(y_pred.columns, quantiles, strict=True)])
         upper_bound = y_pred.with_columns([pl.col(col) + q for col, q in zip(y_pred.columns, quantiles, strict=True)])
 
@@ -400,7 +410,11 @@ class GammaResidual(BaseConformityScorer):
         return scores
 
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+        self,
+        y_pred: pl.DataFrame,
+        conformity_scores: pl.DataFrame,
+        coverage_rate: float,
+        global_calibration: bool = False,
     ) -> pl.DataFrame:
         """Construct prediction intervals from gamma conformity scores.
 
@@ -428,7 +442,7 @@ class GammaResidual(BaseConformityScorer):
 
         # Compute quantiles, one pair per value column
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, pooled=pooled
+            conformity_scores, coverage_rate, global_calibration=global_calibration
         )
 
         # Reconstruct y. The score is relative to the prediction, so each
@@ -637,7 +651,7 @@ class NormalizedResidual(BaseConformityScorer):
     - [`AbsoluteNormalizedResidual`][yohou.metrics.conformity.AbsoluteNormalizedResidual] : Symmetric variant.
     - [`GammaResidual`][yohou.metrics.conformity.GammaResidual] : Normalises by the predicted level instead.
     - [`SplitConformalForecaster`][yohou.interval.split_conformal.SplitConformalForecaster] :
-        Consumes this scorer when pooling calibration across columns.
+        Consumes this scorer for global calibration across columns.
 
     Examples
     --------
@@ -753,7 +767,11 @@ class NormalizedResidual(BaseConformityScorer):
         return pl.DataFrame({"time": context.time_values}).hstack(scores_values)
 
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+        self,
+        y_pred: pl.DataFrame,
+        conformity_scores: pl.DataFrame,
+        coverage_rate: float,
+        global_calibration: bool = False,
     ) -> pl.DataFrame:
         """Construct prediction intervals, rescaling by each column's dispersion.
 
@@ -779,7 +797,7 @@ class NormalizedResidual(BaseConformityScorer):
         )
 
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, pooled=pooled
+            conformity_scores, coverage_rate, global_calibration=global_calibration
         )
         scales = self._scales_for(list(y_pred.columns))
 
@@ -802,7 +820,7 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
     Computes $s = |y - \hat{y}| / \sigma_c$, so the interval is equidistant
     from the point prediction, with each column's half-width scaled by its own
     fitted dispersion. Use it where the error distribution is roughly
-    symmetric and pooled calibration is wanted.
+    symmetric and global calibration is wanted.
 
     Parameters
     ----------
@@ -868,7 +886,11 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
         return scores.with_columns(cs.exclude("time").abs())
 
     def inverse_score(
-        self, y_pred: pl.DataFrame, conformity_scores: pl.DataFrame, coverage_rate: float, pooled: bool = False
+        self,
+        y_pred: pl.DataFrame,
+        conformity_scores: pl.DataFrame,
+        coverage_rate: float,
+        global_calibration: bool = False,
     ) -> pl.DataFrame:
         """Construct symmetric intervals, rescaling by each column's dispersion.
 
@@ -893,7 +915,9 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
             self, y_true=None, y_pred=y_pred, scores=conformity_scores, inverse=True
         )
 
-        quantiles = self._compute_symmetric_quantiles(conformity_scores, coverage_rate, pooled=pooled)
+        quantiles = self._compute_symmetric_quantiles(
+            conformity_scores, coverage_rate, global_calibration=global_calibration
+        )
         scales = self._scales_for(list(y_pred.columns))
 
         lower_bound = y_pred.with_columns([

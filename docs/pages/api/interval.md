@@ -24,5 +24,5 @@ Interval forecasters for prediction uncertainty quantification.
 
 | Name | Description |
 |------|-------------|
-| [`diagnose_pooling`](generated/yohou.interval.diagnose_pooling.md) | Report whether a fitted forecaster's data suits pooled calibration. |
+| [`diagnose_global_calibration`](generated/yohou.interval.diagnose_global_calibration.md) | Report whether a fitted forecaster's data suits global calibration. |
 | [`weighted_quantile`](generated/yohou.interval.weighted_quantile.md) | Compute a weighted conformal quantile. |

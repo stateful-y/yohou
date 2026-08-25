@@ -20,7 +20,12 @@ from yohou.utils import POINT_INTERVAL, Tags, validate_forecaster_data
 from yohou.utils._compat import Interval, StrOptions, _fit_context
 
 from .base import BaseConformalAdapter, BaseIntervalForecaster, BaseSimilarity
-from .utils import pooled_weights, warn_if_calibration_too_small, warn_if_weights_collapsed, weighted_quantile
+from .utils import (
+    global_calibration_weights,
+    warn_if_calibration_too_small,
+    warn_if_weights_collapsed,
+    weighted_quantile,
+)
 
 __all__ = ["SplitConformalForecaster"]
 
@@ -85,8 +90,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         across columns, and raises at ``fit`` otherwise: pooling scores of
         different magnitude or volatility produces a systematically
         miscalibrated interval rather than a merely imprecise one. Whether
-        pooling helps at all depends on how correlated your entities are; see
-        the interval-forecasting explanation page.
+        global calibration helps at all depends on how correlated your entities
+        are; see the interval-forecasting explanation page.
 
     Attributes
     ----------
@@ -375,7 +380,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                     f"calibration_strategy='global' pools conformity scores across value columns, "
                     f"which requires a scorer whose scores are comparable across them. "
                     f"{type(self.conformity_scorer).__name__} does not declare that: its scores carry "
-                    f"each column's own magnitude or volatility, so one pooled quantile would be too "
+                    f"each column's own magnitude or volatility, so a single shared quantile would be too "
                     f"wide for some columns and too narrow for others. Use a dispersion-normalized "
                     f"scorer such as NormalizedResidual, or keep calibration_strategy='local'."
                 )
@@ -1475,23 +1480,24 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         lower_data: dict[str, list[float]] = {}
         upper_data: dict[str, list[float]] = {}
 
-        # Under pooling one quantile is drawn from every column's scores, with each
-        # column at a calibration time carrying that time's affinity. The tiling has
-        # to run on the raw affinities, which pooled_weights handles.
-        pooled = self.calibration_strategy == "global"
+        # Under global calibration one quantile is drawn from every column's scores,
+        # with each column at a calibration time carrying that time's affinity. The
+        # tiling has to run on the raw affinities, which global_calibration_weights
+        # handles.
+        global_cal = self.calibration_strategy == "global"
         empty = np.empty(0, dtype=np.float64)
-        pooled_scores = scores_no_time.to_numpy().astype(np.float64).reshape(-1) if pooled else empty
-        pooled_w = pooled_weights(weights, len(value_cols)) if pooled else empty
+        stacked_scores = scores_no_time.to_numpy().astype(np.float64).reshape(-1) if global_cal else empty
+        stacked_weights = global_calibration_weights(weights, len(value_cols)) if global_cal else empty
         column_scales = getattr(conformity_scorer_step, "column_scales_", None)
 
         for col in value_cols:
-            scores_col = pooled_scores if pooled else scores_no_time[col].to_numpy().astype(np.float64)
-            col_weights = pooled_w if pooled else weights
+            scores_col = stacked_scores if global_cal else scores_no_time[col].to_numpy().astype(np.float64)
+            col_weights = stacked_weights if global_cal else weights
             pred_val = float(y_pred_values[col][0])
             scale = (pred_val + epsilon) if multiplicative else 1.0
-            if pooled and column_scales is not None:
+            if global_cal and column_scales is not None:
                 # A dispersion-normalized scorer rebuilds the bound with the
-                # column's own fitted scale, which keeps pooled widths per column.
+                # column's own fitted scale, which keeps widths per column.
                 scale = column_scales[col]
 
             if symmetric:
@@ -1756,10 +1762,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 # Checked once per (step, rate), before any path computes a
                 # quantile, so it covers the static, weighted and adapted paths
                 # alike rather than being repeated in each.
-                # Under pooling the quantile draws from every column's scores, so
-                # the resolution ceiling is the pooled count. Counting per column
-                # would report a rate unreachable exactly when pooling made it
-                # reachable, which is the point of the mode.
+                # Under global calibration the quantile draws from every column's
+                # scores, so the resolution ceiling is the combined count. Counting
+                # per column would report a rate unreachable exactly when global
+                # calibration made it reachable, which is the point of the mode.
                 n_value_columns = len([c for c in conformity_scores_step.columns if c != "time"])
                 available = conformity_scores_step.height * (
                     n_value_columns if self.calibration_strategy == "global" else 1
@@ -1820,7 +1826,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                         y_pred=y_pred_step,
                         conformity_scores=conformity_scores_step,
                         coverage_rate=coverage_rate,
-                        pooled=self.calibration_strategy == "global",
+                        global_calibration=self.calibration_strategy == "global",
                     ).drop("time")
 
                 rate_parts.append(y_pred_interval_rate_step)
