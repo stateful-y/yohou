@@ -250,8 +250,8 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         global_calibration : bool, default=False
             When True, draw one quantile from every value column's scores
             together instead of one per column, and apply it to each column's
-            own reconstruction. Only meaningful for scorers whose scores are
-            comparable across columns.
+            own reconstruction. Only meaningful for scorers declaring the
+            ``supports_global_calibration`` tag.
 
         Returns
         -------

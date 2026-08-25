@@ -69,15 +69,15 @@ class TestComparabilityTag:
     @pytest.mark.parametrize("scorer", [Residual(), AbsoluteResidual(), GammaResidual(), AbsoluteGammaResidual()])
     def test_existing_scorers_are_not_comparable(self, scorer):
         """Nothing becomes poolable by accident."""
-        assert scorer.__sklearn_tags__().scorer_tags.comparable_across_columns is False
+        assert scorer.__sklearn_tags__().scorer_tags.supports_global_calibration is False
 
     @pytest.mark.parametrize("scorer", [NormalizedResidual(), AbsoluteNormalizedResidual()])
     def test_normalized_scorers_declare_comparability(self, scorer):
-        assert scorer.__sklearn_tags__().scorer_tags.comparable_across_columns is True
+        assert scorer.__sklearn_tags__().scorer_tags.supports_global_calibration is True
 
     def test_global_calibration_with_an_incomparable_scorer_raises(self):
         """An error, not a warning: the result would be wrong, not imprecise."""
-        with pytest.raises(ValueError, match="comparable across them"):
+        with pytest.raises(ValueError, match="supports global calibration"):
             _fit(_panel(), calibration_strategy="global")
 
     def test_local_calibration_accepts_every_scorer(self):
@@ -91,7 +91,7 @@ class TestComparabilityTag:
         class _MyComparable(Residual):
             def __sklearn_tags__(self):
                 tags = super().__sklearn_tags__()
-                tags.scorer_tags.comparable_across_columns = True
+                tags.scorer_tags.supports_global_calibration = True
                 return tags
 
         _fit(_panel(), conformity_scorer=_MyComparable(), calibration_strategy="global")
@@ -107,7 +107,7 @@ class TestNormalizedScorer:
         assert set(scales) == {"e0__v", "e1__v"}
         assert scales["e1__v"] / scales["e0__v"] > 10, "the larger column should get the larger scale"
 
-    def test_scores_are_comparable_across_columns(self):
+    def test_scores_are_supports_global_calibration(self):
         """A proportionally equal miss in each column scores about the same."""
         y = _panel(scales=(1.0, 100.0))
         scorer = NormalizedResidual().fit(y)

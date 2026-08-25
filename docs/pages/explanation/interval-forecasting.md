@@ -480,7 +480,8 @@ that move together are worth about as much as ten.
 The first is solved by
 [`NormalizedResidual`](/pages/api/generated/yohou.metrics.NormalizedResidual/), which
 divides each residual by that column's own dispersion rather than by its predicted
-level. Global calibration requires it, or another scorer declaring cross-column comparability, and
+level. Global calibration requires it, or another scorer declaring the
+`supports_global_calibration` tag, and
 `calibration_strategy="global"` raises at fit otherwise: pooling incomparable scores
 produces an interval that is wrong rather than merely imprecise.
 

@@ -86,8 +86,9 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         shares the *calibration*. The default pairing, a shared point model with
         per-entity calibration, is a sensible and common configuration.
 
-        ``"global"`` requires a conformity scorer whose scores are comparable
-        across columns, and raises at ``fit`` otherwise: pooling scores of
+        ``"global"`` requires a conformity scorer that declares the
+        ``supports_global_calibration`` tag, and raises at ``fit``
+        otherwise: pooling scores of
         different magnitude or volatility produces a systematically
         miscalibrated interval rather than a merely imprecise one. Whether
         global calibration helps at all depends on how correlated your entities
@@ -375,14 +376,15 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         if self.calibration_strategy == "global":
             scorer_tags = self.conformity_scorer.__sklearn_tags__()
             assert scorer_tags.scorer_tags is not None
-            if not scorer_tags.scorer_tags.comparable_across_columns:
+            if not scorer_tags.scorer_tags.supports_global_calibration:
                 raise ValueError(
                     f"calibration_strategy='global' pools conformity scores across value columns, "
-                    f"which requires a scorer whose scores are comparable across them. "
-                    f"{type(self.conformity_scorer).__name__} does not declare that: its scores carry "
-                    f"each column's own magnitude or volatility, so a single shared quantile would be too "
-                    f"wide for some columns and too narrow for others. Use a dispersion-normalized "
-                    f"scorer such as NormalizedResidual, or keep calibration_strategy='local'."
+                    f"which requires a scorer that supports global calibration: one whose scores are "
+                    f"on a common footing across columns. {type(self.conformity_scorer).__name__} does "
+                    f"not declare that support: its scores carry each column's own magnitude or "
+                    f"volatility, so a single shared quantile would be too wide for some columns and "
+                    f"too narrow for others. Use a dispersion-normalized scorer such as "
+                    f"NormalizedResidual, or keep calibration_strategy='local'."
                 )
 
         conformity_scorers = {}

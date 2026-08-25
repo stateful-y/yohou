@@ -690,7 +690,7 @@ class NormalizedResidual(BaseConformityScorer):
         """Get the tags for this estimator."""
         tags = super().__sklearn_tags__()
         assert tags.scorer_tags is not None
-        tags.scorer_tags.comparable_across_columns = True
+        tags.scorer_tags.supports_global_calibration = True
         return tags
 
     @_fit_context(prefer_skip_nested_validation=True)
