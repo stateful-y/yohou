@@ -324,22 +324,10 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     Parameters
     ----------
     alpha_pooling : {"per_step", "shared"}, default="per_step"
-        Which axis the effective level lives on. ``"per_step"`` tracks an
-        independent level per horizon step, respecting horizon-dependent
-        coverage. ``"shared"`` pools miscoverage across steps into one
-        trajectory per value column, which stays closer to the single-sequence
-        setting the underlying theory covers. Pooling never crosses value
-        columns under either value.
-
-        Declared here so every adapter in the family carries it and the
-        enclosing forecaster can read it as a contract rather than probing
-        for it. A subclass MUST still accept it in its own constructor and
-        forward it here: estimator parameter discovery reads the most derived
-        constructor only, so omitting it would drop the setting from
-        ``get_params``, make ``adapter__alpha_pooling`` unaddressable in a
-        search, and let ``clone`` silently reset a configured ``"shared"``.
-        ``check_conformal_adapter_alpha_pooling_forwarded`` in the systematic
-        adapter checks enforces this.
+        Which axis the effective level lives on: ``"per_step"`` tracks an
+        independent level per horizon step, ``"shared"`` pools miscoverage
+        across steps into one trajectory per value column. Pooling never
+        crosses value columns. See Notes for the subclass contract.
 
     Notes
     -----
@@ -347,6 +335,17 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     from the target coverage, ``observe`` advances it per newly observed
     row, ``predict`` returns the current level, and ``rewind`` rolls it
     back so backtests and production replay share one code path.
+
+    ``alpha_pooling`` is declared here so every adapter in the family
+    carries it and the enclosing forecaster can read it as a contract
+    rather than probing for it. A subclass must still accept it in its own
+    constructor and forward it here: estimator parameter discovery reads
+    the most derived constructor only, so omitting it would drop the
+    setting from ``get_params``, make ``adapter__alpha_pooling``
+    unaddressable in a search, and let ``clone`` silently reset a
+    configured ``"shared"``.
+    ``check_conformal_adapter_alpha_pooling_forwarded`` in the systematic
+    adapter checks enforces this.
 
     See Also
     --------

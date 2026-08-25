@@ -73,26 +73,10 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         governs the wrapped *point model* and the per-group state, not the
         calibration.
     calibration_strategy : {"local", "global"}, default="local"
-        Which conformity scores a value column's quantile is drawn from.
+        Which conformity scores a value column's quantile is drawn from:
         ``"local"`` (the default) uses that column's own scores, so each
-        entity is calibrated independently. ``"global"`` draws one quantile
-        from every column's scores together and rebuilds each column's bound
-        with its own scale, which lifts the ceiling on the coverage rates a
-        short series can express.
-
-        Note that ``panel_strategy`` and ``calibration_strategy`` both accept
-        ``"global"`` and neither implies the other. ``panel_strategy="global"``
-        shares the *point model* across entities; ``calibration_strategy="global"``
-        shares the *calibration*. The default pairing, a shared point model with
-        per-entity calibration, is a sensible and common configuration.
-
-        ``"global"`` requires a conformity scorer that declares the
-        ``supports_global_calibration`` tag, and raises at ``fit``
-        otherwise: pooling scores of
-        different magnitude or volatility produces a systematically
-        miscalibrated interval rather than a merely imprecise one. Whether
-        global calibration helps at all depends on how correlated your entities
-        are; see the interval-forecasting explanation page.
+        entity is calibrated independently; ``"global"`` pools every
+        column's scores into one quantile. See Notes.
 
     Attributes
     ----------
@@ -128,6 +112,22 @@ class SplitConformalForecaster(BaseIntervalForecaster):
     an asymmetric one. Higher coverage therefore needs a longer
     calibration window: 0.9 with absolute residuals needs 30 scores at
     the deepest step, 0.99 needs 300, and signed residuals double both.
+
+    **Calibration strategy.** ``"global"`` draws one quantile from every
+    value column's scores together and rebuilds each column's bound with
+    its own scale, which lifts the ceiling on the coverage rates a short
+    series can express. It requires a conformity scorer that declares the
+    ``supports_global_calibration`` tag and raises at ``fit`` otherwise:
+    pooling scores of different magnitude or volatility produces a
+    systematically miscalibrated interval rather than a merely imprecise
+    one. Whether it helps at all depends on how correlated the entities
+    are; see the interval-forecasting explanation page. Note that
+    ``panel_strategy`` and ``calibration_strategy`` both accept
+    ``"global"`` and neither implies the other: ``panel_strategy="global"``
+    shares the *point model* across entities,
+    ``calibration_strategy="global"`` shares the *calibration*. The default
+    pairing, a shared point model with per-entity calibration, is a
+    sensible and common configuration.
 
     **Replay paths.** The point forecaster is frozen for the whole
     replay, so no origin depends on having predicted at the one before
