@@ -1,6 +1,7 @@
 """Base class for conformal prediction conformity scorers."""
 
 import abc
+from typing import Literal
 
 import numpy as np
 import polars as pl
@@ -47,6 +48,17 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         # Conformity scorers typically don't aggregate results in the same way,
         # so they don't use aggregation_method, but they must implement fit.
         return super().fit(y_train, forecaster=forecaster, **params)
+
+    @staticmethod
+    def _global_calibration(calibration_strategy: Literal["local", "global"]) -> bool:
+        """Validate ``calibration_strategy`` and map it to the internal pooling switch.
+
+        An unrecognized value must raise rather than silently behave as
+        ``"local"``.
+        """
+        if calibration_strategy not in ("local", "global"):
+            raise ValueError(f"calibration_strategy must be 'local' or 'global', got {calibration_strategy!r}.")
+        return calibration_strategy == "global"
 
     @staticmethod
     def _compute_asymmetric_quantiles(
@@ -232,7 +244,7 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Transform conformity scores into prediction intervals.
 
@@ -247,11 +259,13 @@ class BaseConformityScorer(BaseScorer, metaclass=abc.ABCMeta):
         coverage_rate : float
             Target coverage probability.
 
-        global_calibration : bool, default=False
-            When True, draw one quantile from every value column's scores
-            together instead of one per column, and apply it to each column's
-            own reconstruction. Only meaningful for scorers declaring the
-            ``supports_global_calibration`` tag.
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``), each
+            applied on the column's own reconstruction. ``"global"`` is only
+            meaningful for scorers declaring the
+            ``supports_global_calibration`` tag. Matches
+            ``SplitConformalForecaster``'s parameter of the same name.
 
         Returns
         -------

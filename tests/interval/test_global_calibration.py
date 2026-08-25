@@ -167,6 +167,31 @@ class TestGlobalCalibration:
         assert local["e0__v"] != global_cal["e0__v"]
 
 
+class TestInverseScoreCalibrationStrategy:
+    """``inverse_score`` takes the forecaster's ``calibration_strategy`` vocabulary."""
+
+    def _fitted_scorer_and_frames(self):
+        dates = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(5)]
+        scores = pl.DataFrame({
+            "time": dates,
+            "e0__v": [-0.3, -0.1, 0.0, 0.1, 0.3],
+            "e1__v": [-1.2, -0.4, 0.0, 0.4, 1.2],
+        })
+        y_pred = pl.DataFrame({"time": [datetime(2020, 2, 1)], "e0__v": [1.0], "e1__v": [1.0]})
+        return NormalizedResidual().fit(scores), scores, y_pred
+
+    def test_local_and_global_draw_from_different_scores(self):
+        scorer, scores, y_pred = self._fitted_scorer_and_frames()
+        local = scorer.inverse_score(y_pred, scores, 0.6, calibration_strategy="local")
+        pooled = scorer.inverse_score(y_pred, scores, 0.6, calibration_strategy="global")
+        assert local["e0__v_lower_0.6"][0] != pooled["e0__v_lower_0.6"][0]
+
+    def test_unknown_strategy_raises_instead_of_falling_back_to_local(self):
+        scorer, scores, y_pred = self._fitted_scorer_and_frames()
+        with pytest.raises(ValueError, match="calibration_strategy"):
+            scorer.inverse_score(y_pred, scores, 0.6, calibration_strategy="pooled")
+
+
 class TestGlobalCalibrationWeights:
     """The construction that lets a similarity compose with global calibration."""
 

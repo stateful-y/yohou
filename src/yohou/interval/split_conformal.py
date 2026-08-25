@@ -1828,7 +1828,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                         y_pred=y_pred_step,
                         conformity_scores=conformity_scores_step,
                         coverage_rate=coverage_rate,
-                        global_calibration=self.calibration_strategy == "global",
+                        calibration_strategy=self.calibration_strategy,
                     ).drop("time")
 
                 rate_parts.append(y_pred_interval_rate_step)

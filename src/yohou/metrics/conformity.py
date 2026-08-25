@@ -2,6 +2,7 @@
 
 import abc
 import numbers
+from typing import Literal
 
 import numpy as np
 import polars as pl
@@ -119,7 +120,7 @@ class Residual(BaseConformityScorer):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Construct prediction intervals from conformity scores.
 
@@ -133,6 +134,9 @@ class Residual(BaseConformityScorer):
 
         coverage_rate : float
             Desired coverage probability (e.g., 0.9 for 90% intervals).
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``).
 
         Returns
         -------
@@ -150,7 +154,7 @@ class Residual(BaseConformityScorer):
         # Compute intervals. The quantiles arrive one per value column, in the
         # score frame's column order, which matches y_pred's positionally.
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, global_calibration=global_calibration
+            conformity_scores, coverage_rate, global_calibration=self._global_calibration(calibration_strategy)
         )
         lower_bound = y_pred.with_columns([
             pl.col(col) + q for col, q in zip(y_pred.columns, lower_quantiles, strict=True)
@@ -266,7 +270,7 @@ class AbsoluteResidual(Residual):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Construct symmetric prediction intervals from absolute conformity scores.
 
@@ -280,6 +284,9 @@ class AbsoluteResidual(Residual):
 
         coverage_rate : float
             Desired coverage probability.
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``).
 
         Returns
         -------
@@ -296,7 +303,7 @@ class AbsoluteResidual(Residual):
 
         # Compute symmetric intervals, one half-width per value column
         quantiles = self._compute_symmetric_quantiles(
-            conformity_scores, coverage_rate, global_calibration=global_calibration
+            conformity_scores, coverage_rate, global_calibration=self._global_calibration(calibration_strategy)
         )
         lower_bound = y_pred.with_columns([pl.col(col) - q for col, q in zip(y_pred.columns, quantiles, strict=True)])
         upper_bound = y_pred.with_columns([pl.col(col) + q for col, q in zip(y_pred.columns, quantiles, strict=True)])
@@ -414,7 +421,7 @@ class GammaResidual(BaseConformityScorer):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Construct prediction intervals from gamma conformity scores.
 
@@ -426,6 +433,9 @@ class GammaResidual(BaseConformityScorer):
             Computed conformity scores from calibration set, optionally with "time" column.
         coverage_rate : float
             Desired coverage probability (e.g., 0.9 for 90% intervals).
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``).
 
         Returns
         -------
@@ -442,7 +452,7 @@ class GammaResidual(BaseConformityScorer):
 
         # Compute quantiles, one pair per value column
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, global_calibration=global_calibration
+            conformity_scores, coverage_rate, global_calibration=self._global_calibration(calibration_strategy)
         )
 
         # Reconstruct y. The score is relative to the prediction, so each
@@ -771,7 +781,7 @@ class NormalizedResidual(BaseConformityScorer):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Construct prediction intervals, rescaling by each column's dispersion.
 
@@ -783,6 +793,9 @@ class NormalizedResidual(BaseConformityScorer):
             Normalised conformity scores from calibration.
         coverage_rate : float
             Desired coverage probability.
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``).
 
         Returns
         -------
@@ -797,7 +810,7 @@ class NormalizedResidual(BaseConformityScorer):
         )
 
         lower_quantiles, upper_quantiles = self._compute_asymmetric_quantiles(
-            conformity_scores, coverage_rate, global_calibration=global_calibration
+            conformity_scores, coverage_rate, global_calibration=self._global_calibration(calibration_strategy)
         )
         scales = self._scales_for(list(y_pred.columns))
 
@@ -890,7 +903,7 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
         y_pred: pl.DataFrame,
         conformity_scores: pl.DataFrame,
         coverage_rate: float,
-        global_calibration: bool = False,
+        calibration_strategy: Literal["local", "global"] = "local",
     ) -> pl.DataFrame:
         """Construct symmetric intervals, rescaling by each column's dispersion.
 
@@ -902,6 +915,9 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
             Absolute normalised conformity scores from calibration.
         coverage_rate : float
             Desired coverage probability.
+        calibration_strategy : {"local", "global"}, default="local"
+            Which columns' scores the quantile is drawn from: that column's
+            own (``"local"``) or every column's pooled (``"global"``).
 
         Returns
         -------
@@ -916,7 +932,7 @@ class AbsoluteNormalizedResidual(NormalizedResidual):
         )
 
         quantiles = self._compute_symmetric_quantiles(
-            conformity_scores, coverage_rate, global_calibration=global_calibration
+            conformity_scores, coverage_rate, global_calibration=self._global_calibration(calibration_strategy)
         )
         scales = self._scales_for(list(y_pred.columns))
 
