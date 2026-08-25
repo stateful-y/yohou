@@ -338,6 +338,8 @@ class BaseConformalAdapter(BaseEstimator, metaclass=abc.ABCMeta):
         constructor only, so omitting it would drop the setting from
         ``get_params``, make ``adapter__alpha_pooling`` unaddressable in a
         search, and let ``clone`` silently reset a configured ``"shared"``.
+        ``check_conformal_adapter_alpha_pooling_forwarded`` in the systematic
+        adapter checks enforces this.
 
     Notes
     -----

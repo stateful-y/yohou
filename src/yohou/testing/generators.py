@@ -29,6 +29,7 @@ from .common import (
 )
 from .composite import _yield_composite_reducer_checks
 from .conformal_adapter import (
+    check_conformal_adapter_alpha_pooling_forwarded,
     check_conformal_adapter_clipping,
     check_conformal_adapter_methods_call_check_is_fitted,
     check_conformal_adapter_observe_rewind_round_trip,
@@ -1537,9 +1538,10 @@ def _yield_yohou_conformal_adapter_checks(
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a conformal adapter.
 
-    Yields the conformal-adapter-family lifecycle checks (predict shape,
-    observe/rewind round-trip, update direction, clipping, and unfitted
-    guards) followed by the shared sklearn estimator-contract checks.
+    Yields the conformal-adapter-family lifecycle checks (alpha_pooling
+    forwarding, predict shape, observe/rewind round-trip, update direction,
+    clipping, and unfitted guards) followed by the shared sklearn
+    estimator-contract checks.
 
     Parameters
     ----------
@@ -1552,6 +1554,11 @@ def _yield_yohou_conformal_adapter_checks(
         ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
+    yield (
+        "check_conformal_adapter_alpha_pooling_forwarded",
+        check_conformal_adapter_alpha_pooling_forwarded,
+        {},
+    )
     yield "check_conformal_adapter_predict_returns_levels", check_conformal_adapter_predict_returns_levels, {}
     yield (
         "check_conformal_adapter_observe_rewind_round_trip",

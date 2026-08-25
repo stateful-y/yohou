@@ -52,10 +52,9 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         theory does cover. Pooling never crosses value columns under either
         value.
 
-        Declared on `BaseConformalAdapter` and forwarded from here. The
-        adapter stores it so the forecaster can read it; the update itself is
-        identical either way. Under ``"shared"`` the forecaster allocates one
-        adapter per value column and points every horizon-step key at it, so
+        The update itself is identical either way. Under ``"shared"`` the
+        forecaster allocates one adapter per value column and points every
+        horizon-step key at it, so
         ``adapters_["step_1"][col] is adapters_["step_2"][col]``.
     epsilon : float, default=0.0
         Clips the effective level to ``[epsilon, 1 - epsilon]``. The default
@@ -113,11 +112,7 @@ class AdaptiveConformalInference(BaseConformalAdapter):
         alpha_pooling: Literal["per_step", "shared"] = "per_step",
         epsilon: float = 0.0,
     ) -> None:
-        # alpha_pooling is declared on the base class but must stay in this
-        # signature: estimator parameter discovery reads the most derived
-        # constructor only, so dropping it here would remove the setting from
-        # get_params, make adapter__alpha_pooling unaddressable in a search,
-        # and let clone silently reset a configured "shared" to the default.
+        # alpha_pooling must stay in this signature: see BaseConformalAdapter.
         super().__init__(alpha_pooling=alpha_pooling)
         self.step_size = step_size
         self.epsilon = epsilon

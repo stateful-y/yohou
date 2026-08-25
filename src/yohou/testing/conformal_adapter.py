@@ -9,6 +9,7 @@ from sklearn.base import clone
 from sklearn.exceptions import NotFittedError
 
 __all__ = [
+    "check_conformal_adapter_alpha_pooling_forwarded",
     "check_conformal_adapter_clipping",
     "check_conformal_adapter_methods_call_check_is_fitted",
     "check_conformal_adapter_observe_rewind_round_trip",
@@ -29,6 +30,39 @@ def _asymmetric_errors(n: int) -> list[dict[float, object]]:
     """Build ``n`` per-row asymmetric ``(lower, upper)`` miscoverage dicts."""
     pattern = [(1.0, 0.0), (0.0, 1.0)]
     return [{rate: pattern[(i + j) % 2] for j, rate in enumerate(_RATES)} for i in range(n)]
+
+
+def check_conformal_adapter_alpha_pooling_forwarded(adapter) -> None:
+    """Check the constructor exposes ``alpha_pooling`` and ``clone`` preserves it.
+
+    ``alpha_pooling`` is declared on ``BaseConformalAdapter``, but estimator
+    parameter discovery reads the most derived constructor only. A subclass
+    that does not accept it in its own ``__init__`` and forward it to
+    ``super().__init__()`` silently drops the setting from ``get_params``,
+    makes ``adapter__alpha_pooling`` unaddressable in a search, and lets
+    ``clone`` reset a configured ``"shared"`` to the default.
+
+    Parameters
+    ----------
+    adapter : BaseConformalAdapter
+        Adapter instance.
+
+    Raises
+    ------
+    AssertionError
+        If ``alpha_pooling`` is missing from ``get_params``, or if cloning
+        does not preserve a non-default ``alpha_pooling="shared"``.
+
+    """
+    name = type(adapter).__name__
+
+    assert "alpha_pooling" in adapter.get_params(deep=False), (
+        f"{name}.__init__ must accept alpha_pooling and forward it to super().__init__(); "
+        f"without it the setting is missing from get_params and clone resets it"
+    )
+
+    configured = clone(adapter).set_params(alpha_pooling="shared")
+    assert clone(configured).alpha_pooling == "shared", f"{name}: clone reset alpha_pooling='shared' to the default"
 
 
 def check_conformal_adapter_predict_returns_levels(adapter) -> None:
