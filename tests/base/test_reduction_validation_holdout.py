@@ -1,0 +1,471 @@
+"""Tests for the validation_size holdout on reduction forecasters."""
+
+import importlib.util
+from datetime import datetime
+
+import numpy as np
+import polars as pl
+import pytest
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+from sklearn.linear_model import LinearRegression
+from sklearn.multioutput import MultiOutputRegressor
+
+from yohou.class_proba import ClassProbaReductionForecaster
+from yohou.point import PointReductionForecaster
+from yohou.preprocessing import LagTransformer, MinMaxScaler
+from yohou.weighting import ExponentialDecayWeighter
+
+LENGTH = 50
+HORIZON = 3
+VAL_SIZE = 10
+# Strict mode: the last head anchor plus the tail anchors whose full target
+# window fits, so VAL_SIZE - HORIZON + 1 evaluation rows.
+STRICT_ROWS = VAL_SIZE - HORIZON + 1
+
+
+class RecordingRegressor(RegressorMixin, BaseEstimator):
+    """Stub with an eval_set fit parameter that records what it received."""
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.received_eval_set_ = eval_set
+        self.received_sample_weight_ = sample_weight
+        self.train_X_ = X
+        self.train_y_ = y
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+class RecordingClassifier(ClassifierMixin, BaseEstimator):
+    """Classifier stub with an eval_set fit parameter."""
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.received_eval_set_ = eval_set
+        arr = np.asarray(y, dtype=float)
+        self.classes_ = np.unique(arr.ravel())
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        return self
+
+    def predict(self, X):
+        out = np.zeros((len(X), self._ncols))
+        return out.ravel() if self._ncols == 1 else out
+
+    def predict_proba(self, X):
+        return np.tile(np.full(len(self.classes_), 1.0 / len(self.classes_)), (len(X), 1))
+
+
+class EarlyStoppingStub(RegressorMixin, BaseEstimator):
+    """Fake boosting estimator: iterates, scores eval_set, stops on plateau.
+
+    Mimics the boosting-library contract yohou relies on: it consumes
+    ``eval_set`` in fit, stops once the validation loss stops improving, and
+    exposes the chosen iteration as ``best_iteration_``.
+    """
+
+    def __init__(self, max_iterations: int = 50, patience: int = 3):
+        self.max_iterations = max_iterations
+        self.patience = patience
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        self.best_iteration_ = self.max_iterations
+        if eval_set:
+            # Simulated validation loss: improves for five iterations, then
+            # plateaus, so a patience-based stop lands well below the maximum.
+            best, best_iter, stale = np.inf, 0, 0
+            for i in range(1, self.max_iterations + 1):
+                loss = max(0.5, 1.0 - 0.1 * i)
+                if loss < best:
+                    best, best_iter, stale = loss, i, 0
+                else:
+                    stale += 1
+                    if stale >= self.patience:
+                        break
+            self.best_iteration_ = best_iter
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+def _make_y(length: int = LENGTH) -> pl.DataFrame:
+    return pl.DataFrame({
+        "time": pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        ),
+        "value": [float(i) for i in range(length)],
+    })
+
+
+def _make_y_panel(length: int = LENGTH) -> pl.DataFrame:
+    return pl.DataFrame({
+        "time": pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, length - 1),
+            interval="1s",
+            eager=True,
+        ),
+        "a__value": [float(i) for i in range(length)],
+        "b__value": [float(2 * i) for i in range(length)],
+    })
+
+
+def _eval_pair(estimator):
+    (X_eval, y_eval) = estimator.received_eval_set_[0]
+    return X_eval, y_eval
+
+
+class TestDeliveryShape:
+    """Task 5.1: delivery shape per strategy, on standard and panel data."""
+
+    @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    def test_strategy_delivery(self, strategy, panel):
+        y = _make_y_panel() if panel else _make_y()
+        n_groups = 2 if panel else 1
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            reduction_strategy=strategy,
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+
+        estimators = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
+        expected_len = len(estimators) if strategy != "multi-output" else 1
+        assert len(estimators) == (HORIZON if strategy != "multi-output" else 1) == expected_len
+
+        for step, est in enumerate(estimators):
+            X_eval, y_eval = _eval_pair(est)
+            assert len(X_eval) == STRICT_ROWS * n_groups
+            assert list(X_eval.columns) == list(est.train_X_.columns)
+            if strategy == "multi-output":
+                # The global panel strategy stacks groups vertically, so the
+                # target keeps one column per (base target, step) pair.
+                assert y_eval.shape == (STRICT_ROWS * n_groups, HORIZON)
+            else:
+                # Per-step targets are a single column, delivered as a series
+                # to mirror training.
+                assert isinstance(y_eval, pl.Series)
+            if strategy == "dir-rec":
+                aug = [c for c in X_eval.columns if c.startswith("__aug_")]
+                assert len(aug) == step
+
+    def test_panel_tail_membership(self):
+        y = _make_y_panel()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, y_eval = _eval_pair(forecaster.estimator_)
+        # Per-group blocks stacked in groups_ order: group a rows, then group b.
+        assert len(X_eval) == 2 * STRICT_ROWS
+        # Group b values are 2x group a; targets of the b block must all be
+        # even and >= 2 * (head length), proving the tail split ran per group.
+        head_len = LENGTH - VAL_SIZE
+        b_block = y_eval[STRICT_ROWS:]
+        assert b_block.to_numpy().min() >= 2 * head_len
+
+    def test_step_columns_reach_eval_rows(self):
+        y = _make_y()
+        t_ext = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        step_cols = [c for c in X_eval.columns if "_step_" in c]
+        assert step_cols == [f"temp_step_{k}" for k in range(1, HORIZON + 1)]
+        assert list(X_eval.columns) == list(forecaster.estimator_.train_X_.columns)
+        assert X_eval.select(step_cols).null_count().sum_horizontal().item() == 0
+
+    def test_stride_does_not_thin_eval(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), validation_size=VAL_SIZE, training_stride=3
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        assert len(X_eval) == STRICT_ROWS
+        # Training rows, by contrast, are thinned by the stride.
+        assert len(forecaster.estimator_.train_X_) < LENGTH - VAL_SIZE - HORIZON
+
+    def test_nan_eval_row_dropped_with_validation_context(self):
+        values = [float(i) for i in range(LENGTH)]
+        values[LENGTH - 1] = float("nan")
+        y = _make_y().with_columns(pl.Series("value", values))
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), validation_size=VAL_SIZE, nan_handling="drop"
+        )
+        with pytest.warns(UserWarning, match=r"\(validation\)"):
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        assert len(X_eval) < STRICT_ROWS
+
+
+class TestBoundaryPolicy:
+    """Task 5.2: strict versus overlap anchor selection."""
+
+    def test_strict_no_training_target_overlap(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        est = forecaster.estimator_
+        head_len = LENGTH - VAL_SIZE
+        train_targets = np.asarray(est.train_y_, dtype=float)
+        eval_targets = np.asarray(_eval_pair(est)[1], dtype=float)
+        # Values equal their index, so target values identify target times.
+        assert train_targets.max() == head_len - 1
+        assert eval_targets.min() >= head_len
+        assert len(_eval_pair(est)[0]) == STRICT_ROWS
+
+    def test_overlap_adds_straddling_rows(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), validation_size=VAL_SIZE, validation_overlap=True
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        est = forecaster.estimator_
+        X_eval, y_eval = _eval_pair(est)
+        assert len(X_eval) == VAL_SIZE
+        head_len = LENGTH - VAL_SIZE
+        eval_targets = np.asarray(y_eval, dtype=float)
+        # The straddling anchors pull head time points into the eval targets.
+        assert eval_targets.min() < head_len
+
+    def test_overlap_allows_small_holdout(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), validation_size=2, validation_overlap=True
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        assert len(_eval_pair(forecaster.estimator_)[0]) == 2
+
+
+class TestLeakage:
+    """Task 5.3: nothing fitted sees the holdout tail."""
+
+    def test_transformer_statistics_head_only(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            validation_size=VAL_SIZE,
+            target_transformer=MinMaxScaler(),
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        head_ref = MinMaxScaler().fit(y[:-VAL_SIZE]).instance_
+        got = forecaster.target_transformer_.instance_
+        np.testing.assert_allclose(got.data_max_, head_ref.data_max_)
+        # The head maximum, not the full-series maximum.
+        assert got.data_max_[0] == float(LENGTH - VAL_SIZE - 1)
+
+    def test_sample_weights_head_only(self):
+        y = _make_y()
+        with_holdout = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            validation_size=VAL_SIZE,
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        )
+        with_holdout.fit(y=y, forecasting_horizon=HORIZON)
+        head_only = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        )
+        head_only.fit(y=y[:-VAL_SIZE], forecasting_horizon=HORIZON)
+        np.testing.assert_allclose(
+            with_holdout.estimator_.received_sample_weight_,
+            head_only.estimator_.received_sample_weight_,
+        )
+
+    def test_eval_lag_warmup_from_head(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            validation_size=VAL_SIZE,
+            actual_transformer=LagTransformer(lag=[1, 2]),
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        lag_cols = [c for c in X_eval.columns if "lag" in c]
+        assert lag_cols, X_eval.columns
+        # The first eval anchor is the last head row; its lag features reach
+        # further into the head and must be present, not null.
+        assert X_eval.select(lag_cols).null_count().sum_horizontal().item() == 0
+        head_len = LENGTH - VAL_SIZE
+        first_row_lags = sorted(X_eval[0].select(lag_cols).row(0))
+        assert first_row_lags == [float(head_len - 3), float(head_len - 2)]
+
+    def test_eval_rows_respect_vintage_availability(self):
+        y = _make_y()
+        boundary_idx = LENGTH - VAL_SIZE
+        times = y["time"]
+        # Vintage 1 published before the boundary, vintage 2 inside the tail.
+        v1_time = times[boundary_idx - 5]
+        v2_time = times[boundary_idx + 4]
+        horizon_times = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        X_forecast = pl.concat([
+            pl.DataFrame({
+                "vintage_time": [vt] * len(horizon_times),
+                "time": horizon_times,
+                "fx": [val] * len(horizon_times),
+            })
+            for vt, val in [(v1_time, 1.0), (v2_time, 2.0)]
+        ])
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, X_forecast=X_forecast)
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        col = "fx_step_1"
+        assert col in X_eval.columns
+        # Strict eval anchors are the last head row then the tail rows: anchor
+        # times boundary_idx - 1 .. boundary_idx + VAL_SIZE - HORIZON - 1.
+        anchor_indices = list(range(boundary_idx - 1, boundary_idx + VAL_SIZE - HORIZON))
+        expected = [2.0 if times[i] >= v2_time else 1.0 for i in anchor_indices]
+        assert X_eval[col].to_list() == expected
+
+
+class TestErrorContract:
+    """Task 5.4: the six ValueError cases."""
+
+    def test_estimator_without_eval_set(self):
+        with pytest.raises(ValueError, match="does not support an eval_set"):
+            PointReductionForecaster(estimator=LinearRegression(), validation_size=VAL_SIZE).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
+
+    def test_multioutput_wrapper_rejected(self):
+        with pytest.raises(ValueError, match="MultiOutputRegressor"):
+            PointReductionForecaster(estimator=MultiOutputRegressor(LinearRegression()), validation_size=VAL_SIZE).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
+
+    def test_head_too_small(self):
+        with pytest.raises(ValueError, match="head rows"):
+            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=LENGTH - 2).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
+
+    def test_strict_holdout_too_small(self):
+        with pytest.raises(ValueError, match="validation_overlap"):
+            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=HORIZON - 1).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
+
+    def test_tail_only_class(self):
+        base = ["lo", "hi"] * ((LENGTH - 5) // 2)
+        states = base + ["new"] * (LENGTH - len(base))
+        y = _make_y().with_columns(pl.Series("state", states)).drop("value")
+        with pytest.raises(ValueError, match="only inside the validation_size holdout"):
+            ClassProbaReductionForecaster(estimator=RecordingClassifier(), validation_size=VAL_SIZE).fit(
+                y=y, forecasting_horizon=2
+            )
+
+    def test_raw_eval_set_passthrough_conflict(self):
+        with pytest.raises(ValueError, match="raw eval_set"):
+            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE).fit(
+                y=_make_y(), forecasting_horizon=HORIZON, eval_set="raw"
+            )
+
+
+class TestDefaultNoOp:
+    """Task 5.5: validation_size=None is byte-equivalent to omitting it."""
+
+    def test_no_op_equivalence_and_no_holdout_code_paths(self, mocker):
+        y = _make_y()
+        spy_prepare = mocker.spy(PointReductionForecaster, "_prepare_validation_fit")
+        spy_build = mocker.spy(PointReductionForecaster, "_build_validation_eval_data")
+        spy_resolve = mocker.spy(PointReductionForecaster, "_resolve_eval_set_params")
+
+        explicit = PointReductionForecaster(estimator=LinearRegression(), validation_size=None)
+        explicit.fit(y=y, forecasting_horizon=HORIZON)
+        omitted = PointReductionForecaster(estimator=LinearRegression())
+        omitted.fit(y=y, forecasting_horizon=HORIZON)
+
+        assert spy_prepare.call_count == 0
+        assert spy_build.call_count == 0
+        assert spy_resolve.call_count == 0
+        assert explicit.predict().equals(omitted.predict())
+
+
+class TestPostFitState:
+    """Task 5.6: observation state ends at the end of all provided data."""
+
+    @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
+    def test_predict_starts_after_all_data(self, panel):
+        y = _make_y_panel() if panel else _make_y()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        last_time = y["time"][-1]
+        observed = forecaster.observed_time_
+        if panel:
+            assert all(t == last_time for t in observed.values())
+        else:
+            assert observed == last_time
+        prediction = forecaster.predict()
+        assert prediction["time"].min() > last_time
+
+
+class TestEarlyStopping:
+    """Tasks 5.7 and 5.8: stopping behavior, faked and real."""
+
+    def test_fake_estimator_stops_below_maximum(self):
+        forecaster = PointReductionForecaster(
+            estimator=EarlyStoppingStub(max_iterations=50, patience=3),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.estimator_.best_iteration_ < 50
+        assert forecaster.estimator_.best_iteration_ == 5
+
+    def test_fake_estimator_without_holdout_runs_to_maximum(self):
+        forecaster = PointReductionForecaster(estimator=EarlyStoppingStub(max_iterations=50))
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.estimator_.best_iteration_ == 50
+
+    @pytest.mark.skipif(importlib.util.find_spec("lightgbm") is None, reason="lightgbm not installed")
+    def test_lightgbm_early_stopping_triggers(self):
+        from lightgbm import LGBMRegressor
+
+        rng = np.random.default_rng(0)
+        length = 400
+        y = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1),
+                end=datetime(2021, 1, 1, 0, 6, length - 1 - 360),
+                interval="1s",
+                eager=True,
+            ),
+            "value": (np.sin(np.arange(length) / 5.0) + rng.normal(0, 0.05, length)).tolist(),
+        })
+        estimator = LGBMRegressor(
+            n_estimators=300,
+            early_stopping_round=10,
+            min_child_samples=5,
+            verbose=-1,
+        )
+        forecaster = PointReductionForecaster(
+            estimator=estimator,
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
+            validation_size=60,
+        )
+        forecaster.fit(y=y, forecasting_horizon=2)
+        for est in forecaster.estimator_:
+            assert est.best_iteration_ is not None
+            assert est.best_iteration_ < 300

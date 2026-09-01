@@ -83,6 +83,30 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         keeps every instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
+    validation_size : int or None, default=None
+        Number of trailing time steps (per group on panel data) to hold out
+        from classifier training and deliver to the wrapped estimator's
+        ``fit`` as ``eval_set``, enabling estimator-side early stopping
+        (LightGBM, XGBoost, CatBoost). Class discovery and label encoding
+        use the remaining head only, so a class occurring only inside the
+        tail raises ``ValueError``. Early stopping itself is configured on
+        the estimator. Fitting also raises ``ValueError`` when the
+        estimator's ``fit`` accepts neither ``eval_set`` nor ``**kwargs``,
+        the estimator is a ``sklearn.multioutput`` wrapper, the head left
+        after the split cannot build one training row, ``validation_size``
+        is smaller than ``forecasting_horizon`` while
+        ``validation_overlap=False``, or a raw ``eval_set`` is also passed
+        through fit ``**params``. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the full semantics.
+    validation_overlap : bool, default=False
+        Only used when ``validation_size`` is set. By default only rows
+        whose entire target window lies inside the held-out tail are
+        evaluated (``validation_size - forecasting_horizon + 1`` rows).
+        When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
+        target windows straddle the split are also evaluated, yielding
+        ``validation_size`` rows; those rows score some time points the
+        model also trained on.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -180,6 +204,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
+        validation_size: int | None = None,
+        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -198,6 +224,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             training_stride=training_stride,
+            validation_size=validation_size,
+            validation_overlap=validation_overlap,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
@@ -252,16 +280,24 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
-        # Discover classes from y before _pre_fit (which may transform y)
+        y_fit, X_fit = y, X_actual
+        y_tail: pl.DataFrame | None = None
+        X_tail: pl.DataFrame | None = None
+        if self.validation_size is not None:
+            y_fit, X_fit, y_tail, X_tail = self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
+
+        # Discover classes from the training head before _pre_fit (which may
+        # transform y). The validation tail never contributes classes: the
+        # encoder is fitted on the head only, and a tail-only class raises.
         # Use unprefixed (base) column names so panel groups share class labels.
         self.classes_: dict[str, list[str]] = {}
         self.n_classes_: dict[str, int] = {}
         self.label_to_code_: dict[str, dict[str, int]] = {}
-        for col in y.columns:
+        for col in y_fit.columns:
             if col == "time":
                 continue
             base_col = col.split("__", 1)[1] if "__" in col else col
-            unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
+            unique_vals = sorted(y_fit[col].drop_nulls().unique().cast(pl.String).to_list())
             if base_col in self.classes_:
                 merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
                 self.classes_[base_col] = merged
@@ -272,24 +308,65 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             self.label_to_code_[base_col] = {label: i for i, label in enumerate(labels)}
 
         # Encode target columns to integer codes for tabularization
-        y_encoded = self._encode_target(y)
+        y_encoded = self._encode_target(y_fit)
+        y_tail_encoded: pl.DataFrame | None = None
+        if y_tail is not None:
+            self._check_tail_classes(y_tail)
+            y_tail_encoded = self._encode_target(y_tail)
 
         y_t, X_t = self._pre_fit(
             y=y_encoded,
-            X_actual=X_actual,
+            X_actual=X_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        eval_data = None
+        if y_tail_encoded is not None:
+            eval_data = self._build_validation_eval_data(
+                y_t, X_t, y_tail_encoded, X_tail, forecasting_horizon, X_future, X_forecast
+            )
 
         self.estimator_ = self._estimator_fit_one(
             y_t,
             X_t,
             forecasting_horizon,
             estimator_fit_params=params,
+            eval_data=eval_data,
         )
 
         return self
+
+    def _check_tail_classes(self, y_tail: pl.DataFrame) -> None:
+        """Reject validation-tail classes the head-fitted encoder never saw.
+
+        Parameters
+        ----------
+        y_tail : pl.DataFrame
+            The held-out raw (unencoded) target rows.
+
+        Raises
+        ------
+        ValueError
+            If any target class occurs only inside the validation tail.
+
+        """
+        for col in y_tail.columns:
+            if col == "time":
+                continue
+            base_col = col.split("__", 1)[1] if "__" in col else col
+            known = set(self.classes_.get(base_col, []))
+            tail_vals = set(y_tail[col].drop_nulls().unique().cast(pl.String).to_list())
+            unseen = sorted(tail_vals - known)
+            if unseen:
+                raise ValueError(
+                    f"Target column {col!r} contains class(es) {unseen} that occur "
+                    f"only inside the validation_size holdout tail. The label "
+                    f"encoder is fitted on the training head only, so every class "
+                    f"must appear before the holdout. Reduce validation_size or "
+                    f"provide more data."
+                )
 
     def _encode_target(self, y: pl.DataFrame) -> pl.DataFrame:
         """Encode categorical target columns to float codes.

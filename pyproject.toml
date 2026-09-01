@@ -136,6 +136,7 @@ examples = [
     # CVEs back in the lockfile of every project that generates examples.
     "marimo>=0.23.16",
     "catboost>=1.2",
+    "lightgbm>=4.0",
     "statsmodels>=0.14",
 ]
 

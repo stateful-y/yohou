@@ -54,6 +54,33 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         keeps every instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
+    validation_size : int or None, default=None
+        Number of trailing time steps (per group on panel data) to hold out
+        from estimator training and deliver to the wrapped estimator's
+        ``fit`` as ``eval_set``, enabling estimator-side early stopping
+        (LightGBM, XGBoost, CatBoost). Early stopping itself is configured
+        on the estimator; because those libraries do not refit after
+        stopping, the tail's information is spent on the stopping decision
+        (refit with ``validation_size=None`` and the discovered iteration
+        count to train on everything). Inside a search CV each fold holds
+        out the tail of its own training window. Fitting raises
+        ``ValueError`` when the estimator's ``fit`` accepts neither
+        ``eval_set`` nor ``**kwargs``, the estimator is a
+        ``sklearn.multioutput`` wrapper, the head left after the split
+        cannot build one training row, ``validation_size`` is smaller than
+        ``forecasting_horizon`` while ``validation_overlap=False``, or a raw
+        ``eval_set`` is also passed through fit ``**params``. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the full semantics.
+    validation_overlap : bool, default=False
+        Only used when ``validation_size`` is set. By default only rows
+        whose entire target window lies inside the held-out tail are
+        evaluated (``validation_size - forecasting_horizon + 1`` rows).
+        When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
+        target windows straddle the split are also evaluated, yielding
+        ``validation_size`` rows; those rows score some time points the
+        model also trained on, trading evaluation purity for data on short
+        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -192,6 +219,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
+        validation_size: int | None = None,
+        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -210,6 +239,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             training_stride=training_stride,
+            validation_size=validation_size,
+            validation_overlap=validation_overlap,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
@@ -273,19 +304,32 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
+        y_fit, X_fit = y, X_actual
+        y_tail: pl.DataFrame | None = None
+        X_tail: pl.DataFrame | None = None
+        if self.validation_size is not None:
+            y_fit, X_fit, y_tail, X_tail = self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
+
         y_t, X_t = self._pre_fit(
-            y=y,
-            X_actual=X_actual,
+            y=y_fit,
+            X_actual=X_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        eval_data = None
+        if y_tail is not None:
+            eval_data = self._build_validation_eval_data(
+                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast
+            )
 
         self.estimator_ = self._estimator_fit_one(
             y_t,
             X_t,
             forecasting_horizon,
             estimator_fit_params=params,
+            eval_data=eval_data,
         )
 
         return self

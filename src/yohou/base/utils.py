@@ -503,6 +503,44 @@ def _observe_transformers_one(
         Transformed new observations.
 
     """
+    _, X_t = _observe_transformers_capture(y, X_actual, target_transformer, actual_transformer, target_as_feature)
+    return X_t
+
+
+def _observe_transformers_capture(
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None,
+    target_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
+    target_as_feature: str | None,
+) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+    """Observe new data through transformers, returning both transformed frames.
+
+    Same state effects as `_observe_transformers_one`, but also returns the
+    transformed target rows, which the validation-holdout path needs to
+    assemble evaluation targets.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        New target observations.
+    X_actual : pl.DataFrame or None
+        New features.
+    target_transformer : BaseActualTransformer or None
+        Target transformer to observe.
+    actual_transformer : BaseActualTransformer or None
+        Actual transformer to observe.
+    target_as_feature : {"transformed", "raw"} or None
+        Controls whether the target is included as a feature.
+
+    Returns
+    -------
+    y_t : pl.DataFrame
+        Transformed new target observations.
+    X_t : pl.DataFrame or None
+        Transformed new feature observations.
+
+    """
     y_t = y
     if target_transformer is not None:
         y_t = target_transformer.observe_transform(y)
@@ -513,7 +551,7 @@ def _observe_transformers_one(
     if actual_transformer is not None and X_feat_in is not None:
         X_t = actual_transformer.observe_transform(X_feat_in)
 
-    return X_t
+    return y_t, X_t
 
 
 def _rewind_transformers_one(
