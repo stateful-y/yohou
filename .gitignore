@@ -175,6 +175,7 @@ llm-instructions/
 # Local yohou authoring skills kept out of git.
 .claude/skills/create-yohou-*/
 .claude/skills/update-yohou-docs/
+.claude/skills/pr-review/
 
 # The Copilot-side skills mirror .claude/skills byte for byte. Tracking both
 # doubles every skill edit and its review. .claude/skills is the source of
