@@ -1493,6 +1493,8 @@ def check_observe_auto_rederives_step_columns(
     X_actual_observe: pl.DataFrame | None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
+    y_baseline: pl.DataFrame | None = None,
+    X_actual_baseline: pl.DataFrame | None = None,
 ) -> None:
     """Check observe() re-derives step columns from stored raws.
 
@@ -1511,12 +1513,26 @@ def check_observe_auto_rederives_step_columns(
         Optional X_future override for observe.
     X_forecast : pl.DataFrame or None
         Optional X_forecast override for observe.
+    y_baseline : pl.DataFrame or None
+        Historical window immediately preceding ``y_observe`` (typically the
+        training series). When provided, the forecaster is rewound to its end
+        first, making this check independent of state left behind by earlier
+        mutating checks in the suite. Earlier checks advance the shared
+        instance past ``y_observe``, and stateful transformers reject the
+        resulting overlap while transformer-less forecasters silently accept
+        it, so without the rewind this check only ever ran on corrupted state.
+    X_actual_baseline : pl.DataFrame or None
+        Features aligned with ``y_baseline``.
 
     """
     # Verify step columns exist before observe
     assert len(forecaster._step_column_names_) > 0, "Forecaster must have non-empty _step_column_names_ before observe"
 
     step_cols_before = forecaster._step_column_names_.copy()
+
+    # Restore a known observation state contiguous with y_observe
+    if y_baseline is not None:
+        forecaster.rewind(y_baseline, X_actual_baseline, X_future=X_future, X_forecast=X_forecast)
 
     # Observe
     forecaster.observe(y_observe, X_actual_observe, X_future=X_future, X_forecast=X_forecast)

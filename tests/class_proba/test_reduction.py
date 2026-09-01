@@ -9,6 +9,7 @@ from sklearn.tree import DecisionTreeClassifier
 
 from conftest import run_checks
 from yohou.class_proba import ClassProbaReductionForecaster
+from yohou.preprocessing import LagTransformer
 from yohou.testing import _yield_yohou_forecaster_checks
 
 
@@ -60,6 +61,10 @@ class TestClassProbaReductionSystematic:
             ClassProbaReductionForecaster(
                 estimator=DecisionTreeClassifier(random_state=42),
                 reduction_strategy="direct",
+            ),
+            ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
         ],
     )

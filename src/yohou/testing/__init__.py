@@ -147,7 +147,13 @@ from .panel import (
     check_panel_single_group,
 )
 from .point import check_point_prediction_structure, check_point_prediction_types
-from .reduction import check_estimator_parameter, check_reduction_strategy
+from .reduction import (
+    check_estimator_parameter,
+    check_reduction_strategy,
+    check_validation_holdout_default_noop,
+    check_validation_holdout_fit,
+    check_validation_holdout_parameters,
+)
 from .scorer import (
     check_scorer_aggregation_methods,
     check_scorer_component_subselection,
@@ -304,6 +310,9 @@ __all__ = [
     "check_per_column_calibration_independence",
     "check_estimator_parameter",
     "check_reduction_strategy",
+    "check_validation_holdout_default_noop",
+    "check_validation_holdout_fit",
+    "check_validation_holdout_parameters",
     "check_panel_data",
     "check_panel_invalid_group_raises",
     "check_panel_single_group",

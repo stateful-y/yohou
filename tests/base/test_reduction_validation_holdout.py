@@ -1,7 +1,7 @@
 """Tests for the validation_size holdout on reduction forecasters."""
 
 import importlib.util
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -11,8 +11,15 @@ from sklearn.linear_model import LinearRegression
 from sklearn.multioutput import MultiOutputRegressor
 
 from yohou.class_proba import ClassProbaReductionForecaster
+from yohou.compose import FeaturePipeline
 from yohou.point import PointReductionForecaster
-from yohou.preprocessing import LagTransformer, MinMaxScaler
+from yohou.preprocessing import (
+    ExponentialMovingAverage,
+    LagTransformer,
+    MinMaxScaler,
+    RollingStatisticsTransformer,
+)
+from yohou.stationarity import SeasonalDifferencing
 from yohou.weighting import ExponentialDecayWeighter
 
 LENGTH = 50
@@ -96,26 +103,25 @@ class EarlyStoppingStub(RegressorMixin, BaseEstimator):
         return out.ravel() if self._ncols == 1 else out
 
 
+def _times(length: int) -> pl.Series:
+    return pl.datetime_range(
+        start=datetime(2021, 1, 1),
+        end=datetime(2021, 1, 1) + timedelta(seconds=length - 1),
+        interval="1s",
+        eager=True,
+    )
+
+
 def _make_y(length: int = LENGTH) -> pl.DataFrame:
     return pl.DataFrame({
-        "time": pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, length - 1),
-            interval="1s",
-            eager=True,
-        ),
+        "time": _times(length),
         "value": [float(i) for i in range(length)],
     })
 
 
 def _make_y_panel(length: int = LENGTH) -> pl.DataFrame:
     return pl.DataFrame({
-        "time": pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, length - 1),
-            interval="1s",
-            eager=True,
-        ),
+        "time": _times(length),
         "a__value": [float(i) for i in range(length)],
         "b__value": [float(2 * i) for i in range(length)],
     })
@@ -469,3 +475,300 @@ class TestEarlyStopping:
         for est in forecaster.estimator_:
             assert est.best_iteration_ is not None
             assert est.best_iteration_ < 300
+
+
+class TestEquivalenceOracles:
+    """Strong oracles for the evaluation-row construction.
+
+    With data-independent transformers, the evaluation rows must equal the
+    last rows of a no-holdout fit's tabularization on the full series
+    (oracle A). With any data-dependent or stateful transformer, fitting with
+    a holdout must be indistinguishable from fitting on the head and then
+    observing the tail (oracle B).
+    """
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {},
+            {"actual_transformer": LagTransformer(lag=[1, 3])},
+            {"reduction_strategy": "direct", "actual_transformer": LagTransformer(lag=[1, 2])},
+        ],
+        ids=["plain", "lags", "direct-lags"],
+    )
+    def test_eval_rows_equal_full_fit_tail(self, kwargs):
+        y = _make_y()
+        holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE, **kwargs)
+        holdout.fit(y=y, forecasting_horizon=HORIZON)
+        full = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        full.fit(y=y, forecasting_horizon=HORIZON)
+
+        holdout_ests = holdout.estimator_ if isinstance(holdout.estimator_, list) else [holdout.estimator_]
+        full_ests = full.estimator_ if isinstance(full.estimator_, list) else [full.estimator_]
+        for est_holdout, est_full in zip(holdout_ests, full_ests, strict=True):
+            X_eval, y_eval = _eval_pair(est_holdout)
+            pl.testing.assert_frame_equal(X_eval, est_full.train_X_[-STRICT_ROWS:])
+            y_eval_frame = y_eval.to_frame() if isinstance(y_eval, pl.Series) else y_eval
+            y_full = est_full.train_y_
+            y_full_frame = y_full.to_frame() if isinstance(y_full, pl.Series) else y_full
+            pl.testing.assert_frame_equal(y_eval_frame, y_full_frame[-STRICT_ROWS:])
+
+    def test_eval_rows_equal_full_fit_tail_with_x_future(self):
+        y = _make_y()
+        t_ext = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        holdout.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
+        full = PointReductionForecaster(estimator=RecordingRegressor())
+        full.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
+        X_eval, _ = _eval_pair(holdout.estimator_)
+        pl.testing.assert_frame_equal(X_eval, full.estimator_.train_X_[-STRICT_ROWS:])
+
+    def test_eval_rows_equal_full_fit_tail_panel(self):
+        y = _make_y_panel()
+        holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        holdout.fit(y=y, forecasting_horizon=HORIZON)
+        full = PointReductionForecaster(estimator=RecordingRegressor())
+        full.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, _ = _eval_pair(holdout.estimator_)
+        X_full = full.estimator_.train_X_
+        # Full-fit tabularization stacks whole per-group blocks, so the tail
+        # comparison must slice per group.
+        block = LENGTH - HORIZON
+        pl.testing.assert_frame_equal(X_eval[:STRICT_ROWS], X_full[block - STRICT_ROWS : block])
+        pl.testing.assert_frame_equal(X_eval[STRICT_ROWS:], X_full[2 * block - STRICT_ROWS :])
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"target_transformer": MinMaxScaler()},
+            {"target_transformer": SeasonalDifferencing(seasonality=4)},
+            {"actual_transformer": ExponentialMovingAverage(alpha=0.5)},
+            {
+                "target_transformer": MinMaxScaler(),
+                "actual_transformer": FeaturePipeline(
+                    steps=[
+                        ("lag", LagTransformer(lag=[1, 2])),
+                        ("roll", RollingStatisticsTransformer(window_size=3)),
+                    ]
+                ),
+            },
+        ],
+        ids=["scaler", "seasonal-diff", "ema", "scaler+pipeline"],
+    )
+    def test_validation_fit_equals_fit_then_observe(self, kwargs):
+        y = _make_y()
+        holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE, **kwargs)
+        holdout.fit(y=y, forecasting_horizon=HORIZON)
+
+        reference = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        reference.fit(y=y[:-VAL_SIZE], forecasting_horizon=HORIZON)
+        reference.observe(y[-VAL_SIZE:])
+
+        assert holdout.observed_time_ == reference.observed_time_
+        if holdout._y_observed is None:
+            assert reference._y_observed is None
+        else:
+            pl.testing.assert_frame_equal(holdout._y_observed, reference._y_observed)
+        pl.testing.assert_frame_equal(holdout.predict(), reference.predict())
+
+    def test_validation_fit_equals_fit_then_observe_panel(self):
+        y = _make_y_panel()
+        kwargs = {"target_transformer": MinMaxScaler(), "actual_transformer": LagTransformer(lag=[1, 2])}
+        holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE, **kwargs)
+        holdout.fit(y=y, forecasting_horizon=HORIZON)
+
+        reference = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        reference.fit(y=y[:-VAL_SIZE], forecasting_horizon=HORIZON)
+        reference.observe(y[-VAL_SIZE:])
+
+        assert holdout.observed_time_ == reference.observed_time_
+        for group in holdout.groups_:
+            pl.testing.assert_frame_equal(holdout._y_observed[group], reference._y_observed[group])
+        pl.testing.assert_frame_equal(holdout.predict(), reference.predict())
+
+
+class TestTransformerMatrix:
+    """Specific configurations across the transformer and option matrix."""
+
+    def test_matched_alignment_filters_eval_features(self):
+        y = _make_y()
+        t_ext = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            reduction_strategy="direct",
+            step_feature_alignment="matched",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
+        for step, est in enumerate(forecaster.estimator_, start=1):
+            X_eval, _ = _eval_pair(est)
+            step_cols = [c for c in X_eval.columns if "_step_" in c]
+            assert step_cols == [f"temp_step_{step}"]
+            assert list(X_eval.columns) == list(est.train_X_.columns)
+
+    @pytest.mark.parametrize("target_as_feature", ["raw", None], ids=["raw", "none"])
+    def test_target_as_feature_variants(self, target_as_feature):
+        y = _make_y()
+        X_actual = _make_y().rename({"value": "exo"})
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            target_as_feature=target_as_feature,
+            actual_transformer=LagTransformer(lag=[1, 2]),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, X_actual=X_actual, forecasting_horizon=HORIZON)
+        X_eval, y_eval = _eval_pair(forecaster.estimator_)
+        assert len(X_eval) == STRICT_ROWS
+        assert list(X_eval.columns) == list(forecaster.estimator_.train_X_.columns)
+
+    def test_panel_multivariate_strategy(self):
+        y = _make_y_panel()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            panel_strategy="multivariate",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, y_eval = _eval_pair(forecaster.estimator_)
+        # Multivariate treats the panel as one wide series: no group stacking,
+        # one eval block, H steps for each of the two targets.
+        assert forecaster.groups_ is None
+        assert len(X_eval) == STRICT_ROWS
+        assert y_eval.shape == (STRICT_ROWS, HORIZON * 2)
+
+    def test_multivariate_direct_delivers_two_column_targets(self):
+        y = _make_y().with_columns((pl.col("value") * 2.0).alias("other"))
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            reduction_strategy="direct",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        for est in forecaster.estimator_:
+            _, y_eval = _eval_pair(est)
+            assert isinstance(y_eval, pl.DataFrame)
+            assert y_eval.shape == (STRICT_ROWS, 2)
+
+    def test_dir_rec_panel_with_x_future(self):
+        y = _make_y_panel()
+        t_ext = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            reduction_strategy="dir-rec",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
+        for step, est in enumerate(forecaster.estimator_):
+            X_eval, _ = _eval_pair(est)
+            assert len(X_eval) == 2 * STRICT_ROWS
+            assert list(X_eval.columns) == list(est.train_X_.columns)
+            aug = [c for c in X_eval.columns if c.startswith("__aug_")]
+            assert len(aug) == step
+
+    def test_class_proba_panel(self):
+        labels = ["lo", "hi"]
+        y = pl.DataFrame({
+            "time": _make_y()["time"],
+            "a__state": [labels[i % 2] for i in range(LENGTH)],
+            "b__state": [labels[(i + 1) % 2] for i in range(LENGTH)],
+        })
+        forecaster = ClassProbaReductionForecaster(
+            estimator=RecordingClassifier(), validation_size=VAL_SIZE, reduction_strategy="direct"
+        )
+        forecaster.fit(y=y, forecasting_horizon=2)
+        for est in forecaster.estimator_:
+            X_eval, _ = _eval_pair(est)
+            assert len(X_eval) == 2 * (VAL_SIZE - 2 + 1)
+
+
+class TestLifecycleComposition:
+    """The holdout composes with the rest of the estimator lifecycle."""
+
+    def test_observe_after_validation_fit(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            target_transformer=MinMaxScaler(),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        # Genuinely new data after the tail must observe cleanly: the tail was
+        # observed exactly once during fit, so there is no overlap.
+        extension = pl.DataFrame({
+            "time": pl.datetime_range(
+                start=datetime(2021, 1, 1, 0, 0, LENGTH),
+                end=datetime(2021, 1, 1, 0, 0, LENGTH + 4),
+                interval="1s",
+                eager=True,
+            ),
+            "value": [float(LENGTH + i) for i in range(5)],
+        })
+        forecaster.observe(extension)
+        assert forecaster.observed_time_ == extension["time"][-1]
+
+    def test_rewind_after_validation_fit(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            target_transformer=MinMaxScaler(),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        # The seam a future calibration-reuse wrapper needs: rewinding to the
+        # head/tail boundary after a validation fit.
+        forecaster.rewind(y[:-VAL_SIZE])
+        assert forecaster.observed_time_ == y["time"][LENGTH - VAL_SIZE - 1]
+
+    def test_grid_search_composes_without_routing(self):
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+
+        y = _make_y(length=120)
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        search = GridSearchCV(
+            forecaster=forecaster,
+            param_grid={"reduction_strategy": ["multi-output", "direct"]},
+            scoring=MeanAbsoluteError(),
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
+        )
+        search.fit(y, forecasting_horizon=HORIZON)
+        best = search.best_forecaster_
+        estimators = best.estimator_ if isinstance(best.estimator_, list) else [best.estimator_]
+        assert all(est.received_eval_set_ is not None for est in estimators)
+
+    def test_split_conformal_wraps_validation_fit(self):
+        from yohou.interval import SplitConformalForecaster
+
+        y = _make_y(length=120)
+        forecaster = SplitConformalForecaster(
+            point_forecaster=PointReductionForecaster(
+                estimator=RecordingRegressor(),
+                actual_transformer=LagTransformer(lag=[1, 2]),
+                validation_size=VAL_SIZE,
+            ),
+            calibration_size=30,
+        )
+        forecaster.fit(y=y, forecasting_horizon=2)
+        intervals = forecaster.predict_interval()
+        assert len(intervals) > 0
+        # The inner fit held out its own tail from the outer training split.
+        inner = forecaster.point_forecaster_
+        assert inner.estimator_.received_eval_set_ is not None

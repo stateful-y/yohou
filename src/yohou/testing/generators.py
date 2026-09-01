@@ -78,7 +78,13 @@ from .panel import (
     check_panel_single_group,
 )
 from .point import check_point_prediction_structure, check_point_prediction_types
-from .reduction import check_estimator_parameter, check_reduction_strategy
+from .reduction import (
+    check_estimator_parameter,
+    check_reduction_strategy,
+    check_validation_holdout_default_noop,
+    check_validation_holdout_fit,
+    check_validation_holdout_parameters,
+)
 from .scorer import (
     check_scorer_aggregation_methods,
     check_scorer_coverage_rate_subselection,
@@ -680,6 +686,23 @@ def _yield_yohou_forecaster_checks(
         yield "check_estimator_parameter", check_estimator_parameter, {}
         yield "check_reduction_strategy", check_reduction_strategy, {}
 
+        # Validation-holdout checks: only for families that expose the
+        # parameter (interval reduction does not) and whose estimator
+        # contract the recording stubs can satisfy.
+        forecaster_type = tags.get("forecaster_type") or frozenset()
+        if "validation_size" in forecaster.get_params(deep=False) and (
+            "point" in forecaster_type or "class_proba" in forecaster_type
+        ):
+            holdout_kwargs = {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            }
+            yield "check_validation_holdout_parameters", check_validation_holdout_parameters, {}
+            yield "check_validation_holdout_fit", check_validation_holdout_fit, holdout_kwargs
+            yield "check_validation_holdout_default_noop", check_validation_holdout_default_noop, holdout_kwargs
+
     # Cross-learning checks (for panel data)
     if tags.get("supports_panel_data", False):
         # Need to check if we have panel data available
@@ -809,6 +832,12 @@ def _yield_yohou_forecaster_checks(
                     "X_actual_observe": X_actual_update,
                     "X_future": X_future_test,
                     "X_forecast": X_forecast_test,
+                    # Earlier update/reset checks advance the shared instance
+                    # past y_update; the baseline rewind makes this check
+                    # sequence-independent (stateful transformers reject the
+                    # overlap that transformer-less forecasters silently accept).
+                    "y_baseline": y_train,
+                    "X_actual_baseline": X_actual_train,
                 },
             )
 
