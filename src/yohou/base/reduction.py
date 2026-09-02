@@ -20,8 +20,6 @@ from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
-from yohou.base.panel import BasePanelForecaster
-from yohou.base.standard import BaseStandardForecaster
 from yohou.base.step_transformer import BaseStepTransformer, _is_step_indexed, _step_index
 from yohou.base.transformer import BaseActualTransformer
 from yohou.base.utils import _derive_step_columns, _observe_transformers_one
@@ -250,7 +248,9 @@ default="first_step"
     - ``validation_size`` is smaller than ``forecasting_horizon`` while
       ``validation_overlap=False``;
     - a class_proba target class appears only inside the tail;
-    - a raw ``eval_set`` is also passed through fit ``**params``.
+    - a raw ``eval_set`` is also passed through fit ``**params``;
+    - the transformed head is too short to anchor the evaluation window
+      (a transformer consumed the boundary rows as warmup).
 
     See Also
     --------
@@ -264,8 +264,11 @@ default="first_step"
     estimator_: Any
 
     # Declared, not assigned: the machinery below reads these, but only the
-    # families that expose them as constructor parameters (point, class_proba)
-    # assign them, so a family without them carries no attribute at all.
+    # families that expose them as constructor parameters (point, class_proba,
+    # interval) assign them, so a family without them carries no attribute at
+    # all. Declared per family, never here: BaseForecaster merges
+    # _parameter_constraints across the MRO and a subclass cannot remove an
+    # inherited key.
     validation_size: int | None
     validation_overlap: bool
 
@@ -845,7 +848,10 @@ default="first_step"
         context: str = "",
         is_validation: bool = False,
     ) -> tuple[pl.DataFrame, pl.DataFrame | pl.Series, np.ndarray | None]:
-        """Remove rows containing NaN/null from tabularized training data.
+        """Remove rows containing NaN/null from a tabularized dataset.
+
+        Applies to training rows and, via ``is_validation``, to the
+        validation holdout's evaluation rows.
 
         When ``nan_handling="drop"``, removes any row where X_tab or y_tab
         contains at least one null value. Filters sample_weight in lockstep.
@@ -1169,8 +1175,9 @@ default="first_step"
             when weights apply).
 
         """
-        self._check_eval_set_support(estimator)
-
+        # eval_set support (final step, passthrough, wrapper) was checked by
+        # `_prepare_validation_fit` before any state changed; eval_data is only
+        # ever non-None downstream of it.
         final_name, final_estimator = estimator.steps[-1]
         prefix_steps = estimator.steps[:-1]
         X_eval, y_eval = eval_data
@@ -1185,7 +1192,18 @@ default="first_step"
 
         final_fit_params = {**fit_params, "eval_set": [(X_eval_t, y_eval)]}
         if sample_weight is not None:
-            final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
+            try:
+                final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
+            except ValueError as exc:
+                if isinstance(final_estimator, Pipeline):
+                    raise
+                # Same wording as the non-holdout Pipeline path, so the two
+                # fit paths report the identical failure identically.
+                raise ValueError(
+                    f"Pipeline's final step {final_estimator.__class__.__name__} does not "
+                    f"support sample_weight parameter. Cannot use time_weight/vintage_weight "
+                    f"for training."
+                ) from exc
 
         final_estimator.fit(X_train_t, y_tab, **final_fit_params)
 
@@ -1367,16 +1385,12 @@ default="first_step"
             )
 
         if self.groups_ is None:
-            y_t_tail, X_t_cap = BaseStandardForecaster._observe_standard_capture(
-                self, y_tail, X_tail, X_future, X_forecast
-            )
+            y_t_tail, X_t_cap = self._observe_standard_capture(y_tail, X_tail, X_future, X_forecast)
             X_t_tail = self._join_tail_step_columns(X_t_cap, step_columns, y_t_tail)
             return y_t_tail, X_t_tail
 
         groups = self.groups_
-        y_t_tails, X_t_caps = BasePanelForecaster._observe_panel_capture(
-            self, y_tail, X_tail, groups, X_future, X_forecast
-        )
+        y_t_tails, X_t_caps = self._observe_panel_capture(y_tail, X_tail, groups, X_future, X_forecast)
 
         step_schema_per_group = getattr(self, "_step_schema_per_group_", None)
         X_t_tails: dict[str, pl.DataFrame] = {}
@@ -1468,16 +1482,12 @@ default="first_step"
         y_tab_eval : pl.DataFrame
             Evaluation target matrix, stacked per group.
 
-        Raises
-        ------
-        ValueError
-            If the transformed head is too short to anchor the evaluation
-            window (a transformer consumed the boundary rows as warmup).
-
         """
         # A reduction forecaster always reports requires_exogenous=True, and
         # BaseForecaster rejects target_as_feature=None without X_actual for
         # those, so a fit that reaches here always has a feature matrix.
+        # The transformed head height was validated by
+        # `_build_validation_eval_data` before the tail was observed.
         assert X_t is not None
         head_rows = 1 if not self.validation_overlap else forecasting_horizon
 
@@ -1489,15 +1499,10 @@ default="first_step"
             y_columns: list[str] | None,
         ) -> tuple[pl.DataFrame, pl.DataFrame]:
             """Tabularize one group's boundary window into its eval pair."""
-            if y_t_head_local.height < head_rows:
-                raise ValueError(
-                    f"Cannot build the validation evaluation set: the transformed "
-                    f"head has {y_t_head_local.height} rows but {head_rows} are "
-                    f"needed to anchor the evaluation window. A transformer "
-                    f"consumed the boundary rows as warmup; provide more data or "
-                    f"reduce validation_size."
-                )
-            window_y = pl.concat([y_t_head_local[-head_rows:], y_t_tail_local], how="vertical")
+            window_y = pl.concat(
+                [y_t_head_local[-head_rows:], y_t_tail_local.select(y_t_head_local.columns)],
+                how="vertical",
+            )
             window_X = pl.concat(
                 [X_t_head_local[-head_rows:], X_t_tail_local.select(X_t_head_local.columns)],
                 how="vertical",
@@ -1563,9 +1568,79 @@ default="first_step"
         tuple[pl.DataFrame, pl.DataFrame]
             The stacked ``(X_tab_eval, y_tab_eval)`` pair.
 
+        Raises
+        ------
+        ValueError
+            If the transformed head is too short to anchor the evaluation
+            window (a transformer consumed the boundary rows as warmup);
+            raised before any tail row is observed.
+
         """
+        # Validate the transformed head BEFORE the tail is observed, so this
+        # failure mode joins the others that raise before any observation
+        # state changes (the tail observation is irreversible).
+        head_rows = 1 if not self.validation_overlap else forecasting_horizon
+        heads = [y_t] if self.groups_ is None else [y_t[g] for g in self.groups_]
+        for head_frame in heads:
+            assert isinstance(head_frame, pl.DataFrame)
+            if head_frame.height < head_rows:
+                raise ValueError(
+                    f"Cannot build the validation evaluation set: the transformed "
+                    f"head has {head_frame.height} rows but {head_rows} are "
+                    f"needed to anchor the evaluation window. A transformer "
+                    f"consumed the boundary rows as warmup; provide more data or "
+                    f"reduce validation_size."
+                )
+
         y_t_tail, X_t_tail = self._observe_validation_tail(y_tail, X_tail, forecasting_horizon, X_future, X_forecast)
         return self._build_validation_eval_set(y_t, X_t, y_t_tail, X_t_tail, forecasting_horizon)
+
+    @staticmethod
+    def _select_step_target(frame: pl.DataFrame, step_col_names: list[str]) -> pl.DataFrame | pl.Series:
+        """Select one step's target columns, collapsing a single column to a series.
+
+        Parameters
+        ----------
+        frame : pl.DataFrame
+            Tabularized target matrix (training or evaluation).
+        step_col_names : list of str
+            The step's target column names.
+
+        Returns
+        -------
+        pl.DataFrame or pl.Series
+            The step target, as a series when it has a single column so it
+            matches what single-output estimators expect.
+
+        """
+        step_target: pl.DataFrame | pl.Series = frame.select(step_col_names)
+        if step_target.shape[1] == 1:
+            step_target = step_target.to_series()
+        return step_target
+
+    @staticmethod
+    def _augment_with_predictions(X: pl.DataFrame, estimator: BaseEstimator, step: int) -> pl.DataFrame:
+        """Append one dir-rec step's predictions as ``__aug_{step}_*`` columns.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Feature matrix to augment (training or evaluation).
+        estimator : BaseEstimator
+            The step's fitted estimator.
+        step : int
+            Zero-based step index, used in the appended column names.
+
+        Returns
+        -------
+        pl.DataFrame
+            The matrix with the prediction columns appended.
+
+        """
+        preds = estimator.predict(X)  # ty: ignore[unresolved-attribute]
+        if preds.ndim == 1:
+            preds = preds.reshape(-1, 1)
+        return X.with_columns([pl.Series(f"__aug_{step}_{j}", preds[:, j]) for j in range(preds.shape[1])])
 
     def _fit_single_estimator(
         self,
@@ -1612,7 +1687,6 @@ default="first_step"
         if sample_weight is not None:
             fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
         if eval_data is not None:
-            self._check_eval_set_support(estimator)
             fit_params = {**fit_params, "eval_set": [tuple(eval_data)]}
 
         estimator.fit(X_tab, y_tab, **fit_params)
@@ -1829,18 +1903,14 @@ default="first_step"
         def _fit_step(step: int) -> BaseEstimator:
             """Fit a single estimator for horizon step."""
             step_col_names = [f"{col}_step_{step + 1}" for col in y_columns]
-            y_step: pl.DataFrame | pl.Series = y_tab.select(step_col_names)
-            if y_step.shape[1] == 1:
-                y_step = y_step.to_series()
+            y_step = self._select_step_target(y_tab, step_col_names)
             X_tab_step = self._filter_step_features(X_tab, step + 1)
             X_tab_step, y_step, sw_step = self._apply_nan_handling(
                 X_tab_step, y_step, sample_weight, context=f" (step {step + 1})"
             )
             eval_pair = None
             if eval_data is not None:
-                y_eval_step: pl.DataFrame | pl.Series = eval_data[1].select(step_col_names)
-                if y_eval_step.shape[1] == 1:
-                    y_eval_step = y_eval_step.to_series()
+                y_eval_step = self._select_step_target(eval_data[1], step_col_names)
                 X_eval_step = self._filter_step_features(eval_data[0], step + 1)
                 X_eval_step, y_eval_step, _ = self._apply_nan_handling(
                     X_eval_step, y_eval_step, None, context=f" (step {step + 1})", is_validation=True
@@ -1937,16 +2007,11 @@ default="first_step"
         X_aug = X_tab.clone()  # Progressively augmented feature matrix
         for step in range(forecasting_horizon):
             step_col_names = [f"{col}_step_{step + 1}" for col in y_columns]
-            y_step: pl.DataFrame | pl.Series = y_tab.select(step_col_names)
-            if y_step.shape[1] == 1:
-                y_step = y_step.to_series()
+            y_step = self._select_step_target(y_tab, step_col_names)
             eval_pair = None
             if X_eval_aug is not None:
                 assert y_eval_tab is not None
-                y_eval_step: pl.DataFrame | pl.Series = y_eval_tab.select(step_col_names)
-                if y_eval_step.shape[1] == 1:
-                    y_eval_step = y_eval_step.to_series()
-                eval_pair = (X_eval_aug, y_eval_step)
+                eval_pair = (X_eval_aug, self._select_step_target(y_eval_tab, step_col_names))
             est = self._fit_single_estimator(
                 X_aug,
                 y_step,
@@ -1959,20 +2024,12 @@ default="first_step"
 
             # Augment features with in-sample predictions for next step
             if step < forecasting_horizon - 1:
-                preds = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
-                if preds.ndim == 1:
-                    preds = preds.reshape(-1, 1)
-                X_aug = X_aug.with_columns([pl.Series(f"__aug_{step}_{j}", preds[:, j]) for j in range(preds.shape[1])])
+                X_aug = self._augment_with_predictions(X_aug, est, step)
                 if X_eval_aug is not None:
                     # Evaluation rows carry the same feed-forward augmentation
                     # as training rows, so step k's eval features match its
                     # training features column for column.
-                    preds_eval = est.predict(X_eval_aug)  # ty: ignore[unresolved-attribute]
-                    if preds_eval.ndim == 1:
-                        preds_eval = preds_eval.reshape(-1, 1)
-                    X_eval_aug = X_eval_aug.with_columns([
-                        pl.Series(f"__aug_{step}_{j}", preds_eval[:, j]) for j in range(preds_eval.shape[1])
-                    ])
+                    X_eval_aug = self._augment_with_predictions(X_eval_aug, est, step)
 
         return estimators
 

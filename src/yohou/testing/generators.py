@@ -686,13 +686,10 @@ def _yield_yohou_forecaster_checks(
         yield "check_estimator_parameter", check_estimator_parameter, {}
         yield "check_reduction_strategy", check_reduction_strategy, {}
 
-        # Validation-holdout checks: only for families that expose the
-        # parameter (interval reduction does not) and whose estimator
-        # contract the recording stubs can satisfy.
-        forecaster_type = tags.get("forecaster_type") or frozenset()
-        if "validation_size" in forecaster.get_params(deep=False) and (
-            "point" in forecaster_type or "class_proba" in forecaster_type
-        ):
+        # Validation-holdout checks: gated on the parameter alone. All three
+        # reduction families expose it, and `_stub_for` picks the family's
+        # recording stub (regressor, classifier, or quantile regressor).
+        if "validation_size" in forecaster.get_params(deep=False):
             holdout_kwargs = {
                 "y": y_train,
                 "X_actual": X_actual_train,

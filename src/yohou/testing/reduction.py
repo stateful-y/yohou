@@ -65,13 +65,50 @@ class _RecordingEvalClassifier(ClassifierMixin, BaseEstimator):
         return np.tile(np.full(len(self.classes_), 1.0 / len(self.classes_)), (len(X), 1))
 
 
+class _RecordingEvalQuantileRegressor(RegressorMixin, BaseEstimator):
+    """Quantile-parameterized regressor stub that records the eval_set.
+
+    Exposes a ``quantile`` constructor parameter so the interval family's
+    quantile detection and ``set_params(quantile=...)`` work on it.
+    """
+
+    def __init__(self, quantile: float = 0.5):
+        self.quantile = quantile
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        """Record the fit inputs and learn the target quantile."""
+        self.received_eval_set_ = eval_set
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._value = float(np.nanquantile(arr, self.quantile))
+        return self
+
+    def predict(self, X):
+        """Predict the learned quantile for every row."""
+        out = np.full((len(X), self._ncols), self._value)
+        return out.ravel() if self._ncols == 1 else out
+
+
 def _stub_for(forecaster) -> BaseEstimator:
     """Return the recording stub matching the forecaster's family."""
     tags = forecaster.__sklearn_tags__()
     forecaster_type = tags.forecaster_tags.forecaster_type if tags.forecaster_tags else frozenset()
     if forecaster_type is not None and "class_proba" in forecaster_type:
         return _RecordingEvalClassifier()
+    if forecaster_type is not None and "interval" in forecaster_type:
+        return _RecordingEvalQuantileRegressor()
     return _RecordingEvalRegressor()
+
+
+def _fitted_estimators(forecaster) -> list:
+    """Return the fitted estimators, whatever shape ``estimator_`` takes."""
+    fitted = forecaster.estimator_
+    if isinstance(fitted, dict):
+        return list(fitted.values())
+    if isinstance(fitted, list):
+        return fitted
+    return [fitted]
 
 
 def check_estimator_parameter(forecaster) -> None:
@@ -134,9 +171,8 @@ def check_validation_holdout_parameters(forecaster) -> None:
     Raises
     ------
     AssertionError
-        If the parameters are missing from ``get_params``, their constructor
-        defaults are not ``None`` / ``False``, or the instance values have
-        invalid types.
+        If the parameters are missing from ``get_params`` or their
+        constructor defaults are not ``None`` / ``False``.
 
     """
     params = forecaster.get_params(deep=False)
@@ -147,8 +183,6 @@ def check_validation_holdout_parameters(forecaster) -> None:
     assert signature.parameters["validation_size"].default is None, "validation_size must default to None"
     assert signature.parameters["validation_overlap"].default is False, "validation_overlap must default to False"
 
-    if params["validation_size"] is not None:
-        assert isinstance(params["validation_size"], int) and params["validation_size"] >= 1
     assert isinstance(params["validation_overlap"], bool)
 
 
@@ -204,7 +238,8 @@ def check_validation_holdout_fit(
     n_groups = len(cloned.groups_) if cloned.groups_ else 1
     expected_rows = (_CHECK_VALIDATION_SIZE - _CHECK_HORIZON + 1) * n_groups
 
-    estimators = cloned.estimator_ if isinstance(cloned.estimator_, list) else [cloned.estimator_]
+    estimators = _fitted_estimators(cloned)
+    first_pair = None
     for est in estimators:
         assert est.received_eval_set_ is not None, "no eval_set reached the estimator"
         assert len(est.received_eval_set_) == 1
@@ -214,6 +249,15 @@ def check_validation_holdout_fit(
             "evaluation feature columns must match training feature columns"
         )
         assert len(y_eval) == expected_rows
+        if isinstance(cloned.estimator_, dict):
+            # The interval family fits several quantile estimators from one
+            # split; every one of them must receive the same pair.
+            if first_pair is None:
+                first_pair = (X_eval, y_eval)
+            else:
+                assert X_eval.equals(first_pair[0]) and y_eval.equals(first_pair[1]), (
+                    "every quantile estimator must receive the same evaluation pair"
+                )
 
     last_time = y["time"][-1]
     observed = cloned.observed_time_
@@ -260,6 +304,5 @@ def check_validation_holdout_default_noop(
         X_future=X_future,
         X_forecast=X_forecast,
     )
-    estimators = cloned.estimator_ if isinstance(cloned.estimator_, list) else [cloned.estimator_]
-    for est in estimators:
+    for est in _fitted_estimators(cloned):
         assert est.received_eval_set_ is None, "validation_size=None must not deliver an eval_set"

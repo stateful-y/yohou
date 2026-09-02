@@ -131,7 +131,46 @@ metric is comparable to the training loss. `estimator_` stays a fitted
 the `"direct"` strategy). A pipeline whose final step cannot accept an
 `eval_set`, or that ends in `"passthrough"`, is rejected at fit.
 
-## 6. Know the Trade-off
+## 6. Early-Stop Interval Forecasters
+
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
+takes the same `validation_size` parameter. The holdout splits once, and every
+quantile estimator it trains (a lower and an upper model per coverage rate)
+receives the same evaluation set, each stopping on its own quantile loss:
+
+```python
+from lightgbm import LGBMRegressor
+from yohou.interval import IntervalReductionForecaster
+
+forecaster = IntervalReductionForecaster(
+    estimator=LGBMRegressor(
+        objective="quantile",
+        alpha=0.5,  # overwritten per bound by the forecaster
+        n_estimators=500,
+        early_stopping_round=20,
+        verbose=-1,
+    ),
+    reduction_strategy="direct",
+    actual_transformer=LagTransformer(lag=[1, 2, 24]),
+    validation_size=96,
+)
+forecaster.fit(y=y, forecasting_horizon=24, coverage_rates=[0.9])
+```
+
+Here `estimator_` is a dict keyed by bound (for example
+`"coverage_rate_0.9_lower"`); read each bound's stopping result from it:
+
+```python
+for bound, ests in forecaster.estimator_.items():
+    best = ests.best_iteration_ if not isinstance(ests, list) else max(e.best_iteration_ for e in ests)
+    print(f"{bound}: best iteration {best}")
+```
+
+The default interval estimator (`MultiOutputRegressor(QuantileRegressor())`)
+cannot receive an evaluation set and is rejected with `validation_size` set;
+pick an eval-capable quantile estimator as above.
+
+## 7. Know the Trade-off
 
 Boosting libraries do not refit after early stopping: the model you get was
 trained without the tail, and the tail's information is spent on choosing the
@@ -164,3 +203,4 @@ less data).
 - [Build Reduction Forecasters](build-reduction-forecasters.md): lag
   features, transformers, and reduction strategies
 - [`PointReductionForecaster` API reference](/pages/api/generated/yohou.point.PointReductionForecaster/)
+- [`IntervalReductionForecaster` API reference](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)

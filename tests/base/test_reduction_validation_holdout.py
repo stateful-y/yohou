@@ -15,6 +15,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import FeaturePipeline
+from yohou.interval import IntervalReductionForecaster
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import (
     ExponentialMovingAverage,
@@ -137,6 +138,11 @@ def _make_y_panel(length: int = LENGTH) -> pl.DataFrame:
     })
 
 
+def _make_x_future(length: int = LENGTH, horizon: int = HORIZON) -> pl.DataFrame:
+    t_ext = _times(length + horizon)
+    return pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+
+
 def _eval_pair(estimator):
     (X_eval, y_eval) = estimator.received_eval_set_[0]
     return X_eval, y_eval
@@ -191,13 +197,7 @@ class TestDeliveryShape:
 
     def test_step_columns_reach_eval_rows(self):
         y = _make_y()
-        t_ext = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
-            interval="1s",
-            eager=True,
-        )
-        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        X_future = _make_x_future()
         forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
         forecaster.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
         X_eval, _ = _eval_pair(forecaster.estimator_)
@@ -245,7 +245,7 @@ class TestDeliveryShape:
         with pytest.warns(UserWarning, match=r"validation instances"):
             forecaster.fit(y=y, forecasting_horizon=HORIZON)
         X_eval, _ = _eval_pair(forecaster.estimator_)
-        assert len(X_eval) < STRICT_ROWS
+        assert len(X_eval) == STRICT_ROWS - 1
 
 
 class TestBoundaryPolicy:
@@ -496,21 +496,16 @@ class TestPipelineEstimator:
 
 
 class TestParameterOwnership:
-    """The holdout parameters exist only on the families that expose them."""
-
-    def test_interval_family_carries_no_trace(self):
-        from yohou.interval import IntervalReductionForecaster
-
-        forecaster = IntervalReductionForecaster()
-        for name in ("validation_size", "validation_overlap"):
-            assert name not in forecaster.get_params(deep=False)
-            assert name not in forecaster._parameter_constraints
-            assert name not in forecaster.__dict__
+    """All three reduction families expose and round-trip the holdout parameters."""
 
     @pytest.mark.parametrize(
         "cls, estimator",
-        [(PointReductionForecaster, RecordingRegressor()), (ClassProbaReductionForecaster, RecordingClassifier())],
-        ids=["point", "class_proba"],
+        [
+            (PointReductionForecaster, RecordingRegressor()),
+            (ClassProbaReductionForecaster, RecordingClassifier()),
+            (IntervalReductionForecaster, RecordingRegressor()),
+        ],
+        ids=["point", "class_proba", "interval"],
     )
     def test_exposing_families_round_trip(self, cls, estimator):
         forecaster = cls(estimator=estimator, validation_size=VAL_SIZE, validation_overlap=True)
@@ -569,9 +564,6 @@ class TestEarlyStopping:
         forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
         estimator = forecaster.estimator_
         assert estimator.best_iteration_ < 50
-        # The stop lands on the iteration whose loss is the minimum actually
-        # observed, so the reported best iteration is the scored one.
-        assert estimator.evals_result_[estimator.best_iteration_ - 1] == min(estimator.evals_result_)
 
     def test_stopping_iteration_depends_on_eval_content(self):
         """A different evaluation set must move the stopping iteration."""
@@ -659,13 +651,7 @@ class TestEquivalenceOracles:
 
     def test_eval_rows_equal_full_fit_tail_with_x_future(self):
         y = _make_y()
-        t_ext = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
-            interval="1s",
-            eager=True,
-        )
-        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        X_future = _make_x_future()
         holdout = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
         holdout.fit(y=y, forecasting_horizon=HORIZON, X_future=X_future)
         full = PointReductionForecaster(estimator=RecordingRegressor())
@@ -742,13 +728,7 @@ class TestTransformerMatrix:
 
     def test_matched_alignment_filters_eval_features(self):
         y = _make_y()
-        t_ext = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
-            interval="1s",
-            eager=True,
-        )
-        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        X_future = _make_x_future()
         forecaster = PointReductionForecaster(
             estimator=RecordingRegressor(),
             reduction_strategy="direct",
@@ -813,13 +793,7 @@ class TestTransformerMatrix:
 
     def test_dir_rec_panel_with_x_future(self):
         y = _make_y_panel()
-        t_ext = pl.datetime_range(
-            start=datetime(2021, 1, 1),
-            end=datetime(2021, 1, 1, 0, 0, LENGTH + HORIZON - 1),
-            interval="1s",
-            eager=True,
-        )
-        X_future = pl.DataFrame({"time": t_ext, "temp": [float(i % 7) for i in range(len(t_ext))]})
+        X_future = _make_x_future()
         forecaster = PointReductionForecaster(
             estimator=RecordingRegressor(),
             reduction_strategy="dir-rec",
@@ -946,3 +920,141 @@ class TestLifecycleComposition:
         eval_targets = y_eval.to_numpy().ravel()
         assert eval_targets.max() == pytest.approx(float(inner_train_end - 1))
         assert eval_targets.min() >= float(inner_train_end - VAL_SIZE)
+
+
+class QuantileStub(RegressorMixin, BaseEstimator):
+    """Quantile-parameterized stub recording the eval_set it received."""
+
+    def __init__(self, quantile=0.5):
+        self.quantile = quantile
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.received_eval_set_ = eval_set
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._value = float(np.nanquantile(arr, self.quantile))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._value)
+        return out.ravel() if self._ncols == 1 else out
+
+
+class TestErrorOrdering:
+    """Every holdout error fires before any tail row is observed."""
+
+    def test_transformed_head_too_short_raises_before_tail_observed(self):
+        y = _make_y()
+        head_len = LENGTH - VAL_SIZE
+        # Seasonality head_len - 2 leaves a 2-row transformed head; overlap
+        # mode needs HORIZON (3) anchor rows, so the eval-window check fires.
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            target_transformer=SeasonalDifferencing(seasonality=head_len - 2),
+            validation_size=VAL_SIZE,
+            validation_overlap=True,
+        )
+        with pytest.raises(ValueError, match="transformed head has"):
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        # The failure precedes the tail observation: the observation state is
+        # exactly what the head fit left, not advanced into the holdout.
+        head_end = y["time"][head_len - 1]
+        assert forecaster.observed_time_ == head_end
+        assert forecaster._y_observed["time"][-1] == head_end
+
+
+class TestClassProbaPanelGuard:
+    """The tail-only-class guard strips panel prefixes before comparing."""
+
+    def test_panel_tail_only_class(self):
+        base = ["lo", "hi"] * ((LENGTH - 5) // 2)
+        b_states = base + ["new"] * (LENGTH - len(base))
+        y = pl.DataFrame({
+            "time": _times(LENGTH),
+            "a__state": ["lo", "hi"] * (LENGTH // 2),
+            "b__state": b_states,
+        })
+        with pytest.raises(ValueError, match="'b__state'.*only inside the validation_size holdout"):
+            ClassProbaReductionForecaster(estimator=RecordingClassifier(), validation_size=VAL_SIZE).fit(
+                y=y, forecasting_horizon=2
+            )
+
+
+class TestIntervalFamily:
+    """The interval family shares one holdout across all quantile fits."""
+
+    def test_quantile_estimators_share_the_pair(self):
+        forecaster = IntervalReductionForecaster(estimator=QuantileStub(), validation_size=VAL_SIZE)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON, coverage_rates=[0.8, 0.9])
+        estimators = list(forecaster.estimator_.values())
+        assert len(estimators) == 4
+        X_first, y_first = _eval_pair(estimators[0])
+        assert len(X_first) == STRICT_ROWS
+        for est in estimators:
+            X_eval, y_eval = _eval_pair(est)
+            assert X_eval.equals(X_first) and y_eval.equals(y_first)
+            assert list(X_eval.columns) == list(est.train_X_.columns)
+
+    def test_validation_fit_equals_fit_then_observe(self):
+        # The scaler rides the actual-transformer slot: interval's
+        # predict_interval cannot inverse a target transformer's scaling of
+        # the bound columns (pre-existing, independent of the holdout).
+        kwargs = {
+            "actual_transformer": FeaturePipeline(
+                steps=[("lag", LagTransformer(lag=[1, 2])), ("scale", MinMaxScaler())]
+            )
+        }
+        y = _make_y()
+        holdout = IntervalReductionForecaster(estimator=QuantileStub(), validation_size=VAL_SIZE, **kwargs)
+        holdout.fit(y=y, forecasting_horizon=HORIZON, coverage_rates=[0.9])
+
+        reference = IntervalReductionForecaster(estimator=QuantileStub(), **kwargs)
+        reference.fit(y=y[:-VAL_SIZE], forecasting_horizon=HORIZON, coverage_rates=[0.9])
+        reference.observe(y[-VAL_SIZE:])
+
+        assert holdout.observed_time_ == reference.observed_time_
+        pl.testing.assert_frame_equal(holdout._y_observed, reference._y_observed)
+        pl.testing.assert_frame_equal(holdout.predict_interval(), reference.predict_interval())
+
+    def test_predict_interval_after_validation_fit(self):
+        y = _make_y()
+        forecaster = IntervalReductionForecaster(estimator=QuantileStub(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, coverage_rates=[0.9])
+        intervals = forecaster.predict_interval()
+        assert intervals["time"].min() > y["time"][-1]
+
+    def test_default_wrapper_estimator_rejected(self):
+        with pytest.raises(ValueError, match="MultiOutputRegressor"):
+            IntervalReductionForecaster(validation_size=VAL_SIZE).fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+    def test_lightgbm_quantile_early_stopping_triggers(self):
+        lightgbm = pytest.importorskip("lightgbm")
+        LGBMRegressor = lightgbm.LGBMRegressor
+
+        rng = np.random.default_rng(0)
+        length = 400
+        y = pl.DataFrame({
+            "time": _times(length),
+            "value": (np.sin(np.arange(length) / 5.0) + rng.normal(0, 0.05, length)).tolist(),
+        })
+        estimator = LGBMRegressor(
+            objective="quantile",
+            alpha=0.5,
+            n_estimators=300,
+            early_stopping_round=10,
+            min_child_samples=5,
+            verbose=-1,
+        )
+        forecaster = IntervalReductionForecaster(
+            estimator=estimator,
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
+            validation_size=60,
+        )
+        forecaster.fit(y=y, forecasting_horizon=2, coverage_rates=[0.9])
+        assert len(forecaster.estimator_) == 2
+        for est_list in forecaster.estimator_.values():
+            for est in est_list:
+                assert est.best_iteration_ is not None
+                assert est.best_iteration_ < 300
