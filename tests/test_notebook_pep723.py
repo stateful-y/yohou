@@ -31,6 +31,7 @@ INSTALL_TO_IMPORT: dict[str, str] = {
     "pytz": "pytz",
     "statsmodels": "statsmodels",
     "catboost": "catboost",
+    "lightgbm": "lightgbm",
     "numpy": "numpy",
     "marimo": "marimo",
 }
