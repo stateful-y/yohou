@@ -3328,7 +3328,6 @@ dev = [
 docs = [
     { name = "catboost" },
     { name = "griffe" },
-    { name = "lightgbm" },
     { name = "marimo" },
     { name = "mkdocs" },
     { name = "mkdocs-autorefs" },
@@ -3342,7 +3341,6 @@ docs = [
 ]
 examples = [
     { name = "catboost" },
-    { name = "lightgbm" },
     { name = "marimo" },
     { name = "statsmodels" },
 ]
@@ -3359,6 +3357,7 @@ lint = [
 tests = [
     { name = "covdefaults" },
     { name = "hypothesis" },
+    { name = "lightgbm" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
@@ -3411,7 +3410,6 @@ dev = [
 docs = [
     { name = "catboost", specifier = ">=1.2" },
     { name = "griffe", specifier = ">=1.0" },
-    { name = "lightgbm", specifier = ">=4.0" },
     { name = "marimo", specifier = ">=0.23.16" },
     { name = "mkdocs", specifier = ">=1.6.0" },
     { name = "mkdocs-autorefs", specifier = ">=1.0" },
@@ -3425,7 +3423,6 @@ docs = [
 ]
 examples = [
     { name = "catboost", specifier = ">=1.2" },
-    { name = "lightgbm", specifier = ">=4.0" },
     { name = "marimo", specifier = ">=0.23.16" },
     { name = "statsmodels", specifier = ">=0.14" },
 ]
@@ -3440,6 +3437,7 @@ lint = [
 tests = [
     { name = "covdefaults", specifier = ">=2.3" },
     { name = "hypothesis", specifier = ">=6.100" },
+    { name = "lightgbm", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-cov", specifier = ">=7.0" },
     { name = "pytest-mock", specifier = ">=3.14" },
