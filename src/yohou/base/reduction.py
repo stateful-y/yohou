@@ -218,9 +218,10 @@ default="first_step"
     Validation holdout (``validation_size``, ``validation_overlap``):
 
     These two parameters are declared by the families that expose them
-    ([`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster]
+    ([`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster],
+    [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster],
     and
-    [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster]);
+    [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster]);
     this class implements the machinery they drive.
 
     Early stopping itself (rounds, metric, callbacks) is configured on the
@@ -263,10 +264,7 @@ default="first_step"
     # base. A bare annotation leaves `check_is_fitted` seeing an unfitted instance.
     estimator_: Any
 
-    # Declared, not assigned: the machinery below reads these, but only the
-    # families that expose them as constructor parameters (point, class_proba,
-    # interval) assign them, so a family without them carries no attribute at
-    # all. Declared per family, never here: BaseForecaster merges
+    # Declared per family, never here: BaseForecaster merges
     # _parameter_constraints across the MRO and a subclass cannot remove an
     # inherited key.
     validation_size: int | None

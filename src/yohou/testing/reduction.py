@@ -102,13 +102,20 @@ def _stub_for(forecaster) -> BaseEstimator:
 
 
 def _fitted_estimators(forecaster) -> list:
-    """Return the fitted estimators, whatever shape ``estimator_`` takes."""
+    """Return the fitted estimators, flattened from any ``estimator_`` shape.
+
+    Handles a single estimator, a per-step list (direct/dir-rec), a dict of
+    estimators (interval multi-output), and a dict of per-step lists
+    (interval with direct/dir-rec).
+    """
     fitted = forecaster.estimator_
-    if isinstance(fitted, dict):
-        return list(fitted.values())
-    if isinstance(fitted, list):
-        return fitted
-    return [fitted]
+    values = list(fitted.values()) if isinstance(fitted, dict) else fitted
+    if not isinstance(values, list):
+        return [values]
+    flattened = []
+    for value in values:
+        flattened.extend(value) if isinstance(value, list) else flattened.append(value)
+    return flattened
 
 
 def check_estimator_parameter(forecaster) -> None:
@@ -218,7 +225,9 @@ def check_validation_holdout_fit(
     ------
     AssertionError
         If no evaluation set reaches the stub, its shape or columns diverge
-        from training, or the observation state stops short of the data end.
+        from training, the observation state stops short of the data end,
+        or, for a dict-shaped ``estimator_``, one quantile estimator's
+        evaluation pair differs from the others'.
 
     """
     cloned = clone(forecaster)
@@ -249,9 +258,12 @@ def check_validation_holdout_fit(
             "evaluation feature columns must match training feature columns"
         )
         assert len(y_eval) == expected_rows
-        if isinstance(cloned.estimator_, dict):
+        if isinstance(cloned.estimator_, dict) and not any(isinstance(v, list) for v in cloned.estimator_.values()):
             # The interval family fits several quantile estimators from one
-            # split; every one of them must receive the same pair.
+            # split; under multi-output every one of them must receive the
+            # same pair. Per-step strategies slice and (for dir-rec) augment
+            # the shared pair per estimator, so per-estimator equality is
+            # asserted only for single-estimator dict values.
             if first_pair is None:
                 first_pair = (X_eval, y_eval)
             else:

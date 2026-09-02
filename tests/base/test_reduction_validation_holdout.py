@@ -1058,3 +1058,19 @@ class TestIntervalFamily:
             for est in est_list:
                 assert est.best_iteration_ is not None
                 assert est.best_iteration_ < 300
+
+
+class TestSystematicCheckShapes:
+    """The shared holdout checks handle every ``estimator_`` shape."""
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    def test_interval_strategies_through_holdout_checks(self, strategy):
+        from yohou.testing.reduction import (
+            check_validation_holdout_default_noop,
+            check_validation_holdout_fit,
+        )
+
+        forecaster = IntervalReductionForecaster(reduction_strategy=strategy)
+        y = _make_y(90)
+        check_validation_holdout_fit(forecaster, y)
+        check_validation_holdout_default_noop(forecaster, y)

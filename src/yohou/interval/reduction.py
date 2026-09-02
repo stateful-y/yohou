@@ -400,9 +400,6 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             X_forecast=X_forecast,
         )
 
-        # One split, one evaluation pair, one tail observation: every quantile
-        # estimator below receives the same pair and scores its own quantile
-        # loss against the shared evaluation targets.
         eval_data = None
         if y_tail is not None:
             eval_data = self._build_validation_eval_data(
