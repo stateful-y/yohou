@@ -205,8 +205,9 @@ def check_validation_holdout_fit(
     Clones the forecaster with a recording stub estimator (keeping whatever
     transformers and strategy the instance is equipped with), fits with a
     holdout, and asserts the delivered evaluation pair has training-matching
-    feature columns and the strict-mode row count, and that the post-fit
-    observation state covers all provided data.
+    feature columns, the strict-mode row count, and no row in common with the
+    training matrix, and that the post-fit observation state covers all
+    provided data.
 
     Parameters
     ----------
@@ -225,7 +226,8 @@ def check_validation_holdout_fit(
     ------
     AssertionError
         If no evaluation set reaches the stub, its shape or columns diverge
-        from training, the observation state stops short of the data end,
+        from training, any evaluation row also appears in the training matrix,
+        the observation state stops short of the data end,
         or, for a dict-shaped ``estimator_``, one quantile estimator's
         evaluation pair differs from the others'.
 
@@ -258,6 +260,18 @@ def check_validation_holdout_fit(
             "evaluation feature columns must match training feature columns"
         )
         assert len(y_eval) == expected_rows
+        # Shape and column names alone are satisfied by any same-sized slice,
+        # including one taken from the training head, so the holdout could be
+        # built from the wrong rows and still pass everything above. The
+        # evaluation rows are drawn from the tail and the training rows are
+        # not, so no evaluation row may appear among the training rows.
+        train_rows = {tuple(row) for row in est.train_X_.rows()}
+        eval_rows = [tuple(row) for row in X_eval.rows()]
+        overlap = [row for row in eval_rows if row in train_rows]
+        assert not overlap, (
+            f"{len(overlap)} of {len(eval_rows)} evaluation rows also appear in the training "
+            f"matrix; the holdout is being built from rows the estimator trained on"
+        )
         if isinstance(cloned.estimator_, dict) and not any(isinstance(v, list) for v in cloned.estimator_.values()):
             # The interval family fits several quantile estimators from one
             # split; under multi-output every one of them must receive the
