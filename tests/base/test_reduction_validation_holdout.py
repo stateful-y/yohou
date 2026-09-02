@@ -1,5 +1,6 @@
 """Tests for the validation_size holdout on reduction forecasters."""
 
+import warnings
 from datetime import datetime, timedelta
 from unittest import mock
 
@@ -8,11 +9,12 @@ import polars as pl
 import pytest
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.linear_model import LinearRegression
-from sklearn.multioutput import MultiOutputRegressor
+from sklearn.multioutput import ClassifierChain, MultiOutputRegressor, RegressorChain
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler as SkStandardScaler
 from sklearn.utils.validation import check_is_fitted
 
+from yohou.base.reduction import BaseReductionForecaster
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import FeaturePipeline
 from yohou.interval import IntervalReductionForecaster
@@ -68,6 +70,23 @@ class RecordingClassifier(ClassifierMixin, BaseEstimator):
 
     def predict_proba(self, X):
         return np.tile(np.full(len(self.classes_), 1.0 / len(self.classes_)), (len(X), 1))
+
+
+class EvalXRegressor(RegressorMixin, BaseEstimator):
+    """Stub speaking LightGBM's newer keyword-only eval_X/eval_y convention."""
+
+    def fit(self, X, y, sample_weight=None, *, eval_X=None, eval_y=None):
+        self.received_eval_X_ = eval_X
+        self.received_eval_y_ = eval_y
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
 
 
 class EarlyStoppingStub(RegressorMixin, BaseEstimator):
@@ -388,6 +407,39 @@ class TestErrorContract:
                 y=_make_y(), forecasting_horizon=HORIZON
             )
 
+    @pytest.mark.parametrize(
+        "wrapper",
+        [RegressorChain(LinearRegression()), ClassifierChain(LinearRegression())],
+        ids=["regressor-chain", "classifier-chain"],
+    )
+    def test_multioutput_chain_rejected(self, wrapper):
+        """Chains are sklearn.multioutput wrappers too, so they raise here.
+
+        Their fit takes ``**fit_params``, so without an explicit rejection they
+        pass the support check and fail later inside sklearn's routing with a
+        message that never mentions validation_size.
+        """
+        with pytest.raises(ValueError, match="cannot be used with .*Chain"):
+            BaseReductionForecaster._check_eval_set_support(wrapper)
+
+    def test_regressor_chain_rejected_at_fit(self):
+        """The chain rejection reaches a real fit, not just the helper."""
+        with pytest.raises(ValueError, match="RegressorChain"):
+            PointReductionForecaster(
+                estimator=RegressorChain(LinearRegression()),
+                reduction_strategy="multi-output",
+                validation_size=VAL_SIZE,
+            ).fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+    def test_nested_pipeline_final_step_rejected(self):
+        """A Pipeline ending in a Pipeline is rejected with our own message."""
+        inner = Pipeline([("scale", SkStandardScaler()), ("model", RecordingRegressor())])
+        estimator = Pipeline([("outer", SkStandardScaler()), ("inner", inner)])
+        with pytest.raises(ValueError, match="final step is itself a Pipeline"):
+            PointReductionForecaster(estimator=estimator, validation_size=VAL_SIZE).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
+
     def test_head_too_small(self):
         with pytest.raises(ValueError, match="head rows"):
             PointReductionForecaster(estimator=RecordingRegressor(), validation_size=LENGTH - 2).fit(
@@ -688,8 +740,25 @@ class TestEquivalenceOracles:
                     ]
                 ),
             },
+            # The systematic-check matrix exercises these strategy and
+            # alignment dimensions, but that check only compares shapes. The
+            # oracle is what actually pins the evaluation rows, so it has to
+            # reach the same configurations.
+            {"reduction_strategy": "dir-rec", "actual_transformer": LagTransformer(lag=[1, 2])},
+            {"reduction_strategy": "direct", "step_feature_alignment": "matched"},
+            {"target_as_feature": "raw", "actual_transformer": LagTransformer(lag=1)},
+            {"training_stride": 2, "nan_handling": "drop", "actual_transformer": LagTransformer(lag=[1, 2])},
         ],
-        ids=["scaler", "seasonal-diff", "ema", "scaler+pipeline"],
+        ids=[
+            "scaler",
+            "seasonal-diff",
+            "ema",
+            "scaler+pipeline",
+            "dir-rec",
+            "direct-matched",
+            "target-as-feature-raw",
+            "stride+drop",
+        ],
     )
     def test_validation_fit_equals_fit_then_observe(self, kwargs):
         y = _make_y()
@@ -942,7 +1011,13 @@ class QuantileStub(RegressorMixin, BaseEstimator):
 
 
 class TestErrorOrdering:
-    """Every holdout error fires before any tail row is observed."""
+    """Configuration and shape errors fire before any tail row is observed.
+
+    The guarantee is deliberately partial. Whether the evaluation rows are
+    usable can only be known after they are built, and building them requires
+    observing the tail, so content-dependent failures necessarily land after
+    the observation. Those leave the same partial state any failed fit leaves.
+    """
 
     def test_transformed_head_too_short_raises_before_tail_observed(self):
         y = _make_y()
@@ -962,6 +1037,32 @@ class TestErrorOrdering:
         head_end = y["time"][head_len - 1]
         assert forecaster.observed_time_ == head_end
         assert forecaster._y_observed["time"][-1] == head_end
+
+    def test_content_error_fires_after_tail_observed(self):
+        """A content-dependent failure lands after the tail is observed.
+
+        The counterpart to the check above, pinning the boundary of the
+        guarantee rather than leaving it to chance: NaN handling runs on rows
+        that only exist once the tail has been observed, so it cannot fail
+        early. The forecaster is left unfitted, exactly as any failed fit
+        leaves it.
+        """
+        values = [float(i) for i in range(LENGTH)]
+        for i in range(LENGTH - VAL_SIZE - 1, LENGTH):
+            values[i] = float("nan")
+        y = _make_y().with_columns(pl.Series("value", values))
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            validation_size=VAL_SIZE,
+            nan_handling="drop",
+        )
+        with pytest.raises(ValueError, match="validation instances contain NaN"):
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+
+        assert not hasattr(forecaster, "estimator_")
+        # The tail was already observed when the failure fired, so the
+        # observation state sits at the series end rather than the head end.
+        assert forecaster.observed_time_ == y["time"][-1]
 
 
 class TestClassProbaPanelGuard:
@@ -1074,3 +1175,57 @@ class TestSystematicCheckShapes:
         y = _make_y(90)
         check_validation_holdout_fit(forecaster, y)
         check_validation_holdout_default_noop(forecaster, y)
+
+
+class TestEvalSetDeliveryConvention:
+    """The evaluation pair follows the estimator's keyword, not a fixed one.
+
+    LightGBM has deprecated ``eval_set`` in favour of the keyword-only
+    ``eval_X``/``eval_y`` pair while XGBoost and CatBoost still take
+    ``eval_set``, so the keyword is read from the estimator's fit signature.
+    """
+
+    def test_eval_x_estimator_receives_eval_x(self):
+        forecaster = PointReductionForecaster(estimator=EvalXRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        estimator = forecaster.estimator_
+        assert estimator.received_eval_X_ is not None, "eval_X was not delivered"
+        assert estimator.received_eval_y_ is not None, "eval_y was not delivered"
+        assert len(estimator.received_eval_X_) == STRICT_ROWS
+        assert list(estimator.received_eval_X_.columns) == list(estimator.train_X_.columns)
+
+    def test_eval_set_estimator_still_receives_eval_set(self):
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        assert forecaster.estimator_.received_eval_set_ is not None
+        assert len(forecaster.estimator_.received_eval_set_) == 1
+
+    def test_no_delivery_without_holdout(self):
+        forecaster = PointReductionForecaster(estimator=EvalXRegressor())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        assert forecaster.estimator_.received_eval_X_ is None
+        assert forecaster.estimator_.received_eval_y_ is None
+
+    def test_lightgbm_delivery_emits_no_deprecation_warning(self):
+        """The whole point of following the estimator's keyword.
+
+        Delivering ``eval_set`` to a current LightGBM works but warns on every
+        fit, once per step estimator.
+        """
+        lightgbm = pytest.importorskip("lightgbm")
+        estimator = lightgbm.LGBMRegressor(n_estimators=20, early_stopping_round=5, min_child_samples=2, verbose=-1)
+        forecaster = PointReductionForecaster(
+            estimator=estimator, reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        deprecations = [w for w in caught if "eval_set" in str(w.message) and "deprecated" in str(w.message)]
+        assert not deprecations, f"delivery raised {len(deprecations)} eval_set deprecation warnings"
+        # The evaluation set really arrived: LightGBM only records a validation
+        # curve when it is given one.
+        assert all(est.evals_result_ for est in forecaster.estimator_)

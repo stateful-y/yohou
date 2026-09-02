@@ -277,11 +277,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
-        y_fit, X_fit = y, X_actual
-        y_tail: pl.DataFrame | None = None
-        X_tail: pl.DataFrame | None = None
-        if self.validation_size is not None:
-            y_fit, X_fit, y_tail, X_tail = self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
+        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
 
         # Discover classes from the training head before _pre_fit (which may
         # transform y). The validation tail never contributes classes: the

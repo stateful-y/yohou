@@ -13,7 +13,12 @@ import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator, clone
 from sklearn.linear_model import LinearRegression
-from sklearn.multioutput import MultiOutputClassifier, MultiOutputRegressor
+from sklearn.multioutput import (
+    ClassifierChain,
+    MultiOutputClassifier,
+    MultiOutputRegressor,
+    RegressorChain,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
 from sklearn.utils.parallel import Parallel, delayed
@@ -224,6 +229,13 @@ default="first_step"
     [`IntervalReductionForecaster`][yohou.interval.reduction.IntervalReductionForecaster]);
     this class implements the machinery they drive.
 
+    The evaluation pair is delivered as ``eval_set=[(X, y)]``, or as the
+    keyword-only ``eval_X``/``eval_y`` pair when the estimator's fit declares
+    those instead (LightGBM has deprecated ``eval_set`` in their favour).
+    Estimators whose fit takes ``**kwargs`` are assumed to accept ``eval_set``,
+    because a signature cannot say which keywords ``**kwargs`` honours; such an
+    estimator can still fail inside its own ``fit`` rather than up front.
+
     Early stopping itself (rounds, metric, callbacks) is configured on the
     estimator, never by yohou. Because those libraries do not refit after
     stopping, the tail's information is spent on the stopping decision; to
@@ -245,6 +257,7 @@ default="first_step"
       ``"passthrough"``;
     - the estimator is a ``sklearn.multioutput`` wrapper (a multi-column
       ``eval_set`` target cannot be routed per sub-estimator);
+    - the estimator is a ``Pipeline`` whose final step is itself a ``Pipeline``;
     - the head left after the split cannot build one training row;
     - ``validation_size`` is smaller than ``forecasting_horizon`` while
       ``validation_overlap=False``;
@@ -1078,31 +1091,50 @@ default="first_step"
         return estimator, ""
 
     @staticmethod
-    def _check_eval_set_support(estimator: BaseEstimator) -> None:
-        """Check that the estimator's fit can accept an ``eval_set`` argument.
+    def _check_eval_set_support(estimator: BaseEstimator) -> str:
+        """Check the estimator's fit can take an evaluation set, and say how.
 
         For a ``Pipeline``, the check applies to its final step, the only step
         that is given an evaluation set; ``**kwargs`` on ``Pipeline.fit``
         itself does not count as support.
+
+        Two delivery conventions exist. ``eval_set=[(X, y)]`` is what XGBoost
+        and CatBoost take, and what LightGBM took until it deprecated the
+        argument in favour of the keyword-only ``eval_X``/``eval_y`` pair. The
+        returned keyword tells `_eval_set_fit_params` which one to build, so
+        yohou follows the estimator rather than pinning it to either.
+
+        The ``**kwargs`` fallback is a permissive heuristic: an estimator that
+        accepts arbitrary keywords is assumed to want ``eval_set``, because a
+        signature cannot say which keywords ``**kwargs`` actually honours. Such
+        an estimator can therefore still fail inside its own ``fit`` rather than
+        here. The explicit rejections below cover the cases where that late
+        failure is known to be confusing.
 
         Parameters
         ----------
         estimator : BaseEstimator
             The estimator ``validation_size`` will deliver an evaluation set to.
 
+        Returns
+        -------
+        str
+            ``"eval_set"`` or ``"eval_X"``, naming the convention the target's
+            fit accepts.
+
         Raises
         ------
         ValueError
             If the estimator (or, for a ``Pipeline``, its final step) is a
             ``sklearn.multioutput`` wrapper (a multi-column evaluation target
-            cannot be routed per sub-estimator), its fit signature has neither
-            an ``eval_set`` parameter nor ``**kwargs``, or it is a ``Pipeline``
-            ending in ``"passthrough"``.
+            cannot be routed per sub-estimator), its fit signature has no
+            evaluation-set parameter and no ``**kwargs``, or it is a
+            ``Pipeline`` ending in ``"passthrough"``.
 
         """
         target, label = BaseReductionForecaster._eval_set_target(estimator)
 
-        if isinstance(target, MultiOutputRegressor | MultiOutputClassifier):
+        if isinstance(target, MultiOutputRegressor | MultiOutputClassifier | RegressorChain | ClassifierChain):
             raise ValueError(
                 f"validation_size cannot be used with {label}{target.__class__.__name__}: "
                 f"the wrapper fits one sub-estimator per target column and cannot "
@@ -1111,17 +1143,88 @@ default="first_step"
                 f"reduction strategy with a single target."
             )
 
+        if isinstance(target, Pipeline):
+            # Pipeline.fit takes **params, so the fallback below would accept it
+            # and the evaluation set would then be rejected deep inside sklearn's
+            # metadata routing as an unrequested key.
+            raise ValueError(
+                "validation_size cannot be used with a Pipeline whose final step is "
+                "itself a Pipeline: the inner pipeline's fit takes **params but routes "
+                "eval_set to no step. Flatten the nested steps into one Pipeline, or "
+                "leave validation_size=None."
+            )
+
         fit_sig = inspect.signature(target.fit)  # ty: ignore[unresolved-attribute]
+        # eval_X/eval_y wins when both are present: LightGBM keeps the
+        # deprecated eval_set alongside them and warns on every call.
+        if "eval_X" in fit_sig.parameters and "eval_y" in fit_sig.parameters:
+            return "eval_X"
         if "eval_set" in fit_sig.parameters:
-            return
+            return "eval_set"
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values()):
-            return
+            return "eval_set"
         raise ValueError(
             f"{label or 'Estimator '}{target.__class__.__name__} does not support an eval_set "
             f"fit parameter, so validation_size cannot deliver an evaluation set to it. "
             f"Use an estimator whose fit accepts eval_set (e.g. LightGBM, XGBoost, "
             f"CatBoost), or leave validation_size=None."
         )
+
+    @staticmethod
+    def _eval_set_fit_params(
+        estimator: BaseEstimator,
+        X_eval: pl.DataFrame,
+        y_eval: pl.DataFrame | pl.Series,
+    ) -> dict[str, Any]:
+        """Build the fit parameters delivering one evaluation pair.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The estimator whose fit will receive the pair. For a ``Pipeline``
+            the convention is read from its final step.
+        X_eval : pl.DataFrame
+            Evaluation features, in the space the estimator trains in.
+        y_eval : pl.DataFrame or pl.Series
+            Evaluation target.
+
+        Returns
+        -------
+        dict
+            ``{"eval_set": [(X, y)]}`` or ``{"eval_X": X, "eval_y": y}``,
+            whichever the estimator's fit accepts.
+
+        """
+        if BaseReductionForecaster._check_eval_set_support(estimator) == "eval_X":
+            return {"eval_X": X_eval, "eval_y": y_eval}
+        return {"eval_set": [(X_eval, y_eval)]}
+
+    @staticmethod
+    def _rebuild_pipeline(template: Pipeline, steps: list) -> Pipeline:
+        """Rebuild a ``Pipeline`` around new steps, keeping its other parameters.
+
+        Constructing ``Pipeline(steps, memory=..., verbose=...)`` by hand keeps
+        only the parameters named in that call and silently drops the rest, so
+        a user's ``transform_input`` (and whatever sklearn adds next) would not
+        survive the two-phase holdout fit. Taking the template's own
+        ``get_params`` keeps every one of them.
+
+        Parameters
+        ----------
+        template : Pipeline
+            The pipeline whose configuration to preserve.
+        steps : list
+            The ``(name, estimator)`` steps the rebuilt pipeline should carry.
+
+        Returns
+        -------
+        Pipeline
+            A pipeline with ``steps`` and every other parameter of ``template``.
+
+        """
+        params = template.get_params(deep=False)
+        params["steps"] = steps
+        return Pipeline(**params)
 
     def _fit_pipeline_with_eval_set(
         self,
@@ -1181,14 +1284,14 @@ default="first_step"
         X_eval, y_eval = eval_data
 
         if prefix_steps:
-            prefix = Pipeline(prefix_steps, memory=estimator.memory, verbose=estimator.verbose)
+            prefix = BaseReductionForecaster._rebuild_pipeline(estimator, prefix_steps)
             X_train_t = prefix.fit_transform(X_tab, y_tab)
             X_eval_t = prefix.transform(X_eval)
             prefix_steps = prefix.steps
         else:
             X_train_t, X_eval_t = X_tab, X_eval
 
-        final_fit_params = {**fit_params, "eval_set": [(X_eval_t, y_eval)]}
+        final_fit_params = {**fit_params, **self._eval_set_fit_params(final_estimator, X_eval_t, y_eval)}
         if sample_weight is not None:
             try:
                 final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
@@ -1205,11 +1308,7 @@ default="first_step"
 
         final_estimator.fit(X_train_t, y_tab, **final_fit_params)
 
-        return Pipeline(
-            [*prefix_steps, (final_name, final_estimator)],
-            memory=estimator.memory,
-            verbose=estimator.verbose,
-        )
+        return BaseReductionForecaster._rebuild_pipeline(estimator, [*prefix_steps, (final_name, final_estimator)])
 
     def _validate_validation_split(self, y: pl.DataFrame, forecasting_horizon: int) -> None:
         """Validate ``validation_size`` against the data and horizon.
@@ -1324,6 +1423,40 @@ default="first_step"
         self._check_eval_set_support(self.estimator)
         self._validate_validation_split(y, forecasting_horizon)
         return self._split_validation_tail(y, X_actual)
+
+    def _maybe_split_validation(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        forecasting_horizon: int,
+        params: dict[str, Any],
+    ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame | None]:
+        """Split off the validation tail when ``validation_size`` is set.
+
+        The families share this preamble verbatim; it exists so each ``fit``
+        states the holdout branch once rather than three times.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Full target time series, as passed to fit.
+        X_actual : pl.DataFrame or None
+            Full feature time series, as passed to fit.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        params : dict
+            The fit ``**params``, checked for a conflicting raw ``eval_set``.
+
+        Returns
+        -------
+        y_fit, X_fit, y_tail, X_tail
+            The head to fit on and the held-out tail. With no holdout the head
+            is ``y``/``X_actual`` unchanged and both tail frames are None.
+
+        """
+        if self.validation_size is None:
+            return y, X_actual, None, None
+        return self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
 
     def _observe_validation_tail(
         self,
@@ -1685,7 +1818,7 @@ default="first_step"
         if sample_weight is not None:
             fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
         if eval_data is not None:
-            fit_params = {**fit_params, "eval_set": [tuple(eval_data)]}
+            fit_params = {**fit_params, **self._eval_set_fit_params(estimator, *eval_data)}
 
         estimator.fit(X_tab, y_tab, **fit_params)
         return estimator
