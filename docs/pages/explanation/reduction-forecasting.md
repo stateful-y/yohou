@@ -334,6 +334,43 @@ feature matrix (dir-rec).
 If `nan_handling="drop"` removes all rows, a `ValueError` is raised indicating that
 no training samples remain.
 
+## Validation Holdout
+
+Gradient boosting estimators can stop training once their loss on held-out data stops
+improving. That needs a second dataset, separate from the training rows, which the
+estimator scores after each boosting round. The `validation_size` parameter builds
+one: it holds out the last N time steps (per group on panel data), fits transformers,
+encoders, and sample weights on the remaining head only, tabularizes the boundary
+window through those fitted transformers, and passes the result to the estimator's
+`fit`.
+
+Two things follow from where the split sits.
+
+First, the split is **temporal and leak-free by construction**. Transformers never see
+the tail before they are fitted, and no evaluation row is also a training row. By
+default only rows whose entire target window lies inside the tail are evaluated, giving
+`validation_size - forecasting_horizon + 1` rows. Setting `validation_overlap=True`
+adds the `forecasting_horizon - 1` boundary rows whose targets straddle the split,
+giving `validation_size` rows, at the cost of scoring some time points the model also
+trained on. That trade is worth making on short series with long horizons, where strict
+evaluation can consume most of the holdout.
+
+Second, and less obvious: **the tail's information is spent on the stopping decision,
+not on the model**. Boosting libraries do not refit after they stop, so the model you
+get was trained on the head alone. If you want a model trained on everything, read the
+discovered iteration count and refit with `validation_size=None`. The same arithmetic
+applies inside a hyperparameter search: each fold's inner fit holds out the tail of its
+own training window, so the effective training data shrinks fold by fold.
+
+After fitting, the held-out tail is observed, so `predict()` still forecasts from the
+end of all provided data. The holdout changes what the estimator trained on, not where
+the forecast starts.
+
+Early stopping itself, meaning the patience, the metric, and any callbacks, is
+configured on the estimator. Yohou's only job is delivering a correctly built
+evaluation set to it. See
+[Enable Early Stopping](../how-to/early-stopping.md) for the steps.
+
 ## References
 
 - Bontempi, G., Ben Taieb, S., & Le Borgne, Y.-A. (2013). Machine learning strategies

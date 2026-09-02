@@ -214,7 +214,10 @@ def _(bound_best, mo):
         f"""
         Best iterations per bound and step: {bound_best}
 
-        Both bound chains stopped below the 500-round maximum.
+        Most steps stop well below the 500-round maximum. A step that reaches
+        500 never triggered the 20-round patience, so its validation loss was
+        still improving when the budget ran out; raise `n_estimators` for that
+        chain if you want it to stop on its own.
         """
     )
 

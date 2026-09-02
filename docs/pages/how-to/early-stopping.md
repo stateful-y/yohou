@@ -144,7 +144,7 @@ receives the same evaluation set, each stopping on its own quantile loss:
 from lightgbm import LGBMRegressor
 from yohou.interval import IntervalReductionForecaster
 
-forecaster = IntervalReductionForecaster(
+interval_forecaster = IntervalReductionForecaster(
     estimator=LGBMRegressor(
         objective="quantile",
         alpha=0.5,  # overwritten per bound by the forecaster
@@ -156,14 +156,14 @@ forecaster = IntervalReductionForecaster(
     actual_transformer=LagTransformer(lag=[1, 2, 24]),
     validation_size=96,
 )
-forecaster.fit(y=y, forecasting_horizon=24, coverage_rates=[0.9])
+interval_forecaster.fit(y=y, forecasting_horizon=24, coverage_rates=[0.9])
 ```
 
-Here `estimator_` is a dict keyed by bound (for example
+Here `interval_forecaster.estimator_` is a dict keyed by bound (for example
 `"coverage_rate_0.9_lower"`); read each bound's stopping result from it:
 
 ```python
-for bound, ests in forecaster.estimator_.items():
+for bound, ests in interval_forecaster.estimator_.items():
     best = ests.best_iteration_ if not isinstance(ests, list) else max(e.best_iteration_ for e in ests)
     print(f"{bound}: best iteration {best}")
 ```
