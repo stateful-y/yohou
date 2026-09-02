@@ -11,6 +11,8 @@ CatBoost) stop training when their validation performance plateaus.
 - Familiarity with reduction forecasters
   ([Build Reduction Forecasters](build-reduction-forecasters.md))
 
+<!-- COMPANION_NOTEBOOKS -->
+
 ## 1. Configure Stopping on the Estimator
 
 Early stopping belongs to the estimator, not to yohou. Configure the rounds

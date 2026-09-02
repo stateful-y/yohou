@@ -3328,6 +3328,7 @@ dev = [
 docs = [
     { name = "catboost" },
     { name = "griffe" },
+    { name = "lightgbm" },
     { name = "marimo" },
     { name = "mkdocs" },
     { name = "mkdocs-autorefs" },
@@ -3341,6 +3342,7 @@ docs = [
 ]
 examples = [
     { name = "catboost" },
+    { name = "lightgbm" },
     { name = "marimo" },
     { name = "statsmodels" },
 ]
@@ -3410,6 +3412,7 @@ dev = [
 docs = [
     { name = "catboost", specifier = ">=1.2" },
     { name = "griffe", specifier = ">=1.0" },
+    { name = "lightgbm", specifier = ">=4.0" },
     { name = "marimo", specifier = ">=0.23.16" },
     { name = "mkdocs", specifier = ">=1.6.0" },
     { name = "mkdocs-autorefs", specifier = ">=1.0" },
@@ -3423,6 +3426,7 @@ docs = [
 ]
 examples = [
     { name = "catboost", specifier = ">=1.2" },
+    { name = "lightgbm", specifier = ">=4.0" },
     { name = "marimo", specifier = ">=0.23.16" },
     { name = "statsmodels", specifier = ">=0.14" },
 ]
