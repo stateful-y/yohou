@@ -1,14 +1,17 @@
 """Tests for the validation_size holdout on reduction forecasters."""
 
-import importlib.util
 from datetime import datetime, timedelta
+from unittest import mock
 
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
 from sklearn.linear_model import LinearRegression
 from sklearn.multioutput import MultiOutputRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler as SkStandardScaler
+from sklearn.utils.validation import check_is_fitted
 
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import FeaturePipeline
@@ -83,12 +86,19 @@ class EarlyStoppingStub(RegressorMixin, BaseEstimator):
         self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
         self._mean = float(np.nanmean(arr))
         self.best_iteration_ = self.max_iterations
+        self.evals_result_: list[float] = []
         if eval_set:
-            # Simulated validation loss: improves for five iterations, then
-            # plateaus, so a patience-based stop lands well below the maximum.
+            # Each iteration ramps the prediction through and past the training
+            # mean, and the loss is scored against the delivered evaluation
+            # targets. The curve therefore bottoms out where the prediction
+            # best matches those targets, so a wrong evaluation set stops at a
+            # different iteration instead of silently passing.
+            y_eval = np.asarray(eval_set[0][1], dtype=float).ravel()
             best, best_iter, stale = np.inf, 0, 0
             for i in range(1, self.max_iterations + 1):
-                loss = max(0.5, 1.0 - 0.1 * i)
+                prediction = self._mean * i / 10.0
+                loss = float(np.nanmean(np.abs(y_eval - prediction)))
+                self.evals_result_.append(loss)
                 if loss < best:
                     best, best_iter, stale = loss, i, 0
                 else:
@@ -148,8 +158,7 @@ class TestDeliveryShape:
         forecaster.fit(y=y, forecasting_horizon=HORIZON)
 
         estimators = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
-        expected_len = len(estimators) if strategy != "multi-output" else 1
-        assert len(estimators) == (HORIZON if strategy != "multi-output" else 1) == expected_len
+        assert len(estimators) == (HORIZON if strategy != "multi-output" else 1)
 
         for step, est in enumerate(estimators):
             X_eval, y_eval = _eval_pair(est)
@@ -208,6 +217,24 @@ class TestDeliveryShape:
         # Training rows, by contrast, are thinned by the stride.
         assert len(forecaster.estimator_.train_X_) < LENGTH - VAL_SIZE - HORIZON
 
+    def test_all_eval_rows_nan_error_is_validation_specific(self):
+        """training_stride never thins eval rows, so its hint must not appear."""
+        values = [float(i) for i in range(LENGTH)]
+        for i in range(LENGTH - VAL_SIZE - 1, LENGTH):
+            values[i] = float("nan")
+        y = _make_y().with_columns(pl.Series("value", values))
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(),
+            validation_size=VAL_SIZE,
+            nan_handling="drop",
+            training_stride=3,
+        )
+        with pytest.raises(ValueError) as excinfo:
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        message = str(excinfo.value)
+        assert "validation instances" in message
+        assert "training_stride" not in message
+
     def test_nan_eval_row_dropped_with_validation_context(self):
         values = [float(i) for i in range(LENGTH)]
         values[LENGTH - 1] = float("nan")
@@ -215,7 +242,7 @@ class TestDeliveryShape:
         forecaster = PointReductionForecaster(
             estimator=RecordingRegressor(), validation_size=VAL_SIZE, nan_handling="drop"
         )
-        with pytest.warns(UserWarning, match=r"\(validation\)"):
+        with pytest.warns(UserWarning, match=r"validation instances"):
             forecaster.fit(y=y, forecasting_horizon=HORIZON)
         X_eval, _ = _eval_pair(forecaster.estimator_)
         assert len(X_eval) < STRICT_ROWS
@@ -388,6 +415,110 @@ class TestErrorContract:
                 y=_make_y(), forecasting_horizon=HORIZON, eval_set="raw"
             )
 
+    def test_pipeline_final_step_without_eval_set_fails_before_mutation(self):
+        """A Pipeline that cannot evaluate must fail before any state is touched."""
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("lr", LinearRegression())]),
+            validation_size=VAL_SIZE,
+        )
+        with pytest.raises(ValueError, match="Pipeline's final step LinearRegression"):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert not hasattr(forecaster, "observed_time_")
+        assert not hasattr(forecaster, "estimator_")
+
+    def test_pipeline_ending_in_passthrough_rejected(self):
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("nothing", "passthrough")]),
+            validation_size=VAL_SIZE,
+        )
+        with pytest.raises(ValueError, match="passthrough"):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+
+class TestPipelineEstimator:
+    """Task 1: a wrapped Pipeline evaluates in its own transformed space."""
+
+    def test_eval_set_is_transformed_like_training(self):
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("rec", RecordingRegressor())]),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        assert isinstance(forecaster.estimator_, Pipeline)
+        check_is_fitted(forecaster.estimator_)
+        rec = forecaster.estimator_.named_steps["rec"]
+        X_eval = np.asarray(_eval_pair(rec)[0])
+        X_train = np.asarray(rec.train_X_)
+        assert len(X_eval) == STRICT_ROWS
+        assert X_eval.shape[1] == X_train.shape[1]
+        # Both sides are standardized: raw targets run to LENGTH, so an
+        # untransformed eval matrix would carry values far outside this band.
+        assert np.abs(X_train).max() < 6.0
+        assert np.abs(X_eval).max() < 6.0
+        assert forecaster.predict().height == HORIZON
+
+    def test_pipeline_transformers_fitted_on_head_only(self):
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("rec", RecordingRegressor())]),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        fitted_mean = forecaster.estimator_.named_steps["scaler"].mean_
+
+        head_only = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("rec", RecordingRegressor())]),
+        )
+        head_only.fit(y=_make_y()[: LENGTH - VAL_SIZE], forecasting_horizon=HORIZON)
+        assert np.allclose(fitted_mean, head_only.estimator_.named_steps["scaler"].mean_)
+
+    def test_sample_weight_and_eval_set_reach_final_step(self):
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("rec", RecordingRegressor())]),
+            validation_size=VAL_SIZE,
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        rec = forecaster.estimator_.named_steps["rec"]
+        assert rec.received_eval_set_ is not None
+        assert rec.received_sample_weight_ is not None
+        assert len(rec.received_sample_weight_) == len(rec.train_X_)
+
+    def test_single_step_pipeline(self):
+        """A pipeline with no transformer prefix still delivers an eval set."""
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("rec", RecordingRegressor())]),
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        rec = forecaster.estimator_.named_steps["rec"]
+        assert len(_eval_pair(rec)[0]) == STRICT_ROWS
+
+
+class TestParameterOwnership:
+    """The holdout parameters exist only on the families that expose them."""
+
+    def test_interval_family_carries_no_trace(self):
+        from yohou.interval import IntervalReductionForecaster
+
+        forecaster = IntervalReductionForecaster()
+        for name in ("validation_size", "validation_overlap"):
+            assert name not in forecaster.get_params(deep=False)
+            assert name not in forecaster._parameter_constraints
+            assert name not in forecaster.__dict__
+
+    @pytest.mark.parametrize(
+        "cls, estimator",
+        [(PointReductionForecaster, RecordingRegressor()), (ClassProbaReductionForecaster, RecordingClassifier())],
+        ids=["point", "class_proba"],
+    )
+    def test_exposing_families_round_trip(self, cls, estimator):
+        forecaster = cls(estimator=estimator, validation_size=VAL_SIZE, validation_overlap=True)
+        params = forecaster.get_params(deep=False)
+        assert params["validation_size"] == VAL_SIZE
+        assert params["validation_overlap"] is True
+        assert clone(forecaster).get_params(deep=False)["validation_size"] == VAL_SIZE
+
 
 class TestDefaultNoOp:
     """Task 5.5: validation_size=None is byte-equivalent to omitting it."""
@@ -396,7 +527,7 @@ class TestDefaultNoOp:
         y = _make_y()
         spy_prepare = mocker.spy(PointReductionForecaster, "_prepare_validation_fit")
         spy_build = mocker.spy(PointReductionForecaster, "_build_validation_eval_data")
-        spy_resolve = mocker.spy(PointReductionForecaster, "_resolve_eval_set_params")
+        spy_resolve = mocker.spy(PointReductionForecaster, "_check_eval_set_support")
 
         explicit = PointReductionForecaster(estimator=LinearRegression(), validation_size=None)
         explicit.fit(y=y, forecasting_horizon=HORIZON)
@@ -436,17 +567,30 @@ class TestEarlyStopping:
             validation_size=VAL_SIZE,
         )
         forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
-        assert forecaster.estimator_.best_iteration_ < 50
-        assert forecaster.estimator_.best_iteration_ == 5
+        estimator = forecaster.estimator_
+        assert estimator.best_iteration_ < 50
+        # The stop lands on the iteration whose loss is the minimum actually
+        # observed, so the reported best iteration is the scored one.
+        assert estimator.evals_result_[estimator.best_iteration_ - 1] == min(estimator.evals_result_)
+
+    def test_stopping_iteration_depends_on_eval_content(self):
+        """A different evaluation set must move the stopping iteration."""
+        X = np.zeros((8, 1))
+        y = np.arange(8.0)
+        near = EarlyStoppingStub(max_iterations=50, patience=3).fit(X, y, eval_set=[(X, np.full(8, 4.0))])
+        far = EarlyStoppingStub(max_iterations=50, patience=3).fit(X, y, eval_set=[(X, np.full(8, 20.0))])
+        assert near.best_iteration_ != far.best_iteration_
 
     def test_fake_estimator_without_holdout_runs_to_maximum(self):
         forecaster = PointReductionForecaster(estimator=EarlyStoppingStub(max_iterations=50))
         forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
         assert forecaster.estimator_.best_iteration_ == 50
 
-    @pytest.mark.skipif(importlib.util.find_spec("lightgbm") is None, reason="lightgbm not installed")
     def test_lightgbm_early_stopping_triggers(self):
-        from lightgbm import LGBMRegressor
+        # In the tests group, so normally present; macOS wheels still need the
+        # libomp runtime at import, which a presence check cannot detect.
+        lightgbm = pytest.importorskip("lightgbm")
+        LGBMRegressor = lightgbm.LGBMRegressor
 
         rng = np.random.default_rng(0)
         length = 400
@@ -632,6 +776,12 @@ class TestTransformerMatrix:
         X_eval, y_eval = _eval_pair(forecaster.estimator_)
         assert len(X_eval) == STRICT_ROWS
         assert list(X_eval.columns) == list(forecaster.estimator_.train_X_.columns)
+        # The cases differ in whether the target itself is carried as a feature.
+        target_features = [c for c in X_eval.columns if "value" in c]
+        if target_as_feature is None:
+            assert target_features == []
+        else:
+            assert target_features != []
 
     def test_panel_multivariate_strategy(self):
         y = _make_y_panel()
@@ -749,7 +899,24 @@ class TestLifecycleComposition:
             scoring=MeanAbsoluteError(),
             cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
         )
-        search.fit(y, forecasting_horizon=HORIZON)
+        fold_eval_sizes: list[int] = []
+        original_fit = PointReductionForecaster.fit
+
+        def record_fold(self, *args, **kwargs):
+            fitted = original_fit(self, *args, **kwargs)
+            estimators = fitted.estimator_ if isinstance(fitted.estimator_, list) else [fitted.estimator_]
+            for est in estimators:
+                assert est.received_eval_set_ is not None, "a fold fit received no eval_set"
+                fold_eval_sizes.append(len(_eval_pair(est)[0]))
+            return fitted
+
+        with mock.patch.object(PointReductionForecaster, "fit", record_fold):
+            search.fit(y, forecasting_horizon=HORIZON)
+
+        # Every inner fit (each CV fold, plus the final refit) held out its own
+        # tail, so the eval sets are the strict-mode size rather than absent.
+        assert len(fold_eval_sizes) > 1, "expected per-fold fits, not just the final refit"
+        assert set(fold_eval_sizes) == {STRICT_ROWS}
         best = search.best_forecaster_
         estimators = best.estimator_ if isinstance(best.estimator_, list) else [best.estimator_]
         assert all(est.received_eval_set_ is not None for est in estimators)
@@ -769,6 +936,13 @@ class TestLifecycleComposition:
         forecaster.fit(y=y, forecasting_horizon=2)
         intervals = forecaster.predict_interval()
         assert len(intervals) > 0
-        # The inner fit held out its own tail from the outer training split.
+        # The inner fit held out its own tail from the outer training split:
+        # the eval targets must be the last values of the calibration-split
+        # training window, not of the full series the outer forecaster saw.
         inner = forecaster.point_forecaster_
-        assert inner.estimator_.received_eval_set_ is not None
+        X_eval, y_eval = _eval_pair(inner.estimator_)
+        assert len(X_eval) == VAL_SIZE - 2 + 1
+        inner_train_end = 120 - 30
+        eval_targets = y_eval.to_numpy().ravel()
+        assert eval_targets.max() == pytest.approx(float(inner_train_end - 1))
+        assert eval_targets.min() >= float(inner_train_end - VAL_SIZE)

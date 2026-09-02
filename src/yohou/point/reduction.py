@@ -1,5 +1,6 @@
 """Implementation of reduction-based point forecasters."""
 
+import numbers
 from typing import Literal
 
 import polars as pl
@@ -8,7 +9,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
-from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
 from .base import BasePointForecaster
@@ -58,20 +59,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         Number of trailing time steps (per group on panel data) to hold out
         from estimator training and deliver to the wrapped estimator's
         ``fit`` as ``eval_set``, enabling estimator-side early stopping
-        (LightGBM, XGBoost, CatBoost). Early stopping itself is configured
-        on the estimator; because those libraries do not refit after
-        stopping, the tail's information is spent on the stopping decision
-        (refit with ``validation_size=None`` and the discovered iteration
-        count to train on everything). Inside a search CV each fold holds
-        out the tail of its own training window. Fitting raises
-        ``ValueError`` when the estimator's ``fit`` accepts neither
-        ``eval_set`` nor ``**kwargs``, the estimator is a
-        ``sklearn.multioutput`` wrapper, the head left after the split
-        cannot build one training row, ``validation_size`` is smaller than
-        ``forecasting_horizon`` while ``validation_overlap=False``, or a raw
-        ``eval_set`` is also passed through fit ``**params``. See
+        (LightGBM, XGBoost, CatBoost). Transformers and sample weights are
+        fitted on the remaining head only; the held-out tail is then
+        observed, so ``predict()`` still forecasts from the end of all
+        provided data. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
-        for the full semantics.
+        for the trade-off, the ``Pipeline`` handling, and the rejected
+        configurations.
     validation_overlap : bool, default=False
         Only used when ``validation_size`` is set. By default only rows
         whose entire target window lies inside the held-out tail are
@@ -203,6 +197,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         **BasePointForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "validation_overlap": ["boolean"],
     }
 
     _supports_panel = True
@@ -239,8 +235,6 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             training_stride=training_stride,
-            validation_size=validation_size,
-            validation_overlap=validation_overlap,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
@@ -248,6 +242,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
         )
+        self.validation_size = validation_size
+        self.validation_overlap = validation_overlap
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(

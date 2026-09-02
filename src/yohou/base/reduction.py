@@ -20,9 +20,11 @@ from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
+from yohou.base.panel import BasePanelForecaster
+from yohou.base.standard import BaseStandardForecaster
 from yohou.base.step_transformer import BaseStepTransformer, _is_step_indexed, _step_index
 from yohou.base.transformer import BaseActualTransformer
-from yohou.base.utils import _derive_step_columns, _observe_transformers_capture, _observe_transformers_one
+from yohou.base.utils import _derive_step_columns, _observe_transformers_one
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
 from yohou.utils.panel import get_group_df
@@ -148,37 +150,6 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         mask applies to the feature matrix, the target matrix, and
         ``sample_weight`` in lockstep, before ``nan_handling``, and on panel
         data it is built per group and stacked in group order.
-    validation_size : int or None, default=None
-        Number of trailing time steps (per group on panel data) to hold out
-        from estimator training and deliver to the wrapped estimator's
-        ``fit`` as ``eval_set``, enabling estimator-side early stopping
-        (LightGBM, XGBoost, CatBoost). Transformers, encoders, and sample
-        weights are fitted on the remaining head only; the held-out tail is
-        then observed, so ``predict()`` still forecasts from the end of all
-        provided data. Early stopping itself (rounds, metric, callbacks) is
-        configured on the estimator, never by yohou; because those libraries
-        do not refit after stopping, the tail's information is spent on the
-        stopping decision (refit with ``validation_size=None`` and the
-        discovered iteration count to train on everything). Inside a search
-        CV, each fold's inner fit holds out the tail of its own training
-        window, shrinking effective training data accordingly. Fitting
-        raises ``ValueError`` when: the estimator's ``fit`` accepts neither
-        ``eval_set`` nor ``**kwargs``; the estimator is a
-        ``sklearn.multioutput`` wrapper (a multi-column ``eval_set`` target
-        cannot be routed per sub-estimator); the head left after the split
-        cannot build one training row; ``validation_size`` is smaller than
-        ``forecasting_horizon`` while ``validation_overlap=False``; a
-        class_proba target class appears only inside the tail; or a raw
-        ``eval_set`` is also passed through fit ``**params``.
-    validation_overlap : bool, default=False
-        Only used when ``validation_size`` is set. By default, evaluation
-        rows are only those whose entire target window lies inside the
-        held-out tail, yielding ``validation_size - forecasting_horizon + 1``
-        rows. When ``True``, the ``forecasting_horizon - 1`` boundary rows
-        whose target windows straddle the split are also evaluated, yielding
-        ``validation_size`` rows; those rows score some time points the
-        model also trained on, trading evaluation purity for data on short
-        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -246,6 +217,41 @@ default="first_step"
     [ForecastedFeatureForecaster][yohou.compose.ForecastedFeatureForecaster]
     for that case.
 
+    Validation holdout (``validation_size``, ``validation_overlap``):
+
+    These two parameters are declared by the families that expose them
+    ([`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster]
+    and
+    [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster]);
+    this class implements the machinery they drive.
+
+    Early stopping itself (rounds, metric, callbacks) is configured on the
+    estimator, never by yohou. Because those libraries do not refit after
+    stopping, the tail's information is spent on the stopping decision; to
+    train on everything, refit with ``validation_size=None`` and the
+    discovered iteration count. Inside a search CV, each fold's inner fit
+    holds out the tail of its own training window, shrinking effective
+    training data accordingly.
+
+    A ``Pipeline`` estimator is fitted in two phases: its transformer steps
+    are fitted on the training rows, the evaluation features are pushed
+    through them, and its final step is fitted directly with an ``eval_set``
+    in the same transformed space it trains in. ``estimator_`` remains a
+    fitted ``Pipeline``.
+
+    Fitting raises ``ValueError`` when:
+
+    - the estimator's ``fit`` (or, for a ``Pipeline``, its final step's fit)
+      accepts neither ``eval_set`` nor ``**kwargs``, or the pipeline ends in
+      ``"passthrough"``;
+    - the estimator is a ``sklearn.multioutput`` wrapper (a multi-column
+      ``eval_set`` target cannot be routed per sub-estimator);
+    - the head left after the split cannot build one training row;
+    - ``validation_size`` is smaller than ``forecasting_horizon`` while
+      ``validation_overlap=False``;
+    - a class_proba target class appears only inside the tail;
+    - a raw ``eval_set`` is also passed through fit ``**params``.
+
     See Also
     --------
     - [`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster] : Point forecaster using reduction.
@@ -257,14 +263,22 @@ default="first_step"
     # base. A bare annotation leaves `check_is_fitted` seeing an unfitted instance.
     estimator_: Any
 
+    # Declared, not assigned: the machinery below reads these, but only the
+    # families that expose them as constructor parameters (point, class_proba)
+    # assign them, so a family without them carries no attribute at all.
+    validation_size: int | None
+    validation_overlap: bool
+
     _parameter_constraints: dict = {
         **BaseForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "training_stride": [Interval(numbers.Integral, 1, None, closed="left")],
-        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
-        "validation_overlap": ["boolean"],
+        # validation_size/validation_overlap are declared by the families that
+        # expose them (point, class_proba). Declaring them here would leak them
+        # into every subclass through the MRO merge in
+        # BaseForecaster.__init_subclass__, which cannot be undone downstream.
         "nan_handling": [StrOptions({"drop", "pass"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
         "time_weighter": [BaseWeighter, None],
@@ -293,8 +307,6 @@ default="first_step"
         panel_strategy: Literal["global", "multivariate"] = "global",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
-        validation_size: int | None = None,
-        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         time_weighter: BaseWeighter | None = None,
@@ -315,8 +327,9 @@ default="first_step"
         self.reduction_strategy = reduction_strategy
         self.step_feature_alignment = step_feature_alignment
         self.training_stride = training_stride
-        self.validation_size = validation_size
-        self.validation_overlap = validation_overlap
+        # validation_size/validation_overlap are assigned by the families that
+        # expose them (point, class_proba), so a family that does not accept
+        # them carries no attribute sklearn's get_params cannot see.
         self.nan_handling = nan_handling
         self.n_jobs = n_jobs
         self.time_weighter = time_weighter
@@ -830,6 +843,7 @@ default="first_step"
         sample_weight: np.ndarray | None,
         *,
         context: str = "",
+        is_validation: bool = False,
     ) -> tuple[pl.DataFrame, pl.DataFrame | pl.Series, np.ndarray | None]:
         """Remove rows containing NaN/null from tabularized training data.
 
@@ -849,6 +863,11 @@ default="first_step"
             Sample weights (filtered in lockstep if rows are dropped).
         context : str, default=""
             Additional context for the warning message (e.g., " (step 3)").
+        is_validation : bool, default=False
+            Whether these rows are the validation holdout's evaluation rows
+            rather than training rows. Evaluation rows are never thinned by
+            ``training_stride``, so messages about them name them as
+            validation rows and omit the stride hint.
 
         Returns
         -------
@@ -862,8 +881,8 @@ default="first_step"
         Raises
         ------
         ValueError
-            If ``nan_handling="drop"`` and all training instances contain
-            NaN, leaving 0 samples remaining.
+            If ``nan_handling="drop"`` and every instance contains NaN,
+            leaving 0 samples remaining.
 
         """
         if self.nan_handling == "pass":
@@ -889,22 +908,25 @@ default="first_step"
         n_dropped = n_total - mask.sum()
 
         if n_dropped > 0:
+            noun = "validation" if is_validation else "training"
             if n_dropped == n_total:
+                # training_stride never thins evaluation rows, so the hint
+                # would misattribute their count on the validation path.
                 stride_hint = (
                     f" The {n_total} instances are the ones kept by "
                     f"training_stride={self.training_stride}; a coarser stride "
                     f"leaves fewer instances to survive NaN handling."
-                    if self.training_stride > 1
+                    if self.training_stride > 1 and not is_validation
                     else ""
                 )
                 raise ValueError(
-                    f"All {n_total} training instances contain NaN{context}. "
+                    f"All {n_total} {noun} instances contain NaN{context}. "
                     f"Cannot fit with nan_handling='drop' and 0 samples remaining."
                     f"{stride_hint}"
                 )
             pct = 100 * n_dropped / n_total
             warnings.warn(
-                f"NaN handling dropped {n_dropped} of {n_total} training instances ({pct:.1f}%){context}.",
+                f"NaN handling dropped {n_dropped} of {n_total} {noun} instances ({pct:.1f}%){context}.",
                 stacklevel=3,
             )
             X_tab = X_tab.filter(mask)
@@ -1013,8 +1035,51 @@ default="first_step"
         )
 
     @staticmethod
+    def _eval_set_target(estimator: BaseEstimator) -> tuple[BaseEstimator, str]:
+        """Return the estimator that receives ``eval_set``, and how to name it.
+
+        For a ``Pipeline`` this is the final step: `_fit_pipeline_with_eval_set`
+        fits that step directly, because sklearn hands fit parameters to steps
+        untransformed and, under metadata routing, rejects the
+        ``<step>__<param>`` form outright.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The estimator ``validation_size`` will deliver an evaluation set to.
+
+        Returns
+        -------
+        target : BaseEstimator
+            The estimator whose ``fit`` receives ``eval_set``.
+        label : str
+            Prefix naming that estimator in error messages.
+
+        Raises
+        ------
+        ValueError
+            If the estimator is a ``Pipeline`` whose final step is
+            ``"passthrough"``, which cannot be fitted at all.
+
+        """
+        if isinstance(estimator, Pipeline):
+            final = estimator.steps[-1][1]
+            if isinstance(final, str):
+                raise ValueError(
+                    "validation_size cannot be used with a Pipeline whose final step "
+                    "is 'passthrough': there is no estimator to deliver an eval_set to. "
+                    "End the pipeline with an estimator, or leave validation_size=None."
+                )
+            return final, "Pipeline's final step "
+        return estimator, ""
+
+    @staticmethod
     def _check_eval_set_support(estimator: BaseEstimator) -> None:
         """Check that the estimator's fit can accept an ``eval_set`` argument.
+
+        For a ``Pipeline``, the check applies to its final step, the only step
+        that is given an evaluation set; ``**kwargs`` on ``Pipeline.fit``
+        itself does not count as support.
 
         Parameters
         ----------
@@ -1024,61 +1089,111 @@ default="first_step"
         Raises
         ------
         ValueError
-            If the estimator is a ``sklearn.multioutput`` wrapper (a
-            multi-column evaluation target cannot be routed per
-            sub-estimator), or its fit signature has neither an
-            ``eval_set`` parameter nor ``**kwargs``.
+            If the estimator (or, for a ``Pipeline``, its final step) is a
+            ``sklearn.multioutput`` wrapper (a multi-column evaluation target
+            cannot be routed per sub-estimator), its fit signature has neither
+            an ``eval_set`` parameter nor ``**kwargs``, or it is a ``Pipeline``
+            ending in ``"passthrough"``.
 
         """
-        if isinstance(estimator, MultiOutputRegressor | MultiOutputClassifier):
+        target, label = BaseReductionForecaster._eval_set_target(estimator)
+
+        if isinstance(target, MultiOutputRegressor | MultiOutputClassifier):
             raise ValueError(
-                f"validation_size cannot be used with {estimator.__class__.__name__}: "
+                f"validation_size cannot be used with {label}{target.__class__.__name__}: "
                 f"the wrapper fits one sub-estimator per target column and cannot "
                 f"route a multi-column eval_set target per sub-estimator. Use an "
                 f"estimator with native multi-output support, or the 'direct' "
                 f"reduction strategy with a single target."
             )
 
-        fit_sig = inspect.signature(estimator.fit)  # ty: ignore[unresolved-attribute]
+        fit_sig = inspect.signature(target.fit)  # ty: ignore[unresolved-attribute]
         if "eval_set" in fit_sig.parameters:
             return
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values()):
             return
         raise ValueError(
-            f"Estimator {estimator.__class__.__name__} does not support an eval_set "
+            f"{label or 'Estimator '}{target.__class__.__name__} does not support an eval_set "
             f"fit parameter, so validation_size cannot deliver an evaluation set to it. "
             f"Use an estimator whose fit accepts eval_set (e.g. LightGBM, XGBoost, "
             f"CatBoost), or leave validation_size=None."
         )
 
-    @staticmethod
-    def _resolve_eval_set_params(
-        estimator: BaseEstimator,
+    def _fit_pipeline_with_eval_set(
+        self,
+        estimator: Pipeline,
+        X_tab: pl.DataFrame,
+        y_tab: pl.DataFrame | pl.Series,
+        sample_weight: np.ndarray | None,
+        fit_params: dict[str, Any],
         eval_data: tuple[pl.DataFrame, pl.DataFrame | pl.Series],
-    ) -> dict[str, Any]:
-        """Resolve how to pass the evaluation pair to the estimator's fit.
+    ) -> Pipeline:
+        """Fit a ``Pipeline`` in two phases so its final step evaluates in its own space.
+
+        ``Pipeline.fit`` transforms the training data on its way through the
+        steps but hands fit parameters to steps untouched, so an evaluation set
+        passed that way would be scored in raw space against a model trained in
+        transformed space. Under metadata routing (which yohou enables) the
+        ``<step>__<param>`` form is rejected outright. So the transformer prefix
+        is fitted on the training rows here, the evaluation features are pushed
+        through it, and the final step is fitted directly with both in the same
+        space. Fitting the prefix on the training rows only is also what keeps
+        the holdout leak-free.
 
         Parameters
         ----------
-        estimator : BaseEstimator
-            The (cloned) estimator about to be fitted.
+        estimator : Pipeline
+            The (cloned) pipeline about to be fitted.
+        X_tab : pl.DataFrame
+            Training feature matrix.
+        y_tab : pl.DataFrame or pl.Series
+            Training target.
+        sample_weight : np.ndarray or None
+            Training sample weights, delivered straight to the final step
+            because this path bypasses ``Pipeline.fit`` and its routing.
+        fit_params : dict
+            Additional fit parameters for the final step.
         eval_data : tuple
-            The ``(X_eval, y_eval)`` pair, shaped exactly like the training
-            pair for the active strategy.
+            The ``(X_eval, y_eval)`` pair, in the pipeline's input space.
 
         Returns
         -------
-        dict[str, Any]
-            Keyword arguments to merge into the ``fit`` call.
+        Pipeline
+            The fitted pipeline, reassembled from the fitted prefix and final
+            step so it still reports as fitted and predicts.
 
         Raises
         ------
         ValueError
-            If the estimator cannot accept ``eval_set``.
+            If the final step cannot accept ``eval_set`` (or ``sample_weight``
+            when weights apply).
 
         """
-        BaseReductionForecaster._check_eval_set_support(estimator)
-        return {"eval_set": [tuple(eval_data)]}
+        self._check_eval_set_support(estimator)
+
+        final_name, final_estimator = estimator.steps[-1]
+        prefix_steps = estimator.steps[:-1]
+        X_eval, y_eval = eval_data
+
+        if prefix_steps:
+            prefix = Pipeline(prefix_steps, memory=estimator.memory, verbose=estimator.verbose)
+            X_train_t = prefix.fit_transform(X_tab, y_tab)
+            X_eval_t = prefix.transform(X_eval)
+            prefix_steps = prefix.steps
+        else:
+            X_train_t, X_eval_t = X_tab, X_eval
+
+        final_fit_params = {**fit_params, "eval_set": [(X_eval_t, y_eval)]}
+        if sample_weight is not None:
+            final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
+
+        final_estimator.fit(X_train_t, y_tab, **final_fit_params)
+
+        return Pipeline(
+            [*prefix_steps, (final_name, final_estimator)],
+            memory=estimator.memory,
+            verbose=estimator.verbose,
+        )
 
     def _validate_validation_split(self, y: pl.DataFrame, forecasting_horizon: int) -> None:
         """Validate ``validation_size`` against the data and horizon.
@@ -1207,11 +1322,11 @@ default="first_step"
     ]:
         """Walk the validation tail through the observe path, capturing transforms.
 
-        Performs exactly the state updates of ``observe()`` (transformer
-        buffers, ``_y_observed``, ``_X_t_observed``, ``observed_time_``, final
-        step-column injection), in one pass, while also returning the
-        transformed tail frames the evaluation set is built from. This pass is
-        the only observation of the tail: fit must not observe it again.
+        Delegates the state update to the same ``observe()`` machinery every
+        other caller uses (`_observe_standard_capture` /
+        `_observe_panel_capture`), then joins the step columns the evaluation
+        matrix needs. This pass is the only observation of the tail: fit must
+        not observe it again.
 
         Parameters
         ----------
@@ -1235,12 +1350,9 @@ default="first_step"
             (per group on panel data).
 
         """
-        from yohou.base.panel import BasePanelForecaster
-        from yohou.base.standard import BaseStandardForecaster
-
-        # Step columns for every tail row, derived exactly as the observe path
-        # derives them for continuation data: as-of vintage resolution, fitted
-        # forecast and step transformers applied.
+        # Derived before the observe pass, which updates the stored raws:
+        # step columns for every tail row, resolved as-of each row's time with
+        # the fitted forecast and step transformers applied.
         step_columns = None
         if self._step_column_names_:
             X_future_eff = X_future if X_future is not None else self._X_future_raw_
@@ -1255,99 +1367,69 @@ default="first_step"
             )
 
         if self.groups_ is None:
-            # Only panel fits keep a per-group dict, and this branch is the non-panel one.
-            assert not isinstance(self.target_transformer_, dict)
-            assert not isinstance(self.actual_transformer_, dict)
-            y_t_tail, X_t_cap = _observe_transformers_capture(
-                y_tail, X_tail, self.target_transformer_, self.actual_transformer_, self.target_as_feature
+            y_t_tail, X_t_cap = BaseStandardForecaster._observe_standard_capture(
+                self, y_tail, X_tail, X_future, X_forecast
             )
-
-            y_updated = y_tail
-            if self._y_observed is not None:
-                assert isinstance(self._y_observed, pl.DataFrame)
-                y_updated = pl.concat([self._y_observed, y_tail], how="vertical")
-            BaseStandardForecaster._update_y_X_t_observed_standard(self, y_updated, X_t_cap, self.observation_horizon)
-            BaseStandardForecaster._inject_step_columns_after_update(self, X_future, X_forecast)
-
-            X_t_tail = X_t_cap
-            if step_columns is not None:
-                if X_t_tail is not None:
-                    X_t_tail = X_t_tail.join(step_columns, on="time", how="left")
-                else:
-                    X_t_tail = step_columns.join(y_t_tail.select("time"), on="time", how="semi")
-            assert X_t_tail is not None
+            X_t_tail = self._join_tail_step_columns(X_t_cap, step_columns, y_t_tail)
             return y_t_tail, X_t_tail
 
         groups = self.groups_
-        y_t_tails: dict[str, pl.DataFrame] = {}
-        X_t_tails: dict[str, pl.DataFrame] = {}
-        X_t_updated: dict[str, pl.DataFrame | None] = {}
-        y_updated_dict: dict[str, pl.DataFrame] = {}
+        y_t_tails, X_t_caps = BasePanelForecaster._observe_panel_capture(
+            self, y_tail, X_tail, groups, X_future, X_forecast
+        )
+
         step_schema_per_group = getattr(self, "_step_schema_per_group_", None)
-
+        X_t_tails: dict[str, pl.DataFrame] = {}
         for panel_group_name in groups:
-            y_local = get_group_df(df=y_tail, group_name=panel_group_name, schema=self.local_y_schema_)
-
-            X_local = None
-            if X_tail is not None and self.local_X_actual_schema_ is not None:
-                X_local = get_group_df(df=X_tail, group_name=panel_group_name, schema=self._build_X_actual_schema())
-
-            local_target_transformer = None
-            if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
-                local_target_transformer = self.target_transformer_[panel_group_name]
-
-            local_actual_transformer = None
-            if self.actual_transformer is not None and isinstance(self.actual_transformer_, dict):
-                local_actual_transformer = self.actual_transformer_[panel_group_name]
-
-            y_t_local, X_t_local = _observe_transformers_capture(
-                y_local,
-                X_local,
-                local_target_transformer,
-                local_actual_transformer,
-                self.target_as_feature,
-            )
-            X_t_updated[panel_group_name] = X_t_local
-
-            y_full = y_local
-            if self._y_observed is not None and panel_group_name in self._y_observed:
-                assert isinstance(self._y_observed, dict)
-                y_stored = self._y_observed[panel_group_name]
-                if y_stored is not None:
-                    y_full = pl.concat([y_stored, y_local], how="vertical")
-            y_updated_dict[panel_group_name] = y_full
-
-            X_t_eval_local = X_t_local
-            if step_columns is not None:
+            step_local = None
+            if step_columns is not None and step_schema_per_group is not None:
                 # Panel splits the wide step frame per group; mirrors
                 # `_bulk_origin_features` rather than inventing a new rule.
-                if step_schema_per_group is not None:
-                    available = set(step_columns.columns)
-                    step_schema = {
-                        k: v
-                        for k, v in step_schema_per_group.items()
-                        if k in available or f"{panel_group_name}__{k}" in available
-                    }
-                    step_local = get_group_df(step_columns, panel_group_name, step_schema)
-                else:
-                    step_local = None
-                if step_local is not None:
-                    if X_t_eval_local is not None:
-                        X_t_eval_local = X_t_eval_local.join(step_local, on="time", how="left")
-                    else:
-                        X_t_eval_local = step_local.join(y_t_local.select("time"), on="time", how="semi")
-            assert X_t_eval_local is not None
-            y_t_tails[panel_group_name] = y_t_local
-            X_t_tails[panel_group_name] = X_t_eval_local
-
-        X_t_filtered: dict[str, pl.DataFrame] | None = None
-        if any(v is not None for v in X_t_updated.values()):
-            X_t_filtered = {k: v for k, v in X_t_updated.items() if v is not None}
-
-        BasePanelForecaster._update_y_X_t_observed_from_dicts(self, y_updated_dict, X_t_filtered, groups)
-        BasePanelForecaster._inject_step_columns_after_update_panel(self, X_future, X_forecast)
+                available = set(step_columns.columns)
+                step_schema = {
+                    k: v
+                    for k, v in step_schema_per_group.items()
+                    if k in available or f"{panel_group_name}__{k}" in available
+                }
+                step_local = get_group_df(step_columns, panel_group_name, step_schema)
+            X_t_tails[panel_group_name] = self._join_tail_step_columns(
+                X_t_caps[panel_group_name], step_local, y_t_tails[panel_group_name]
+            )
 
         return y_t_tails, X_t_tails
+
+    @staticmethod
+    def _join_tail_step_columns(
+        X_t: pl.DataFrame | None,
+        step_columns: pl.DataFrame | None,
+        y_t: pl.DataFrame,
+    ) -> pl.DataFrame:
+        """Attach derived step columns to the transformed tail features.
+
+        Parameters
+        ----------
+        X_t : pl.DataFrame or None
+            Transformed tail features, or None when the forecaster has no
+            feature frame of its own.
+        step_columns : pl.DataFrame or None
+            Step columns derived for the tail rows, or None when the
+            forecaster has none.
+        y_t : pl.DataFrame
+            Transformed tail target, used to select the step rows when it is
+            the only source of times.
+
+        Returns
+        -------
+        pl.DataFrame
+            The tail feature matrix the evaluation set is built from.
+
+        """
+        if step_columns is None:
+            assert X_t is not None
+            return X_t
+        if X_t is not None:
+            return X_t.join(step_columns, on="time", how="left")
+        return step_columns.join(y_t.select("time"), on="time", how="semi")
 
     def _build_validation_eval_set(
         self,
@@ -1393,12 +1475,10 @@ default="first_step"
             window (a transformer consumed the boundary rows as warmup).
 
         """
-        if X_t is None:
-            raise ValueError(
-                "Cannot build a validation evaluation set: no feature matrix is "
-                "available. Set target_as_feature to include the target as a "
-                "feature, or provide exogenous features."
-            )
+        # A reduction forecaster always reports requires_exogenous=True, and
+        # BaseForecaster rejects target_as_feature=None without X_actual for
+        # those, so a fit that reaches here always has a feature matrix.
+        assert X_t is not None
         head_rows = 1 if not self.validation_overlap else forecasting_horizon
 
         def one(
@@ -1513,7 +1593,9 @@ default="first_step"
         eval_data : tuple or None
             The ``(X_eval, y_eval)`` validation-holdout pair, delivered as
             the estimator's ``eval_set`` fit argument. Shaped exactly like
-            ``(X_tab, y_tab)``.
+            ``(X_tab, y_tab)``. A ``Pipeline`` estimator is fitted in two
+            phases so its final step evaluates in the transformed space; see
+            `_fit_pipeline_with_eval_set`.
 
         Returns
         -------
@@ -1522,12 +1604,16 @@ default="first_step"
 
         """
         estimator = clone(self.estimator).set_params(**(estimator_params or {}))
-
         fit_params = estimator_fit_params or {}
+
+        if eval_data is not None and isinstance(estimator, Pipeline):
+            return self._fit_pipeline_with_eval_set(estimator, X_tab, y_tab, sample_weight, fit_params, eval_data)
+
         if sample_weight is not None:
             fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
         if eval_data is not None:
-            fit_params = {**fit_params, **self._resolve_eval_set_params(estimator, eval_data)}
+            self._check_eval_set_support(estimator)
+            fit_params = {**fit_params, "eval_set": [tuple(eval_data)]}
 
         estimator.fit(X_tab, y_tab, **fit_params)
         return estimator
@@ -1583,7 +1669,7 @@ default="first_step"
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         eval_pair = None
         if eval_data is not None:
-            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, context=" (validation)")
+            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, is_validation=True)
             eval_pair = (X_eval, y_eval)
         return self._fit_single_estimator(
             X_tab,
@@ -1757,7 +1843,7 @@ default="first_step"
                     y_eval_step = y_eval_step.to_series()
                 X_eval_step = self._filter_step_features(eval_data[0], step + 1)
                 X_eval_step, y_eval_step, _ = self._apply_nan_handling(
-                    X_eval_step, y_eval_step, None, context=f" (validation, step {step + 1})"
+                    X_eval_step, y_eval_step, None, context=f" (step {step + 1})", is_validation=True
                 )
                 eval_pair = (X_eval_step, y_eval_step)
             return self._fit_single_estimator(
@@ -1842,7 +1928,7 @@ default="first_step"
         X_eval_aug: pl.DataFrame | None = None
         y_eval_tab: pl.DataFrame | None = None
         if eval_data is not None:
-            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, context=" (validation)")
+            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, is_validation=True)
             assert isinstance(y_eval, pl.DataFrame)
             X_eval_aug = X_eval.clone()
             y_eval_tab = y_eval

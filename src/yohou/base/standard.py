@@ -9,6 +9,7 @@ import polars.selectors as cs
 from yohou.base.utils import (
     _derive_step_columns,
     _fit_transform_transformers_one,
+    _observe_transformers_capture,
     _observe_transformers_one,
     _retained_forecast_vintages,
     _rewind_transformers_one,
@@ -368,8 +369,43 @@ class BaseStandardForecaster:
         accumulation is a core part of the stateful lifecycle.
 
         """
+        self._observe_standard_capture(y, X_actual, X_future, X_forecast)
+        return self
+
+    def _observe_standard_capture(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+    ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+        """Perform `_observe_standard`'s state update, returning the transformed rows.
+
+        Identical in effect to `_observe_standard`; it additionally hands back
+        the transformed new observations, which the reduction validation
+        holdout assembles its evaluation set from.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations (standard data).
+        X_actual : pl.DataFrame or None
+            New actual feature observations (standard data).
+        X_future : pl.DataFrame or None, default=None
+            Known future features. If None, re-derived from stored raws.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts. If None, re-derived from stored raws.
+
+        Returns
+        -------
+        y_t : pl.DataFrame
+            Transformed new target observations.
+        X_t : pl.DataFrame or None
+            Transformed new feature observations, before step columns.
+
+        """
         # Update transformers with only new data (X_actual only, no step columns)
-        X_t_updated = _observe_transformers_one(
+        y_t, X_t_updated = _observe_transformers_capture(
             y, X_actual, self.target_transformer_, self.actual_transformer_, self.target_as_feature
         )
 
@@ -384,7 +420,7 @@ class BaseStandardForecaster:
         # Re-derive step columns and append to single-row _X_t_observed
         self._inject_step_columns_after_update(X_future, X_forecast)
 
-        return self
+        return y_t, X_t_updated
 
     def _inject_step_columns_after_update(
         self,

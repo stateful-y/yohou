@@ -10,6 +10,7 @@ from yohou.base.forecast_transformer import FORECAST_INDEX_COLS
 from yohou.base.utils import (
     _derive_step_columns,
     _fit_transform_transformers_one,
+    _observe_transformers_capture,
     _observe_transformers_one,
     _retained_forecast_vintages,
     _rewind_transformers_one,
@@ -563,6 +564,46 @@ class BasePanelForecaster:
         self
 
         """
+        self._observe_panel_capture(y, X_actual, groups, X_future, X_forecast)
+        return self
+
+    def _observe_panel_capture(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        groups: list[str],
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+    ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame | None]]:
+        """Perform `_observe_panel`'s state update, returning the transformed rows.
+
+        Identical in effect to `_observe_panel`; it additionally hands back the
+        transformed new observations per group, which the reduction validation
+        holdout assembles its evaluation set from.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations with panel columns.
+        X_actual : pl.DataFrame or None
+            New actual feature observations with panel columns.
+        groups : list[str]
+            Panel group names to update.
+        X_future : pl.DataFrame or None, default=None
+            Known future features. If None, re-derived from stored raws.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts. If None, re-derived from stored raws.
+
+        Returns
+        -------
+        y_t_new : dict[str, pl.DataFrame]
+            Transformed new target observations, per group.
+        X_t_new : dict[str, pl.DataFrame or None]
+            Transformed new feature observations, per group, before step
+            columns.
+
+        """
+        y_t_new: dict[str, pl.DataFrame] = {}
         X_t_updated: dict[str, pl.DataFrame | None] = {}
         y_updated: dict[str, pl.DataFrame] = {}
 
@@ -584,7 +625,7 @@ class BasePanelForecaster:
                 local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             # Update transformers with new data only
-            X_t_updated[panel_group_name] = _observe_transformers_one(
+            y_t_new[panel_group_name], X_t_updated[panel_group_name] = _observe_transformers_capture(
                 y_local,
                 X_local,
                 local_target_transformer,
@@ -612,7 +653,7 @@ class BasePanelForecaster:
         # Re-derive step columns and append to per-group _X_t_observed
         self._inject_step_columns_after_update_panel(X_future, X_forecast)
 
-        return self
+        return y_t_new, X_t_updated
 
     def _inject_step_columns_after_update_panel(
         self,

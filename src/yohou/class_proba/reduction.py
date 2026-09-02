@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numbers
 from typing import Any, Literal, cast
 
 import polars as pl
@@ -10,7 +11,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
-from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
 from .base import BaseClassProbaForecaster
@@ -89,16 +90,10 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ``fit`` as ``eval_set``, enabling estimator-side early stopping
         (LightGBM, XGBoost, CatBoost). Class discovery and label encoding
         use the remaining head only, so a class occurring only inside the
-        tail raises ``ValueError``. Early stopping itself is configured on
-        the estimator. Fitting also raises ``ValueError`` when the
-        estimator's ``fit`` accepts neither ``eval_set`` nor ``**kwargs``,
-        the estimator is a ``sklearn.multioutput`` wrapper, the head left
-        after the split cannot build one training row, ``validation_size``
-        is smaller than ``forecasting_horizon`` while
-        ``validation_overlap=False``, or a raw ``eval_set`` is also passed
-        through fit ``**params``. See
+        tail raises ``ValueError``. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
-        for the full semantics.
+        for the trade-off, the ``Pipeline`` handling, and the other rejected
+        configurations.
     validation_overlap : bool, default=False
         Only used when ``validation_size`` is set. By default only rows
         whose entire target window lies inside the held-out tail are
@@ -188,6 +183,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         **BaseReductionForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict", "predict_proba"])],
         "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "validation_overlap": ["boolean"],
     }
 
     _supports_panel = True
@@ -224,8 +221,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             step_transformer=step_transformer,
             step_feature_alignment=step_feature_alignment,
             training_stride=training_stride,
-            validation_size=validation_size,
-            validation_overlap=validation_overlap,
             nan_handling=nan_handling,
             n_jobs=n_jobs,
             panel_strategy=panel_strategy,
@@ -233,6 +228,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
         )
+        self.validation_size = validation_size
+        self.validation_overlap = validation_overlap
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(

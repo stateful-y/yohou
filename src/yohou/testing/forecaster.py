@@ -1530,7 +1530,6 @@ def check_observe_auto_rederives_step_columns(
 
     step_cols_before = forecaster._step_column_names_.copy()
 
-    # Restore a known observation state contiguous with y_observe
     if y_baseline is not None:
         forecaster.rewind(y_baseline, X_actual_baseline, X_future=X_future, X_forecast=X_forecast)
 

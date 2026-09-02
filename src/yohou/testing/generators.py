@@ -832,10 +832,6 @@ def _yield_yohou_forecaster_checks(
                     "X_actual_observe": X_actual_update,
                     "X_future": X_future_test,
                     "X_forecast": X_forecast_test,
-                    # Earlier update/reset checks advance the shared instance
-                    # past y_update; the baseline rewind makes this check
-                    # sequence-independent (stateful transformers reject the
-                    # overlap that transformer-less forecasters silently accept).
                     "y_baseline": y_train,
                     "X_actual_baseline": X_actual_train,
                 },
