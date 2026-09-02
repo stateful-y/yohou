@@ -91,14 +91,47 @@ early targets are time points the model also trained on, so the stopping
 signal is partly in-sample:
 
 ```python
-forecaster = PointReductionForecaster(
+short_series_forecaster = PointReductionForecaster(
     estimator=estimator,
+    reduction_strategy="direct",
+    actual_transformer=LagTransformer(lag=[1, 2, 24]),
     validation_size=30,
     validation_overlap=True,
 )
+short_series_forecaster.fit(y=y, forecasting_horizon=24)
 ```
 
-## 5. Know the Trade-off
+## 5. Wrap the Estimator in a Pipeline
+
+An estimator that needs preprocessing of its own can be a
+`sklearn.pipeline.Pipeline`, as long as its final step accepts `eval_set`:
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+pipeline_forecaster = PointReductionForecaster(
+    estimator=Pipeline([
+        ("scaler", StandardScaler()),
+        ("lgbm", LGBMRegressor(n_estimators=500, early_stopping_round=20, verbose=-1)),
+    ]),
+    reduction_strategy="direct",
+    actual_transformer=LagTransformer(lag=[1, 2, 24]),
+    validation_size=96,
+)
+pipeline_forecaster.fit(y=y, forecasting_horizon=24)
+```
+
+Yohou fits the pipeline's transformer steps on the training rows only, pushes
+the held-out rows through those fitted transformers, and hands the final step
+an evaluation set in the same feature space it trains in, so the stopping
+metric is comparable to the training loss. `estimator_` stays a fitted
+`Pipeline`, so read the booster through its step name
+(`pipeline_forecaster.estimator_[0].named_steps["lgbm"].best_iteration_` for
+the `"direct"` strategy). A pipeline whose final step cannot accept an
+`eval_set`, or that ends in `"passthrough"`, is rejected at fit.
+
+## 6. Know the Trade-off
 
 Boosting libraries do not refit after early stopping: the model you get was
 trained without the tail, and the tail's information is spent on choosing the
