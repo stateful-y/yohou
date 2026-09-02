@@ -172,10 +172,9 @@ llm-instructions/
 # tracks .claude/skills.
 .claude/skills/openspec-*/
 
-# Local yohou authoring skills kept out of git.
-.claude/skills/create-yohou-*/
-.claude/skills/update-yohou-docs/
-.claude/skills/pr-review/
+# Machine-local skills are excluded via .git/info/exclude, not here: they
+# exist only on the machines that author them, so their names do not belong
+# in the tracked ignore file.
 
 # The Copilot-side skills mirror .claude/skills byte for byte. Tracking both
 # doubles every skill edit and its review. .claude/skills is the source of
