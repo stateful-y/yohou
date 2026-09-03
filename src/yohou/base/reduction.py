@@ -262,7 +262,8 @@ default="first_step"
     - ``validation_size`` is smaller than ``forecasting_horizon`` while
       ``validation_overlap=False``;
     - a class_proba target class appears only inside the tail;
-    - a raw ``eval_set`` is also passed through fit ``**params``;
+    - a raw ``eval_set`` or ``eval_X``/``eval_y`` is also passed through fit
+      ``**params``;
     - the transformed head is too short to anchor the evaluation window
       (a transformer consumed the boundary rows as warmup).
 
@@ -290,8 +291,8 @@ default="first_step"
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "training_stride": [Interval(numbers.Integral, 1, None, closed="left")],
         # validation_size/validation_overlap are declared by the families that
-        # expose them (point, class_proba). Declaring them here would leak them
-        # into every subclass through the MRO merge in
+        # expose them (point, interval, class_proba). Declaring them here would
+        # leak them into every subclass through the MRO merge in
         # BaseForecaster.__init_subclass__, which cannot be undone downstream.
         "nan_handling": [StrOptions({"drop", "pass"})],
         "n_jobs": [Interval(numbers.Integral, -1, None, closed="left"), None],
@@ -342,8 +343,8 @@ default="first_step"
         self.step_feature_alignment = step_feature_alignment
         self.training_stride = training_stride
         # validation_size/validation_overlap are assigned by the families that
-        # expose them (point, class_proba), so a family that does not accept
-        # them carries no attribute sklearn's get_params cannot see.
+        # expose them (point, interval, class_proba), so a family that does not
+        # accept them carries no attribute sklearn's get_params cannot see.
         self.nan_handling = nan_handling
         self.n_jobs = n_jobs
         self.time_weighter = time_weighter
@@ -1127,8 +1128,9 @@ default="first_step"
         ValueError
             If the estimator (or, for a ``Pipeline``, its final step) is a
             ``sklearn.multioutput`` wrapper (a multi-column evaluation target
-            cannot be routed per sub-estimator), its fit signature has no
-            evaluation-set parameter and no ``**kwargs``, or it is a
+            cannot be routed per sub-estimator), is itself a ``Pipeline``
+            nested as another ``Pipeline``'s final step, has a fit signature
+            with no evaluation-set parameter and no ``**kwargs``, or is a
             ``Pipeline`` ending in ``"passthrough"``.
 
         """
@@ -1400,7 +1402,8 @@ default="first_step"
         forecasting_horizon : int
             Number of steps to forecast.
         params : dict
-            The fit ``**params``, checked for a conflicting raw ``eval_set``.
+            The fit ``**params``, checked for a conflicting raw ``eval_set``
+            or ``eval_X``/``eval_y``.
 
         Returns
         -------
@@ -1413,12 +1416,16 @@ default="first_step"
             On any invalid validation-holdout configuration.
 
         """
-        if "eval_set" in params:
+        # Both delivery conventions must be rejected, not just eval_set: the
+        # internally built pair is spread last over the caller's params, so an
+        # unguarded key would be silently overwritten rather than honoured.
+        conflicting = [key for key in ("eval_set", "eval_X", "eval_y") if key in params]
+        if conflicting:
             raise ValueError(
-                "fit received a raw eval_set through **params while "
-                "validation_size is set. The evaluation set is built internally "
-                "from the held-out tail; remove the eval_set fit parameter or "
-                "set validation_size=None."
+                f"fit received a raw {', '.join(conflicting)} through **params "
+                f"while validation_size is set. The evaluation set is built "
+                f"internally from the held-out tail; remove the "
+                f"{'/'.join(conflicting)} fit parameter or set validation_size=None."
             )
         self._check_eval_set_support(self.estimator)
         self._validate_validation_split(y, forecasting_horizon)
