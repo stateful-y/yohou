@@ -205,9 +205,13 @@ def check_validation_holdout_fit(
     Clones the forecaster with a recording stub estimator (keeping whatever
     transformers and strategy the instance is equipped with), fits with a
     holdout, and asserts the delivered evaluation pair has training-matching
-    feature columns, the strict-mode row count, and no row in common with the
-    training matrix, and that the post-fit observation state covers all
-    provided data.
+    feature columns, the row count for the boundary mode in force, and no row
+    in common with the training matrix, and that the post-fit observation
+    state covers all provided data. Both ``validation_overlap`` modes are
+    exercised, since they select different anchor rows and so have different
+    expected counts. Finally it asserts the training matrix equals the one a
+    plain fit on the head alone produces, which fails if the tail leaked into
+    transformer or sample-weight fitting.
 
     Parameters
     ----------
@@ -227,16 +231,82 @@ def check_validation_holdout_fit(
     AssertionError
         If no evaluation set reaches the stub, its shape or columns diverge
         from training, any evaluation row also appears in the training matrix,
-        the observation state stops short of the data end,
-        or, for a dict-shaped ``estimator_``, one quantile estimator's
-        evaluation pair differs from the others'.
+        the observation state stops short of the data end, the training matrix
+        differs from a head-only fit's (tail leakage into transformer or
+        sample-weight fitting), or, for a dict-shaped ``estimator_``, one
+        quantile estimator's evaluation pair differs from the others'.
+
+    """
+    strict = _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast, overlap=False)
+    _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast, overlap=True)
+
+    # Row disjointness inside the delivery check shows the eval rows are not
+    # training rows, but a transformer fitted on head plus tail shifts every
+    # training feature value without duplicating a row, so it passes that
+    # assertion untouched. The holdout fit's training matrix must therefore
+    # equal the one a plain fit on the head alone builds; any tail leakage into
+    # transformer or sample-weight fitting shows up as a difference here. The
+    # boundary does not move with validation_overlap, so one comparison covers
+    # both modes.
+    reference = clone(forecaster)
+    reference.set_params(estimator=_stub_for(forecaster), validation_size=None)
+    boundary = y["time"][-_CHECK_VALIDATION_SIZE]
+    reference.fit(
+        y=y.filter(pl.col("time") < boundary),
+        X_actual=None if X_actual is None else X_actual.filter(pl.col("time") < boundary),
+        forecasting_horizon=_CHECK_HORIZON,
+        X_future=X_future,
+        X_forecast=X_forecast,
+    )
+    for holdout_est, reference_est in zip(_fitted_estimators(strict), _fitted_estimators(reference), strict=True):
+        assert holdout_est.train_X_.equals(reference_est.train_X_), (
+            "the holdout fit's training matrix differs from a head-only fit's; "
+            "the validation tail leaked into transformer or sample-weight fitting"
+        )
+
+
+def _check_validation_holdout_delivery(
+    forecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None,
+    X_future: pl.DataFrame | None,
+    X_forecast: pl.DataFrame | None,
+    *,
+    overlap: bool,
+):
+    """Assert one ``validation_overlap`` mode delivers a correct evaluation set.
+
+    Parameters
+    ----------
+    forecaster : BaseReductionForecaster
+        Reduction forecaster instance exposing ``validation_size``.
+    y : pl.DataFrame
+        Target time series with a ``"time"`` column.
+    X_actual : pl.DataFrame or None
+        Feature time series aligned with ``y``.
+    X_future : pl.DataFrame or None
+        Known future features.
+    X_forecast : pl.DataFrame or None
+        External forecasts.
+    overlap : bool
+        The ``validation_overlap`` value to exercise.
+
+    Returns
+    -------
+    BaseReductionForecaster
+        The fitted clone, so the caller can compare its training matrix.
+
+    Raises
+    ------
+    AssertionError
+        On any violation listed by `check_validation_holdout_fit`.
 
     """
     cloned = clone(forecaster)
     cloned.set_params(
         estimator=_stub_for(forecaster),
         validation_size=_CHECK_VALIDATION_SIZE,
-        validation_overlap=False,
+        validation_overlap=overlap,
     )
     cloned.fit(
         y=y,
@@ -247,7 +317,9 @@ def check_validation_holdout_fit(
     )
 
     n_groups = len(cloned.groups_) if cloned.groups_ else 1
-    expected_rows = (_CHECK_VALIDATION_SIZE - _CHECK_HORIZON + 1) * n_groups
+    # Overlap keeps the horizon - 1 straddling anchors the strict mode drops.
+    per_group = _CHECK_VALIDATION_SIZE if overlap else _CHECK_VALIDATION_SIZE - _CHECK_HORIZON + 1
+    expected_rows = per_group * n_groups
 
     estimators = _fitted_estimators(cloned)
     first_pair = None
@@ -262,16 +334,20 @@ def check_validation_holdout_fit(
         assert len(y_eval) == expected_rows
         # Shape and column names alone are satisfied by any same-sized slice,
         # including one taken from the training head, so the holdout could be
-        # built from the wrong rows and still pass everything above. The
-        # evaluation rows are drawn from the tail and the training rows are
-        # not, so no evaluation row may appear among the training rows.
-        train_rows = {tuple(row) for row in est.train_X_.rows()}
-        eval_rows = [tuple(row) for row in X_eval.rows()]
-        overlap = [row for row in eval_rows if row in train_rows]
-        assert not overlap, (
-            f"{len(overlap)} of {len(eval_rows)} evaluation rows also appear in the training "
-            f"matrix; the holdout is being built from rows the estimator trained on"
-        )
+        # built from the wrong rows and still pass everything above. In strict
+        # mode the evaluation rows are drawn from the tail and the training
+        # rows are not, so no evaluation row may appear among the training
+        # rows. Overlap mode is exempt by construction: it deliberately adds
+        # the straddling anchors, which sit in the head and so are training
+        # rows, which is the purity it trades away.
+        if not overlap:
+            train_rows = {tuple(row) for row in est.train_X_.rows()}
+            eval_rows = [tuple(row) for row in X_eval.rows()]
+            shared = [row for row in eval_rows if row in train_rows]
+            assert not shared, (
+                f"{len(shared)} of {len(eval_rows)} evaluation rows also appear in the training "
+                f"matrix; the holdout is being built from rows the estimator trained on"
+            )
         if isinstance(cloned.estimator_, dict) and not any(isinstance(v, list) for v in cloned.estimator_.values()):
             # The interval family fits several quantile estimators from one
             # split; under multi-output every one of them must receive the
@@ -291,6 +367,8 @@ def check_validation_holdout_fit(
         assert all(t == last_time for t in observed.values()), "observation state must end at the data end"
     else:
         assert observed == last_time, "observation state must end at the data end"
+
+    return cloned
 
 
 def check_validation_holdout_default_noop(
