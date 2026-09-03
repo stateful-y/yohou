@@ -294,7 +294,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         ValueError
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
-            mismatched panel groups).
+            mismatched panel groups). With ``validation_size`` set, also on
+            any rejected holdout configuration; see
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)

@@ -86,11 +86,11 @@ With `"multi-output"`, `estimator_` is the single fitted estimator.
 ## 4. Short Series: `validation_overlap`
 
 Strict evaluation discards the `forecasting_horizon - 1` boundary rows whose
-target windows straddle the split. On short series with long horizons that
-can consume most of the holdout. Setting `validation_overlap=True` evaluates
-those rows too (yielding `validation_size` rows), at a documented cost: their
-early targets are time points the model also trained on, so the stopping
-signal is partly in-sample:
+target windows straddle the split, which on short series with long horizons
+can consume most of the holdout. Set `validation_overlap=True` to evaluate
+those rows too, yielding `validation_size` rows. See
+[Validation Holdout](../explanation/reduction-forecasting.md#validation-holdout)
+for what that trades away:
 
 ```python
 short_series_forecaster = PointReductionForecaster(
@@ -172,12 +172,13 @@ The default interval estimator (`MultiOutputRegressor(QuantileRegressor())`)
 cannot receive an evaluation set and is rejected with `validation_size` set;
 pick an eval-capable quantile estimator as above.
 
-## 7. Know the Trade-off
+## 7. Refit on the Full Series
 
-Boosting libraries do not refit after early stopping: the model you get was
-trained without the tail, and the tail's information is spent on choosing the
-iteration count. If you want a final model trained on everything, read the
-discovered iteration count and refit without the holdout:
+The fitted model was trained on the head alone. To get one trained on
+everything, read the discovered iteration count and refit without the
+holdout. See
+[Validation Holdout](../explanation/reduction-forecasting.md#validation-holdout)
+for why the library does not do this for you:
 
 ```python
 best = max(est.best_iteration_ for est in forecaster.estimator_)

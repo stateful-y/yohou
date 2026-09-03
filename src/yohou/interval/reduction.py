@@ -71,7 +71,10 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         ``MultiOutputRegressor(QuantileRegressor())`` estimator is rejected
         with ``validation_size`` set (the wrapper cannot route an
         evaluation set per sub-estimator); pick an eval_set-capable
-        quantile estimator instead. See
+        quantile estimator instead. Transformers and sample weights are
+        fitted on the remaining head only; the held-out tail is then
+        observed, so ``predict_interval()`` still forecasts from the end of
+        all provided data. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the trade-off, the ``Pipeline`` handling, and the rejected
         configurations.
