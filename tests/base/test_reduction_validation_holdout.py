@@ -225,6 +225,28 @@ class TestDeliveryShape:
         assert list(X_eval.columns) == list(forecaster.estimator_.train_X_.columns)
         assert X_eval.select(step_cols).null_count().sum_horizontal().item() == 0
 
+    def test_ragged_panel_splits_by_row_not_by_group_extent(self):
+        """Groups with shorter extents share the split, which is by row count.
+
+        ``_split_validation_tail`` slices the wide frame by absolute row, so a
+        group whose series ends early contributes null evaluation targets
+        rather than shifting the boundary. The training matrix carries the same
+        nulls, so the holdout path stays consistent with the non-holdout path.
+        """
+        y = _make_y_panel()
+        short = [float(2 * i) for i in range(LENGTH)]
+        for i in range(LENGTH - 4, LENGTH):
+            short[i] = float("nan")
+        y = y.with_columns(pl.Series("b__value", short))
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        X_eval, y_eval = _eval_pair(forecaster.estimator_)
+        # The global strategy stacks both groups, so both contribute rows and
+        # the boundary is unmoved by group b ending early.
+        assert len(X_eval) == 2 * STRICT_ROWS
+        assert np.isnan(np.asarray(y_eval, dtype=float)).any()
+        assert list(X_eval.columns) == list(forecaster.estimator_.train_X_.columns)
+
     def test_stride_does_not_thin_eval(self):
         y = _make_y()
         forecaster = PointReductionForecaster(
@@ -304,6 +326,31 @@ class TestBoundaryPolicy:
         )
         forecaster.fit(y=y, forecasting_horizon=HORIZON)
         assert len(_eval_pair(forecaster.estimator_)[0]) == 2
+
+    @pytest.mark.parametrize("overlap", [False, True], ids=["strict", "overlap"])
+    def test_horizon_one_evaluates_the_whole_tail(self, overlap):
+        """At horizon 1 the strict window is the full tail, so both modes agree.
+
+        This is the boundary where VAL_SIZE - HORIZON + 1 == VAL_SIZE and the
+        ``n < forecasting_horizon`` guard becomes vacuous.
+        """
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), validation_size=VAL_SIZE, validation_overlap=overlap
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=1)
+        X_eval, y_eval = _eval_pair(forecaster.estimator_)
+        assert len(X_eval) == VAL_SIZE
+        # Values equal their index, so the tail targets are the last VAL_SIZE.
+        eval_targets = sorted(np.asarray(y_eval, dtype=float).ravel().tolist())
+        assert eval_targets == [float(i) for i in range(LENGTH - VAL_SIZE, LENGTH)]
+
+    @pytest.mark.parametrize("validation_size", [LENGTH, LENGTH + 10], ids=["equal", "greater"])
+    def test_validation_size_at_or_beyond_series_length(self, validation_size):
+        """A holdout swallowing the series reports zero head rows, not a negative count."""
+        with pytest.raises(ValueError, match="leaves 0 head rows"):
+            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=validation_size).fit(
+                y=_make_y(), forecasting_horizon=HORIZON
+            )
 
 
 class TestLeakage:
@@ -456,15 +503,33 @@ class TestErrorContract:
         base = ["lo", "hi"] * ((LENGTH - 5) // 2)
         states = base + ["new"] * (LENGTH - len(base))
         y = _make_y().with_columns(pl.Series("state", states)).drop("value")
+        forecaster = ClassProbaReductionForecaster(estimator=RecordingClassifier(), validation_size=VAL_SIZE)
         with pytest.raises(ValueError, match="only inside the validation_size holdout"):
-            ClassProbaReductionForecaster(estimator=RecordingClassifier(), validation_size=VAL_SIZE).fit(
-                y=y, forecasting_horizon=2
-            )
+            forecaster.fit(y=y, forecasting_horizon=2)
+        # A rejected holdout must leave no fitted state behind, so that
+        # check_is_fitted does not report a half-fitted instance as ready.
+        for attribute in ("classes_", "n_classes_", "label_to_code_", "estimator_"):
+            assert not hasattr(forecaster, attribute)
 
-    def test_raw_eval_set_passthrough_conflict(self):
-        with pytest.raises(ValueError, match="raw eval_set"):
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"eval_set": "raw"}, "raw eval_set"),
+            ({"eval_X": "raw"}, "raw eval_X"),
+            ({"eval_y": "raw"}, "raw eval_y"),
+            ({"eval_X": "raw", "eval_y": "raw"}, "raw eval_X, eval_y"),
+        ],
+        ids=["eval_set", "eval_X", "eval_y", "eval_X+eval_y"],
+    )
+    def test_raw_eval_passthrough_conflict(self, kwargs, match):
+        """Both eval delivery conventions must be rejected identically.
+
+        The internally built pair is spread last over the caller's fit params,
+        so an unguarded key would be silently overwritten rather than honoured.
+        """
+        with pytest.raises(ValueError, match=match):
             PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE).fit(
-                y=_make_y(), forecasting_horizon=HORIZON, eval_set="raw"
+                y=_make_y(), forecasting_horizon=HORIZON, **kwargs
             )
 
     def test_pipeline_final_step_without_eval_set_fails_before_mutation(self):
@@ -1010,6 +1075,30 @@ class QuantileStub(RegressorMixin, BaseEstimator):
         return out.ravel() if self._ncols == 1 else out
 
 
+class MultiQuantileStub(RegressorMixin, BaseEstimator):
+    """Stand-in for a CatBoost MultiQuantile estimator recording its eval_set.
+
+    One model covers every quantile, so ``predict`` returns a column per
+    quantile parsed from ``loss_function``.
+    """
+
+    def __init__(self, loss_function="MultiQuantile:alpha=0.05,0.95"):
+        self.loss_function = loss_function
+
+    def _quantiles(self):
+        return [float(q) for q in self.loss_function.split("alpha=")[1].split(",")]
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.received_eval_set_ = eval_set
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float).ravel()
+        self._values = [float(np.nanquantile(arr, q)) for q in self._quantiles()]
+        return self
+
+    def predict(self, X):
+        return np.tile(np.asarray(self._values), (len(X), 1))
+
+
 class TestErrorOrdering:
     """Configuration and shape errors fire before any tail row is observed.
 
@@ -1096,6 +1185,21 @@ class TestIntervalFamily:
             X_eval, y_eval = _eval_pair(est)
             assert X_eval.equals(X_first) and y_eval.equals(y_first)
             assert list(X_eval.columns) == list(est.train_X_.columns)
+
+    def test_multiquantile_single_fit_receives_the_pair(self):
+        """The MultiQuantile branch fits one model and must still get the eval pair.
+
+        MultiQuantile requires a single target column at horizon 1, so this is
+        the one interval path that never splits into lower/upper estimators.
+        """
+        forecaster = IntervalReductionForecaster(
+            estimator=MultiQuantileStub(), validation_size=VAL_SIZE, validation_overlap=True
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=1, coverage_rates=[0.9])
+        assert list(forecaster.estimator_) == ["_multiquantile"]
+        X_eval, _ = _eval_pair(forecaster.estimator_["_multiquantile"])
+        # Horizon 1: strict and overlap both evaluate the whole tail.
+        assert len(X_eval) == VAL_SIZE
 
     def test_validation_fit_equals_fit_then_observe(self):
         # The scaler rides the actual-transformer slot: interval's
