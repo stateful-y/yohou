@@ -90,7 +90,10 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ``fit`` as ``eval_set``, enabling estimator-side early stopping
         (LightGBM, XGBoost, CatBoost). Class discovery and label encoding
         use the remaining head only, so a class occurring only inside the
-        tail raises ``ValueError``. See
+        tail raises ``ValueError``. Transformers and sample weights are
+        fitted on the head only too; the held-out tail is then observed, so
+        ``predict_proba()`` still forecasts from the end of all provided
+        data. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the trade-off, the ``Pipeline`` handling, and the other rejected
         configurations.
@@ -101,7 +104,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
         target windows straddle the split are also evaluated, yielding
         ``validation_size`` rows; those rows score some time points the
-        model also trained on.
+        model also trained on, trading evaluation purity for data on short
+        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -273,6 +277,16 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         self
             The fitted forecaster instance.
 
+        Raises
+        ------
+        ValueError
+            If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
+            invalid structure (e.g., missing ``"time"`` column, or
+            mismatched panel groups). With ``validation_size`` set, also if a
+            target class occurs only inside the holdout tail, or on any other
+            rejected holdout configuration; see
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
+
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
@@ -283,28 +297,36 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         # transform y). The validation tail never contributes classes: the
         # encoder is fitted on the head only, and a tail-only class raises.
         # Use unprefixed (base) column names so panel groups share class labels.
-        self.classes_: dict[str, list[str]] = {}
-        self.n_classes_: dict[str, int] = {}
-        self.label_to_code_: dict[str, dict[str, int]] = {}
+        # These are built as locals and only assigned once the tail check has
+        # passed, so a rejected holdout leaves no half-fitted instance behind.
+        classes: dict[str, list[str]] = {}
+        n_classes: dict[str, int] = {}
+        label_to_code: dict[str, dict[str, int]] = {}
         for col in y_fit.columns:
             if col == "time":
                 continue
             base_col = col.split("__", 1)[1] if "__" in col else col
             unique_vals = sorted(y_fit[col].drop_nulls().unique().cast(pl.String).to_list())
-            if base_col in self.classes_:
-                merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
-                self.classes_[base_col] = merged
+            if base_col in classes:
+                merged = sorted(set(classes[base_col]) | set(unique_vals))
+                classes[base_col] = merged
             else:
-                self.classes_[base_col] = unique_vals
-        for base_col, labels in self.classes_.items():
-            self.n_classes_[base_col] = len(labels)
-            self.label_to_code_[base_col] = {label: i for i, label in enumerate(labels)}
+                classes[base_col] = unique_vals
+        for base_col, labels in classes.items():
+            n_classes[base_col] = len(labels)
+            label_to_code[base_col] = {label: i for i, label in enumerate(labels)}
+
+        if y_tail is not None:
+            self._check_tail_classes(y_tail, classes)
+
+        self.classes_: dict[str, list[str]] = classes
+        self.n_classes_: dict[str, int] = n_classes
+        self.label_to_code_: dict[str, dict[str, int]] = label_to_code
 
         # Encode target columns to integer codes for tabularization
         y_encoded = self._encode_target(y_fit)
         y_tail_encoded: pl.DataFrame | None = None
         if y_tail is not None:
-            self._check_tail_classes(y_tail)
             y_tail_encoded = self._encode_target(y_tail)
 
         y_t, X_t = self._pre_fit(
@@ -331,13 +353,20 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         return self
 
-    def _check_tail_classes(self, y_tail: pl.DataFrame) -> None:
+    def _check_tail_classes(self, y_tail: pl.DataFrame, classes: dict[str, list[str]]) -> None:
         """Reject validation-tail classes the head-fitted encoder never saw.
+
+        Called before ``classes_`` is assigned, so it takes the discovered
+        mapping as an argument rather than reading fitted state; that keeps a
+        rejected holdout from leaving a half-fitted instance behind.
 
         Parameters
         ----------
         y_tail : pl.DataFrame
             The held-out raw (unencoded) target rows.
+        classes : dict[str, list[str]]
+            Classes discovered from the training head, keyed by unprefixed
+            column name.
 
         Raises
         ------
@@ -349,7 +378,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             if col == "time":
                 continue
             base_col = col.split("__", 1)[1] if "__" in col else col
-            known = set(self.classes_.get(base_col, []))
+            known = set(classes.get(base_col, []))
             tail_vals = set(y_tail[col].drop_nulls().unique().cast(pl.String).to_list())
             unseen = sorted(tail_vals - known)
             if unseen:
