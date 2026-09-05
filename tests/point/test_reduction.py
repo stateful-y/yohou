@@ -13,8 +13,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from conftest import run_checks
+from yohou.compose import FeaturePipeline
 from yohou.point import PointReductionForecaster
-from yohou.preprocessing import LagTransformer
+from yohou.preprocessing import LagTransformer, MinMaxScaler, RollingStatisticsTransformer
+from yohou.stationarity import SeasonalDifferencing
 from yohou.testing import _yield_yohou_forecaster_checks
 from yohou.weighting import LookupWeighter, TableWeighter
 
@@ -294,6 +296,57 @@ class TestPointReductionChecks:
             ),
             (
                 PointReductionForecaster(estimator=LinearRegression()),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    target_transformer=MinMaxScaler(),
+                    actual_transformer=LagTransformer(lag=[1, 2]),
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    target_transformer=SeasonalDifferencing(seasonality=4),
+                    reduction_strategy="direct",
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    actual_transformer=FeaturePipeline(
+                        steps=[
+                            ("lag", LagTransformer(lag=[1, 2])),
+                            ("roll", RollingStatisticsTransformer(window_size=3)),
+                        ]
+                    ),
+                    reduction_strategy="dir-rec",
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    reduction_strategy="direct",
+                    step_feature_alignment="matched",
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    target_as_feature="raw",
+                    actual_transformer=LagTransformer(lag=1),
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(
+                    target_as_feature=None,
+                    actual_transformer=LagTransformer(lag=[1, 2]),
+                ),
+                [],
+            ),
+            (
+                PointReductionForecaster(training_stride=2, nan_handling="drop"),
                 [],
             ),
         ],

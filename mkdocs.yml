@@ -275,6 +275,7 @@ nav:
     - Visualize and Compare Model Scores: pages/how-to/visualize-scores.md
     - Produce Prediction Intervals: pages/how-to/interval-forecasting.md
     - Tune Forecaster Hyperparameters: pages/how-to/tune-hyperparameters.md
+    - Enable Early Stopping: pages/how-to/early-stopping.md
     - Visualize Forecasts: pages/how-to/visualize-forecasts.md
     - Work with Panel Data: pages/how-to/panel-data.md
     - Use Time Weighting: pages/how-to/time-weighting.md

@@ -83,3 +83,4 @@
 *[rolling origin evaluation]: Temporal cross-validation where each fold advances the training cutoff forward through the series; another name for walk-forward or rolling evaluation.
 *[meta-forecaster]: A forecaster that wraps one or more base forecasters and delegates fitting and prediction to them, adding decomposition, chaining, or panel dispatch.
 *[voting]: Combining predictions from multiple base forecasters by averaging (soft voting) or majority vote (hard voting), optionally weighted per forecaster.
+*[holdout]: The trailing window of a series set aside from estimator training; with `validation_size` it becomes the evaluation set that drives estimator-side early stopping.

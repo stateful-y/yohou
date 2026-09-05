@@ -288,7 +288,7 @@ def test_my_forecaster(y_X_factory):
 
 | Generator | Checks | Component |
 |-----------|--------|-----------|
-| `_yield_yohou_forecaster_checks` | 27 | Forecasters (point, interval, class-probability) |
+| `_yield_yohou_forecaster_checks` | varies by tags | Forecasters (point, interval, class-probability) |
 | `_yield_yohou_transformer_checks` | 26 | Transformers |
 | `_yield_yohou_scorer_checks` | 11 | Scorers |
 | `_yield_yohou_splitter_checks` | 8 | Splitters |

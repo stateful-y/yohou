@@ -55,6 +55,9 @@ tests = [
     "pytest-xdist>=3.8",
     "covdefaults>=2.3",
     "hypothesis>=6.100",
+    # Exercises the validation-holdout early stopping against a real boosting
+    # library. Ships Python-agnostic py3-none wheels for every CI platform.
+    "lightgbm>=4.0",
 ]
 lint = [
     "interrogate>=1.7.0",
@@ -136,6 +139,7 @@ examples = [
     # CVEs back in the lockfile of every project that generates examples.
     "marimo>=0.23.16",
     "catboost>=1.2",
+    "lightgbm>=4.0",
     "statsmodels>=0.14",
 ]
 

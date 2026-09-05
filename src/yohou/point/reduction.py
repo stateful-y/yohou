@@ -1,5 +1,6 @@
 """Implementation of reduction-based point forecasters."""
 
+import numbers
 from typing import Literal
 
 import polars as pl
@@ -8,7 +9,7 @@ from sklearn.base import BaseEstimator
 from sklearn.linear_model import LinearRegression
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
-from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
 from .base import BasePointForecaster
@@ -54,6 +55,26 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         keeps every instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
+    validation_size : int or None, default=None
+        Number of trailing time steps (per group on panel data) to hold out
+        from estimator training and deliver to the wrapped estimator's
+        ``fit`` as ``eval_set``, enabling estimator-side early stopping
+        (LightGBM, XGBoost, CatBoost). Transformers and sample weights are
+        fitted on the remaining head only; the held-out tail is then
+        observed, so ``predict()`` still forecasts from the end of all
+        provided data. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the trade-off, the ``Pipeline`` handling, and the rejected
+        configurations.
+    validation_overlap : bool, default=False
+        Only used when ``validation_size`` is set. By default only rows
+        whose entire target window lies inside the held-out tail are
+        evaluated (``validation_size - forecasting_horizon + 1`` rows).
+        When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
+        target windows straddle the split are also evaluated, yielding
+        ``validation_size`` rows; those rows score some time points the
+        model also trained on, trading evaluation purity for data on short
+        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -176,6 +197,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         **BasePointForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "validation_overlap": ["boolean"],
     }
 
     _supports_panel = True
@@ -192,6 +215,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
+        validation_size: int | None = None,
+        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -217,6 +242,8 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
         )
+        self.validation_size = validation_size
+        self.validation_overlap = validation_overlap
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -267,25 +294,36 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         ValueError
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
-            mismatched panel groups).
+            mismatched panel groups). With ``validation_size`` set, also on
+            any rejected holdout configuration; see
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
+        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+
         y_t, X_t = self._pre_fit(
-            y=y,
-            X_actual=X_actual,
+            y=y_fit,
+            X_actual=X_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        eval_data = None
+        if y_tail is not None:
+            eval_data = self._build_validation_eval_data(
+                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast
+            )
 
         self.estimator_ = self._estimator_fit_one(
             y_t,
             X_t,
             forecasting_horizon,
             estimator_fit_params=params,
+            eval_data=eval_data,
         )
 
         return self

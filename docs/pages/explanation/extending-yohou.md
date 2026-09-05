@@ -269,7 +269,7 @@ itself.
 Each extension point has a corresponding test generator that yields a
 comprehensive set of checks:
 
-- `_yield_yohou_forecaster_checks`: 40+ checks covering fit attributes,
+- `_yield_yohou_forecaster_checks`: a tag-dependent set of checks covering fit attributes,
   prediction structure, observe/rewind, panel support, metadata routing,
   and type-specific output validation.
 - `_yield_yohou_transformer_checks`: 26+ checks covering transformation

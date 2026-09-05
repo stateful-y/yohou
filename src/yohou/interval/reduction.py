@@ -1,5 +1,6 @@
 """Implementation of reduction-based interval forecasters."""
 
+import numbers
 from typing import Literal
 
 import numpy as np
@@ -11,7 +12,7 @@ from sklearn.linear_model import QuantileRegressor
 from sklearn.multioutput import MultiOutputRegressor
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
-from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
 from .base import BaseIntervalForecaster
@@ -58,6 +59,34 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         keeps every instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
+    validation_size : int or None, default=None
+        Number of trailing time steps (per group on panel data) to hold out
+        from estimator training and deliver to every quantile estimator's
+        ``fit`` as ``eval_set``, enabling estimator-side early stopping
+        (LightGBM ``objective="quantile"``, CatBoost). The holdout splits
+        once and the same evaluation pair is shared by every quantile fit
+        (a lower and an upper estimator per coverage rate, or the single
+        MultiQuantile fit), each scoring its own quantile loss against the
+        shared evaluation targets. The default
+        ``MultiOutputRegressor(QuantileRegressor())`` estimator is rejected
+        with ``validation_size`` set (the wrapper cannot route an
+        evaluation set per sub-estimator); pick an eval_set-capable
+        quantile estimator instead. Transformers and sample weights are
+        fitted on the remaining head only; the held-out tail is then
+        observed, so ``predict_interval()`` still forecasts from the end of
+        all provided data. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the trade-off, the ``Pipeline`` handling, and the rejected
+        configurations.
+    validation_overlap : bool, default=False
+        Only used when ``validation_size`` is set. By default only rows
+        whose entire target window lies inside the held-out tail are
+        evaluated (``validation_size - forecasting_horizon + 1`` rows).
+        When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
+        target windows straddle the split are also evaluated, yielding
+        ``validation_size`` rows; those rows score some time points the
+        model also trained on, trading evaluation purity for data on short
+        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -190,6 +219,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         **BaseIntervalForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict"])],
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
+        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "validation_overlap": ["boolean"],
     }
 
     def __init__(
@@ -204,6 +235,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
+        validation_size: int | None = None,
+        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -234,6 +267,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
         )
+        self.validation_size = validation_size
+        self.validation_overlap = validation_overlap
 
     def _detect_multiquantile_loss(self) -> str | None:
         """Detect a multi-quantile loss function on the estimator.
@@ -344,7 +379,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             If the estimator exposes no quantile parameter, if it exposes
             more than one quantile parameter, or if a MultiQuantile
             estimator is used with more than one target column or with
-            ``forecasting_horizon > 1``.
+            ``forecasting_horizon > 1``. With ``validation_size`` set, also
+            on any rejected holdout configuration; see
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(
@@ -352,13 +389,21 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         )
         self._warn_inapplicable_step_alignment()
 
+        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+
         y_t, X_t = self._pre_fit(
-            y=y,
-            X_actual=X_actual,
+            y=y_fit,
+            X_actual=X_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
         )
+
+        eval_data = None
+        if y_tail is not None:
+            eval_data = self._build_validation_eval_data(
+                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast
+            )
 
         # Detect multi-quantile estimator (e.g. CatBoost ``MultiQuantile`` loss).
         # When present, a single model is fitted for all coverage-rate quantiles
@@ -396,6 +441,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 X_t,
                 forecasting_horizon,
                 estimator_params={multiquantile_param: f"MultiQuantile:alpha={alpha_str}"},
+                eval_data=eval_data,
             )
             self.estimator_ = {"_multiquantile": estimator}
         else:
@@ -440,6 +486,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     X_t,
                     forecasting_horizon,
                     estimator_params=estimator_params_lower,
+                    eval_data=eval_data,
                 )
 
                 estimator_params_upper = {
@@ -450,6 +497,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     X_t,
                     forecasting_horizon,
                     estimator_params=estimator_params_upper,
+                    eval_data=eval_data,
                 )
 
                 estimators[f"coverage_rate_{coverage_rate}_lower"] = estimator_lower
