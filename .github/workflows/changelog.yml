@@ -102,10 +102,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install git-cliff
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
+        uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b # v2
         with:
           # renovate: datasource=github-releases depName=orhun/git-cliff
-          tool: git-cliff@2.13.1
+          tool: git-cliff@2.14.1
 
       - name: Generate changelog
         id: changelog
@@ -139,7 +139,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.8"
+          version: "0.12.10"
 
       - name: Run hooks on generated CHANGELOG
         run: |
