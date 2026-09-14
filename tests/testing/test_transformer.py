@@ -576,3 +576,57 @@ class TestTransformerCheckEarlyReturns:
         X_test = X[20:22]
         t = LagTransformer(lag=2)
         assert check_memory_bounded(t, X_train, X_test, n_updates=10) is None
+
+
+class _HorizonRequiringLag(LagTransformer):
+    """LagTransformer that refuses to fit without ``forecasting_horizon`` fit metadata."""
+
+    def fit(self, X, y=None, **params):
+        """Fit, requiring ``forecasting_horizon`` among the fit metadata."""
+        if "forecasting_horizon" not in params:
+            raise ValueError("forecasting_horizon is required as fit metadata")
+        self.forecasting_horizon_ = params["forecasting_horizon"]
+        return super().fit(X, y)
+
+
+class TestTransformerChecksForwardFitParams:
+    """The transformer check suite forwards fit metadata to every refit."""
+
+    @pytest.fixture
+    def train_test_data(self, time_series_factory):
+        """Create a train/test split."""
+        X = time_series_factory(length=60, n_components=2, seed=42)
+        return X[:40], X[40:]
+
+    def test_all_checks_pass_with_fit_params(self, train_test_data):
+        """Every check refits with the supplied metadata, so the suite passes."""
+        X_train, X_test = train_test_data
+        transformer = _HorizonRequiringLag(lag=3)
+        transformer.fit(X_train, forecasting_horizon=5)
+
+        run_checks(
+            transformer,
+            _yield_yohou_transformer_checks(transformer, X_train, None, X_test, fit_params={"forecasting_horizon": 5}),
+        )
+
+    def test_checks_fail_without_fit_params(self, train_test_data):
+        """Without the metadata, refitting checks fail, proving the forwarding is exercised."""
+        X_train, X_test = train_test_data
+        transformer = _HorizonRequiringLag(lag=3)
+        transformer.fit(X_train, forecasting_horizon=5)
+
+        with pytest.raises(pytest.fail.Exception, match="check_fit_sets_attributes"):
+            run_checks(transformer, _yield_yohou_transformer_checks(transformer, X_train, None, X_test))
+
+    def test_fit_params_reach_each_refit(self, train_test_data):
+        """A single check forwards the metadata value itself, not just its presence."""
+        X_train, _ = train_test_data
+        seen = []
+
+        class _Recording(_HorizonRequiringLag):
+            def fit(self, X, y=None, **params):
+                seen.append(params.get("forecasting_horizon"))
+                return super().fit(X, y, **params)
+
+        check_fit_sets_attributes(_Recording(lag=3), X_train, fit_params={"forecasting_horizon": 7})
+        assert seen == [7]
