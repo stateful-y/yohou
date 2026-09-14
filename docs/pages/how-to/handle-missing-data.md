@@ -97,14 +97,14 @@ between neighbouring observations. This is appropriate when the series has a
 pronounced seasonal shape and the gaps fall at a predictable point in the cycle
 (for example, weekends in a daily series with a strong weekly pattern).
 
-Set `period` to the cycle length. If you prefer robustness to outliers, switch
+Set `seasonality` to the cycle length. If you prefer robustness to outliers, switch
 `fill_method` to `"seasonal_median"`:
 
 ```python
 from yohou.preprocessing.imputation import SeasonalImputer
 
 # Weekly seasonality, median aggregation
-imputer = SeasonalImputer(period=7, fill_method="seasonal_median")
+imputer = SeasonalImputer(seasonality=7, fill_method="seasonal_median")
 ```
 
 ## Use KNN Imputation for Complex Patterns

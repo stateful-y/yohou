@@ -46,7 +46,7 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
         "forecaster": None,
         "param_distributions": {"seasonality": [1, 2]},
     },
-    "SeasonalImputer": {"period": 7},
+    "SeasonalImputer": {"seasonality": 7},
     "SlidingWindowFunctionTransformer": {"func": np.mean},
     "StepColumnReducer": {"reducer": SklearnStandardScaler()},
     "StepFrameReducer": {"reducer": SklearnStandardScaler(), "prefix": "wx"},

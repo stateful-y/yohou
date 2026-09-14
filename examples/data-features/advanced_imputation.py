@@ -190,7 +190,7 @@ def _(mo):
     ## 5. SeasonalImputer
 
     [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/) fills missing values by looking at the same position in
-    previous seasonal cycles. Setting `period=12` on monthly data means a
+    previous seasonal cycles. Setting `seasonality=12` on monthly data means a
     missing January is filled with the average of all other Januaries in the
     series. The `fill_method` parameter controls the aggregation:
     `"seasonal_mean"` uses the mean, while `"seasonal_median"` uses the median.
@@ -201,14 +201,14 @@ def _(mo):
 
 @app.cell
 def _(SeasonalImputer, plot_time_series, tourism_missing):
-    imp_seasonal = SeasonalImputer(period=12, fill_method="seasonal_mean")
+    imp_seasonal = SeasonalImputer(seasonality=12, fill_method="seasonal_mean")
     imp_seasonal.fit(tourism_missing)
     filled_seasonal = imp_seasonal.transform(tourism_missing)
     _combined = filled_seasonal.rename({"tourists": "imputed"}).join(
         tourism_missing.rename({"tourists": "with gaps"}),
         on="time",
     )
-    plot_time_series(_combined, title="Seasonal Imputer (period=12, seasonal_mean)")
+    plot_time_series(_combined, title="Seasonal Imputer (seasonality=12, seasonal_mean)")
     return (filled_seasonal,)
 
 
