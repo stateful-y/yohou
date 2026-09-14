@@ -1415,7 +1415,8 @@ def check_step_feature_alignment_filters(
     Applies to the ``"direct"`` strategy only, which is the one that filters. The
     check fits the forecaster twice, so it needs a forecaster exposing
     ``reduction_strategy`` and ``step_feature_alignment``, and step columns to
-    filter (pass ``X_future`` or ``X_forecast``).
+    filter: pass ``X_future`` or ``X_forecast``, or give the forecaster an
+    ``actual_transformer`` tagged ``produces_step_columns``.
 
     Parameters
     ----------
@@ -1427,9 +1428,11 @@ def check_step_feature_alignment_filters(
     X_actual_train : pl.DataFrame or None, default=None
         Training features.
     X_future : pl.DataFrame or None, default=None
-        Known future features. Provide this or ``X_forecast``.
+        Known future features. Provide this, ``X_forecast``, or a step-output
+        ``actual_transformer``.
     X_forecast : pl.DataFrame or None, default=None
-        External forecasts. Provide this or ``X_future``.
+        External forecasts. Provide this, ``X_future``, or a step-output
+        ``actual_transformer``.
     forecasting_horizon : int, default=3
         Number of steps ahead to forecast. Must exceed 1 for the comparison to
         have any step columns to drop.
@@ -1439,8 +1442,13 @@ def check_step_feature_alignment_filters(
     assert "step_feature_alignment" in params, (
         "check_step_feature_alignment_filters needs a forecaster exposing step_feature_alignment"
     )
-    assert X_future is not None or X_forecast is not None, (
-        "check_step_feature_alignment_filters needs X_future or X_forecast to derive step columns"
+    actual_transformer = params.get("actual_transformer")
+    produces_step_columns = actual_transformer is not None and bool(
+        actual_transformer.__sklearn_tags__().transformer_tags.produces_step_columns
+    )
+    assert X_future is not None or X_forecast is not None or produces_step_columns, (
+        "check_step_feature_alignment_filters needs X_future, X_forecast or a step-output actual_transformer "
+        "to provide step columns"
     )
     assert forecasting_horizon > 1, (
         f"forecasting_horizon must exceed 1 to compare alignments, got {forecasting_horizon}"
@@ -1462,7 +1470,8 @@ def check_step_feature_alignment_filters(
             X_future=X_future,
             X_forecast=X_forecast,
         )
-        return _collect_n_features(clone_.estimator_), len(clone_._step_column_names_)
+        n_step_columns = len(clone_._step_column_names_) + len(getattr(clone_, "_actual_step_column_names_", ()))
+        return _collect_n_features(clone_.estimator_), n_step_columns
 
     counts_all, n_step_cols = _fit_and_count("all")
     counts_matched, _ = _fit_and_count("matched")
@@ -1470,8 +1479,8 @@ def check_step_feature_alignment_filters(
     # Guard the comparison itself: with no step columns derived, both fits would
     # agree trivially and the check would pass while testing nothing.
     assert n_step_cols > 0, (
-        "fit derived no step columns, so this check cannot tell filtering from its absence; "
-        "pass an X_future or X_forecast that covers the horizon"
+        "fit recorded no step columns, so this check cannot tell filtering from its absence; "
+        "pass an X_future or X_forecast that covers the horizon, or a step-output actual_transformer"
     )
     assert counts_all and len(counts_all) == len(counts_matched), (
         f"expected the same fitted estimator layout under both alignments, got "
@@ -1481,7 +1490,7 @@ def check_step_feature_alignment_filters(
     assert not offenders, (
         f"step_feature_alignment='matched' did not narrow the feature set: estimator(s) "
         f"{[i for i, _, m in offenders]} saw {[m for _, _, m in offenders]} features against "
-        f"{[a for _, a, _ in offenders]} under 'all', with {n_step_cols} step column(s) derived. "
+        f"{[a for _, a, _ in offenders]} under 'all', with {n_step_cols} step column(s) recorded. "
         f"The filter recognized no step column to drop, which is the silent no-op this check exists "
         f"to catch, not a legitimate configuration."
     )

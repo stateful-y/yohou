@@ -347,6 +347,34 @@ default="first_step"
             stacklevel=4,
         )
 
+    def _warn_unfiltered_step_output_columns(self) -> None:
+        """Warn when step columns from the actual transformer reach every model unfiltered.
+
+        A step-output transformer emits ``H`` columns per base, one per forecast step,
+        and only ``reduction_strategy="direct"`` with a non-``"all"``
+        ``step_feature_alignment`` narrows each per-step model to its own. Otherwise
+        every model reads all of them, which widens the design matrix by a factor of
+        ``H`` without saying so.
+
+        Call once per ``fit``, after ``_pre_fit`` has recorded the step-output columns.
+        """
+        names = getattr(self, "_actual_step_column_names_", set())
+        if not names:
+            return
+        if self.reduction_strategy == "direct" and self.step_feature_alignment != "all":
+            return
+        warnings.warn(
+            f"The actual_transformer produces {len(names)} step column(s), and with "
+            f"reduction_strategy={self.reduction_strategy!r} and "
+            f"step_feature_alignment={self.step_feature_alignment!r} every model receives all of "
+            f'them. reduction_strategy="direct" with step_feature_alignment="matched" gives each '
+            "per-step model only its own step's columns.",
+            UserWarning,
+            # warn <- _warn_unfiltered_step_output_columns <- fit <- sklearn's
+            # _fit_context wrapper <- user.
+            stacklevel=4,
+        )
+
     def _process_fit_weights(
         self,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
@@ -1071,6 +1099,9 @@ default="first_step"
         columns from 1 through the given step number. Non-step columns
         are always kept.
 
+        Step columns produced by the ``actual_transformer`` (see
+        ``_record_actual_step_columns``) are filtered by the same rule.
+
         ``_step_column_names_`` holds every column the step stage produced, which
         after a ``step_transformer`` includes horizon-agnostic summaries
         (``temp_step_mean``). Those carry no step index to align against and
@@ -1108,7 +1139,8 @@ default="first_step"
             at fit, but no column of ``X_tab`` is recognized as one.
 
         """
-        if self.step_feature_alignment == "all" or not self._step_column_names_:
+        recorded = len(self._step_column_names_) + len(getattr(self, "_actual_step_column_names_", ()))
+        if self.step_feature_alignment == "all" or not recorded:
             return X_tab
 
         step_cols_in_tab = [c for c in X_tab.columns if self._is_step_column(c)]
@@ -1123,7 +1155,7 @@ default="first_step"
             # the right one is worse than a failed fit.
             raise RuntimeError(
                 f"step_feature_alignment={self.step_feature_alignment!r} cannot be applied: "
-                f"{len(self._step_column_names_)} step column(s) were derived at fit, but none "
+                f"{recorded} step column(s) were recorded at fit, but none "
                 f"of the {X_tab.width} tabularized feature columns is recognized as one. This "
                 f"is an internal naming mismatch between the recorded step column names and the "
                 f"feature matrix; it is not caused by the data or by this parameter. Please "

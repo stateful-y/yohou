@@ -404,7 +404,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # owns that spelling knowledge for every caller.
         X_t_components = X_t
         if X_t is not None and self._step_column_names_:
-            drop_cols = [c for c in X_t.columns if self._is_step_column(c)]
+            drop_cols = [c for c in X_t.columns if self._is_step_column(c, derived_only=True)]
             if drop_cols:
                 X_t_components = X_t.drop(drop_cols)
 
