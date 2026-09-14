@@ -21,7 +21,9 @@ def check_metadata_routing_default_request(estimator_fitted) -> None:
 
     Tests:
     - get_metadata_routing() returns MetadataRouter or MetadataRequest
-    - Default requests are empty (all metadata values are None)
+    - Default requests are empty (all metadata values are None), except the
+      ``forecasting_horizon`` fit request a ``produces_step_columns`` transformer
+      must declare
 
     Parameters
     ----------
@@ -40,6 +42,25 @@ def check_metadata_routing_default_request(estimator_fitted) -> None:
     assert isinstance(router, MetadataRouter | MetadataRequest), (
         f"Expected MetadataRouter or MetadataRequest, got {type(router)}"
     )
+
+    # A step-output transformer requests ``forecasting_horizon`` on ``fit`` by default:
+    # the horizon is fit metadata that a reduction forecaster routes to it. That one
+    # request is the whole exemption; every other request must still be empty.
+    transformer_tags = getattr(estimator_fitted.__sklearn_tags__(), "transformer_tags", None)
+    if isinstance(router, MetadataRequest) and transformer_tags is not None and transformer_tags.produces_step_columns:
+        fit_requests = dict(router.fit.requests)
+        assert fit_requests.get("forecasting_horizon") is True, (
+            "A transformer tagged produces_step_columns must request forecasting_horizon on fit by default, "
+            f"got {fit_requests.get('forecasting_horizon')!r}"
+        )
+        other = [
+            prop
+            for prop, alias in fit_requests.items()
+            if prop != "forecasting_horizon" and (isinstance(alias, str) or alias is not None)
+        ]
+        assert not other, f"Method fit has non-empty requests: {other}"
+        assert_request_is_empty(router, exclude=["fit"])
+        return
 
     # Check requests are empty (with possible exclusions for defaults)
     exclude = {}  # Can add specific exclusions per estimator type

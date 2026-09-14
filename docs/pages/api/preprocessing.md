@@ -44,7 +44,7 @@ Preprocessing transformers for stationarization and feature engineering.
 | [`FourierFeatureTransformer`](generated/yohou.preprocessing.FourierFeatureTransformer.md) | Generate Fourier harmonic features from the time column. |
 | [`TimeIndexTransformer`](generated/yohou.preprocessing.TimeIndexTransformer.md) | Convert the time column to a numeric index with optional polynomial terms. |
 | [`ExponentialMovingAverage`](generated/yohou.preprocessing.ExponentialMovingAverage.md) | Exponentially Weighted Moving Average (EWMA) transformer. |
+| [`HorizonRollingStatisticsTransformer`](generated/yohou.preprocessing.HorizonRollingStatisticsTransformer.md) | Seasonal rolling statistics laid out per forecast step. |
 | [`LagTransformer`](generated/yohou.preprocessing.LagTransformer.md) | Create lagged features from time series data. |
-| [`MeanLagTransformer`](generated/yohou.preprocessing.MeanLagTransformer.md) | Create mean-lagged features by averaging across lag multiples. |
 | [`RollingStatisticsTransformer`](generated/yohou.preprocessing.RollingStatisticsTransformer.md) | Compute rolling window statistics for time series. |
 | [`SlidingWindowFunctionTransformer`](generated/yohou.preprocessing.SlidingWindowFunctionTransformer.md) | Transform time series by applying a function over sliding windows. |

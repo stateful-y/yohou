@@ -35,6 +35,7 @@ _ESTIMATOR_KWARGS: dict[str, dict] = {
         "feature_forecaster": None,
     },
     "FourierSeasonalityForecaster": {"seasonality": 7},
+    "HorizonRollingStatisticsTransformer": {"seasonality": 7},
     "GridSearchCV": {
         "forecaster": None,
         "param_grid": {"seasonality": [1, 2]},
