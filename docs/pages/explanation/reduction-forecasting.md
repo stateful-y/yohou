@@ -134,6 +134,15 @@ model $f_h$ only the columns for step $h$, so it sees only the exogenous value a
 own prediction time. `"cumulative"` gives model $f_h$ the step columns for steps 1
 through $h$, progressively expanding the information available to later models.
 
+Step columns can also come from the actual transformer. A transformer tagged
+`produces_step_columns`, such as
+[`HorizonRollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.HorizonRollingStatisticsTransformer/),
+computes one column per step from the history it is given (for instance the mean of the
+last seven days at step $h$'s hour), and the same alignment filters those columns. This
+is what lets a seasonal-naive-style feature describe each step's own target time rather
+than the origin's: under `"matched"`, model $f_h$ sees the statistic for hour $t+h$ and
+nothing else.
+
 **Dir-rec** (`"dir-rec"`) is a direct-recursive hybrid that fits $H$ models sequentially,
 where each model receives the original embedding augmented with in-sample predictions
 from all previous models:
@@ -178,6 +187,17 @@ as predictors. These features are never inverted; they flow into the regressor a
 inputs, not outputs. After the actual transformer runs, any step-indexed columns from
 `X_future` and `X_forecast` are joined onto the result, bypassing the transformer
 entirely.
+
+An actual transformer that produces step columns needs to know the horizon, and it does
+not take it as a parameter. The forecaster passes its own `forecasting_horizon` to the
+actual transformer as fit metadata, and a transformer that requests it receives it
+through any composition around it, so the forecaster and its features cannot disagree
+about $H$. At fit, the forecaster reads the transformer's tag, recognises its columns by
+their `_step_<h>` suffix, and checks that each block holds exactly steps 1 through $H$.
+It records them apart from the columns derived from `X_future` and `X_forecast`: those
+are rebuilt from the exogenous frames on every observe and predict, whereas step columns
+from the actual transformer are recomputed by the transformer itself, and rebuilding them
+from frames that never produced them would be wrong.
 
 The distinction matters because it determines what the regressor learns. A target
 transformer changes the *question* being asked (predict differenced values instead of
@@ -246,7 +266,8 @@ Recursive prediction introduces error accumulation because each block's predicti
 (which may be imperfect) become the input features for the next block. It is also
 incompatible with `X_forecast`, because forecast step columns are vintage-dependent and
 cannot be re-derived across blocks. The forecaster raises a `ValueError` if recursive
-prediction is attempted with `X_forecast`.
+prediction is attempted with `X_forecast`, and likewise when the actual transformer
+produces step columns, which cover only the fit horizon.
 
 ## Sample Weighting
 

@@ -411,6 +411,13 @@ class FeatureUnion(BaseActualTransformer, _BaseComposition):
                     t.__sklearn_tags__().transformer_tags.stateful for t in transformers
                 )
 
+                # Emits step columns if any child does. A disjunction like ``stateful``: a
+                # reduction forecaster reads this to look for ``{base}_step_h`` outputs, and
+                # it validates at fit that the declared columns are actually present.
+                tags.transformer_tags.produces_step_columns = any(
+                    t.__sklearn_tags__().transformer_tags.produces_step_columns for t in transformers
+                )
+
                 # Not invertible unless there is only one transformer and it is invertible
                 tags.transformer_tags.invertible = (
                     len(transformers) == 1 and transformers[0].__sklearn_tags__().transformer_tags.invertible

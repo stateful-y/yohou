@@ -21,7 +21,9 @@ def check_metadata_routing_default_request(estimator_fitted) -> None:
 
     Tests:
     - get_metadata_routing() returns MetadataRouter or MetadataRequest
-    - Default requests are empty (all metadata values are None)
+    - Default requests are empty (all metadata values are None), except the
+      ``forecasting_horizon`` fit request a ``produces_step_columns`` transformer
+      must declare
 
     Parameters
     ----------
@@ -41,9 +43,109 @@ def check_metadata_routing_default_request(estimator_fitted) -> None:
         f"Expected MetadataRouter or MetadataRequest, got {type(router)}"
     )
 
-    # Check requests are empty (with possible exclusions for defaults)
-    exclude = {}  # Can add specific exclusions per estimator type
-    assert_request_is_empty(router, exclude=exclude)
+    _assert_default_requests_empty(router, _StepOutputOwners.from_estimator(estimator_fitted))
+
+
+def _produces_step_columns(estimator) -> bool:
+    """Whether an estimator instance declares step-column output."""
+    if isinstance(estimator, type):
+        return False
+    get_tags = getattr(estimator, "__sklearn_tags__", None)
+    if not callable(get_tags):
+        return False
+    transformer_tags = getattr(get_tags(), "transformer_tags", None)
+    return bool(transformer_tags is not None and transformer_tags.produces_step_columns)
+
+
+class _StepOutputOwners:
+    """The step-output transformers in an estimator's parameter tree.
+
+    A metadata request names its owner, but how depends on the scikit-learn version:
+    recent releases store the owning estimator itself, older ones (1.6) only its class
+    name. Collecting the tagged estimators from the checked estimator's own parameters
+    lets a request be matched either way: by identity when the owner is an object, by
+    class name when it is a string.
+
+    Parameters
+    ----------
+    ids : set of int
+        ``id()`` of each tagged estimator.
+    names : set of str
+        Class name of each tagged estimator.
+
+    """
+
+    def __init__(self, ids: set[int], names: set[str]):
+        self.ids = ids
+        self.names = names
+
+    @classmethod
+    def from_estimator(cls, estimator) -> "_StepOutputOwners":
+        """Collect the tagged estimators in ``estimator`` and its nested parameters."""
+        candidates = [estimator]
+        get_params = getattr(estimator, "get_params", None)
+        if callable(get_params):
+            # Parameters can hold estimator classes (the sklearn wrappers take one), not only
+            # instances; only instances can own a metadata request.
+            candidates.extend(
+                value
+                for value in get_params(deep=True).values()
+                if hasattr(value, "get_params") and not isinstance(value, type)
+            )
+        tagged = [candidate for candidate in candidates if _produces_step_columns(candidate)]
+        return cls({id(candidate) for candidate in tagged}, {type(candidate).__name__ for candidate in tagged})
+
+    def owns(self, request) -> bool:
+        """Whether a metadata request belongs to one of the tagged estimators."""
+        owner = request.owner
+        if isinstance(owner, str):
+            return owner in self.names
+        return id(owner) in self.ids
+
+
+def _assert_default_requests_empty(request, owners: _StepOutputOwners) -> None:
+    """Assert every default request in a routing tree is empty, bar the step-output exemption.
+
+    A transformer tagged ``produces_step_columns`` requests ``forecasting_horizon`` on
+    ``fit`` by default, because a reduction forecaster routes its fit horizon to it.
+    That one request is the whole exemption, and it applies wherever the transformer
+    sits: bare, inside a composite, or inside a forecaster's ``actual_transformer``.
+    Every other request, on it or on anything else in the tree, must still be empty.
+
+    Parameters
+    ----------
+    request : MetadataRequest or MetadataRouter
+        A request, or a router whose route mappings are walked recursively.
+    owners : _StepOutputOwners
+        The step-output transformers of the estimator being checked.
+
+    Raises
+    ------
+    AssertionError
+        If a default request is not empty.
+
+    """
+    if isinstance(request, MetadataRouter):
+        for _, route_mapping in request:
+            _assert_default_requests_empty(route_mapping.router, owners)
+        return
+
+    if not owners.owns(request):
+        assert_request_is_empty(request)
+        return
+
+    fit_requests = dict(request.fit.requests)
+    assert fit_requests.get("forecasting_horizon") is True, (
+        "A transformer tagged produces_step_columns must request forecasting_horizon on fit by default, "
+        f"got {fit_requests.get('forecasting_horizon')!r}"
+    )
+    other = [
+        prop
+        for prop, alias in fit_requests.items()
+        if prop != "forecasting_horizon" and (isinstance(alias, str) or alias is not None)
+    ]
+    assert not other, f"Method fit has non-empty requests: {other}"
+    assert_request_is_empty(request, exclude=["fit"])
 
 
 def check_metadata_routing_get_metadata_routing(estimator_fitted) -> None:

@@ -10,11 +10,11 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "How to Apply Window Transformations",
-    "description": "Feature engineering with LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.",
+    "description": "Feature engineering with LagTransformer, RollingStatisticsTransformer (consecutive and seasonal windows), HorizonRollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.",
     "category": "how-to",
     "companion": "/pages/how-to/use-preprocessing-transformers/",
     "section": "data-features",
-    "api_references": ["ExponentialMovingAverage", "FeatureUnion", "RollingStatisticsTransformer", "SlidingWindowFunctionTransformer", "plot_rolling_statistics"],
+    "api_references": ["ExponentialMovingAverage", "FeatureUnion", "HorizonRollingStatisticsTransformer", "RollingStatisticsTransformer", "SlidingWindowFunctionTransformer", "plot_rolling_statistics"],
 }
 app = marimo.App(width="medium")
 
@@ -34,7 +34,7 @@ def _(mo):
     Window transformers create features from temporal windows of data. They are
     the core building blocks for feature engineering in time series forecasting.
 
-    This notebook shows how to engineer features with LagTransformer, RollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.
+    This notebook shows how to engineer features with LagTransformer, RollingStatisticsTransformer, HorizonRollingStatisticsTransformer, SlidingWindowFunctionTransformer, and ExponentialMovingAverage on time series data.
 
     **Prerequisites:** Basic understanding of feature engineering and time series concepts.
     """)
@@ -48,6 +48,7 @@ def _():
     from yohou.plotting import plot_rolling_statistics, plot_time_series
     from yohou.preprocessing import (
         ExponentialMovingAverage,
+        HorizonRollingStatisticsTransformer,
         LagTransformer,
         RollingStatisticsTransformer,
         SlidingWindowFunctionTransformer,
@@ -56,6 +57,7 @@ def _():
     return (
         ExponentialMovingAverage,
         FeatureUnion,
+        HorizonRollingStatisticsTransformer,
         LagTransformer,
         RollingStatisticsTransformer,
         SlidingWindowFunctionTransformer,
@@ -144,6 +146,53 @@ def _(plot_rolling_statistics, y):
         window_size=12,
         statistics=["mean", "std"],
         title="Rolling Statistics (window=12)",
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Seasonal windows
+
+    Setting `seasonality=k` makes the window hold `window_size` values spaced
+    `k` rows apart instead of consecutive ones. On monthly data,
+    `window_size=3, seasonality=12` summarises the same month over the last
+    three years. Output columns carry the season length, for example
+    `tourists_s12_mean`, and the transformer needs `(window_size - 1) * k`
+    rows of history.
+    """)
+
+
+@app.cell
+def _(RollingStatisticsTransformer, plot_time_series, y):
+    same_month_tf = RollingStatisticsTransformer(window_size=3, seasonality=12, statistics=["mean", "std"])
+    same_month_tf.fit(y)
+    y_same_month = same_month_tf.transform(y)
+    plot_time_series(y_same_month, title="Same month over the last 3 years (seasonality=12)")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Per-step seasonal features
+
+    A reduction forecaster uses one feature row, at the forecast origin, for every
+    step it predicts. [`HorizonRollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.window.HorizonRollingStatisticsTransformer/)
+    lays a seasonal statistic out per step instead: `tourists_s12_mean_step_h` is the
+    mean of the last `n_seasons` values at the month `h` steps ahead, which is what
+    `MeanSeasonalNaive` would forecast for that step. Inside a forecaster the horizon
+    arrives automatically; fitted directly, it is passed as `forecasting_horizon`.
+    """)
+
+
+@app.cell
+def _(HorizonRollingStatisticsTransformer, plot_time_series, y):
+    per_step_tf = HorizonRollingStatisticsTransformer(seasonality=12, n_seasons=3)
+    per_step_tf.fit(y, forecasting_horizon=12)
+    y_per_step = per_step_tf.transform(y)
+    plot_time_series(
+        y_per_step.select("time", "tourists_s12_mean_step_1", "tourists_s12_mean_step_6", "tourists_s12_mean_step_12"),
+        title="Per-step seasonal means (steps 1, 6 and 12)",
     )
 
 

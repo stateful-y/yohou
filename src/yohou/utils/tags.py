@@ -139,6 +139,20 @@ class TransformerTags:
         take the maximum across a union and the sum across a pipeline; batch invariance
         is a conjunction in both cases, because one non-causal member is enough to make
         the whole output depend on future rows.
+    produces_step_columns : bool, default=False
+        Whether the transformer emits step columns, named ``{base}_step_1`` through
+        ``{base}_step_H`` for the forecasting horizon ``H``, each describing one
+        forecast step rather than the forecast origin.
+
+        This is independent of ``kind``. ``kind`` describes the frame a transformer
+        consumes and produces: a step-output transformer such as
+        [`HorizonRollingStatisticsTransformer`][yohou.preprocessing.window.HorizonRollingStatisticsTransformer]
+        is actual-kind, reading and writing a single-axis frame, whereas step-kind
+        transformers consume step columns that already exist. A reduction forecaster
+        reads this tag on its ``actual_transformer`` to recognise such columns, so that
+        ``step_feature_alignment`` filters them per step exactly like step columns
+        derived from ``X_future`` or ``X_forecast``. Composites declare it when any
+        child does.
 
     """
 
@@ -148,6 +162,7 @@ class TransformerTags:
     kind: Literal["actual", "forecast", "step"] = "actual"
     accepts_irregular_grid: bool = False
     batch_invariant: bool = False
+    produces_step_columns: bool = False
 
 
 @dataclass

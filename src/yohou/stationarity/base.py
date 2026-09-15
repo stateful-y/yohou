@@ -2,7 +2,7 @@
 
 import numbers
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from typing import cast as typing_cast
 
 import numpy as np
@@ -81,6 +81,7 @@ class _BaseTrendForecaster(BasePointForecaster):
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        fit_params: dict[str, Any] | None = None,
     ) -> tuple[pl.DataFrame | dict[str, pl.DataFrame], pl.DataFrame | dict[str, pl.DataFrame] | None]:
         """Preprocess and transform inputs before fitting.
 
@@ -97,6 +98,8 @@ class _BaseTrendForecaster(BasePointForecaster):
         X_forecast : pl.DataFrame or None, default=None
             External forecasts. See ``fit()`` for full parameter
             description.
+        fit_params : dict or None, default=None
+            Fit metadata forwarded to ``BaseForecaster._pre_fit``.
 
         Returns
         -------
@@ -119,6 +122,7 @@ class _BaseTrendForecaster(BasePointForecaster):
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            fit_params=fit_params,
         )
 
         # Panel data

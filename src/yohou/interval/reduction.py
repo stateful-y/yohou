@@ -358,7 +358,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            fit_params=params,
         )
+        self._warn_unfiltered_step_output_columns()
 
         # Detect multi-quantile estimator (e.g. CatBoost ``MultiQuantile`` loss).
         # When present, a single model is fitted for all coverage-rate quantiles
