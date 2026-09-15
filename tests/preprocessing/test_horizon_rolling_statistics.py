@@ -10,7 +10,7 @@ from sklearn.base import clone
 
 from conftest import run_checks
 from yohou.compose import ColumnTransformer, FeaturePipeline, FeatureUnion
-from yohou.point import MeanSeasonalNaive
+from yohou.point import MeanSeasonalNaive, PointReductionForecaster
 from yohou.preprocessing import HorizonRollingStatisticsTransformer, LagTransformer
 from yohou.testing import _yield_yohou_transformer_checks
 from yohou.testing.common import check_metadata_routing_default_request
@@ -224,6 +224,27 @@ class TestSystematic:
         check_metadata_routing_default_request(HorizonRollingStatisticsTransformer(seasonality=4))
         with pytest.raises(AssertionError, match="non-empty requests"):
             check_metadata_routing_default_request(_Untagged(lag=1))
+        with pytest.raises(AssertionError, match="non-empty requests"):
+            check_metadata_routing_default_request(FeatureUnion([("untagged", _Untagged(lag=1))]))
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: FeatureUnion([
+                ("seasonal", HorizonRollingStatisticsTransformer(seasonality=4)),
+                ("lag", LagTransformer()),
+            ]),
+            lambda: FeaturePipeline([("seasonal", HorizonRollingStatisticsTransformer(seasonality=4))]),
+            lambda: ColumnTransformer([("seasonal", HorizonRollingStatisticsTransformer(seasonality=4), ["price"])]),
+            lambda: PointReductionForecaster(
+                actual_transformer=FeatureUnion([("seasonal", HorizonRollingStatisticsTransformer(seasonality=4))])
+            ),
+        ],
+        ids=["feature_union", "feature_pipeline", "column_transformer", "reduction_forecaster"],
+    )
+    def test_default_request_exemption_applies_when_nested(self, make):
+        """The exemption holds wherever the step-output transformer sits in the routing tree."""
+        check_metadata_routing_default_request(make())
 
 
 class TestRoutingThroughComposites:
