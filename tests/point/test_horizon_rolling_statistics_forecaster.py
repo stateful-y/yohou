@@ -69,7 +69,7 @@ class TestConformanceCheck:
             return original(self, name, derived_only=True)
 
         monkeypatch.setattr(_Reduction, "_is_step_column", derived_only)
-        with pytest.raises((AssertionError, RuntimeError)):
+        with pytest.raises(RuntimeError, match="cannot be applied"):
             check_step_feature_alignment_filters(_forecaster("all"), y, None, forecasting_horizon=6)
 
 
@@ -157,3 +157,67 @@ def test_pickle_round_trip_predicts_identically():
 
     assert restored._actual_step_column_names_ == forecaster._actual_step_column_names_
     assert restored.predict(forecasting_horizon=H).equals(forecaster.predict(forecasting_horizon=H))
+
+
+def _exogenous_frames(length: int, categorical: bool, seed: int = 1) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Hourly target (numeric or three-class) and one numeric exogenous column with a daily cycle."""
+    rng = np.random.default_rng(seed)
+    times = pl.datetime_range(
+        datetime(2021, 1, 1), datetime(2021, 1, 1) + timedelta(hours=length - 1), interval="1h", eager=True
+    )
+    x = np.sin(2 * np.pi * np.arange(length) / K) + 0.1 * rng.normal(size=length)
+    target = (
+        pl.Series("y_0", np.digitize(x, [-0.5, 0.5]).astype(str))
+        if categorical
+        else pl.Series("y_0", x + 0.1 * rng.normal(size=length))
+    )
+    return pl.DataFrame({"time": times, "y_0": target}), pl.DataFrame({"time": times, "x_0": x})
+
+
+class TestReductionFamilies:
+    """Point, interval and class-probability reductions all align step-output columns."""
+
+    @staticmethod
+    def _make(family: str, step_horizon: int):
+        from sklearn.linear_model import LogisticRegression, QuantileRegressor
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+        from yohou.interval import IntervalReductionForecaster
+
+        common = {
+            "actual_transformer": HorizonRollingStatisticsTransformer(seasonality=K, n_seasons=N),
+            "target_as_feature": None,
+            "reduction_strategy": "direct",
+            "step_feature_alignment": "matched",
+        }
+        if family == "point":
+            return PointReductionForecaster(estimator=LinearRegression(), **common), False, "predict"
+        if family == "interval":
+            estimator = QuantileRegressor(alpha=0.0, solver="highs")
+            return IntervalReductionForecaster(estimator=estimator, **common), False, "predict_interval"
+        return (
+            ClassProbaReductionForecaster(estimator=LogisticRegression(max_iter=500), **common),
+            True,
+            "predict_class_proba",
+        )
+
+    @pytest.mark.parametrize("family", ["point", "interval", "class_proba"])
+    def test_fit_predict_observe_and_recursive_guard(self, family):
+        """Each family records the step columns, narrows its models, predicts after observing, and rejects recursion."""
+        horizon = 6
+        forecaster, categorical, method = self._make(family, horizon)
+        y, X = _exogenous_frames(300, categorical)
+        forecaster.fit(y[:260], X[:260], forecasting_horizon=horizon)
+
+        assert forecaster._actual_step_column_names_ == {f"x_0_s24_mean_step_{h}" for h in range(1, horizon + 1)}
+        for step in (1, horizon):
+            kept = forecaster._filter_step_features(forecaster._X_t_observed.drop("time"), step).columns
+            assert kept == [f"x_0_s24_mean_step_{step}"]
+
+        first = getattr(forecaster, method)(forecasting_horizon=horizon)
+        forecaster.observe(y[260:266], X[260:266])
+        second = getattr(forecaster, method)(forecasting_horizon=horizon)
+        assert first.height == second.height == horizon
+
+        with pytest.raises(ValueError, match="step-output features cover only the fit horizon"):
+            getattr(forecaster, method)(forecasting_horizon=2 * horizon)

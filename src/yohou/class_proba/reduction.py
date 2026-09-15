@@ -429,19 +429,23 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         in the same H rows.
 
         """
+        # Each per-step estimator was fitted on the step columns ``step_feature_alignment``
+        # keeps for its step, so it must predict from the same filtered frame.
         if self.groups_ is None:
             X_tab = self._get_predict_features()
             frames = []
-            for estimator in estimators:
-                frames.append(self._predict_proba_and_reshape_single_step(estimator, X_tab))
+            for step, estimator in enumerate(estimators, start=1):
+                X_step = self._filter_step_features(X_tab, step)
+                frames.append(self._predict_proba_and_reshape_single_step(estimator, X_step))
             return pl.concat(frames)
 
         y_pred_dict: dict[str, list[pl.DataFrame]] = {g: [] for g in groups}
         for panel_group_name in groups:
             X_tab = self._get_predict_features(panel_group_name)
-            for estimator in estimators:
+            for step, estimator in enumerate(estimators, start=1):
+                X_step = self._filter_step_features(X_tab, step)
                 y_pred_dict[panel_group_name].append(
-                    self._predict_proba_and_reshape_single_step(estimator, X_tab, panel_group_name)
+                    self._predict_proba_and_reshape_single_step(estimator, X_step, panel_group_name)
                 )
         return pl.concat(
             [pl.concat(v) for v in y_pred_dict.values()],
