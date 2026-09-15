@@ -85,6 +85,10 @@ class TestOutputs:
             ("median", np.median),
             ("sum", np.sum),
             ("var", lambda v: np.var(v, ddof=1)),
+            # polars' rolling_quantile defaults to "nearest" (ties away from zero), which
+            # numpy's "nearest" (ties to even) does not reproduce.
+            ("q25", lambda v: pl.Series(v).quantile(0.25, "nearest")),
+            ("q75", lambda v: pl.Series(v).quantile(0.75, "nearest")),
         ],
     )
     def test_matches_spec_formula(self, stat, reference):

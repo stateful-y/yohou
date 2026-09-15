@@ -494,7 +494,7 @@ class RollingStatisticsTransformer(BaseActualTransformer):
     Rolling statistics are computed via native polars rolling expressions
     (``rolling_mean``, ``rolling_std``, etc.), which are significantly faster
     than Python-level iteration. Quantile statistics (``q25``, ``q75``) use
-    ``rolling_quantile`` with linear interpolation.
+    ``rolling_quantile`` with polars' default ``"nearest"`` interpolation.
 
     The first ``(window_size - 1) * seasonality`` rows produce nulls from
     incomplete windows and are dropped from the output, setting
@@ -719,8 +719,6 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
     switch.
 
     """
-
-    _valid_statistics = _VALID_STATISTICS
 
     _parameter_constraints: dict = {
         "seasonality": [Interval(numbers.Integral, 2, None, closed="left")],
