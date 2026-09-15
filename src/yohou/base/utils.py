@@ -13,7 +13,9 @@ import polars as pl
 import polars.selectors as cs
 import sklearn
 from sklearn.base import clone
-from sklearn.utils.metadata_routing import _routing_enabled, get_routing_for_object
+from sklearn.utils.metadata_routing import get_routing_for_object
+
+from yohou.utils._compat import _routing_enabled
 
 if TYPE_CHECKING:
     from collections.abc import Callable

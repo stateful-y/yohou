@@ -27,7 +27,7 @@ from sklearn.utils import _safe_indexing
 from sklearn.utils._metadata_requests import COMPOSITE_METHODS, METHODS, SIMPLE_METHODS
 from sklearn.utils._param_validation import HasMethods, Hidden, Interval, InvalidParameterError, StrOptions
 from sklearn.utils._set_output import _get_output_config
-from sklearn.utils.metadata_routing import _raise_for_params
+from sklearn.utils.metadata_routing import _raise_for_params, _routing_enabled
 from sklearn.utils.metaestimators import _BaseComposition, _safe_split
 from sklearn.utils.validation import (
     _check_feature_names,
@@ -171,6 +171,7 @@ __all__ = [
     "_num_samples",
     "_print_elapsed_time",
     "_raise_for_params",
+    "_routing_enabled",
     "_safe_indexing",
     "_safe_split",
     "_transform_one",
