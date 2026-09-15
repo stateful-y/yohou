@@ -374,7 +374,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         # Apply transformers and get transformed data
         y_t, X_t = self._pre_fit(
-            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+            y=y,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            fit_params=params,
         )
 
         y_t = dict_to_panel(y_t)

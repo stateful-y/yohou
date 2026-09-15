@@ -593,6 +593,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            fit_params=params,
         )
 
         self._fit(y_t, X_t, forecasting_horizon)

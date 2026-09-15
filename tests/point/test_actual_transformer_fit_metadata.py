@@ -87,3 +87,35 @@ def test_transformers_without_requests_get_no_metadata(y_X_factory):
     )
     forecaster.fit(y, X, forecasting_horizon=3)
     assert forecaster.predict(forecasting_horizon=3).height == 3
+
+
+def test_caller_metadata_reaches_transformer_in_decomposition_pipeline(y_X_factory):
+    """DecompositionPipeline routes requested caller fit metadata to its actual transformer too."""
+    from yohou.compose import DecompositionPipeline
+    from yohou.stationarity import PolynomialTrendForecaster
+
+    y, X = y_X_factory(length=80, n_targets=1, n_features=2)
+    pipeline = DecompositionPipeline(
+        [("trend", PolynomialTrendForecaster(degree=1))],
+        actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+    )
+    pipeline.fit(y, X, forecasting_horizon=3, marker="x")
+
+    (probe,) = _fitted_probes(pipeline)
+    assert probe.seen_ == {"forecasting_horizon": 3, "marker": "x"}
+
+
+def test_no_metadata_reaches_transformer_when_routing_disabled(y_X_factory):
+    """With metadata routing switched off, the actual transformer is fitted with a bare call."""
+    import sklearn
+
+    y, X = y_X_factory(length=80, n_targets=1, n_features=2)
+    forecaster = PointReductionForecaster(
+        estimator=LinearRegression(),
+        actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+    )
+    with sklearn.config_context(enable_metadata_routing=False):
+        forecaster.fit(y, X, forecasting_horizon=3)
+
+    (probe,) = _fitted_probes(forecaster)
+    assert probe.seen_ == {}
