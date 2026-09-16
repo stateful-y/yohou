@@ -197,6 +197,7 @@ parameters instead.
 
 - [Choose a Forecasting Method](choose-forecasting-method.md): select a forecaster before tuning
 - [Enable Early Stopping](early-stopping.md): hold out a validation tail so boosting estimators stop training when validation performance plateaus
+- [Early Stop Inside a Search](early-stopping.md#9-early-stop-inside-a-search): stop boosting estimators on each fold's test window with `validation="cv"` and refit with the chosen iteration count
 - [About Model Selection](../explanation/model-selection.md): temporal cross-validation, splitter design, and search strategy trade-offs
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md): understand the metrics used for scoring
 - [Extensions](../reference/extensions.md): `yohou-optuna` provides `OptunaSearchCV` for Bayesian hyperparameter search

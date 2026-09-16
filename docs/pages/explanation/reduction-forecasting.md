@@ -371,6 +371,69 @@ configured on the estimator. Yohou's only job is delivering a correctly built
 evaluation set to it. See
 [Enable Early Stopping](../how-to/early-stopping.md) for the steps.
 
+### Early Stopping on the Scored Fold
+
+A hyperparameter search raises a question the holdout alone does not answer:
+how many boosting iterations should the final model train? Holding out a tail
+inside every fold stops each fold's fit but leaves the refit with no count, and
+spends part of every training window on the stopping decision.
+
+The libraries' own cross-validation functions take a different route.
+XGBoost's and LightGBM's `cv` evaluate every fold on its test fold after each
+iteration, average the metric across folds, and stop all folds at the same
+iteration; that iteration is then the count for a final fit on all data.
+`validation="cv"` on
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/)
+applies the same idea to reduction forecasters. For each candidate:
+
+1. Every fold is fitted on its training window. Transformers, encoders, and
+   sample weights see only those rows. The fold's test window is turned into
+   evaluation rows through the transformers fitted on the training window, as
+   the holdout tail is, and given to the estimator as its evaluation set.
+   The estimator trains every iteration up to its ceiling (`n_estimators` or
+   `iterations`) and records its stopping metric on that set after each one.
+2. For each fitted estimator (each step of the `"direct"` strategy, each
+   interval bound), the stopping metric is averaged across folds, and the best
+   iteration of that average is chosen: the shared round.
+3. Every fold's estimators are cut to their chosen iteration, and each fold is
+   scored on its test window as usual.
+4. The refit trains each estimator for its chosen count on all data, with
+   early stopping off.
+
+Scikit-learn's `fit` trains one model to completion per call, so the folds
+cannot be stopped in lockstep as the library functions do. Letting each fold
+stop on its own patience does not work either: a fold whose short training
+window stops early leaves the other folds' later iterations unscored, and on a
+short series the chosen count then lands on that fold's last iteration for most
+candidates. So fold fits never stop early. The average covers every iteration
+up to the ceiling, which makes the ceiling the cost of the search and the
+largest count it can choose. A chosen count equal to the ceiling is flagged as
+`rounds_at_boundary`, with a warning, because a later count might have been
+better.
+
+**The score is optimistic.** The iteration count is chosen on the same rows
+that produce the score, so `best_score_` is better than the performance on
+unseen data. This is the same mechanism as listing `n_estimators` values in the
+parameter grid: whatever a search chooses on its test folds is fitted to those
+folds. Because the count is shared across folds, no fold is scored at its own
+best iteration, which would be more optimistic still. When an unbiased score
+matters more than training data, set `validation_size` on the forecaster and
+leave `validation=None`: each fold then stops on the end of its own training
+window and is scored on rows the stopping decision never saw.
+
+Two configurations cannot be used. With `reduction_strategy="dir-rec"`, each
+step trains on the predictions of the steps before it, so cutting an earlier
+step to its own count would change a later step's inputs between training and
+prediction. And CatBoost estimators need an explicit `learning_rate`: CatBoost
+derives the default from the iteration ceiling, so a refit with the chosen
+count would otherwise train with a different learning rate than the folds.
+
+The refit relies on one property of gradient boosting: the first k iterations
+of a model trained for more iterations are the model trained for k. That is why
+the refit trains every estimator up to the largest chosen count and then cuts
+each one to its own, rather than fitting each with a different setting.
+
 ## References
 
 - Bontempi, G., Ben Taieb, S., & Le Borgne, Y.-A. (2013). Machine learning strategies

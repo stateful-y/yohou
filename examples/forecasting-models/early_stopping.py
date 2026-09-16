@@ -12,7 +12,7 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "How to Enable Early Stopping",
-    "description": "Hold out a validation tail with validation_size so LightGBM stops training when validation performance plateaus, for point and interval forecasters.",
+    "description": "Hold out a validation tail with validation_size so LightGBM stops training when validation performance plateaus, for point and interval forecasters, and stop on each fold's test window inside a grid search.",
     "category": "how-to",
     "section": "forecasting-models",
     "companion": "/pages/how-to/early-stopping/",
@@ -22,6 +22,9 @@ __gallery__ = {
         "LagTransformer",
         "fetch_tourism_monthly",
         "plot_forecast",
+        "GridSearchCV",
+        "ExpandingWindowSplitter",
+        "MeanAbsoluteError",
     ],
 }
 
@@ -42,7 +45,8 @@ def _(mo):
 
     This notebook shows how to hold out a validation tail with
     `validation_size` so a LightGBM estimator stops training when its
-    validation performance plateaus.
+    validation performance plateaus, and how a grid search can instead stop
+    every candidate on each fold's test window.
 
     **Prerequisites:** Familiarity with reduction forecasters
     ([View](/examples/forecasting-models/catboost_forecasting/) ·
@@ -61,15 +65,19 @@ def _():
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.interval import IntervalReductionForecaster
-    from yohou.model_selection import train_test_split
+    from yohou.metrics import MeanAbsoluteError
+    from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, train_test_split
     from yohou.plotting import plot_forecast
     from yohou.point import PointReductionForecaster
     from yohou.preprocessing import LagTransformer
 
     return (
+        ExpandingWindowSplitter,
+        GridSearchCV,
         IntervalReductionForecaster,
         LGBMRegressor,
         LagTransformer,
+        MeanAbsoluteError,
         PointReductionForecaster,
         fetch_tourism_monthly,
         plot_forecast,
@@ -218,6 +226,73 @@ def _(bound_best, mo):
         500 never triggered the 20-round patience, so its validation loss was
         still improving when the budget ran out; raise `n_estimators` for that
         chain if you want it to stop on its own.
+        """
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Early Stop Inside a Search
+
+    A grid search can choose the number of boosting rounds for you. With
+    `validation="cv"`, every fold trains on its whole training window, up to
+    `n_estimators` rounds, and is evaluated on its own test window after each
+    round. For each step, the search picks one round count from the validation
+    loss averaged over the folds, scores every fold at that count, and refits
+    on all data with it. `n_estimators` is the largest count it can choose, so
+    no early-stopping patience is needed. Leave `validation_size` unset on the
+    forecaster.
+    """)
+
+
+@app.cell
+def _(
+    ExpandingWindowSplitter,
+    GridSearchCV,
+    LGBMRegressor,
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    y_train,
+):
+    search = GridSearchCV(
+        forecaster=PointReductionForecaster(
+            estimator=LGBMRegressor(
+                n_estimators=400,
+                min_child_samples=5,
+                verbose=-1,
+            ),
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2, 12]),
+        ),
+        param_grid={"estimator__learning_rate": [0.05, 0.1]},
+        scoring=MeanAbsoluteError(),
+        cv=ExpandingWindowSplitter(n_splits=3, test_size=24),
+        validation="cv",
+    )
+    search.fit(y=y_train, forecasting_horizon=12)
+    search.best_rounds_
+    return (search,)
+
+
+@app.cell(hide_code=True)
+def _(mo, search):
+    mo.md(
+        f"""
+        Best learning rate: {search.best_params_["estimator__learning_rate"]}
+
+        Chosen round counts per step: {search.best_rounds_}
+
+        A chosen count equal to `n_estimators` is reported in
+        `cv_results_["rounds_at_boundary"]` (here
+        {list(search.cv_results_["rounds_at_boundary"])}); raise
+        `n_estimators` if it is `True`.
+
+        The count was chosen on the same folds that produce `best_score_`, so
+        that score is optimistic. Hold out a tail inside each fold with
+        `validation_size` when an unbiased score matters more than training
+        data.
         """
     )
 

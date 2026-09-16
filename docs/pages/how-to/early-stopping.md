@@ -1,8 +1,10 @@
 # How to Enable Early Stopping
 
-This guide shows you how to hold out a validation tail with
-`validation_size` so gradient boosting estimators (LightGBM, XGBoost,
-CatBoost) stop training when their validation performance plateaus.
+This guide shows you how to give gradient boosting estimators (LightGBM,
+XGBoost, CatBoost) an evaluation set so they stop training when their
+validation performance plateaus: a held-out tail with `validation_size`, a
+window you supply with `validation_y`, or each fold's test window inside a
+hyperparameter search.
 
 ## Prerequisites
 
@@ -191,11 +193,106 @@ final = PointReductionForecaster(
 final.fit(y=y, forecasting_horizon=24)
 ```
 
-Inside [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/)
-or [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/),
-`validation_size` composes with no extra configuration: each fold's inner fit
-holds out the tail of its own training window (and trains on correspondingly
-less data).
+Inside a hyperparameter search the iteration count can be chosen for you; see
+[Early Stop Inside a Search](#9-early-stop-inside-a-search).
+
+## 8. Pass Your Own Evaluation Window
+
+When you already hold the evaluation data separately, for example the next
+period of a manual backtest, pass it to `fit` as `validation_y` instead of
+setting `validation_size`. The window must start one interval after `y` ends
+and have the same columns:
+
+```python
+train, window = y[:-96], y[-96:]
+
+window_forecaster = PointReductionForecaster(
+    estimator=LGBMRegressor(n_estimators=500, early_stopping_round=20, verbose=-1),
+    reduction_strategy="direct",
+    actual_transformer=LagTransformer(lag=[1, 2, 24]),
+)
+window_forecaster.fit(y=train, forecasting_horizon=24, validation_y=window)
+```
+
+Transformers are fitted on `train` only and the window's evaluation rows are
+built through them, exactly as for the `validation_size` tail. The difference
+is the state after fitting: the window is not training data, so `predict()`
+forecasts the period right after `train`, and you can score the model on the
+window with `observe_predict(window)`. If you fitted with `X_actual`, pass the
+window's rows as `validation_X_actual`; forecast vintages published during the
+window go in `validation_X_forecast`. `validation_y` and `validation_size`
+cannot be combined.
+
+## 9. Early Stop Inside a Search
+
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/)
+offer two ways to early-stop the candidates they evaluate.
+
+**Hold out a tail inside each fold.** Set `validation_size` on the forecaster
+and leave the search as it is. Each fold's fit holds out the end of its own
+training window, trains on correspondingly less data, and is scored on the
+fold's test window, which the estimator never saw.
+
+**Stop on each fold's test window.** Set `validation="cv"` on the search and
+leave `validation_size=None`. Every fold trains on its whole training window
+and is evaluated on its own test window after each iteration, up to
+`n_estimators`; the search then picks one iteration count per fitted estimator
+from the metric averaged over the folds, scores every fold at that count, and
+refits on all data with it:
+
+```python
+from yohou.metrics import MeanAbsoluteError
+from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV
+
+search = GridSearchCV(
+    forecaster=PointReductionForecaster(
+        estimator=LGBMRegressor(n_estimators=1000, verbose=-1),
+        reduction_strategy="direct",
+        actual_transformer=LagTransformer(lag=[1, 2, 24]),
+    ),
+    param_grid={"estimator__num_leaves": [15, 31], "estimator__learning_rate": [0.05, 0.1]},
+    scoring=MeanAbsoluteError(),
+    cv=ExpandingWindowSplitter(n_splits=3, test_size=96),
+    validation="cv",
+)
+search.fit(y=y, forecasting_horizon=24)
+```
+
+Read the chosen iteration counts from `best_rounds_`, keyed by fitted estimator
+(`"step_1"` to `"step_24"` here), and every candidate's from
+`search.cv_results_["rounds"]`:
+
+```python
+print(search.best_rounds_)
+print(search.cv_results_["rounds_at_boundary"])
+```
+
+The refitted `search.best_forecaster_` trained each step for its own count,
+with early stopping off.
+
+In this mode `n_estimators` is both the largest count the search can choose and
+the cost: fold fits never stop early, so each trains every iteration, and the
+estimator's own early-stopping patience plays no part. Set it high enough to
+pass the best count. A warning, and `rounds_at_boundary`, report a chosen count
+equal to `n_estimators`, where a later count might have been better.
+
+The second route trains on more data per fold but chooses the iteration count
+on the rows it scores, so `best_score_` is optimistic; the first route keeps the
+score unbiased. [Early Stopping on the Scored Fold](../explanation/reduction-forecasting.md#early-stopping-on-the-scored-fold)
+explains the difference.
+
+`validation="cv"` works with LightGBM, XGBoost, and CatBoost estimators, bare
+or as a `Pipeline`'s final step. It has three requirements:
+
+- CatBoost estimators need an explicit `learning_rate`, because CatBoost
+  derives its default learning rate from `iterations` and the refit trains a
+  different number of iterations than the folds did.
+- `reduction_strategy="dir-rec"` is rejected: its later steps train on the
+  earlier steps' predictions, so the steps cannot be cut to separate counts.
+- For any other estimator, subclass
+  [`BaseEarlyStoppingAdapter`](/pages/api/generated/yohou.model_selection.BaseEarlyStoppingAdapter/)
+  and pass an instance as `early_stopping_adapter`.
 
 ## See Also
 
