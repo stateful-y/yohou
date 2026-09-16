@@ -243,6 +243,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        validation_y: pl.DataFrame | None = None,
+        validation_X_actual: pl.DataFrame | None = None,
+        validation_X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> ClassProbaReductionForecaster:
         """Fit the forecaster to historical data.
@@ -269,6 +272,24 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Bypasses the actual transformer.
+        validation_y : pl.DataFrame or None, default=None
+            Target rows of an evaluation window that starts one interval
+            after ``y`` ends, with the same columns as ``y``. Its rows are
+            turned into evaluation rows through the transformers fitted on
+            ``y`` and delivered to the wrapped estimator's ``fit`` as
+            ``eval_set``, enabling estimator-side early stopping on data the
+            caller holds out (for example the next cross-validation fold).
+            The window is not training data: after fitting, the observation
+            state ends at the last time of ``y``, exactly as without it.
+            Mutually exclusive with ``validation_size``; ``validation_overlap``
+            applies as it does to the ``validation_size`` tail.
+        validation_X_actual : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``validation_y`` window. Required
+            when ``X_actual`` is given, rejected otherwise.
+        validation_X_forecast : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``validation_y`` window,
+            added to ``X_forecast`` when resolving the evaluation rows'
+            features as of each row's time.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -282,16 +303,26 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         ValueError
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
-            mismatched panel groups). With ``validation_size`` set, also if a
-            target class occurs only inside the holdout tail, or on any other
-            rejected holdout configuration; see
+            mismatched panel groups). With ``validation_size`` or
+            ``validation_y`` set, also if a target class occurs only inside
+            the held-out rows, or on any other rejected holdout configuration;
+            see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
-        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+        y_fit, X_fit, y_tail, X_tail, X_forecast_eval, validation_source = self._resolve_validation_window(
+            y,
+            X_actual,
+            forecasting_horizon,
+            params,
+            X_forecast,
+            validation_y,
+            validation_X_actual,
+            validation_X_forecast,
+        )
 
         # Discover classes from the training head before _pre_fit (which may
         # transform y). The validation tail never contributes classes: the
@@ -317,7 +348,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             label_to_code[base_col] = {label: i for i, label in enumerate(labels)}
 
         if y_tail is not None:
-            self._check_tail_classes(y_tail, classes)
+            self._check_tail_classes(y_tail, classes, source=validation_source or "validation_size")
 
         self.classes_: dict[str, list[str]] = classes
         self.n_classes_: dict[str, int] = n_classes
@@ -340,7 +371,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         eval_data = None
         if y_tail_encoded is not None:
             eval_data = self._build_validation_eval_data(
-                y_t, X_t, y_tail_encoded, X_tail, forecasting_horizon, X_future, X_forecast
+                y_t, X_t, y_tail_encoded, X_tail, forecasting_horizon, X_future, X_forecast_eval
             )
 
         self.estimator_ = self._estimator_fit_one(
@@ -351,9 +382,12 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             eval_data=eval_data,
         )
 
+        self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
         return self
 
-    def _check_tail_classes(self, y_tail: pl.DataFrame, classes: dict[str, list[str]]) -> None:
+    def _check_tail_classes(
+        self, y_tail: pl.DataFrame, classes: dict[str, list[str]], source: str = "validation_size"
+    ) -> None:
         """Reject validation-tail classes the head-fitted encoder never saw.
 
         Called before ``classes_`` is assigned, so it takes the discovered
@@ -367,6 +401,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         classes : dict[str, list[str]]
             Classes discovered from the training head, keyed by unprefixed
             column name.
+        source : str, default="validation_size"
+            The fit input supplying the held-out rows (``"validation_size"``
+            or ``"validation_y"``), named in the error message.
 
         Raises
         ------
@@ -382,12 +419,16 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             tail_vals = set(y_tail[col].drop_nulls().unique().cast(pl.String).to_list())
             unseen = sorted(tail_vals - known)
             if unseen:
+                if source == "validation_size":
+                    where, remedy = "validation_size holdout tail", "Reduce validation_size or provide more data."
+                else:
+                    where = f"{source} window"
+                    remedy = f"Include every class in y, or remove the rows holding the unseen class from {source}."
                 raise ValueError(
                     f"Target column {col!r} contains class(es) {unseen} that occur "
-                    f"only inside the validation_size holdout tail. The label "
-                    f"encoder is fitted on the training head only, so every class "
-                    f"must appear before the holdout. Reduce validation_size or "
-                    f"provide more data."
+                    f"only inside the {where}. The label "
+                    f"encoder is fitted on the training data only, so every class "
+                    f"must appear before the holdout. {remedy}"
                 )
 
     def _encode_target(self, y: pl.DataFrame) -> pl.DataFrame:

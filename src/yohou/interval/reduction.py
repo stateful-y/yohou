@@ -335,6 +335,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         coverage_rates: list[StrictFloat] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        validation_y: pl.DataFrame | None = None,
+        validation_X_actual: pl.DataFrame | None = None,
+        validation_X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "IntervalReductionForecaster":
         """Fit the forecaster to historical data.
@@ -365,6 +368,24 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Bypasses the actual transformer.
+        validation_y : pl.DataFrame or None, default=None
+            Target rows of an evaluation window that starts one interval
+            after ``y`` ends, with the same columns as ``y``. Its rows are
+            turned into evaluation rows through the transformers fitted on
+            ``y`` and delivered to the wrapped estimator's ``fit`` as
+            ``eval_set``, enabling estimator-side early stopping on data the
+            caller holds out (for example the next cross-validation fold).
+            The window is not training data: after fitting, the observation
+            state ends at the last time of ``y``, exactly as without it.
+            Mutually exclusive with ``validation_size``; ``validation_overlap``
+            applies as it does to the ``validation_size`` tail.
+        validation_X_actual : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``validation_y`` window. Required
+            when ``X_actual`` is given, rejected otherwise.
+        validation_X_forecast : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``validation_y`` window,
+            added to ``X_forecast`` when resolving the evaluation rows'
+            features as of each row's time.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -379,8 +400,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             If the estimator exposes no quantile parameter, if it exposes
             more than one quantile parameter, or if a MultiQuantile
             estimator is used with more than one target column or with
-            ``forecasting_horizon > 1``. With ``validation_size`` set, also
-            on any rejected holdout configuration; see
+            ``forecasting_horizon > 1``. With ``validation_size`` or
+            ``validation_y`` set, also on any rejected holdout configuration;
+            see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
@@ -389,7 +411,16 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         )
         self._warn_inapplicable_step_alignment()
 
-        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+        y_fit, X_fit, y_tail, X_tail, X_forecast_eval, validation_source = self._resolve_validation_window(
+            y,
+            X_actual,
+            forecasting_horizon,
+            params,
+            X_forecast,
+            validation_y,
+            validation_X_actual,
+            validation_X_forecast,
+        )
 
         y_t, X_t = self._pre_fit(
             y=y_fit,
@@ -402,7 +433,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         eval_data = None
         if y_tail is not None:
             eval_data = self._build_validation_eval_data(
-                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast
+                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast_eval
             )
 
         # Detect multi-quantile estimator (e.g. CatBoost ``MultiQuantile`` loss).
@@ -441,6 +472,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 X_t,
                 forecasting_horizon,
                 estimator_params={multiquantile_param: f"MultiQuantile:alpha={alpha_str}"},
+                estimator_fit_params=params,
                 eval_data=eval_data,
             )
             self.estimator_ = {"_multiquantile": estimator}
@@ -486,6 +518,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     X_t,
                     forecasting_horizon,
                     estimator_params=estimator_params_lower,
+                    estimator_fit_params=params,
                     eval_data=eval_data,
                 )
 
@@ -497,6 +530,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                     X_t,
                     forecasting_horizon,
                     estimator_params=estimator_params_upper,
+                    estimator_fit_params=params,
                     eval_data=eval_data,
                 )
 
@@ -504,6 +538,8 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
                 estimators[f"coverage_rate_{coverage_rate}_upper"] = estimator_upper
 
             self.estimator_ = estimators
+
+        self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
         return self
 
     def _predict_one(

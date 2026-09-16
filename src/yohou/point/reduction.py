@@ -253,6 +253,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        validation_y: pl.DataFrame | None = None,
+        validation_X_actual: pl.DataFrame | None = None,
+        validation_X_forecast: pl.DataFrame | None = None,
         **params,
     ) -> "PointReductionForecaster":
         """Fit the forecaster to historical data.
@@ -281,6 +284,24 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             recursive prediction (``forecasting_horizon > fit_forecasting_horizon_``
             at predict time) is not supported and raises a ``ValueError``;
             use ``ForecastedFeatureForecaster`` for that use case.
+        validation_y : pl.DataFrame or None, default=None
+            Target rows of an evaluation window that starts one interval
+            after ``y`` ends, with the same columns as ``y``. Its rows are
+            turned into evaluation rows through the transformers fitted on
+            ``y`` and delivered to the wrapped estimator's ``fit`` as
+            ``eval_set``, enabling estimator-side early stopping on data the
+            caller holds out (for example the next cross-validation fold).
+            The window is not training data: after fitting, the observation
+            state ends at the last time of ``y``, exactly as without it.
+            Mutually exclusive with ``validation_size``; ``validation_overlap``
+            applies as it does to the ``validation_size`` tail.
+        validation_X_actual : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``validation_y`` window. Required
+            when ``X_actual`` is given, rejected otherwise.
+        validation_X_forecast : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``validation_y`` window,
+            added to ``X_forecast`` when resolving the evaluation rows'
+            features as of each row's time.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -294,15 +315,25 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         ValueError
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
-            mismatched panel groups). With ``validation_size`` set, also on
-            any rejected holdout configuration; see
+            mismatched panel groups). With ``validation_size`` or
+            ``validation_y`` set, also on any rejected holdout configuration;
+            see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
-        y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+        y_fit, X_fit, y_tail, X_tail, X_forecast_eval, validation_source = self._resolve_validation_window(
+            y,
+            X_actual,
+            forecasting_horizon,
+            params,
+            X_forecast,
+            validation_y,
+            validation_X_actual,
+            validation_X_forecast,
+        )
 
         y_t, X_t = self._pre_fit(
             y=y_fit,
@@ -315,7 +346,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         eval_data = None
         if y_tail is not None:
             eval_data = self._build_validation_eval_data(
-                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast
+                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast_eval
             )
 
         self.estimator_ = self._estimator_fit_one(
@@ -326,6 +357,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             eval_data=eval_data,
         )
 
+        self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
         return self
 
     def _predict_one(

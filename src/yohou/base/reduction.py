@@ -31,10 +31,28 @@ from yohou.base.utils import _derive_step_columns, _observe_transformers_one
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
 from yohou.utils.panel import get_group_df
+from yohou.utils.validation import add_interval, check_interval_consistency
 from yohou.weighting import BaseWeighter
 from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter_to_array
 
 __all__ = ["BaseReductionForecaster"]
+
+
+def _holdout_remedy(source: str) -> str:
+    """Return the instruction that removes a validation holdout, for error messages.
+
+    Parameters
+    ----------
+    source : str
+        ``"validation_size"`` or ``"validation_y"``.
+
+    Returns
+    -------
+    str
+        ``"leave validation_size=None"`` or ``"omit validation_y"``.
+
+    """
+    return "leave validation_size=None" if source == "validation_size" else f"omit {source}"
 
 
 def _predict_direct_step(
@@ -1053,7 +1071,7 @@ default="first_step"
         )
 
     @staticmethod
-    def _eval_set_target(estimator: BaseEstimator) -> tuple[BaseEstimator, str]:
+    def _eval_set_target(estimator: BaseEstimator, source: str = "validation_size") -> tuple[BaseEstimator, str]:
         """Return the estimator that receives ``eval_set``, and how to name it.
 
         For a ``Pipeline`` this is the final step: `_fit_pipeline_with_eval_set`
@@ -1064,7 +1082,10 @@ default="first_step"
         Parameters
         ----------
         estimator : BaseEstimator
-            The estimator ``validation_size`` will deliver an evaluation set to.
+            The estimator the validation holdout will deliver an evaluation set to.
+        source : str, default="validation_size"
+            The fit input supplying the evaluation window (``"validation_size"``
+            or ``"validation_y"``), named in error messages.
 
         Returns
         -------
@@ -1084,15 +1105,15 @@ default="first_step"
             final = estimator.steps[-1][1]
             if isinstance(final, str):
                 raise ValueError(
-                    "validation_size cannot be used with a Pipeline whose final step "
-                    "is 'passthrough': there is no estimator to deliver an eval_set to. "
-                    "End the pipeline with an estimator, or leave validation_size=None."
+                    f"{source} cannot be used with a Pipeline whose final step "
+                    f"is 'passthrough': there is no estimator to deliver an eval_set to. "
+                    f"End the pipeline with an estimator, or {_holdout_remedy(source)}."
                 )
             return final, "Pipeline's final step "
         return estimator, ""
 
     @staticmethod
-    def _check_eval_set_support(estimator: BaseEstimator) -> str:
+    def _check_eval_set_support(estimator: BaseEstimator, source: str = "validation_size") -> str:
         """Check the estimator's fit can take an evaluation set, and say how.
 
         For a ``Pipeline``, the check applies to its final step, the only step
@@ -1115,7 +1136,10 @@ default="first_step"
         Parameters
         ----------
         estimator : BaseEstimator
-            The estimator ``validation_size`` will deliver an evaluation set to.
+            The estimator the validation holdout will deliver an evaluation set to.
+        source : str, default="validation_size"
+            The fit input supplying the evaluation window (``"validation_size"``
+            or ``"validation_y"``), named in error messages.
 
         Returns
         -------
@@ -1134,11 +1158,11 @@ default="first_step"
             ``Pipeline`` ending in ``"passthrough"``.
 
         """
-        target, label = BaseReductionForecaster._eval_set_target(estimator)
+        target, label = BaseReductionForecaster._eval_set_target(estimator, source)
 
         if isinstance(target, MultiOutputRegressor | MultiOutputClassifier | RegressorChain | ClassifierChain):
             raise ValueError(
-                f"validation_size cannot be used with {label}{target.__class__.__name__}: "
+                f"{source} cannot be used with {label}{target.__class__.__name__}: "
                 f"the wrapper fits one sub-estimator per target column and cannot "
                 f"route a multi-column eval_set target per sub-estimator. Use an "
                 f"estimator with native multi-output support, or the 'direct' "
@@ -1150,10 +1174,10 @@ default="first_step"
             # and the evaluation set would then be rejected deep inside sklearn's
             # metadata routing as an unrequested key.
             raise ValueError(
-                "validation_size cannot be used with a Pipeline whose final step is "
-                "itself a Pipeline: the inner pipeline's fit takes **params but routes "
-                "eval_set to no step. Flatten the nested steps into one Pipeline, or "
-                "leave validation_size=None."
+                f"{source} cannot be used with a Pipeline whose final step is "
+                f"itself a Pipeline: the inner pipeline's fit takes **params but routes "
+                f"eval_set to no step. Flatten the nested steps into one Pipeline, or "
+                f"{_holdout_remedy(source)}."
             )
 
         fit_sig = inspect.signature(target.fit)  # ty: ignore[unresolved-attribute]
@@ -1167,9 +1191,9 @@ default="first_step"
             return "eval_set"
         raise ValueError(
             f"{label or 'Estimator '}{target.__class__.__name__} does not support an eval_set "
-            f"fit parameter, so validation_size cannot deliver an evaluation set to it. "
+            f"fit parameter, so {source} cannot deliver an evaluation set to it. "
             f"Use an estimator whose fit accepts eval_set (e.g. LightGBM, XGBoost, "
-            f"CatBoost), or leave validation_size=None."
+            f"CatBoost), or {_holdout_remedy(source)}."
         )
 
     @staticmethod
@@ -1416,20 +1440,291 @@ default="first_step"
             On any invalid validation-holdout configuration.
 
         """
+        self._reject_raw_eval_params(params, "validation_size")
+        self._check_eval_set_support(self.estimator)
+        self._validate_validation_split(y, forecasting_horizon)
+        return self._split_validation_tail(y, X_actual)
+
+    @staticmethod
+    def _reject_raw_eval_params(params: dict[str, Any], source: str) -> None:
+        """Reject a raw evaluation set passed through fit ``**params``.
+
+        Parameters
+        ----------
+        params : dict
+            The fit ``**params``.
+        source : str
+            The fit input supplying the evaluation window (``"validation_size"``
+            or ``"validation_y"``), named in the error message.
+
+        Raises
+        ------
+        ValueError
+            If ``params`` contains ``eval_set``, ``eval_X``, or ``eval_y``.
+
+        """
         # Both delivery conventions must be rejected, not just eval_set: the
         # internally built pair is spread last over the caller's params, so an
         # unguarded key would be silently overwritten rather than honoured.
         conflicting = [key for key in ("eval_set", "eval_X", "eval_y") if key in params]
         if conflicting:
+            state = "is set" if source == "validation_size" else "is given"
             raise ValueError(
                 f"fit received a raw {', '.join(conflicting)} through **params "
-                f"while validation_size is set. The evaluation set is built "
-                f"internally from the held-out tail; remove the "
-                f"{'/'.join(conflicting)} fit parameter or set validation_size=None."
+                f"while {source} {state}. The evaluation set is built "
+                f"internally from the held-out rows; remove the "
+                f"{'/'.join(conflicting)} fit parameter or {_holdout_remedy(source)}."
             )
-        self._check_eval_set_support(self.estimator)
-        self._validate_validation_split(y, forecasting_horizon)
-        return self._split_validation_tail(y, X_actual)
+
+    def _validate_explicit_window(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        validation_y: pl.DataFrame,
+        validation_X_actual: pl.DataFrame | None,
+        forecasting_horizon: int,
+    ) -> None:
+        """Validate an explicitly supplied evaluation window against the training data.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Training target time series.
+        X_actual : pl.DataFrame or None
+            Training feature time series.
+        validation_y : pl.DataFrame
+            Target rows of the evaluation window.
+        validation_X_actual : pl.DataFrame or None
+            Feature rows of the evaluation window.
+        forecasting_horizon : int
+            Number of steps to forecast.
+
+        Raises
+        ------
+        ValueError
+            If the window's columns differ from ``y``'s, the window does not
+            start exactly one interval after ``y`` ends, ``X_actual`` and
+            ``validation_X_actual`` are not given together, the window is
+            shorter than ``forecasting_horizon`` in strict mode, or ``y`` is too
+            short to build one training row.
+
+        """
+        if set(validation_y.columns) != set(y.columns):
+            raise ValueError(
+                f"validation_y must have the same columns as y (the same value "
+                f"columns and panel groups); got {sorted(validation_y.columns)} "
+                f"for validation_y and {sorted(y.columns)} for y."
+            )
+        if X_actual is not None and validation_X_actual is None:
+            raise ValueError(
+                "validation_X_actual is required when X_actual is given: the evaluation "
+                "rows need the window's actual features. Pass the X_actual rows covering "
+                "the validation_y window."
+            )
+        if X_actual is None and validation_X_actual is not None:
+            raise ValueError(
+                "validation_X_actual was given but X_actual was not: the forecaster was "
+                "not fitted with actual features, so the window cannot use any."
+            )
+        if y.height < 2 or validation_y.height < 1:
+            raise ValueError(
+                f"validation_y needs y with at least 2 rows and a non-empty window; got "
+                f"{y.height} rows in y and {validation_y.height} in validation_y."
+            )
+        interval = check_interval_consistency(y.select("time"))
+        expected_start = add_interval(y["time"][-1], interval)
+        if validation_y["time"][0] != expected_start:
+            raise ValueError(
+                f"validation_y must start one interval after the last time of y: y ends "
+                f"at {y['time'][-1]} with interval {interval!r}, so validation_y must "
+                f"start at {expected_start}, but it starts at {validation_y['time'][0]}."
+            )
+        n = validation_y.height
+        if not self.validation_overlap and n < forecasting_horizon:
+            raise ValueError(
+                f"validation_y has {n} rows, fewer than forecasting_horizon="
+                f"{forecasting_horizon}: no evaluation row's target window fits "
+                f"inside it. Supply at least {forecasting_horizon} rows, or set "
+                f"validation_overlap=True to evaluate boundary rows whose targets "
+                f"partially overlap the training data."
+            )
+        min_rows = forecasting_horizon + 1
+        if y.height < min_rows:
+            raise ValueError(
+                f"y has {y.height} rows, but at least {min_rows} are needed to build "
+                f"one training row at forecasting_horizon={forecasting_horizon} when "
+                f"validation_y is given."
+            )
+
+    def _resolve_validation_window(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        forecasting_horizon: int,
+        params: dict[str, Any],
+        X_forecast: pl.DataFrame | None,
+        validation_y: pl.DataFrame | None,
+        validation_X_actual: pl.DataFrame | None,
+        validation_X_forecast: pl.DataFrame | None,
+    ) -> tuple[
+        pl.DataFrame,
+        pl.DataFrame | None,
+        pl.DataFrame | None,
+        pl.DataFrame | None,
+        pl.DataFrame | None,
+        str | None,
+    ]:
+        """Choose the evaluation window: the ``validation_size`` tail, ``validation_y``, or none.
+
+        The families share this preamble verbatim. Every check runs before any
+        fitted or observation state changes.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series, as passed to fit.
+        X_actual : pl.DataFrame or None
+            Feature time series, as passed to fit.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        params : dict
+            The fit ``**params``, checked for a conflicting raw ``eval_set``.
+        X_forecast : pl.DataFrame or None
+            External forecasts, as passed to fit.
+        validation_y : pl.DataFrame or None
+            Target rows of an explicitly supplied evaluation window.
+        validation_X_actual : pl.DataFrame or None
+            Feature rows of that window.
+        validation_X_forecast : pl.DataFrame or None
+            Forecast vintages published during that window.
+
+        Returns
+        -------
+        y_fit, X_fit : pl.DataFrame, pl.DataFrame or None
+            The training data.
+        y_tail, X_tail : pl.DataFrame or None
+            The evaluation window, or None when no holdout applies.
+        X_forecast_eval : pl.DataFrame or None
+            The external forecasts the evaluation rows resolve vintages from:
+            the fit ``X_forecast`` plus ``validation_X_forecast``.
+        source : str or None
+            ``"validation_size"``, ``"validation_y"``, or None.
+
+        Raises
+        ------
+        ValueError
+            If both window sources are set, if ``validation_X_actual`` or
+            ``validation_X_forecast`` is given without ``validation_y``, or on
+            any invalid holdout configuration.
+
+        """
+        if validation_y is None:
+            for name, value in (
+                ("validation_X_actual", validation_X_actual),
+                ("validation_X_forecast", validation_X_forecast),
+            ):
+                if value is not None:
+                    raise ValueError(
+                        f"{name} requires validation_y: it supplies features for an "
+                        f"evaluation window, but no window target was given."
+                    )
+            y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
+            return y_fit, X_fit, y_tail, X_tail, X_forecast, (None if y_tail is None else "validation_size")
+
+        if self.validation_size is not None:
+            raise ValueError(
+                f"validation_size={self.validation_size} and validation_y are mutually "
+                f"exclusive: each supplies the evaluation window. Set validation_size=None "
+                f"to use validation_y, or omit validation_y."
+            )
+        self._reject_raw_eval_params(params, "validation_y")
+        self._check_eval_set_support(self.estimator, "validation_y")
+        self._validate_explicit_window(y, X_actual, validation_y, validation_X_actual, forecasting_horizon)
+
+        X_forecast_eval = X_forecast
+        if validation_X_forecast is not None:
+            X_forecast_eval = (
+                validation_X_forecast
+                if X_forecast is None
+                else pl.concat([X_forecast, validation_X_forecast], how="vertical_relaxed").unique(maintain_order=True)
+            )
+        return y, X_actual, validation_y, validation_X_actual, X_forecast_eval, "validation_y"
+
+    def _rewind_after_explicit_window(
+        self,
+        source: str | None,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        X_future: pl.DataFrame | None,
+        X_forecast: pl.DataFrame | None,
+    ) -> None:
+        """Return the observation state to the end of the training data after a ``validation_y`` fit.
+
+        Building evaluation rows observes the window. For ``validation_size``
+        that is the intended post-fit state; for ``validation_y`` the window is
+        not training data, so the state is rewound to where a plain fit on
+        ``y`` would leave it.
+
+        Parameters
+        ----------
+        source : str or None
+            The window source returned by `_resolve_validation_window`.
+        y : pl.DataFrame
+            Training target, as passed to fit.
+        X_actual : pl.DataFrame or None
+            Training features, as passed to fit.
+        X_future : pl.DataFrame or None
+            Known future features, as passed to fit.
+        X_forecast : pl.DataFrame or None
+            External forecasts, as passed to fit (without the window's vintages).
+
+        """
+        if source == "validation_y":
+            self.rewind(y, X_actual=X_actual, X_future=X_future, X_forecast=X_forecast)
+
+    def _fitted_estimator_positions(self) -> list[tuple[str, BaseEstimator]]:
+        """List every fitted estimator in ``estimator_`` under a stable position key.
+
+        The estimator returned for each position is the one that receives the
+        evaluation set: the fitted estimator itself, or a ``Pipeline``'s fitted
+        final step. Returned objects are the ones held by ``estimator_``, so
+        in-place changes to them change the forecaster's predictions.
+
+        Keys follow ``estimator_``'s shape: ``"step_<k>"`` for the list the
+        ``"direct"`` and ``"dir-rec"`` strategies fit, ``"multi_output"`` for a
+        single estimator, and for a dict (interval bounds, or the
+        ``"_multiquantile"`` entry) the dict key alone when its value is a
+        single estimator or ``"<key>/step_<k>"`` when it is a list.
+
+        Returns
+        -------
+        list of tuple[str, BaseEstimator]
+            ``(position_key, estimator)`` pairs, in ``estimator_`` order.
+
+        """
+
+        def target(estimator: BaseEstimator) -> BaseEstimator:
+            """Return a ``Pipeline``'s final step, or the estimator itself."""
+            if isinstance(estimator, Pipeline):
+                return estimator.steps[-1][1]
+            return estimator
+
+        def expand(value: Any, prefix: str | None) -> list[tuple[str, BaseEstimator]]:
+            """List one ``estimator_`` entry's positions under ``prefix``."""
+            if isinstance(value, list):
+                value = typing_cast(list[BaseEstimator], value)
+                keys = [f"step_{k}" for k in range(1, len(value) + 1)]
+                return [
+                    (f"{prefix}/{key}" if prefix else key, target(est)) for key, est in zip(keys, value, strict=True)
+                ]
+            return [(prefix or "multi_output", target(value))]
+
+        if isinstance(self.estimator_, dict):
+            positions: list[tuple[str, BaseEstimator]] = []
+            for key, value in self.estimator_.items():
+                positions.extend(expand(value, key))
+            return positions
+        return expand(self.estimator_, None)
 
     def _maybe_split_validation(
         self,
