@@ -58,6 +58,14 @@ tests = [
     # Exercises the validation-holdout early stopping against a real boosting
     # library. Ships Python-agnostic py3-none wheels for every CI platform.
     "lightgbm>=4.0",
+    # The early-stopping adapters for search validation="cv" write to library
+    # internals, so each supported library is tested on every PR, not only in
+    # the examples session.
+    "catboost>=1.2",
+    # xgboost-cpu has no macOS wheels; plain xgboost only pulls the 240 MB
+    # nvidia-nccl-cu13 on Linux, so each platform gets the CPU-only build.
+    "xgboost-cpu>=3.0; sys_platform != 'darwin'",
+    "xgboost>=3.0; sys_platform == 'darwin'",
 ]
 lint = [
     "interrogate>=1.7.0",
