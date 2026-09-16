@@ -46,10 +46,18 @@ from yohou.utils._compat import (
     _warn_or_raise_about_fit_failures,
 )
 
+from .early_stopping import (
+    BaseEarlyStoppingAdapter,
+    _eval_target,
+    _replace_eval_target,
+    _resolve_early_stopping_adapter,
+)
 from .split import check_cv
 from .utils import (
     _check_scoring,
+    _check_shared_round_forecaster,
     _collect_coverage_rates,
+    _evaluate_candidate_shared_rounds,
     _fit_and_score,
     _MultimetricScorer,
     _resolve_response_method,
@@ -313,6 +321,16 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     multimetric_ : bool
         Whether or not the scorers compute several metrics.
 
+    best_rounds_ : dict of str to int
+        Only with ``validation="cv"``: the best candidate's chosen boosting
+        round for each fitted estimator position, keyed ``"step_<k>"``,
+        ``"multi_output"``, or by interval bound (``"coverage_rate_0.9_lower"``
+        or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
+        ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
+        ``rounds_at_boundary`` (whether a chosen round was the last round every
+        fold trained), and ``split<i>_curve_length`` (each fold's stopping
+        curve length per position, None for a failed fold).
+
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
         ``best_forecaster_`` is defined (see the documentation for the ``refit``
@@ -342,6 +360,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         "pre_dispatch": [numbers.Integral, str],
         "error_score": [StrOptions({"raise"}), numbers.Real],
         "return_train_score": ["boolean"],
+        "validation": [StrOptions({"cv"}), None],
+        "early_stopping_adapter": [BaseEarlyStoppingAdapter, None],
     }
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -367,6 +387,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         pre_dispatch="2*n_jobs",
         error_score=np.nan,
         return_train_score=False,
+        validation=None,
+        early_stopping_adapter=None,
     ):
         self.forecaster = forecaster
         self.scoring = scoring
@@ -377,6 +399,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         self.pre_dispatch = pre_dispatch
         self.error_score = error_score
         self.return_train_score = return_train_score
+        self.validation = validation
+        self.early_stopping_adapter = early_stopping_adapter
 
     def __sklearn_tags__(self):
         """Get tags from best_forecaster_ if available."""
@@ -578,6 +602,105 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                 )
         """
         raise NotImplementedError("_run_search not implemented.")
+
+    def _check_shared_round_setup(self, params):
+        """Run the ``validation="cv"`` checks that do not depend on a candidate.
+
+        Parameters
+        ----------
+        params : dict
+            The metadata passed to ``fit``.
+
+        Raises
+        ------
+        ValueError
+            If the forecaster cannot be used with ``validation="cv"``, or
+            ``params`` carries its own evaluation set or evaluation window.
+
+        """
+        _check_shared_round_forecaster(self.forecaster)
+        conflicting = sorted(
+            key for key in params if key in ("eval_set", "eval_X", "eval_y") or key.startswith("validation_")
+        )
+        if conflicting:
+            raise ValueError(
+                f"validation='cv' builds each fold's evaluation set from its test window, so fit cannot also "
+                f"receive {conflicting}. Remove them, or use validation=None."
+            )
+
+    def _shared_round_columns(self, candidate_params, records, n_splits):
+        """Build the ``validation="cv"`` columns of ``cv_results_`` and warn about boundary rounds.
+
+        Parameters
+        ----------
+        candidate_params : list of dict
+            The evaluated parameter settings.
+        records : list of dict
+            The round record `_evaluate_candidate_shared_rounds` returned for
+            each candidate.
+        n_splits : int
+            Number of splits.
+
+        Returns
+        -------
+        dict
+            ``rounds``, ``rounds_at_boundary``, and ``split<i>_curve_length``
+            columns, one entry per candidate.
+
+        """
+        n_candidates = len(candidate_params)
+        rounds = np.empty(n_candidates, dtype=object)
+        lengths = [np.empty(n_candidates, dtype=object) for _ in range(n_splits)]
+        for idx, record in enumerate(records):
+            rounds[idx] = record["rounds"]
+            for split_idx in range(n_splits):
+                lengths[split_idx][idx] = record["curve_lengths"][split_idx]
+            if record["boundary_positions"]:
+                warnings.warn(
+                    f"validation='cv': for candidate {candidate_params[idx]}, the chosen boosting round for "
+                    f"{record['boundary_positions']} is the last round every fold trained, so a later round "
+                    f"may have been better. Raise the estimator's round ceiling (for example n_estimators or "
+                    f"iterations).",
+                    UserWarning,
+                    stacklevel=4,
+                )
+        columns = {
+            "rounds": rounds,
+            "rounds_at_boundary": np.array([record["rounds_at_boundary"] for record in records], dtype=bool),
+        }
+        columns.update({f"split{i}_curve_length": lengths[i] for i in range(n_splits)})
+        return columns
+
+    def _prepare_shared_round_refit(self, forecaster):
+        """Configure the refit forecaster to train the best candidate's rounds with early stopping off.
+
+        Parameters
+        ----------
+        forecaster : BaseForecaster
+            The unfitted refit forecaster, with the best parameters set.
+            Mutated: its estimator is replaced by the adapter's refit
+            configuration with the largest chosen round as ceiling.
+
+        Returns
+        -------
+        BaseEarlyStoppingAdapter
+            The adapter, used to cut each fitted position after the refit.
+
+        Raises
+        ------
+        ValueError
+            If no fold of the best candidate produced a stopping curve.
+
+        """
+        if not self.best_rounds_:
+            raise ValueError(
+                "validation='cv' cannot refit: no fold of the best candidate fitted successfully, so no "
+                "boosting round was chosen. Inspect the fit errors, or set refit=False."
+            )
+        adapter = _resolve_early_stopping_adapter(forecaster.estimator, self.early_stopping_adapter)
+        target = adapter.prepare_refit(_eval_target(forecaster.estimator), max(self.best_rounds_.values()))
+        forecaster.set_params(estimator=_replace_eval_target(forecaster.estimator, target))
+        return adapter
 
     def _format_results(self, candidate_params, n_splits, out, more_results=None):
         """Format the cv_results_ dictionary.
@@ -820,6 +943,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         """
         _raise_for_params(params, self, "fit")
+        if self.validation == "cv":
+            self._check_shared_round_setup(params)
 
         # Validate input data for search
 
@@ -878,24 +1003,52 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                         f"candidates, totalling {n_candidates * n_splits} fits"
                     )
 
-                out = parallel(
-                    delayed(_fit_and_score)(
-                        clone(base_forecaster),
-                        y,
-                        X_actual,
-                        forecasting_horizon,
-                        X_future=X_future,
-                        X_forecast=X_forecast,
-                        train=train,
-                        test=test,
-                        parameters=parameters,
-                        split_progress=(split_idx, n_splits),
-                        candidate_progress=(cand_idx, n_candidates),
-                        **fit_and_score_kwargs,
+                if self.validation == "cv":
+                    splits = list(cv.split(y, X_actual, **routed_params.splitter.split))
+                    candidate_out = parallel(
+                        delayed(_evaluate_candidate_shared_rounds)(
+                            clone(base_forecaster),
+                            y,
+                            X_actual,
+                            forecasting_horizon,
+                            X_future=X_future,
+                            X_forecast=X_forecast,
+                            splits=splits,
+                            parameters=parameters,
+                            early_stopping_adapter=(
+                                None if self.early_stopping_adapter is None else clone(self.early_stopping_adapter)
+                            ),
+                            candidate_progress=(cand_idx, n_candidates),
+                            **fit_and_score_kwargs,
+                        )
+                        for cand_idx, parameters in enumerate(candidate_params)
                     )
-                    for cand_idx, parameters in enumerate(candidate_params)
-                    for split_idx, (train, test) in enumerate(cv.split(y, X_actual, **routed_params.splitter.split))
-                )
+                    out = [fold_result for fold_results, _ in candidate_out for fold_result in fold_results]
+                    more_results = {
+                        **(more_results or {}),
+                        **self._shared_round_columns(
+                            candidate_params, [record for _, record in candidate_out], n_splits
+                        ),
+                    }
+                else:
+                    out = parallel(
+                        delayed(_fit_and_score)(
+                            clone(base_forecaster),
+                            y,
+                            X_actual,
+                            forecasting_horizon,
+                            X_future=X_future,
+                            X_forecast=X_forecast,
+                            train=train,
+                            test=test,
+                            parameters=parameters,
+                            split_progress=(split_idx, n_splits),
+                            candidate_progress=(cand_idx, n_candidates),
+                            **fit_and_score_kwargs,
+                        )
+                        for cand_idx, parameters in enumerate(candidate_params)
+                        for split_idx, (train, test) in enumerate(cv.split(y, X_actual, **routed_params.splitter.split))
+                    )
 
                 if len(out) < 1:
                     raise ValueError("No fits were performed. Was the CV iterator empty? Were there no candidates?")
@@ -949,11 +1102,17 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                 self.best_score_ = results[f"mean_test_{refit_metric}"][self.best_index_]
             self.best_params_ = results["params"][self.best_index_]
 
+        if self.validation == "cv" and (self.refit or not self.multimetric_):
+            self.best_rounds_ = dict(results["rounds"][self.best_index_])
+
         if self.refit:
             # Clone the forecaster and parameters for refitting
             self.best_forecaster_ = clone(base_forecaster).set_params(**clone(self.best_params_, safe=False))
 
             refit_start_time = time.time()
+            refit_adapter = None
+            if self.validation == "cv":
+                refit_adapter = self._prepare_shared_round_refit(self.best_forecaster_)
 
             refit_params = dict(routed_params.forecaster.fit.items())
             if collected_coverage_rates is not None:
@@ -966,6 +1125,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                 X_forecast=X_forecast,
                 **refit_params,
             )
+            if refit_adapter is not None:
+                for position, estimator in self.best_forecaster_._fitted_estimator_positions():
+                    refit_adapter.truncate(estimator, self.best_rounds_[position])
             refit_end_time = time.time()
             self.refit_time_ = refit_end_time - refit_start_time
 
@@ -1555,6 +1717,39 @@ class GridSearchCV(BaseSearchCV):
         expensive and is not strictly required to select the parameters that
         yield the best generalization performance.
 
+    validation : {"cv"} or None, default=None
+        Early stopping on each fold's test window, for reduction forecasters
+        whose estimator is a boosting model (LightGBM, XGBoost, CatBoost, or
+        any estimator with an ``early_stopping_adapter``).
+
+        With ``"cv"``, every fold is fitted with its own test window delivered
+        to the estimator as ``eval_set``: the evaluation data is the scored
+        fold itself, not an additional holdout. Fold fits do not stop early:
+        each trains every round up to the estimator's round ceiling
+        (``n_estimators`` or ``iterations``), which therefore sets the cost,
+        while the estimator's early-stopping patience is ignored. For each
+        fitted estimator (for
+        example each step of the ``"direct"`` strategy), one round count is
+        chosen from the stopping metric averaged over the folds, every fold is
+        scored with its estimators cut to that round, and the refit trains
+        that many rounds on all data with early stopping off. Choosing the
+        round on the scored folds makes ``best_score_`` optimistic by the same
+        mechanism as searching over the round count in the grid; for an
+        unbiased score, leave this ``None`` and set ``validation_size`` on the
+        forecaster instead, which holds out the end of each fold's training
+        window at the cost of training rows.
+
+        Requires a ``PointReductionForecaster``, ``IntervalReductionForecaster``,
+        or ``ClassProbaReductionForecaster`` with ``validation_size=None`` and a
+        strategy other than ``"dir-rec"``. The refitted
+        ``best_forecaster_.estimator`` carries the adapter's refit
+        configuration (round ceiling set, early stopping removed), and its
+        fitted estimators are cut to ``best_rounds_``.
+    early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
+        Only used when ``validation="cv"``. Translates early stopping for the
+        estimator's library. ``None`` selects the built-in adapter for
+        LightGBM, XGBoost, or CatBoost estimators.
+
     Attributes
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
@@ -1667,6 +1862,16 @@ class GridSearchCV(BaseSearchCV):
     multimetric_ : bool
         Whether or not the scorers compute several metrics.
 
+    best_rounds_ : dict of str to int
+        Only with ``validation="cv"``: the best candidate's chosen boosting
+        round for each fitted estimator position, keyed ``"step_<k>"``,
+        ``"multi_output"``, or by interval bound (``"coverage_rate_0.9_lower"``
+        or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
+        ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
+        ``rounds_at_boundary`` (whether a chosen round was the last round every
+        fold trained), and ``split<i>_curve_length`` (each fold's stopping
+        curve length per position, None for a failed fold).
+
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
         ``best_forecaster_`` is defined (see the documentation for the ``refit``
@@ -1761,6 +1966,8 @@ class GridSearchCV(BaseSearchCV):
         pre_dispatch="2*n_jobs",
         error_score=np.nan,
         return_train_score=False,
+        validation=None,
+        early_stopping_adapter=None,
     ):
         super().__init__(
             forecaster=forecaster,
@@ -1772,6 +1979,8 @@ class GridSearchCV(BaseSearchCV):
             pre_dispatch=pre_dispatch,
             error_score=error_score,
             return_train_score=return_train_score,
+            validation=validation,
+            early_stopping_adapter=early_stopping_adapter,
         )
         self.param_grid = param_grid
 
@@ -1962,6 +2171,39 @@ class RandomizedSearchCV(BaseSearchCV):
         expensive and is not strictly required to select the parameters that
         yield the best generalization performance.
 
+    validation : {"cv"} or None, default=None
+        Early stopping on each fold's test window, for reduction forecasters
+        whose estimator is a boosting model (LightGBM, XGBoost, CatBoost, or
+        any estimator with an ``early_stopping_adapter``).
+
+        With ``"cv"``, every fold is fitted with its own test window delivered
+        to the estimator as ``eval_set``: the evaluation data is the scored
+        fold itself, not an additional holdout. Fold fits do not stop early:
+        each trains every round up to the estimator's round ceiling
+        (``n_estimators`` or ``iterations``), which therefore sets the cost,
+        while the estimator's early-stopping patience is ignored. For each
+        fitted estimator (for
+        example each step of the ``"direct"`` strategy), one round count is
+        chosen from the stopping metric averaged over the folds, every fold is
+        scored with its estimators cut to that round, and the refit trains
+        that many rounds on all data with early stopping off. Choosing the
+        round on the scored folds makes ``best_score_`` optimistic by the same
+        mechanism as searching over the round count in the grid; for an
+        unbiased score, leave this ``None`` and set ``validation_size`` on the
+        forecaster instead, which holds out the end of each fold's training
+        window at the cost of training rows.
+
+        Requires a ``PointReductionForecaster``, ``IntervalReductionForecaster``,
+        or ``ClassProbaReductionForecaster`` with ``validation_size=None`` and a
+        strategy other than ``"dir-rec"``. The refitted
+        ``best_forecaster_.estimator`` carries the adapter's refit
+        configuration (round ceiling set, early stopping removed), and its
+        fitted estimators are cut to ``best_rounds_``.
+    early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
+        Only used when ``validation="cv"``. Translates early stopping for the
+        estimator's library. ``None`` selects the built-in adapter for
+        LightGBM, XGBoost, or CatBoost estimators.
+
     Attributes
     ----------
     cv_results_ : dict of numpy (masked) ndarrays
@@ -2073,6 +2315,16 @@ class RandomizedSearchCV(BaseSearchCV):
 
     multimetric_ : bool
         Whether or not the scorers compute several metrics.
+
+    best_rounds_ : dict of str to int
+        Only with ``validation="cv"``: the best candidate's chosen boosting
+        round for each fitted estimator position, keyed ``"step_<k>"``,
+        ``"multi_output"``, or by interval bound (``"coverage_rate_0.9_lower"``
+        or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
+        ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
+        ``rounds_at_boundary`` (whether a chosen round was the last round every
+        fold trained), and ``split<i>_curve_length`` (each fold's stopping
+        curve length per position, None for a failed fold).
 
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
@@ -2193,6 +2445,8 @@ class RandomizedSearchCV(BaseSearchCV):
         random_state=None,
         error_score=np.nan,
         return_train_score=False,
+        validation=None,
+        early_stopping_adapter=None,
     ):
         super().__init__(
             forecaster=forecaster,
@@ -2204,6 +2458,8 @@ class RandomizedSearchCV(BaseSearchCV):
             pre_dispatch=pre_dispatch,
             error_score=error_score,
             return_train_score=return_train_score,
+            validation=validation,
+            early_stopping_adapter=early_stopping_adapter,
         )
         self.param_distributions = param_distributions
         self.n_iter = n_iter

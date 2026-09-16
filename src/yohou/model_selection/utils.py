@@ -6,6 +6,7 @@ import numbers
 import time
 import warnings
 from contextlib import suppress
+from dataclasses import dataclass
 from traceback import format_exc
 from typing import Any, cast
 
@@ -317,6 +318,152 @@ def _fit_and_score(
         - ``"fit_error"`` - traceback string or ``None``.
 
     """
+    fold = _fit_fold(
+        forecaster,
+        y,
+        X_actual,
+        forecasting_horizon,
+        X_future=X_future,
+        X_forecast=X_forecast,
+        scorer=scorer,
+        train=train,
+        test=test,
+        verbose=verbose,
+        parameters=parameters,
+        fit_params=fit_params,
+        score_params=score_params,
+        return_train_score=return_train_score,
+        split_progress=split_progress,
+        candidate_progress=candidate_progress,
+        error_score=error_score,
+        coverage_rates=coverage_rates,
+    )
+    return _score_fold(
+        fold,
+        X_future=X_future,
+        scorer=scorer,
+        verbose=verbose,
+        predict_func_params=predict_func_params,
+        return_train_score=return_train_score,
+        return_parameters=return_parameters,
+        return_n_test_samples=return_n_test_samples,
+        return_times=return_times,
+        return_forecaster=return_forecaster,
+        return_predictions=return_predictions,
+        predict_forecasting_horizon=predict_forecasting_horizon,
+        predict_stride=predict_stride,
+        predict_method=predict_method,
+        error_score=error_score,
+        coverage_rates=coverage_rates,
+    )
+
+
+@dataclass
+class _FoldFit:
+    """The outcome of fitting one CV fold, carried to its scoring.
+
+    `_fit_and_score` fits and scores a fold in one call. A shared-round search
+    fits every fold of a candidate before scoring any of them, so the two
+    halves are separate functions and this record passes between them.
+    """
+
+    forecaster: BaseForecaster
+    y: pl.DataFrame
+    train: np.ndarray[Any, Any]
+    test: np.ndarray[Any, Any]
+    y_train: pl.DataFrame
+    X_actual_train: pl.DataFrame | None
+    y_test: pl.DataFrame
+    X_actual_test: pl.DataFrame | None
+    X_forecast_train: pl.DataFrame | None
+    X_forecast_test: pl.DataFrame | None
+    parameters: dict[str, object] | None
+    score_params: dict[str, object]
+    score_params_test: dict[str, object]
+    progress_msg: str
+    params_msg: str
+    fit_time: float
+    fit_error: str | None
+    test_scores: dict[str, float | str] | float | str | None = None
+    train_scores: dict[str, float | str] | float | str | None = None
+
+
+def _fit_fold(
+    forecaster: BaseForecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None,
+    forecasting_horizon: int,
+    *,
+    X_future: pl.DataFrame | None,
+    X_forecast: pl.DataFrame | None,
+    scorer: BaseScorer | _MultimetricScorer | None,
+    train: np.ndarray[Any, Any],
+    test: np.ndarray[Any, Any],
+    verbose: int,
+    parameters: dict[str, object] | None,
+    fit_params: dict[str, object] | None,
+    score_params: dict[str, object] | None,
+    return_train_score: bool,
+    split_progress: tuple[int, int] | None,
+    candidate_progress: tuple[int, int] | None,
+    error_score: float | str,
+    coverage_rates: list[float] | None,
+    validation_window: bool = False,
+    extra_fit_params: dict[str, object] | None = None,
+) -> _FoldFit:
+    """Fit the forecaster on one CV fold's training rows.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster to fit.
+    y : pl.DataFrame
+        Target time series with a ``"time"`` column.
+    X_actual : pl.DataFrame or None
+        Actual feature observations, or ``None``.
+    forecasting_horizon : int
+        Number of time steps to forecast.
+    X_future : pl.DataFrame or None
+        Known future features.
+    X_forecast : pl.DataFrame or None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+    scorer : BaseScorer, _MultimetricScorer, or None
+        Scorer, used here only to shape error scores.
+    train : np.ndarray
+        Row indices of training samples.
+    test : np.ndarray
+        Row indices of test samples.
+    verbose : int
+        Verbosity level.
+    parameters : dict or None
+        Hyperparameters to set on the forecaster via ``set_params``.
+    fit_params : dict or None
+        Routed metadata passed to ``forecaster.fit``.
+    score_params : dict or None
+        Routed metadata passed to the scorer.
+    return_train_score : bool
+        Whether train scores will be computed, which shapes error scores.
+    split_progress : tuple of (int, int) or None
+        ``(current_split, total_splits)`` for verbose logging.
+    candidate_progress : tuple of (int, int) or None
+        ``(current_candidate, total_candidates)`` for verbose logging.
+    error_score : float or "raise"
+        Value to assign if fitting fails, or ``"raise"``.
+    coverage_rates : list of float or None
+        Coverage levels passed to ``forecaster.fit``.
+    validation_window : bool, default=False
+        Whether to pass the fold's test rows to ``fit`` as ``validation_y``,
+        ``validation_X_actual``, and ``validation_X_forecast``.
+    extra_fit_params : dict or None, default=None
+        Further keyword arguments for ``forecaster.fit``, such as an
+        early-stopping adapter's callbacks.
+
+    Returns
+    -------
+    _FoldFit
+        The fitted fold, or a record of its fit error.
+
+    """
     if not isinstance(error_score, numbers.Number) and error_score != "raise":
         raise ValueError(
             "error_score must be the string 'raise' or a numeric value. "
@@ -331,12 +478,10 @@ def _fit_and_score(
         if candidate_progress and verbose > 9:
             progress_msg += f"; {candidate_progress[0] + 1}/{candidate_progress[1]}"
 
-    if verbose > 1:
-        if parameters is None:
-            params_msg = ""
-        else:
-            sorted_keys = sorted(parameters)  # Ensure deterministic o/p
-            params_msg = ", ".join(f"{k}={parameters[k]}" for k in sorted_keys)
+    params_msg = ""
+    if verbose > 1 and parameters is not None:
+        sorted_keys = sorted(parameters)  # Ensure deterministic o/p
+        params_msg = ", ".join(f"{k}={parameters[k]}" for k in sorted_keys)
 
     # Adjust length of sample weights
     fit_params = fit_params if fit_params is not None else {}
@@ -357,15 +502,37 @@ def _fit_and_score(
     y_test, X_actual_test = _safe_split(forecaster, y, X_actual, test, train)
     X_forecast_train, X_forecast_test = _split_X_forecast(X_forecast, y, train, test)
 
-    result: dict[str, object] = {}
-    test_scores: dict[str, float | str] | float | str
-    train_scores: dict[str, float | str] | float | str | None = None
-    y_pred: pl.DataFrame | None = None
-    fit_time: float
-    score_time: float
+    fold = _FoldFit(
+        forecaster=forecaster,
+        y=y,
+        train=train,
+        test=test,
+        y_train=y_train,
+        X_actual_train=X_actual_train,
+        y_test=y_test,
+        X_actual_test=X_actual_test,
+        X_forecast_train=X_forecast_train,
+        X_forecast_test=X_forecast_test,
+        parameters=parameters,
+        score_params=score_params,
+        score_params_test=score_params_test,
+        progress_msg=progress_msg,
+        params_msg=params_msg,
+        fit_time=0.0,
+        fit_error=None,
+    )
     try:
         if coverage_rates is not None:
             fit_params["coverage_rates"] = coverage_rates
+        if extra_fit_params:
+            fit_params = {**fit_params, **extra_fit_params}
+        if validation_window:
+            fit_params = {
+                **fit_params,
+                "validation_y": y_test,
+                "validation_X_actual": X_actual_test,
+                "validation_X_forecast": X_forecast_test,
+            }
         forecaster.fit(
             y=y_train,
             X_actual=X_actual_train,
@@ -377,24 +544,117 @@ def _fit_and_score(
 
     except Exception:  # noqa: BLE001
         # Note fit time as time until error
-        fit_time = time.time() - start_time
-        score_time = 0.0
+        fold.fit_time = time.time() - start_time
         if error_score == "raise":
             raise
-        elif isinstance(error_score, numbers.Number):
-            if isinstance(scorer, _MultimetricScorer):
-                test_scores = {name: float(error_score) for name in scorer._scorers}
-                if return_train_score:
-                    train_scores = {name: float(error_score) for name in scorer._scorers}
-            elif scorer is not None:
-                test_scores = float(error_score)
-                if return_train_score:
-                    train_scores = float(error_score)
-        result["fit_error"] = format_exc()
+        _record_fit_error(fold, format_exc(), scorer, error_score, return_train_score)
     else:
-        result["fit_error"] = None
+        fold.fit_time = time.time() - start_time
+    return fold
 
-        fit_time = time.time() - start_time
+
+def _record_fit_error(
+    fold: _FoldFit,
+    traceback: str,
+    scorer: BaseScorer | _MultimetricScorer | None,
+    error_score: float | str,
+    return_train_score: bool,
+) -> None:
+    """Mark a fold as failed and fill its scores with ``error_score``.
+
+    Parameters
+    ----------
+    fold : _FoldFit
+        The fold to mark. Mutated in place.
+    traceback : str
+        The formatted traceback of the failure.
+    scorer : BaseScorer, _MultimetricScorer, or None
+        Scorer, which shapes the error scores.
+    error_score : float or "raise"
+        The numeric error score.
+    return_train_score : bool
+        Whether train scores are reported.
+
+    """
+    fold.fit_error = traceback
+    if isinstance(error_score, numbers.Number):
+        if isinstance(scorer, _MultimetricScorer):
+            fold.test_scores = {name: float(error_score) for name in scorer._scorers}
+            if return_train_score:
+                fold.train_scores = {name: float(error_score) for name in scorer._scorers}
+        elif scorer is not None:
+            fold.test_scores = float(error_score)
+            if return_train_score:
+                fold.train_scores = float(error_score)
+
+
+def _score_fold(
+    fold: _FoldFit,
+    *,
+    X_future: pl.DataFrame | None,
+    scorer: BaseScorer | _MultimetricScorer | None,
+    verbose: int,
+    predict_func_params: dict[str, object] | None,
+    return_train_score: bool,
+    return_parameters: bool,
+    return_n_test_samples: bool,
+    return_times: bool,
+    return_forecaster: bool,
+    return_predictions: bool,
+    predict_forecasting_horizon: int | None,
+    predict_stride: int | None,
+    predict_method: str | None,
+    error_score: float | str,
+    coverage_rates: list[float] | None,
+) -> dict[str, object]:
+    """Score a fitted fold and assemble its `_fit_and_score` result.
+
+    Parameters
+    ----------
+    fold : _FoldFit
+        The fold returned by `_fit_fold`.
+    X_future : pl.DataFrame or None
+        Known future features.
+    scorer : BaseScorer, _MultimetricScorer, or None
+        Scorer (single or multi-metric).
+    verbose : int
+        Verbosity level.
+    predict_func_params : dict or None
+        Routed metadata passed to the prediction function.
+    return_train_score, return_parameters, return_n_test_samples, return_times, return_forecaster, return_predictions : bool
+        Which entries the result carries; see `_fit_and_score`.
+    predict_forecasting_horizon : int or None
+        Override forecasting horizon for ``observe_predict``.
+    predict_stride : int or None
+        Override stride for rolling ``observe_predict``.
+    predict_method : str or None
+        Explicit prediction method when ``scorer`` is None.
+    error_score : float or "raise"
+        Value assigned to a score that cannot be computed.
+    coverage_rates : list of float or None
+        Coverage levels for interval prediction.
+
+    Returns
+    -------
+    dict
+        The `_fit_and_score` result for this fold.
+
+    """
+    forecaster = fold.forecaster
+    y_train, X_actual_train = fold.y_train, fold.X_actual_train
+    y_test, X_actual_test = fold.y_test, fold.X_actual_test
+    X_forecast_train, X_forecast_test = fold.X_forecast_train, fold.X_forecast_test
+    train, test = fold.train, fold.test
+
+    result: dict[str, object] = {"fit_error": fold.fit_error}
+    test_scores = fold.test_scores
+    train_scores = fold.train_scores
+    y_pred: pl.DataFrame | None = None
+    fit_time = fold.fit_time
+    score_time = 0.0
+
+    if fold.fit_error is None:
+        score_start = time.time()
 
         # Need a scorer for _predict to resolve response method
         if scorer is not None:
@@ -417,7 +677,7 @@ def _fit_and_score(
                 y_test,
                 y_pred,
                 scorer,
-                score_params_test,
+                fold.score_params_test,
                 error_score,
             )
         elif return_predictions:
@@ -436,7 +696,7 @@ def _fit_and_score(
         else:
             y_pred = None
 
-        score_time = time.time() - start_time - fit_time
+        score_time = time.time() - score_start
 
         if return_train_score:
             if scorer is None:
@@ -474,7 +734,7 @@ def _fit_and_score(
                 # ``len(test)`` rows of the training window), so the score params
                 # must be sliced to those same absolute indices to keep lengths
                 # aligned.
-                score_params_train = _check_method_params(y, params=score_params, indices=train[test_rewind])
+                score_params_train = _check_method_params(fold.y, params=fold.score_params, indices=train[test_rewind])
                 y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
                 y_train_test, X_actual_train_test = _safe_split(
                     forecaster, y_train, X_actual_train, test_rewind, train_rewind
@@ -506,8 +766,8 @@ def _fit_and_score(
 
     if verbose > 1:
         total_time = score_time + fit_time
-        end_msg = f"[CV{progress_msg}] END "
-        result_msg = params_msg + (";" if params_msg else "")
+        end_msg = f"[CV{fold.progress_msg}] END "
+        result_msg = fold.params_msg + (";" if fold.params_msg else "")
         if verbose > 2 and scorer is not None:
             if isinstance(test_scores, dict):
                 for scorer_name in sorted(test_scores):
@@ -533,12 +793,336 @@ def _fit_and_score(
         result["fit_time"] = fit_time
         result["score_time"] = score_time
     if return_parameters:
-        result["parameters"] = parameters
+        result["parameters"] = fold.parameters
     if return_forecaster:
         result["forecaster"] = forecaster
     if return_predictions:
         result["predictions"] = y_pred
     return result
+
+
+def _select_shared_rounds(
+    curves: dict[str, list[tuple[np.ndarray, bool]]],
+) -> tuple[dict[str, int], dict[str, bool]]:
+    """Choose one boosting round per estimator position from the folds' stopping curves.
+
+    For each position, the curves of every fold are averaged over the rounds
+    every fold trained (1 to the shortest curve's length), and the best round of
+    that average is chosen, the smallest on ties. A fold cannot be scored at a
+    round it did not train, which is why the average stops at the shortest
+    curve.
+
+    Parameters
+    ----------
+    curves : dict[str, list[tuple[np.ndarray, bool]]]
+        For each position key, one ``(curve, higher_is_better)`` pair per fold.
+
+    Returns
+    -------
+    rounds : dict[str, int]
+        The chosen round (1-based) per position, in ``curves`` order.
+    at_boundary : dict[str, bool]
+        Per position, whether the chosen round is the last round every fold
+        trained, so a later round might have been better.
+
+    Raises
+    ------
+    ValueError
+        If a position has no fold, a curve is empty, or the folds disagree on
+        whether higher values are better.
+
+    """
+    rounds: dict[str, int] = {}
+    at_boundary: dict[str, bool] = {}
+    for position, fold_curves in curves.items():
+        if not fold_curves:
+            raise ValueError(f"Cannot choose a shared round for {position!r}: no fold has a stopping curve for it.")
+        directions = {bool(higher) for _, higher in fold_curves}
+        if len(directions) != 1:
+            raise ValueError(
+                f"Cannot choose a shared round for {position!r}: the folds disagree on the stopping "
+                f"metric's direction (higher is better in some folds, lower in others)."
+            )
+        shortest = min(len(curve) for curve, _ in fold_curves)
+        if shortest == 0:
+            raise ValueError(f"Cannot choose a shared round for {position!r}: a fold's stopping curve is empty.")
+        mean = np.mean(np.vstack([np.asarray(curve, dtype=float)[:shortest] for curve, _ in fold_curves]), axis=0)
+        best = int(np.nanargmax(mean) if directions.pop() else np.nanargmin(mean)) + 1
+        rounds[position] = best
+        at_boundary[position] = best == shortest
+    return rounds, at_boundary
+
+
+def _merge_fit_params(fit_params: dict[str, object], extra: dict[str, object]) -> dict[str, object]:
+    """Add an adapter's fit parameters to the caller's.
+
+    Parameters
+    ----------
+    fit_params : dict
+        The caller's routed fit parameters.
+    extra : dict
+        The adapter's fit parameters.
+
+    Returns
+    -------
+    dict
+        The merged parameters. A key present in both is allowed only when both
+        values are lists, which are concatenated (for example callbacks).
+
+    Raises
+    ------
+    ValueError
+        If a key is present in both and the values are not both lists.
+
+    """
+    merged = dict(fit_params)
+    for key, value in extra.items():
+        if key not in merged:
+            merged[key] = value
+        elif isinstance(merged[key], list) and isinstance(value, list):
+            merged[key] = [*cast(list, merged[key]), *value]
+        else:
+            raise ValueError(
+                f"The fit parameter {key!r} is set both by the caller and by the early-stopping adapter; "
+                f"only list values (such as callbacks) can be combined."
+            )
+    return merged
+
+
+def _check_shared_round_forecaster(forecaster: BaseForecaster) -> None:
+    """Reject a forecaster configuration that ``validation="cv"`` cannot use.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster with a candidate's parameters set.
+
+    Raises
+    ------
+    ValueError
+        If the forecaster is not a reduction forecaster, has ``validation_size``
+        set, or uses the ``"dir-rec"`` strategy.
+
+    """
+    from yohou.base.reduction import BaseReductionForecaster
+
+    if not isinstance(forecaster, BaseReductionForecaster):
+        raise ValueError(
+            f"validation='cv' requires a reduction forecaster (PointReductionForecaster, "
+            f"IntervalReductionForecaster, or ClassProbaReductionForecaster), whose boosted estimators "
+            f"receive each fold's test window as their evaluation set; got {forecaster.__class__.__name__}."
+        )
+    validation_size = getattr(forecaster, "validation_size", None)
+    if validation_size is not None:
+        raise ValueError(
+            f"validation='cv' and validation_size={validation_size} both supply the evaluation set: the "
+            f"search uses each fold's test window, the forecaster would hold out its own tail. Set "
+            f"validation_size=None, or use validation=None to keep the forecaster's holdout."
+        )
+    if getattr(forecaster, "reduction_strategy", None) == "dir-rec":
+        raise ValueError(
+            "validation='cv' cannot use reduction_strategy='dir-rec': each later step is trained on the "
+            "earlier steps' predictions, so cutting an earlier step to its chosen round would change a "
+            "later step's inputs between training and prediction. Use 'direct' or 'multi-output'."
+        )
+
+
+def _params_message(parameters: dict[str, object] | None) -> str:
+    """Format candidate parameters for verbose progress lines, as `_fit_fold` does."""
+    if parameters is None:
+        return ""
+    return ", ".join(f"{k}={parameters[k]}" for k in sorted(parameters))
+
+
+def _evaluate_candidate_shared_rounds(
+    forecaster: BaseForecaster,
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None,
+    forecasting_horizon: int,
+    *,
+    X_future: pl.DataFrame | None = None,
+    X_forecast: pl.DataFrame | None = None,
+    splits: list[tuple[np.ndarray[Any, Any], np.ndarray[Any, Any]]],
+    parameters: dict[str, object] | None,
+    early_stopping_adapter: Any = None,
+    scorer: BaseScorer | _MultimetricScorer,
+    verbose: int,
+    fit_params: dict[str, object] | None,
+    predict_func_params: dict[str, object] | None,
+    score_params: dict[str, object] | None,
+    return_train_score: bool = False,
+    return_parameters: bool = False,
+    return_n_test_samples: bool = False,
+    return_times: bool = False,
+    candidate_progress: tuple[int, int] | None = None,
+    error_score: float | str = np.nan,
+    coverage_rates: list[float] | None = None,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
+    """Evaluate one candidate with early stopping on each fold's test window and a shared round.
+
+    Every fold is fitted with its test window as the evaluation set and with
+    the adapter's configuration that keeps every trained round. One round per
+    estimator position is then chosen from the fold-average stopping curve
+    (`_select_shared_rounds`), every successful fold's estimators are cut to
+    those rounds, and each fold is predicted and scored as `_fit_and_score`
+    would. A fold whose fit fails gets ``error_score`` and contributes no curve.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The unfitted reduction forecaster (not mutated; each fold uses a clone).
+    y : pl.DataFrame
+        Target time series with a ``"time"`` column.
+    X_actual : pl.DataFrame or None
+        Actual feature observations, or ``None``.
+    forecasting_horizon : int
+        Number of time steps to forecast.
+    X_future : pl.DataFrame or None, default=None
+        Known future features.
+    X_forecast : pl.DataFrame or None, default=None
+        External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+    splits : list of tuple of np.ndarray
+        ``(train, test)`` row indices for every fold.
+    parameters : dict or None
+        The candidate's hyperparameters.
+    early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
+        The adapter to use, or None to resolve a built-in one.
+    scorer : BaseScorer or _MultimetricScorer
+        Scorer (single or multi-metric).
+    verbose : int
+        Verbosity level.
+    fit_params : dict or None
+        Routed metadata passed to ``forecaster.fit``.
+    predict_func_params : dict or None
+        Routed metadata passed to the prediction function.
+    score_params : dict or None
+        Routed metadata passed to the scorer.
+    return_train_score, return_parameters, return_n_test_samples, return_times : bool
+        Which entries each fold's result carries; see `_fit_and_score`.
+    candidate_progress : tuple of (int, int) or None, default=None
+        ``(current_candidate, total_candidates)`` for verbose logging.
+    error_score : float or "raise", default=np.nan
+        Value assigned to a failed fold, or ``"raise"``.
+    coverage_rates : list of float or None, default=None
+        Coverage levels for interval prediction.
+
+    Returns
+    -------
+    results : list of dict
+        One `_fit_and_score` result per fold, in ``splits`` order.
+    record : dict
+        ``"rounds"`` (dict of position key to chosen round),
+        ``"rounds_at_boundary"`` (bool), ``"boundary_positions"`` (list of
+        position keys), and ``"curve_lengths"`` (one dict of position key to
+        curve length per fold, None for a failed fold).
+
+    Raises
+    ------
+    ValueError
+        If the candidate's configuration cannot be used with
+        ``validation="cv"``, raised before any fold is fitted.
+
+    """
+    from yohou.model_selection.early_stopping import (
+        _eval_target,
+        _replace_eval_target,
+        _resolve_early_stopping_adapter,
+    )
+
+    configured = clone(forecaster)
+    if parameters:
+        configured.set_params(**clone(parameters, safe=False))
+    _check_shared_round_forecaster(configured)
+    adapter = _resolve_early_stopping_adapter(configured.estimator, early_stopping_adapter)
+    adapter.validate(_eval_target(configured.estimator))
+
+    folds: list[_FoldFit] = []
+    curve_lengths: list[dict[str, int] | None] = []
+    curves: dict[str, list[tuple[np.ndarray, bool]]] = {}
+    for split_idx, (train, test) in enumerate(splits):
+        fold_forecaster = clone(configured)
+        prepared, adapter_fit_params = adapter.prepare_fold_fit(_eval_target(fold_forecaster.estimator))
+        fold_forecaster.set_params(estimator=_replace_eval_target(fold_forecaster.estimator, prepared))
+        routed = dict(fit_params or {})
+        # Adapter parameters bypass per-sample slicing; a key the caller also
+        # routes (such as callbacks) is combined here and overrides theirs.
+        shared = {k: v for k, v in routed.items() if k in adapter_fit_params}
+        fold = _fit_fold(
+            fold_forecaster,
+            y,
+            X_actual,
+            forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            scorer=scorer,
+            train=train,
+            test=test,
+            verbose=verbose,
+            parameters=None,
+            fit_params=routed,
+            score_params=score_params,
+            return_train_score=return_train_score,
+            split_progress=(split_idx, len(splits)),
+            candidate_progress=candidate_progress,
+            error_score=error_score,
+            coverage_rates=coverage_rates,
+            validation_window=True,
+            extra_fit_params=_merge_fit_params(shared, adapter_fit_params),
+        )
+        fold.parameters = parameters
+        fold.params_msg = _params_message(parameters) if verbose > 1 else ""
+        folds.append(fold)
+        if fold.fit_error is not None:
+            curve_lengths.append(None)
+            continue
+        lengths: dict[str, int] = {}
+        for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[unresolved-attribute]
+            curve, higher_is_better = adapter.stopping_curve(estimator)
+            curves.setdefault(position, []).append((curve, higher_is_better))
+            lengths[position] = len(curve)
+        curve_lengths.append(lengths)
+
+    rounds: dict[str, int] = {}
+    boundary: dict[str, bool] = {}
+    if curves:
+        rounds, boundary = _select_shared_rounds(curves)
+        for fold in folds:
+            if fold.fit_error is None:
+                for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[unresolved-attribute]
+                    adapter.truncate(estimator, rounds[position])
+
+    # No warning here: this runs inside a joblib worker, where warnings do not
+    # reach the caller. The search warns from the returned record.
+    boundary_positions = [position for position, flagged in boundary.items() if flagged]
+
+    results = [
+        _score_fold(
+            fold,
+            X_future=X_future,
+            scorer=scorer,
+            verbose=verbose,
+            predict_func_params=predict_func_params,
+            return_train_score=return_train_score,
+            return_parameters=return_parameters,
+            return_n_test_samples=return_n_test_samples,
+            return_times=return_times,
+            return_forecaster=False,
+            return_predictions=False,
+            predict_forecasting_horizon=None,
+            predict_stride=None,
+            predict_method=None,
+            error_score=error_score,
+            coverage_rates=coverage_rates,
+        )
+        for fold in folds
+    ]
+    record: dict[str, object] = {
+        "rounds": rounds,
+        "rounds_at_boundary": bool(boundary_positions),
+        "boundary_positions": boundary_positions,
+        "curve_lengths": curve_lengths,
+    }
+    return results, record
 
 
 _RESPONSE_METHOD_PRIORITY: dict[str, int] = {
