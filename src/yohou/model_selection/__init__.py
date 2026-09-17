@@ -2,9 +2,9 @@
 
 from .early_stopping import (
     BaseEarlyStoppingAdapter,
-    CatBoostAdapter,
-    LightGBMAdapter,
-    XGBoostAdapter,
+    CatBoostEarlyStoppingAdapter,
+    LightGBMEarlyStoppingAdapter,
+    XGBoostEarlyStoppingAdapter,
 )
 from .search import (
     BaseSearchCV,
@@ -29,10 +29,10 @@ __all__ = [
     "BaseEarlyStoppingAdapter",
     "BaseSearchCV",
     "BaseSplitter",
-    "CatBoostAdapter",
+    "CatBoostEarlyStoppingAdapter",
     "ExpandingWindowSplitter",
     "GridSearchCV",
-    "LightGBMAdapter",
+    "LightGBMEarlyStoppingAdapter",
     "RandomizedSearchCV",
     "SlidingWindowSplitter",
     "check_cv",
@@ -41,5 +41,5 @@ __all__ = [
     "cross_val_score",
     "cross_validate",
     "train_test_split",
-    "XGBoostAdapter",
+    "XGBoostEarlyStoppingAdapter",
 ]

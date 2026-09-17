@@ -19,7 +19,7 @@ from yohou.model_selection import utils as ms_utils
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import LagTransformer, MinMaxScaler
 
-from .shared_round_stubs import CurveAdapter, CurveRegressor, QuantileCurveRegressor
+from .shared_round_stubs import CurveEarlyStoppingAdapter, CurveRegressor, QuantileCurveRegressor
 
 N_SPLITS = 3
 TEST_SIZE = 12
@@ -59,7 +59,7 @@ def _search(forecaster=None, param_grid=None, **kwargs):
         scoring=kwargs.pop("scoring", MeanAbsoluteError()),
         cv=_cv(),
         validation=kwargs.pop("validation", "cv"),
-        early_stopping_adapter=kwargs.pop("early_stopping_adapter", CurveAdapter()),
+        early_stopping_adapter=kwargs.pop("early_stopping_adapter", CurveEarlyStoppingAdapter()),
         **kwargs,
     )
 
@@ -87,7 +87,7 @@ class TestDefaultMode:
         assert not hasattr(search, "best_rounds_")
 
     def test_parameters_round_trip(self):
-        adapter = CurveAdapter()
+        adapter = CurveEarlyStoppingAdapter()
         for search in (
             _search(early_stopping_adapter=adapter),
             RandomizedSearchCV(
@@ -179,7 +179,7 @@ class TestSharedRounds:
             forecasting_horizon,
             splits=list(_cv().split(y)),
             parameters=None,
-            early_stopping_adapter=CurveAdapter(),
+            early_stopping_adapter=CurveEarlyStoppingAdapter(),
             scorer=IntervalScore(coverage_rates=[0.9]),
             verbose=0,
             fit_params={},
@@ -256,7 +256,7 @@ class TestFailedFolds:
 class TestRefit:
     def test_refit_uses_chosen_rounds_without_evaluation_set(self):
         y = _series()
-        adapter = CurveAdapter()
+        adapter = CurveEarlyStoppingAdapter()
         search = _search(early_stopping_adapter=adapter, param_grid={"estimator__patience": [6]})
         fit_calls = []
         original_fit = PointReductionForecaster.fit
@@ -268,7 +268,7 @@ class TestRefit:
         with mock.patch.object(PointReductionForecaster, "fit", record):
             search.fit(y, forecasting_horizon=HORIZON)
         refit_kwargs = fit_calls[-1]
-        assert "validation_y" not in refit_kwargs
+        assert "y_validation" not in refit_kwargs
         best = search.best_forecaster_
         assert best.estimator.n_rounds == max(search.best_rounds_.values())
         for position, est in best._fitted_estimator_positions():
@@ -346,7 +346,7 @@ class TestEndToEnd:
             ),
             y,
         )
-        assert "['rare']" in folds[0].fit_error and "validation_y window" in folds[0].fit_error
+        assert "['rare']" in folds[0].fit_error and "y_validation window" in folds[0].fit_error
 
     def test_search_parallelism_does_not_change_results(self):
         y = _series(n=200)
@@ -403,7 +403,7 @@ class TestRejectedConfigurations:
             search.fit(y, forecasting_horizon=HORIZON)
         fit_fold.assert_not_called()
 
-    @pytest.mark.parametrize("key", ["eval_set", "validation_y"])
+    @pytest.mark.parametrize("key", ["eval_set", "y_validation"])
     def test_evaluation_data_in_fit_params(self, key):
         with pytest.raises(ValueError, match=key):
             _search()._check_shared_round_setup({key: object()})
@@ -451,7 +451,7 @@ class TestSystematicChecks:
             scoring=MeanAbsoluteError(),
             cv=2,
             validation="cv",
-            early_stopping_adapter=CurveAdapter(),
+            early_stopping_adapter=CurveEarlyStoppingAdapter(),
         )
         fitted = clone(search)
         with warnings.catch_warnings():
@@ -512,7 +512,7 @@ class TestIntervalSearches:
             scoring=IntervalScore(coverage_rates=[0.9]),
             cv=_cv(),
             validation="cv",
-            early_stopping_adapter=CurveAdapter(),
+            early_stopping_adapter=CurveEarlyStoppingAdapter(),
             **kwargs,
         )
 

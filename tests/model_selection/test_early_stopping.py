@@ -19,7 +19,12 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from yohou.model_selection import BaseEarlyStoppingAdapter, CatBoostAdapter, LightGBMAdapter, XGBoostAdapter
+from yohou.model_selection import (
+    BaseEarlyStoppingAdapter,
+    CatBoostEarlyStoppingAdapter,
+    LightGBMEarlyStoppingAdapter,
+    XGBoostEarlyStoppingAdapter,
+)
 from yohou.model_selection.early_stopping import _resolve_early_stopping_adapter
 
 PATIENCE = 10
@@ -100,7 +105,11 @@ def _classifier(library: str):
     )
 
 
-ADAPTERS = {"lightgbm": LightGBMAdapter, "xgboost": XGBoostAdapter, "catboost": CatBoostAdapter}
+ADAPTERS = {
+    "lightgbm": LightGBMEarlyStoppingAdapter,
+    "xgboost": XGBoostEarlyStoppingAdapter,
+    "catboost": CatBoostEarlyStoppingAdapter,
+}
 LIBRARIES = list(ADAPTERS)
 
 
@@ -161,11 +170,13 @@ class TestResolution:
 
     def test_missing_library_does_not_import(self):
         with mock.patch.dict(sys.modules, {"xgboost": None, "catboost": None}):
-            assert isinstance(_resolve_early_stopping_adapter(_regressor("lightgbm")), LightGBMAdapter)
+            assert isinstance(_resolve_early_stopping_adapter(_regressor("lightgbm")), LightGBMEarlyStoppingAdapter)
 
     def test_explicit_adapter_skips_builtins(self):
         custom = mock.create_autospec(BaseEarlyStoppingAdapter, instance=True)
-        with mock.patch.object(LightGBMAdapter, "supports", side_effect=AssertionError("built-in consulted")):
+        with mock.patch.object(
+            LightGBMEarlyStoppingAdapter, "supports", side_effect=AssertionError("built-in consulted")
+        ):
             assert _resolve_early_stopping_adapter(_regressor("lightgbm"), custom) is custom
 
 
@@ -206,7 +217,7 @@ class TestFoldFitReachesTheCeiling:
     def test_xgboost_early_stopping_callback_keeps_its_direction(self, regression_data):
         callback = xgboost.callback.EarlyStopping(rounds=5, metric_name="rmse", maximize=True, save_best=True)
         estimator = xgboost.XGBRegressor(n_estimators=60, learning_rate=0.3, callbacks=[callback], n_jobs=1)
-        adapter = XGBoostAdapter()
+        adapter = XGBoostEarlyStoppingAdapter()
         adapter.validate(estimator)
         prepared, fit_params = adapter.prepare_fold_fit(estimator)
         fitted = _fit_eval(prepared, fit_params, regression_data)
@@ -284,18 +295,18 @@ class TestRefit:
 class TestValidate:
     def test_catboost_requires_explicit_learning_rate(self):
         with pytest.raises(ValueError, match="explicit learning_rate"):
-            CatBoostAdapter().validate(catboost.CatBoostRegressor(iterations=1000, thread_count=1))
-        CatBoostAdapter().validate(_regressor("catboost"))
+            CatBoostEarlyStoppingAdapter().validate(catboost.CatBoostRegressor(iterations=1000, thread_count=1))
+        CatBoostEarlyStoppingAdapter().validate(_regressor("catboost"))
 
     def test_lightgbm_dart_rejected(self):
         with pytest.raises(ValueError, match="dart"):
-            LightGBMAdapter().validate(lightgbm.LGBMRegressor(boosting_type="dart"))
-        LightGBMAdapter().validate(_regressor("lightgbm"))
+            LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(boosting_type="dart"))
+        LightGBMEarlyStoppingAdapter().validate(_regressor("lightgbm"))
 
     def test_xgboost_dart_rejected(self):
         with pytest.raises(ValueError, match="dart"):
-            XGBoostAdapter().validate(xgboost.XGBRegressor(booster="dart"))
-        XGBoostAdapter().validate(_regressor("xgboost"))
+            XGBoostEarlyStoppingAdapter().validate(xgboost.XGBRegressor(booster="dart"))
+        XGBoostEarlyStoppingAdapter().validate(_regressor("xgboost"))
 
 
 class TestSharedCallbackConcurrency:
@@ -340,14 +351,14 @@ class TestSharedCallbackConcurrency:
 
         head, window = self._series()
         forecaster = self._forecaster(n_jobs)
-        adapter = LightGBMAdapter()
+        adapter = LightGBMEarlyStoppingAdapter()
         prepared, fit_params = adapter.prepare_fold_fit(forecaster.estimator)
         forecaster.set_params(estimator=prepared)
         if backend is None:
-            forecaster.fit(y=head, forecasting_horizon=3, validation_y=window, **fit_params)
+            forecaster.fit(y=head, forecasting_horizon=3, y_validation=window, **fit_params)
         else:
             with joblib.parallel_backend(backend):
-                forecaster.fit(y=head, forecasting_horizon=3, validation_y=window, **fit_params)
+                forecaster.fit(y=head, forecasting_horizon=3, y_validation=window, **fit_params)
         return adapter, forecaster
 
     def _reference(self):
@@ -361,7 +372,7 @@ class TestSharedCallbackConcurrency:
 
         with mock.patch.object(lightgbm.LGBMRegressor, "fit", record):
             self._fit(n_jobs=1)
-        adapter = LightGBMAdapter()
+        adapter = LightGBMEarlyStoppingAdapter()
         reference = []
         for X, y, eval_set in calls:
             prepared, fit_params = adapter.prepare_fold_fit(self._forecaster(1).estimator)

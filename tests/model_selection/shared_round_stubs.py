@@ -52,7 +52,7 @@ class CurveRegressor(RegressorMixin, BaseEstimator):
         return out.ravel() if self._ncols == 1 else out
 
 
-class CurveAdapter(BaseEarlyStoppingAdapter):
+class CurveEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """Adapter for `CurveRegressor`, recording every call it receives."""
 
     def __init__(self):

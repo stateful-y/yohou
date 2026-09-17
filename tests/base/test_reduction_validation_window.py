@@ -1,8 +1,8 @@
-"""Tests for the explicit evaluation window (``validation_y``) on reduction forecasters.
+"""Tests for the explicit evaluation window (``y_validation``) on reduction forecasters.
 
 The window path reuses the ``validation_size`` evaluation-row machinery, so
 the strongest oracles compare against it: fitting on a head with the tail
-passed as ``validation_y`` must deliver exactly the evaluation rows that
+passed as ``y_validation`` must deliver exactly the evaluation rows that
 ``validation_size=len(tail)`` delivers on the concatenated series, while the
 post-fit state must equal a plain fit on the head alone.
 """
@@ -127,7 +127,7 @@ class TestEvaluationRows:
         y = _make_y()
         head, tail = _split(y)
         window = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         oracle = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE, **kwargs)
         oracle.fit(y=y, forecasting_horizon=HORIZON)
 
@@ -143,7 +143,7 @@ class TestEvaluationRows:
         y = _make_y()
         head, tail = _split(y)
         forecaster = PointReductionForecaster(estimator=RecordingRegressor(), reduction_strategy="multi-output")
-        forecaster.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         _, y_eval = _eval_pair(forecaster.estimator_)
         tail_values = set(tail["value"].to_list())
         assert set(np.asarray(y_eval).ravel().tolist()) <= tail_values
@@ -154,7 +154,7 @@ class TestEvaluationRows:
         y = _make_y()
         head, tail = _split(y)
         window = PointReductionForecaster(estimator=RecordingRegressor(), target_transformer=MinMaxScaler())
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         plain = PointReductionForecaster(estimator=RecordingRegressor(), target_transformer=MinMaxScaler())
         plain.fit(y=head, forecasting_horizon=HORIZON)
         # The scaler's statistics shape every training target; equal training
@@ -171,8 +171,8 @@ class TestEvaluationRows:
             y=head,
             forecasting_horizon=HORIZON,
             X_forecast=X_forecast.filter(pl.col("vintage_time") <= cutoff),
-            validation_y=tail,
-            validation_X_forecast=X_forecast.filter(pl.col("vintage_time") > cutoff),
+            y_validation=tail,
+            X_forecast_validation=X_forecast.filter(pl.col("vintage_time") > cutoff),
         )
         oracle = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
         oracle.fit(y=y, forecasting_horizon=HORIZON, X_forecast=X_forecast)
@@ -183,7 +183,7 @@ class TestEvaluationRows:
         head, tail = _split(y)
         X_future = _make_x_future()
         window = PointReductionForecaster(estimator=RecordingRegressor(), reduction_strategy="direct")
-        window.fit(y=head, forecasting_horizon=HORIZON, X_future=X_future, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, X_future=X_future, y_validation=tail)
         oracle = PointReductionForecaster(
             estimator=RecordingRegressor(), reduction_strategy="direct", validation_size=VAL_SIZE
         )
@@ -196,7 +196,7 @@ class TestEvaluationRows:
         head, tail = _split(y)
         kwargs = {"target_transformer": MinMaxScaler(), "actual_transformer": LagTransformer(lag=[1, 2])}
         window = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         oracle = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE, **kwargs)
         oracle.fit(y=y, forecasting_horizon=HORIZON)
         pl.testing.assert_frame_equal(_eval_pair(window.estimator_)[0], _eval_pair(oracle.estimator_)[0])
@@ -205,7 +205,7 @@ class TestEvaluationRows:
         y = _make_y()
         head, tail = _split(y)
         window = IntervalReductionForecaster(estimator=QuantileStub(), reduction_strategy="direct")
-        window.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], y_validation=tail)
         oracle = IntervalReductionForecaster(
             estimator=QuantileStub(), reduction_strategy="direct", validation_size=VAL_SIZE
         )
@@ -220,7 +220,7 @@ class TestEvaluationRows:
         window = ClassProbaReductionForecaster(
             estimator=RecordingClassifier(), actual_transformer=LagTransformer(lag=[1, 2])
         )
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         oracle = ClassProbaReductionForecaster(
             estimator=RecordingClassifier(), actual_transformer=LagTransformer(lag=[1, 2]), validation_size=VAL_SIZE
         )
@@ -235,7 +235,7 @@ class TestEvaluationRows:
         forecaster = PointReductionForecaster(
             estimator=RecordingRegressor(), actual_transformer=LagTransformer(lag=[1])
         )
-        forecaster.fit(y=y, forecasting_horizon=HORIZON, validation_y=None)
+        forecaster.fit(y=y, forecasting_horizon=HORIZON, y_validation=None)
         plain = PointReductionForecaster(estimator=RecordingRegressor(), actual_transformer=LagTransformer(lag=[1]))
         plain.fit(y=y, forecasting_horizon=HORIZON)
         assert forecaster.estimator_.received_eval_set_ is None
@@ -263,7 +263,7 @@ class TestPostFitState:
         y = _make_y_panel() if panel else _make_y()
         head, tail = _split(y)
         window = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         plain = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
         plain.fit(y=head, forecasting_horizon=HORIZON)
         _assert_same_state(window, plain)
@@ -282,8 +282,8 @@ class TestPostFitState:
             y=head,
             forecasting_horizon=HORIZON,
             X_forecast=X_train,
-            validation_y=tail,
-            validation_X_forecast=X_forecast.filter(pl.col("vintage_time") > cutoff),
+            y_validation=tail,
+            X_forecast_validation=X_forecast.filter(pl.col("vintage_time") > cutoff),
         )
         plain = PointReductionForecaster(estimator=RecordingRegressor(), actual_transformer=LagTransformer(lag=[1]))
         plain.fit(y=head, forecasting_horizon=HORIZON, X_forecast=X_train)
@@ -294,7 +294,7 @@ class TestPostFitState:
         y = _make_y()
         head, tail = _split(y)
         window = PointReductionForecaster(estimator=RecordingRegressor(), actual_transformer=LagTransformer(lag=[1, 2]))
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         plain = PointReductionForecaster(estimator=RecordingRegressor(), actual_transformer=LagTransformer(lag=[1, 2]))
         plain.fit(y=head, forecasting_horizon=HORIZON)
         pl.testing.assert_frame_equal(window.observe_predict(tail), plain.observe_predict(tail))
@@ -303,7 +303,7 @@ class TestPostFitState:
         y = _make_y()
         head, tail = _split(y)
         window = IntervalReductionForecaster(estimator=QuantileStub(), actual_transformer=LagTransformer(lag=[1, 2]))
-        window.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], y_validation=tail)
         plain = IntervalReductionForecaster(estimator=QuantileStub(), actual_transformer=LagTransformer(lag=[1, 2]))
         plain.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9])
         _assert_same_state(window, plain)
@@ -318,7 +318,7 @@ class TestPostFitState:
         window = ClassProbaReductionForecaster(
             estimator=RecordingClassifier(), actual_transformer=LagTransformer(lag=[1])
         )
-        window.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        window.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         plain = ClassProbaReductionForecaster(
             estimator=RecordingClassifier(), actual_transformer=LagTransformer(lag=[1])
         )
@@ -336,7 +336,7 @@ class TestNothingElseReachesTheEstimator:
         template = KwargsRecordingRegressor(alpha=0.5)
         before = template.get_params()
         forecaster = PointReductionForecaster(estimator=template, reduction_strategy="direct")
-        forecaster.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail, marker="caller")
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail, marker="caller")
         assert template.get_params() == before
         for est in _estimators(forecaster):
             assert est.get_params() == before
@@ -352,7 +352,7 @@ class TestNothingElseReachesTheEstimator:
                 self.quantile = quantile
 
         forecaster = IntervalReductionForecaster(estimator=QuantileKwargs())
-        forecaster.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], validation_y=tail, marker="caller")
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, coverage_rates=[0.9], y_validation=tail, marker="caller")
         for est in _estimators(forecaster):
             assert est.received_kwargs_ == {"marker": "caller"}
 
@@ -373,13 +373,13 @@ class TestRejectedConfigurations:
     def test_both_window_sources(self):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
-        self._fit_raises(forecaster, "validation_size.*validation_y.*mutually exclusive", y=head, validation_y=tail)
+        self._fit_raises(forecaster, "validation_size.*y_validation.*mutually exclusive", y=head, y_validation=tail)
 
-    @pytest.mark.parametrize("argument", ["validation_X_actual", "validation_X_forecast"])
+    @pytest.mark.parametrize("argument", ["X_actual_validation", "X_forecast_validation"])
     def test_window_features_without_window_target(self, argument):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, f"{argument} requires validation_y", y=head, **{argument: tail})
+        self._fit_raises(forecaster, f"{argument} requires y_validation", y=head, **{argument: tail})
 
     @pytest.mark.parametrize("offset", [2, 0], ids=["gap", "overlap"])
     def test_non_contiguous_window(self, offset):
@@ -388,17 +388,17 @@ class TestRejectedConfigurations:
         start = len(head) + offset - 1
         window = y[start : start + VAL_SIZE]
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "must start one interval after", y=head, validation_y=window)
+        self._fit_raises(forecaster, "must start one interval after", y=head, y_validation=window)
 
     def test_column_mismatch(self):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "same columns", y=head, validation_y=tail.rename({"value": "other"}))
+        self._fit_raises(forecaster, "same columns", y=head, y_validation=tail.rename({"value": "other"}))
 
     def test_panel_group_mismatch(self):
         head, tail = _split(_make_y_panel())
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "same columns", y=head, validation_y=tail.drop("b__value"))
+        self._fit_raises(forecaster, "same columns", y=head, y_validation=tail.drop("b__value"))
 
     def test_x_actual_pairing(self):
         y = _make_y()
@@ -406,30 +406,30 @@ class TestRejectedConfigurations:
         X = y.select("time", pl.col("value").alias("feature"))
         X_head, X_tail = _split(X)
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "validation_X_actual is required", y=head, X_actual=X_head, validation_y=tail)
+        self._fit_raises(forecaster, "X_actual_validation is required", y=head, X_actual=X_head, y_validation=tail)
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
         self._fit_raises(
             forecaster,
-            "validation_X_actual was given but X_actual was not",
+            "X_actual_validation was given but X_actual was not",
             y=head,
-            validation_y=tail,
-            validation_X_actual=X_tail,
+            y_validation=tail,
+            X_actual_validation=X_tail,
         )
 
     def test_estimator_without_eval_set_support(self):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=LinearRegression())
-        self._fit_raises(forecaster, "does not support an eval_set", y=head, validation_y=tail)
+        self._fit_raises(forecaster, "does not support an eval_set", y=head, y_validation=tail)
 
     def test_strict_window_too_small(self):
         head, tail = _split(_make_y(), n=HORIZON - 1)
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "validation_overlap", y=head, validation_y=tail)
+        self._fit_raises(forecaster, "validation_overlap", y=head, y_validation=tail)
 
     def test_raw_eval_set_conflict(self):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "raw eval_set", y=head, validation_y=tail, eval_set=[(None, None)])
+        self._fit_raises(forecaster, "raw eval_set", y=head, y_validation=tail, eval_set=[(None, None)])
 
     def test_class_seen_only_in_the_window(self):
         times = _make_y()["time"]
@@ -438,8 +438,8 @@ class TestRejectedConfigurations:
         y = pl.DataFrame({"time": times, "state": states})
         head, tail = _split(y)
         forecaster = ClassProbaReductionForecaster(estimator=RecordingClassifier())
-        with pytest.raises(ValueError, match=r"\['c'\].*only inside the validation_y window"):
-            forecaster.fit(y=head, forecasting_horizon=HORIZON, validation_y=tail)
+        with pytest.raises(ValueError, match=r"\['c'\].*only inside the y_validation window"):
+            forecaster.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
         assert not hasattr(forecaster, "classes_")
         self._assert_untouched(forecaster)
 

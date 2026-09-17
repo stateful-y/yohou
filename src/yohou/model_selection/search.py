@@ -620,7 +620,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         """
         _check_shared_round_forecaster(self.forecaster)
         conflicting = sorted(
-            key for key in params if key in ("eval_set", "eval_X", "eval_y") or key.startswith("validation_")
+            key
+            for key in params
+            if key in ("eval_set", "eval_X", "eval_y", "y_validation", "X_actual_validation", "X_forecast_validation")
         )
         if conflicting:
             raise ValueError(

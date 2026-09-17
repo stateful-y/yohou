@@ -37,9 +37,9 @@ from sklearn.pipeline import Pipeline
 
 __all__ = [
     "BaseEarlyStoppingAdapter",
-    "CatBoostAdapter",
-    "LightGBMAdapter",
-    "XGBoostAdapter",
+    "CatBoostEarlyStoppingAdapter",
+    "LightGBMEarlyStoppingAdapter",
+    "XGBoostEarlyStoppingAdapter",
 ]
 
 
@@ -54,9 +54,9 @@ class BaseEarlyStoppingAdapter(BaseEstimator, abc.ABC):
 
     See Also
     --------
-    - [`LightGBMAdapter`][yohou.model_selection.LightGBMAdapter] : Adapter for LightGBM models.
-    - [`XGBoostAdapter`][yohou.model_selection.XGBoostAdapter] : Adapter for XGBoost models.
-    - [`CatBoostAdapter`][yohou.model_selection.CatBoostAdapter] : Adapter for CatBoost models.
+    - [`LightGBMEarlyStoppingAdapter`][yohou.model_selection.LightGBMEarlyStoppingAdapter] : Adapter for LightGBM models.
+    - [`XGBoostEarlyStoppingAdapter`][yohou.model_selection.XGBoostEarlyStoppingAdapter] : Adapter for XGBoost models.
+    - [`CatBoostEarlyStoppingAdapter`][yohou.model_selection.CatBoostEarlyStoppingAdapter] : Adapter for CatBoost models.
 
     """
 
@@ -238,7 +238,7 @@ class _StoppingMetricRecorder:
 
     It never stops training. On each fit's first iteration it stores, on the
     booster being trained, the first metric of the first validation set and
-    LightGBM's direction for it, which `LightGBMAdapter.stopping_curve` reads
+    LightGBM's direction for it, which `LightGBMEarlyStoppingAdapter.stopping_curve` reads
     back. Everything it records lives on the booster, so one instance can
     serve several fits at once (the per-step fits of one forecaster,
     sequential or threaded).
@@ -265,7 +265,7 @@ class _StoppingMetricRecorder:
         env.model._yohou_stopping_higher_better = bool(higher_is_better)
 
 
-class LightGBMAdapter(BaseEarlyStoppingAdapter):
+class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """Early-stopping adapter for LightGBM's scikit-learn estimators.
 
     Handles every ``lightgbm.LGBMModel`` (``LGBMRegressor``,
@@ -422,7 +422,7 @@ class LightGBMAdapter(BaseEarlyStoppingAdapter):
 _XGB_MAXIMIZE_PREFIXES = ("auc", "aucpr", "pre", "pre@", "map", "ndcg", "auc@", "aucpr@", "map@", "ndcg@")
 
 
-class XGBoostAdapter(BaseEarlyStoppingAdapter):
+class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """Early-stopping adapter for XGBoost's scikit-learn estimators.
 
     Handles every ``xgboost.XGBModel``. Fold fits clear
@@ -604,7 +604,7 @@ _CATBOOST_ROUND_ALIASES = ("iterations", "n_estimators", "num_boost_round", "num
 _CATBOOST_STOPPING_PARAMS = ("early_stopping_rounds", "od_type", "od_wait", "od_pval")
 
 
-class CatBoostAdapter(BaseEarlyStoppingAdapter):
+class CatBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """Early-stopping adapter for CatBoost regressors and classifiers.
 
     Fold fits remove ``early_stopping_rounds`` and the overfitting-detector
@@ -770,7 +770,11 @@ class CatBoostAdapter(BaseEarlyStoppingAdapter):
         return self._without_stopping(estimator, {round_param: int(n_rounds), "use_best_model": False})
 
 
-_BUILTIN_ADAPTERS: tuple[type[BaseEarlyStoppingAdapter], ...] = (LightGBMAdapter, XGBoostAdapter, CatBoostAdapter)
+_BUILTIN_ADAPTERS: tuple[type[BaseEarlyStoppingAdapter], ...] = (
+    LightGBMEarlyStoppingAdapter,
+    XGBoostEarlyStoppingAdapter,
+    CatBoostEarlyStoppingAdapter,
+)
 
 
 def _eval_target(estimator: BaseEstimator) -> BaseEstimator:

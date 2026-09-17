@@ -14,7 +14,7 @@ from yohou.model_selection.utils import _evaluate_candidate_shared_rounds, _fit_
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import LagTransformer
 
-from .shared_round_stubs import CurveAdapter, CurveRegressor
+from .shared_round_stubs import CurveEarlyStoppingAdapter, CurveRegressor
 
 
 def _valley(length: int, best: int, depth: float = 1.0) -> np.ndarray:
@@ -102,7 +102,7 @@ def _evaluate(forecaster, y, **overrides):
     kwargs = {
         "splits": _splits(y),
         "parameters": None,
-        "early_stopping_adapter": CurveAdapter(),
+        "early_stopping_adapter": CurveEarlyStoppingAdapter(),
         "scorer": MeanAbsoluteError(),
         "verbose": 0,
         "fit_params": {},
@@ -224,7 +224,7 @@ class TestCandidateEvaluation:
 
     def test_adapter_prepares_every_fold_and_validates_once(self):
         y = _series()
-        adapter = CurveAdapter()
+        adapter = CurveEarlyStoppingAdapter()
         _evaluate(_forecaster(), y, early_stopping_adapter=adapter)
         kinds = [call[0] for call in adapter.calls]
         assert kinds.count("validate") == 1
@@ -270,7 +270,7 @@ class TestFailedFolds:
 class TestCandidateChecks:
     def test_dir_rec_rejected_before_any_fit(self):
         y = _series()
-        adapter = CurveAdapter()
+        adapter = CurveEarlyStoppingAdapter()
         with pytest.raises(ValueError, match="dir-rec"):
             _evaluate(_forecaster(), y, parameters={"reduction_strategy": "dir-rec"}, early_stopping_adapter=adapter)
         assert adapter.calls == []

@@ -243,9 +243,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        validation_y: pl.DataFrame | None = None,
-        validation_X_actual: pl.DataFrame | None = None,
-        validation_X_forecast: pl.DataFrame | None = None,
+        y_validation: pl.DataFrame | None = None,
+        X_actual_validation: pl.DataFrame | None = None,
+        X_forecast_validation: pl.DataFrame | None = None,
         **params,
     ) -> ClassProbaReductionForecaster:
         """Fit the forecaster to historical data.
@@ -272,7 +272,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Bypasses the actual transformer.
-        validation_y : pl.DataFrame or None, default=None
+        y_validation : pl.DataFrame or None, default=None
             Target rows of an evaluation window that starts one interval
             after ``y`` ends, with the same columns as ``y``. Its rows are
             turned into evaluation rows through the transformers fitted on
@@ -283,11 +283,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             state ends at the last time of ``y``, exactly as without it.
             Mutually exclusive with ``validation_size``; ``validation_overlap``
             applies as it does to the ``validation_size`` tail.
-        validation_X_actual : pl.DataFrame or None, default=None
-            Actual feature rows covering the ``validation_y`` window. Required
+        X_actual_validation : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``y_validation`` window. Required
             when ``X_actual`` is given, rejected otherwise.
-        validation_X_forecast : pl.DataFrame or None, default=None
-            Forecast vintages published during the ``validation_y`` window,
+        X_forecast_validation : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``y_validation`` window,
             added to ``X_forecast`` when resolving the evaluation rows'
             features as of each row's time.
         **params : dict
@@ -304,7 +304,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
             mismatched panel groups). With ``validation_size`` or
-            ``validation_y`` set, also if a target class occurs only inside
+            ``y_validation`` set, also if a target class occurs only inside
             the held-out rows, or on any other rejected holdout configuration;
             see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
@@ -319,9 +319,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             forecasting_horizon,
             params,
             X_forecast,
-            validation_y,
-            validation_X_actual,
-            validation_X_forecast,
+            y_validation,
+            X_actual_validation,
+            X_forecast_validation,
         )
 
         # Discover classes from the training head before _pre_fit (which may
@@ -403,7 +403,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             column name.
         source : str, default="validation_size"
             The fit input supplying the held-out rows (``"validation_size"``
-            or ``"validation_y"``), named in the error message.
+            or ``"y_validation"``), named in the error message.
 
         Raises
         ------
