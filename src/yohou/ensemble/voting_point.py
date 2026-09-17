@@ -152,6 +152,11 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
             tags.forecaster_tags.stateful = any(
                 getattr(f.__sklearn_tags__().forecaster_tags, "stateful", False) for f in forecasters_to_check
             )
+            # The stretch a train score may use must be learned-from by every child.
+            tags.forecaster_tags.holdout_size = max(
+                (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for f in forecasters_to_check),
+                default=0,
+            )
 
         return tags
 

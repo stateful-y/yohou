@@ -268,6 +268,11 @@ class ForecastedFeatureForecaster(BaseForecaster):
         tags.forecaster_tags.supports_panel_data = getattr(
             target_tags.forecaster_tags, "supports_panel_data", True
         ) and getattr(feature_tags.forecaster_tags, "supports_panel_data", True)
+        # The stretch a train score may use must be learned-from by both children.
+        tags.forecaster_tags.holdout_size = max(
+            getattr(target_tags.forecaster_tags, "holdout_size", 0),
+            getattr(feature_tags.forecaster_tags, "holdout_size", 0),
+        )
 
         # Delegates observation tracking to child forecasters
         tags.forecaster_tags.tracks_observations = False

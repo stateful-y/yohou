@@ -80,7 +80,12 @@ def cross_validate(
         Controls the number of pre-dispatched jobs for parallel
         execution.
     return_train_score : bool, default=False
-        Whether to include training scores.
+        Whether to include training scores. Each fold's training score covers a
+        stretch as long as the test window, ending before the rows the
+        forecaster holds back from learning (its ``holdout_size`` tag, such as a
+        split-conformal forecaster's calibration rows), predicted the way the
+        test window is. It is NaN, with a warning, when the training window is
+        no longer than the test window plus those rows.
     return_forecaster : bool, default=False
         Whether to include fitted forecasters.
     return_indices : bool, default=False
