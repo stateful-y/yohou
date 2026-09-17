@@ -283,7 +283,11 @@ score unbiased. [Early Stopping on the Scored Fold](../explanation/reduction-for
 explains the difference.
 
 `validation="cv"` works with LightGBM, XGBoost, and CatBoost estimators, bare
-or as a `Pipeline`'s final step. It has three requirements:
+or as a `Pipeline`'s final step, in point, class-probability, and interval
+forecasters. With an
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
+and an interval scorer, each bound's estimator gets its own count, keyed like
+`"coverage_rate_0.9_lower/step_1"` in `best_rounds_`. It has three requirements:
 
 - CatBoost estimators need an explicit `learning_rate`, because CatBoost
   derives its default learning rate from `iterations` and the refit trains a

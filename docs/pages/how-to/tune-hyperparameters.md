@@ -193,6 +193,45 @@ accepts them. `cross_validate` and `cross_val_score` do not use routing: they
 take `predict_stride` and `predict_forecasting_horizon` as explicit
 parameters instead.
 
+## 9. Tune an Interval Forecaster
+
+A forecaster that only predicts intervals, such as
+[`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/),
+is searched the same way with an interval scorer. The coverage rates are set
+on the scorer, which passes them to every fold's fit and prediction:
+
+```python
+from sklearn.linear_model import QuantileRegressor
+from yohou.interval import IntervalReductionForecaster
+from yohou.metrics import IntervalScore
+from yohou.preprocessing import LagTransformer
+
+interval_search = GridSearchCV(
+    forecaster=IntervalReductionForecaster(
+        estimator=QuantileRegressor(solver="highs"),
+        reduction_strategy="direct",
+        actual_transformer=LagTransformer(lag=[1, 2, 24]),
+    ),
+    param_grid={"estimator__alpha": [0.0, 0.1, 1.0]},
+    scoring=IntervalScore(coverage_rates=[0.9]),
+    cv=splitter,
+)
+interval_search.fit(y_train, forecasting_horizon=24)
+
+print(interval_search.best_params_)
+print(pl.DataFrame(interval_search.cv_results_).select(["params", "mean_test_score"]))
+
+y_pred_interval = interval_search.predict_interval(coverage_rates=[0.9])
+```
+
+The fitted search offers the prediction methods the best forecaster has:
+`predict_interval`, `observe_predict_interval`, `observe`, and `rewind`, but
+not `predict`. Every scorer must match those methods. A point scorer such as
+`MeanAbsoluteError`, alone or in a scoring dict next to an interval scorer,
+raises a `ValueError` before any fold is fitted; for point and interval
+metrics together, search a forecaster that predicts both, such as
+[`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/).
+
 ## See Also
 
 - [Choose a Forecasting Method](choose-forecasting-method.md): select a forecaster before tuning
