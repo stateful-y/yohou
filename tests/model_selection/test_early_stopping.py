@@ -393,3 +393,80 @@ class TestSharedCallbackConcurrency:
             observed.append((curve.tolist(), higher_is_better, est.booster_.current_iteration()))
         assert observed == reference
         assert all(len(curve) == trees == 300 for curve, _, trees in observed)
+
+
+class TestAdapterErrorPaths:
+    """Adapters fail with a named cause when a model cannot give what they need."""
+
+    def test_lightgbm_recorder_needs_an_evaluation_set(self):
+        from types import SimpleNamespace
+
+        from yohou.model_selection.early_stopping import _StoppingMetricRecorder
+
+        env = SimpleNamespace(
+            iteration=0, begin_iteration=0, model=object(), evaluation_result_list=[("training", "l2", 1.0, False)]
+        )
+        with pytest.raises(ValueError, match="evaluation set other than the training data"):
+            _StoppingMetricRecorder()(env)
+
+    def test_lightgbm_curve_needs_the_recorder(self, regression_data):
+        X_train, y_train, X_eval, y_eval = regression_data
+        model = lightgbm.LGBMRegressor(n_estimators=10, verbose=-1, n_jobs=1).fit(
+            X_train, y_train, eval_set=[(X_eval, y_eval)]
+        )
+        with pytest.raises(ValueError, match="not fitted with the callbacks"):
+            LightGBMEarlyStoppingAdapter().stopping_curve(model)
+
+    def test_catboost_curve_needs_an_evaluation_set(self, regression_data):
+        X_train, y_train, _, _ = regression_data
+        model = catboost.CatBoostRegressor(iterations=10, learning_rate=0.3, verbose=False, thread_count=1).fit(
+            X_train, y_train
+        )
+        with pytest.raises(ValueError, match="without an evaluation set"):
+            CatBoostEarlyStoppingAdapter().stopping_curve(model)
+
+    def test_catboost_curve_needs_the_metric(self, regression_data):
+        adapter = CatBoostEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(
+            catboost.CatBoostRegressor(iterations=10, learning_rate=0.3, verbose=False, thread_count=1)
+        )
+        model = _fit_eval(prepared, fit_params, regression_data)
+        with (
+            mock.patch.object(type(model), "get_all_params", return_value={"eval_metric": "Poisson"}),
+            pytest.raises(ValueError, match="no validation values for 'Poisson'"),
+        ):
+            adapter.stopping_curve(model)
+
+    def test_catboost_truncate_to_all_rounds_keeps_the_model(self, regression_data):
+        adapter = CatBoostEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(
+            catboost.CatBoostRegressor(iterations=12, learning_rate=0.3, verbose=False, thread_count=1)
+        )
+        model = _fit_eval(prepared, fit_params, regression_data)
+        before = model.predict(regression_data[2])
+        adapter.truncate(model, 12)
+        assert model.tree_count_ == 12
+        np.testing.assert_array_equal(model.predict(regression_data[2]), before)
+
+    def test_xgboost_callbacks_ignored_when_library_not_loaded(self):
+        estimator = xgboost.XGBRegressor(callbacks=[xgboost.callback.EarlyStopping(rounds=5)])
+        with mock.patch.dict(sys.modules, {"xgboost": None}):
+            assert XGBoostEarlyStoppingAdapter._early_stopping_callbacks(estimator) == []
+
+    def test_xgboost_refit_removes_only_the_early_stopping_callback(self, regression_data):
+        monitor = xgboost.callback.EvaluationMonitor(period=1000)
+        estimator = xgboost.XGBRegressor(
+            n_estimators=200,
+            learning_rate=0.3,
+            n_jobs=1,
+            callbacks=[xgboost.callback.EarlyStopping(rounds=5), monitor],
+        )
+        refit = XGBoostEarlyStoppingAdapter().prepare_refit(estimator, 15)
+        kept = refit.get_params()["callbacks"]
+        assert len(kept) == 1 and isinstance(kept[0], xgboost.callback.EvaluationMonitor)
+        X_train, y_train, _, _ = regression_data
+        assert refit.fit(X_train, y_train).get_booster().num_boosted_rounds() == 15
+
+    def test_xgboost_refit_with_only_early_stopping_clears_callbacks(self):
+        estimator = xgboost.XGBRegressor(callbacks=[xgboost.callback.EarlyStopping(rounds=5)])
+        assert XGBoostEarlyStoppingAdapter().prepare_refit(estimator, 15).get_params()["callbacks"] is None

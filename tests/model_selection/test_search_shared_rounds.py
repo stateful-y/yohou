@@ -570,3 +570,31 @@ class TestIntervalSearches:
             X = np.zeros((1, est.n_features_in_))
             np.testing.assert_array_equal(est.predict(X), est.predict(X, num_iteration=search.best_rounds_[position]))
         assert len(search.predict_interval(coverage_rates=[0.9])) == 2
+
+
+class TestPipelineEstimator:
+    """The adapter applies to a Pipeline's final step, in fold fits and in the refit."""
+
+    def test_pipeline_final_step_in_cv_mode(self):
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        forecaster = _point(estimator=Pipeline([("scale", StandardScaler()), ("model", CurveRegressor(patience=6))]))
+        search = _search(forecaster=forecaster, param_grid={"estimator__model__n_rounds": [60]})
+        folds = _captured_folds(search, _series())
+        for fold in folds:
+            for _, est in fold.forecaster._fitted_estimator_positions():
+                assert est.received_eval_targets_ is not None
+        best = search.best_forecaster_
+        assert isinstance(best.estimator, Pipeline)
+        assert best.estimator.named_steps["model"].n_rounds == max(search.best_rounds_.values())
+        for position, est in best._fitted_estimator_positions():
+            assert est.rounds_used_ == search.best_rounds_[position]
+
+
+class TestRefitWithoutRounds:
+    def test_refit_needs_chosen_rounds(self):
+        search = _search()
+        search.best_rounds_ = {}
+        with pytest.raises(ValueError, match="cannot refit: no fold of the best candidate fitted successfully"):
+            search._prepare_shared_round_refit(_point())

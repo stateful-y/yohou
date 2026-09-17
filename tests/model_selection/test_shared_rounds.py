@@ -279,3 +279,26 @@ class TestCandidateChecks:
         y = _series()
         with pytest.raises(ValueError, match="validation_size=12"):
             _evaluate(_forecaster(), y, parameters={"validation_size": 12})
+
+
+class TestHelpers:
+    def test_merge_concatenates_lists(self):
+        from yohou.model_selection.utils import _merge_fit_params
+
+        assert _merge_fit_params({"callbacks": ["a"], "other": 1}, {"callbacks": ["b"], "new": 2}) == {
+            "callbacks": ["a", "b"],
+            "other": 1,
+            "new": 2,
+        }
+
+    def test_merge_rejects_non_list_conflict(self):
+        from yohou.model_selection.utils import _merge_fit_params
+
+        with pytest.raises(ValueError, match="'marker' is set both by the caller and by the early-stopping adapter"):
+            _merge_fit_params({"marker": 1}, {"marker": 2})
+
+    def test_params_message(self):
+        from yohou.model_selection.utils import _params_message
+
+        assert _params_message(None) == ""
+        assert _params_message({"b": 2, "a": 1}) == "a=1, b=2"

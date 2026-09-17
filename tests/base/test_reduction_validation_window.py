@@ -498,3 +498,43 @@ class TestFittedEstimatorPositions:
         assert [key for key, _ in positions] == ["step_1", "step_2"]
         for (_, est), pipeline in zip(positions, forecaster.estimator_, strict=True):
             assert est is pipeline.named_steps["model"]
+
+
+class TestWindowLengthChecks:
+    """The explicit window rejects training data too short to build rows."""
+
+    def test_training_data_needs_two_rows(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        with pytest.raises(ValueError, match="at least 2 rows"):
+            forecaster.fit(y=y[:1], forecasting_horizon=1, y_validation=y[1:2])
+        assert not hasattr(forecaster, "estimator_")
+
+    def test_training_data_shorter_than_one_training_row(self):
+        y = _make_y()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        with pytest.raises(ValueError, match="at least 4 are needed"):
+            forecaster.fit(y=y[:3], forecasting_horizon=HORIZON, y_validation=y[3:10])
+        assert not hasattr(forecaster, "estimator_")
+
+
+class TestPipelineWithoutSampleWeight:
+    """A Pipeline final step that cannot take sample weights is named in the error."""
+
+    def test_final_step_without_sample_weight(self):
+        from sklearn.pipeline import Pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        from yohou.weighting import ExponentialDecayWeighter
+
+        class NoWeightRegressor(RecordingRegressor):
+            def fit(self, X, y, eval_set=None):
+                return super().fit(X, y, eval_set=eval_set)
+
+        head, tail = _split(_make_y())
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scale", StandardScaler()), ("model", NoWeightRegressor())]),
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        )
+        with pytest.raises(ValueError, match="final step NoWeightRegressor does not support sample_weight"):
+            forecaster.fit(y=head, forecasting_horizon=HORIZON, y_validation=tail)
