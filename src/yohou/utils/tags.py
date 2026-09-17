@@ -214,6 +214,13 @@ class ForecasterTags:
         (update extends _y_observed, reset replaces it). Set to False for
         meta-forecasters like DecompositionPipeline that delegate observation tracking
         to child forecasters with custom residual-based logic.
+    holdout_size : int, default=0
+        Number of trailing rows of the fit data that the point predictions are
+        not learned from. A split-conformal forecaster fits its point
+        forecaster on the rows before its calibration stretch, so it declares
+        ``calibration_size`` plus its point forecaster's value; a composite
+        declares the largest value among its children. Train scores use it to
+        score rows the model actually learned from.
 
     """
 
@@ -229,6 +236,7 @@ class ForecasterTags:
     supports_vintage_weight: bool = False
     requires_exogenous: bool = True
     tracks_observations: bool = True
+    holdout_size: int = 0
 
     _VALID_FORECASTER_TYPE_ELEMENTS: ClassVar[frozenset[str]] = frozenset({"point", "interval", "class_proba"})
 

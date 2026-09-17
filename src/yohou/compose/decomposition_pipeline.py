@@ -299,6 +299,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         tags.forecaster_tags.supports_panel_data = all(
             getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for _, f in self.forecasters
         )
+        # The stretch a train score may use must be learned-from by every child.
+        tags.forecaster_tags.holdout_size = max(
+            (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for _, f in self.forecasters),
+            default=0,
+        )
         # DecompositionPipeline delegates observation tracking to child forecasters with
         # custom residual-based logic, so standard observe/rewind behavior doesn't apply
         tags.forecaster_tags.tracks_observations = False
