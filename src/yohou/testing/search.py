@@ -1022,7 +1022,9 @@ def check_search_method_availability(
     Raises
     ------
     AssertionError
-        If method availability doesn't match refit setting
+        If method availability doesn't match refit setting. The method checked
+        is ``predict`` when the refitted best forecaster has it, and
+        ``predict_interval`` otherwise.
 
     """
     # Test with refit=True
@@ -1033,9 +1035,11 @@ def check_search_method_availability(
         search_cv_refit.set_params(refit=True)
     search_cv_refit.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
-    # Methods should be available
-    assert hasattr(search_cv_refit, "predict"), "predict() should be available when refit=True"
-    assert callable(search_cv_refit.predict), "predict should be callable when refit=True"
+    # The search delegates ``predict`` only when the best forecaster has it;
+    # an interval-only forecaster is checked through ``predict_interval``.
+    method = "predict" if hasattr(search_cv_refit.best_forecaster_, "predict") else "predict_interval"
+    assert hasattr(search_cv_refit, method), f"{method}() should be available when refit=True"
+    assert callable(getattr(search_cv_refit, method)), f"{method} should be callable when refit=True"
 
     # Test with refit=False
     search_cv_no_refit = clone(search_cv)
@@ -1046,8 +1050,8 @@ def check_search_method_availability(
 
     # Methods should raise AttributeError
     try:
-        search_cv_no_refit.predict(forecasting_horizon=1)
-        raise AssertionError("predict() should raise AttributeError when refit=False")
+        getattr(search_cv_no_refit, method)(forecasting_horizon=1)
+        raise AssertionError(f"{method}() should raise AttributeError when refit=False")
     except AttributeError:
         # Expected behavior
         pass

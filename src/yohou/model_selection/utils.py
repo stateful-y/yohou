@@ -1192,8 +1192,10 @@ def _validate_forecaster_scorer_compatibility(
 
     * An interval scorer is used with a point-only forecaster (which lacks
       ``predict_interval`` / ``observe_predict_interval``).
-    * Point-only scorers are used with an interval-only forecaster (which
-      lacks ``observe_predict``).
+    * Any point scorer, alone or in a scoring dict with interval scorers, is
+      used with a forecaster that has no point predictions (which lacks
+      ``observe_predict``). Folds would otherwise be scored from interval
+      predictions, which carry no point column, and every fold would fail.
 
     Parameters
     ----------
@@ -1224,6 +1226,27 @@ def _validate_forecaster_scorer_compatibility(
             f"Forecaster (type={forecaster_type!r}) does not support observe_predict "
             "required by point-only scorers. "
             "Use a forecaster that supports point predictions or interval scorers."
+        )
+
+    # A scoring dict mixing point and interval scorers resolves to interval
+    # predictions, which carry no point column: without this check every fold
+    # of a forecaster lacking point predictions fails while scoring.
+    if (
+        "predict" in methods
+        and "predict_interval" in methods
+        and forecaster_type is not None
+        and "point" not in forecaster_type
+        and "class_proba" not in forecaster_type
+    ):
+        point_scorers = sorted(
+            name
+            for name, single in getattr(scorer, "_scorers", {}).items()
+            if getattr(single, "_response_method", None) == "predict"
+        )
+        raise ValueError(
+            f"Forecaster (type={forecaster_type!r}) does not support observe_predict "
+            f"required by the point scorers {point_scorers}. "
+            "Use a forecaster that supports point predictions, or only interval scorers."
         )
 
     if "predict_class_proba" in methods and (forecaster_type is None or "class_proba" not in forecaster_type):

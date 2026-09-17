@@ -495,3 +495,78 @@ class TestBuiltinFoldFitsReachTheCeiling:
             search.fit(y, forecasting_horizon=HORIZON)
         for i in range(N_SPLITS):
             assert set(search.cv_results_[f"split{i}_curve_length"][0].values()) == {80}
+
+
+class TestIntervalSearches:
+    """validation="cv" reaches interval-only forecasters through the searches."""
+
+    @staticmethod
+    def _search(strategy, **kwargs):
+        return GridSearchCV(
+            IntervalReductionForecaster(
+                estimator=QuantileCurveRegressor(patience=6),
+                reduction_strategy=strategy,
+                actual_transformer=LagTransformer(lag=[1, 2]),
+            ),
+            {"estimator__n_rounds": [60]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=_cv(),
+            validation="cv",
+            early_stopping_adapter=CurveAdapter(),
+            **kwargs,
+        )
+
+    def test_multi_output_bounds(self):
+        search = self._search("multi-output")
+        search.fit(_series(), forecasting_horizon=HORIZON)
+        assert list(search.best_rounds_) == ["coverage_rate_0.9_lower", "coverage_rate_0.9_upper"]
+        assert search.best_rounds_["coverage_rate_0.9_lower"] != search.best_rounds_["coverage_rate_0.9_upper"]
+        assert len(search.predict_interval(coverage_rates=[0.9])) == HORIZON
+
+    def test_direct_bounds_and_steps_refit_cut(self):
+        search = self._search("direct")
+        search.fit(_series(), forecasting_horizon=2)
+        assert list(search.cv_results_["rounds"][0]) == [
+            "coverage_rate_0.9_lower/step_1",
+            "coverage_rate_0.9_lower/step_2",
+            "coverage_rate_0.9_upper/step_1",
+            "coverage_rate_0.9_upper/step_2",
+        ]
+        assert search.best_rounds_ == search.cv_results_["rounds"][0]
+        for position, est in search.best_forecaster_._fitted_estimator_positions():
+            assert est.rounds_used_ == search.best_rounds_[position]
+            assert est.received_eval_targets_ is None
+        assert len(search.predict_interval(coverage_rates=[0.9])) == 2
+
+    def test_lightgbm_quantile_end_to_end(self):
+        y = _series(n=200)
+        forecaster = IntervalReductionForecaster(
+            estimator=lightgbm.LGBMRegressor(
+                objective="quantile",
+                alpha=0.5,
+                n_estimators=60,
+                learning_rate=0.2,
+                min_child_samples=5,
+                n_jobs=1,
+                verbose=-1,
+            ),
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2, 3]),
+        )
+        search = GridSearchCV(
+            forecaster,
+            {"estimator__num_leaves": [7]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=_cv(),
+            validation="cv",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            search.fit(y, forecasting_horizon=2)
+        for i in range(N_SPLITS):
+            assert set(search.cv_results_[f"split{i}_curve_length"][0].values()) == {60}
+        X = np.zeros((1, 3))
+        for position, est in search.best_forecaster_._fitted_estimator_positions():
+            X = np.zeros((1, est.n_features_in_))
+            np.testing.assert_array_equal(est.predict(X), est.predict(X, num_iteration=search.best_rounds_[position]))
+        assert len(search.predict_interval(coverage_rates=[0.9])) == 2

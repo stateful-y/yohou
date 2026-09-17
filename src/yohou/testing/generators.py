@@ -1250,17 +1250,23 @@ def _yield_yohou_search_checks(
     )
 
     # refit checks
+    # Checks that call ``predict`` apply only when the refitted best forecaster
+    # has it: interval-only forecasters are searched without ``predict``, and
+    # the search delegates it on the same ``hasattr`` test.
+    best_has_predict = hasattr(getattr(search_cv, "best_forecaster_", None), "predict")
+
     if tags.get("refit", True):
         # Delegation checks (only when refit=True)
-        yield (
-            "check_search_predict_delegates",
-            check_search_predict_delegates,
-            {
-                "y_test": y_test,
-                "X_future": X_future_test,
-                "X_forecast": X_forecast_test,
-            },
-        )
+        if best_has_predict:
+            yield (
+                "check_search_predict_delegates",
+                check_search_predict_delegates,
+                {
+                    "y_test": y_test,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
+                },
+            )
 
         # Update/reset checks (need enough data)
         if len(y_test) >= 10:
@@ -1420,7 +1426,7 @@ def _yield_yohou_search_checks(
         )
 
     # Panel data checks (if panel data available)
-    if tags.get("supports_panel_data", True):
+    if tags.get("supports_panel_data", True) and best_has_predict:
         _, y_panel_groups = inspect_panel(y_train)
         if len(y_panel_groups) > 0:
             # Extract first group name for testing

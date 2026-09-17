@@ -351,7 +351,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
     """
 
     _parameter_constraints: dict = {
-        "forecaster": [HasMethods(["fit", "predict"])],
+        "forecaster": [HasMethods(["fit", "predict"]), HasMethods(["fit", "predict_interval"])],
         "scoring": [callable, dict, None],
         "n_jobs": [numbers.Integral, None],
         "refit": ["boolean", str, callable],
@@ -1578,8 +1578,13 @@ class GridSearchCV(BaseSearchCV):
     Parameters
     ----------
     forecaster : BaseForecaster
-        A forecaster object implementing the yohou forecaster interface
-        with fit and predict methods.
+        A forecaster object implementing the yohou forecaster interface. It
+        needs ``fit`` and either ``predict`` or ``predict_interval``, so
+        forecasters that only predict intervals, such as
+        ``IntervalReductionForecaster``, can be searched. Its prediction
+        methods must serve the scorers: point scorers need point predictions
+        and interval scorers need interval predictions, which is checked
+        before any fold is fitted.
 
     param_grid : dict or list of dict
         Dictionary with parameter names (`str`) as keys and lists of
@@ -2008,8 +2013,13 @@ class RandomizedSearchCV(BaseSearchCV):
     Parameters
     ----------
     forecaster : BaseForecaster
-        A forecaster object implementing the yohou forecaster interface
-        with fit and predict methods.
+        A forecaster object implementing the yohou forecaster interface. It
+        needs ``fit`` and either ``predict`` or ``predict_interval``, so
+        forecasters that only predict intervals, such as
+        ``IntervalReductionForecaster``, can be searched. Its prediction
+        methods must serve the scorers: point scorers need point predictions
+        and interval scorers need interval predictions, which is checked
+        before any fold is fitted.
 
     param_distributions : dict or list of dict
         Dictionary with parameter names (`str`) as keys and distributions
