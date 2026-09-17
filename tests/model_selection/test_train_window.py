@@ -51,6 +51,28 @@ class TestScoredRows:
         # Every forecast origin lies inside the learned-from rows, never in the held-back stretch.
         assert window.y_pred["vintage_time"].max() <= y_train["time"][831]
 
+    def test_validation_size_scores_rows_before_the_tail(self):
+        from sklearn.base import BaseEstimator, RegressorMixin
+
+        from yohou.point import PointReductionForecaster
+
+        class EvalSetRegressor(RegressorMixin, BaseEstimator):
+            def fit(self, X, y, eval_set=None):
+                self.mean_ = float(np.nanmean(np.asarray(y, dtype=float)))
+                self.ncols_ = 1 if np.asarray(y).ndim == 1 else np.asarray(y).shape[1]
+                return self
+
+            def predict(self, X):
+                out = np.full((len(X), self.ncols_), self.mean_)
+                return out.ravel() if self.ncols_ == 1 else out
+
+        y_train = _hourly(240)
+        forecaster = _fitted(PointReductionForecaster(EvalSetRegressor(), validation_size=48), y_train)
+        window = _train_window_predictions(forecaster, y_train, None, n_rows=24, method="predict")
+        # The estimator never trained on the last 48 rows (192 to 239), so the
+        # scored stretch ends right before them.
+        np.testing.assert_array_equal(window.positions, np.arange(168, 192))
+
     def test_split_conformal_scores_before_its_calibration_stretch(self):
         y_train = _hourly(1000)
         forecaster = _fitted(

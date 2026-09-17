@@ -51,7 +51,7 @@ These apply to all estimator types.
 | `supports_vintage_weight` | `bool` | `False` | Whether vintage weighting is supported |
 | `requires_exogenous` | `bool` | `True` | Whether `X_actual` must be provided at `fit()` time |
 | `tracks_observations` | `bool` | `True` | Whether observation tracking follows the standard pattern |
-| `holdout_size` | `int` | `0` | Number of trailing fit rows the point predictions are not learned from (for example a split-conformal forecaster's calibration rows); train scores end before them |
+| `holdout_size` | `int` | `0` | Number of trailing fit rows the point predictions are not learned from (for example a split-conformal forecaster's calibration rows, or a reduction forecaster's `validation_size` tail); train scores end before them |
 
 ## Scorer Tags (`scorer_tags`)
 
@@ -98,7 +98,7 @@ Some tags are computed at runtime rather than declared in `_tags`. Override
 | `forecaster_tags.stateful` | `target_transformer` or `actual_transformer` has `stateful=True` | Base forecaster automatically marks itself stateful when any attached transformer is stateful |
 | `forecaster_tags.forecaster_type` | Multiple base classes are combined | A forecaster that inherits both point and interval capabilities gets `{"point", "interval"}` automatically |
 | `forecaster_tags.requires_exogenous` | Subclass overrides `__sklearn_tags__()` | Set `False` for forecasters that never use `X_actual` |
-| `forecaster_tags.holdout_size` | A forecaster sets rows aside, or wraps forecasters that do | `SplitConformalForecaster` declares `calibration_size` plus its point forecaster's value; composites and ensembles declare the largest value among their children; a search follows its refitted best forecaster |
+| `forecaster_tags.holdout_size` | A forecaster sets rows aside, or wraps forecasters that do | `SplitConformalForecaster` declares `calibration_size` plus its point forecaster's value; reduction forecasters declare `validation_size` (0 when unset); composites and ensembles declare the largest value among their children; a search follows its refitted best forecaster |
 
 Override example:
 

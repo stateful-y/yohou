@@ -390,6 +390,11 @@ default="first_step"
         # Mark as supporting vintage_weight
         tags.forecaster_tags.supports_vintage_weight = True
 
+        # The validation_size tail is held back from estimator training, so a
+        # train score must end before it. An explicit y_validation window is
+        # not part of the fit data and holds nothing back.
+        tags.forecaster_tags.holdout_size = getattr(self, "validation_size", None) or 0
+
         return tags
 
     def _warn_inapplicable_step_alignment(self) -> None:

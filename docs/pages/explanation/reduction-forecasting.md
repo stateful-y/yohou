@@ -385,7 +385,9 @@ own training window, so the effective training data shrinks fold by fold.
 
 After fitting, the held-out tail is observed, so `predict()` still forecasts from the
 end of all provided data. The holdout changes what the estimator trained on, not where
-the forecast starts.
+the forecast starts. The forecaster declares the tail as its `holdout_size`
+[tag](../reference/tags.md), so a cross-validation train score ends before the rows the
+estimator never trained on.
 
 Early stopping itself, meaning the patience, the metric, and any callbacks, is
 configured on the estimator. Yohou's only job is delivering a correctly built
