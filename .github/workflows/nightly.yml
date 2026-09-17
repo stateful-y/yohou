@@ -62,7 +62,7 @@ jobs:
       # Gated on the entry that produces the report. It was gated on 3.12, which
       # uploaded a 3.11 run's coverage under a 3.12 label; now only 3.11 measures.
       - name: Upload coverage reports
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         if: ${{ matrix.python-version == '3.11' }}
         with:
           use_oidc: true
