@@ -17,7 +17,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS, BaseForecastTransformer
 from yohou.base.panel import BasePanelForecaster
 from yohou.base.standard import BaseStandardForecaster
-from yohou.base.step_transformer import BaseStepTransformer
+from yohou.base.step_transformer import BaseStepTransformer, _step_index
 from yohou.base.transformer import BaseActualTransformer
 from yohou.base.utils import (
     _densify_forecast_vintages,
@@ -658,8 +658,90 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             wide = wide.join(part, on="time", how="full", coalesce=True)
         return wide.sort("time")
 
-    def _is_step_column(self, name: str) -> bool:
-        """Report whether ``name`` names a derived step column, in either spelling.
+    def _record_actual_step_columns(
+        self,
+        X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
+        forecasting_horizon: int,
+    ) -> None:
+        """Recognise, validate and record step columns produced by the actual transformer.
+
+        A fitted ``actual_transformer_`` tagged ``produces_step_columns`` emits
+        ``{base}_step_1..H`` blocks. They are recorded apart from the step columns
+        derived from ``X_future``/``X_forecast``, because a non-empty
+        ``_step_column_names_`` also switches on the paths that re-derive and swap
+        those columns on observe and predict, which would rebuild these from inputs
+        that never produced them. ``_is_step_column`` consults both records, so
+        ``step_feature_alignment`` filters both alike.
+
+        Without the tag, a trailing ``_step_<n>`` means nothing and nothing is
+        recorded. With it, a name ending that way is a step column, and the blocks
+        are checked so a misfiled or renamed column fails here instead of silently
+        reaching every per-step model.
+
+        Parameters
+        ----------
+        X_t : pl.DataFrame or dict of str to pl.DataFrame or None
+            The transformed features: one frame, or one local frame per group under
+            ``panel_strategy="global"``.
+        forecasting_horizon : int
+            The fit horizon every block must cover exactly.
+
+        Raises
+        ------
+        ValueError
+            If the tag is set but no output ends in ``_step_<n>``, or if a block does
+            not hold exactly the steps ``1..forecasting_horizon``.
+
+        """
+        self._actual_step_column_names_: set[str] = set()
+        self._actual_step_column_local_names_: set[str] = set()
+
+        fitted = getattr(self, "actual_transformer_", None)
+        candidates = list(fitted.values()) if isinstance(fitted, dict) else [fitted]
+        transformers = [typing_cast(BaseActualTransformer, t) for t in candidates if t is not None]
+        if not transformers:
+            return
+        tags = transformers[0].__sklearn_tags__().transformer_tags
+        if tags is None or not tags.produces_step_columns or X_t is None:
+            return
+
+        frames: dict[str | None, pl.DataFrame] = (
+            dict(typing_cast(dict[str | None, pl.DataFrame], X_t)) if isinstance(X_t, dict) else {None: X_t}
+        )
+        for group_name, frame in frames.items():
+            columns = [c for c in frame.columns if c != "time"]
+            blocks: dict[str, set[int]] = {}
+            for name in columns:
+                step = _step_index(name)
+                if step is not None:
+                    blocks.setdefault(name.rsplit("_step_", 1)[0], set()).add(step)
+            if not blocks:
+                raise ValueError(
+                    f"actual_transformer declares step-column output, but none of its {len(columns)} output "
+                    "columns ends in '_step_<n>'. A later step most likely renamed the step columns (for "
+                    "example a LagTransformer placed after the step-output transformer). A step-output "
+                    "transformer must be the last step of a FeaturePipeline: transforming its columns "
+                    "further would also shift the forecast step each one describes."
+                )
+            expected = set(range(1, forecasting_horizon + 1))
+            for base, steps in blocks.items():
+                if steps != expected:
+                    raise ValueError(
+                        f"Step columns '{base}_step_<n>' cover steps {sorted(steps)}, but with "
+                        f"forecasting_horizon={forecasting_horizon} a step-output block must hold exactly steps "
+                        f"1..{forecasting_horizon}. When actual_transformer declares step-column output, every "
+                        "output name ending in '_step_<n>' is read as a per-step feature; rename a column that "
+                        "is not one."
+                    )
+            names = {name for name in columns if _step_index(name) is not None}
+            self._actual_step_column_local_names_ |= names
+            if group_name is None:
+                self._actual_step_column_names_ |= names
+            else:
+                self._actual_step_column_names_ |= {f"{group_name}__{name}" for name in names}
+
+    def _is_step_column(self, name: str, *, derived_only: bool = False) -> bool:
+        """Report whether ``name`` names a step column, in either spelling.
 
         Step columns carry two names. Panel-wide frames spell one
         ``{group}__{col}_step_{h}`` and record it in ``_step_column_names_``; the
@@ -694,19 +776,30 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         column each component is about to re-derive, failing the fit on a duplicate
         column.
 
+        Step columns produced by the ``actual_transformer`` (recorded by
+        ``_record_actual_step_columns``) are step columns too, and alignment filters
+        them the same way. They are never re-derived from ``X_future``/``X_forecast``,
+        so a caller that strips columns because they will be re-derived passes
+        ``derived_only=True`` to leave them in place.
+
         Parameters
         ----------
         name : str
             A column name from any frame the forecaster handles.
+        derived_only : bool, default=False
+            Match only step columns derived from ``X_future``/``X_forecast``.
 
         Returns
         -------
         bool
-            True when the column is a derived step column under either spelling.
+            True when the column is a step column under either spelling.
 
         """
-        step_names = getattr(self, "_step_column_names_", set())
-        local_names = getattr(self, "_step_column_local_names_", set())
+        step_names = set(getattr(self, "_step_column_names_", set()))
+        local_names = set(getattr(self, "_step_column_local_names_", set()))
+        if not derived_only:
+            step_names |= getattr(self, "_actual_step_column_names_", set())
+            local_names |= getattr(self, "_actual_step_column_local_names_", set())
         if name in step_names or name in local_names:
             return True
         if "__" in name:
@@ -897,6 +990,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        fit_params: dict[str, Any] | None = None,
     ) -> tuple[pl.DataFrame | dict[str, pl.DataFrame], pl.DataFrame | dict[str, pl.DataFrame] | None]:
         """Preprocess and transform inputs before fitting.
 
@@ -913,6 +1007,10 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         X_forecast : pl.DataFrame or None, default=None
             External forecasts. See ``fit()`` for full parameter
             description.
+        fit_params : dict or None, default=None
+            Fit metadata passed to the forecaster's ``fit``. Together with
+            ``forecasting_horizon``, the keys the actual transformer requests are
+            routed to it.
 
         Returns
         -------
@@ -940,7 +1038,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         if self.panel_strategy == "multivariate" or not y_panel_groups:
             # Standard data or multivariate strategy (skip panel detection)
             return BaseStandardForecaster._pre_fit_standard(
-                self, y, X_actual, forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+                self, y, X_actual, forecasting_horizon, X_future=X_future, X_forecast=X_forecast, fit_params=fit_params
             )
         else:
             # Panel data with global strategy
@@ -953,6 +1051,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 X_panel_groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
+                fit_params=fit_params,
             )
 
     @abc.abstractmethod
@@ -1455,9 +1554,18 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             If ``forecasting_horizon > fit_forecasting_horizon_`` and the
             forecaster was fitted with ``X_forecast``. Recursive prediction
             cannot re-derive vintage-dependent forecast columns across
-            blocks. Use ``ForecastedFeatureForecaster`` instead.
+            blocks. Use ``ForecastedFeatureForecaster`` instead. Also raised when the
+            ``actual_transformer`` produces step columns, which cover only the fit
+            horizon.
 
         """
+        if forecasting_horizon > self.fit_forecasting_horizon_ and getattr(self, "_actual_step_column_names_", None):
+            raise ValueError(
+                f"Recursive prediction (forecasting_horizon={forecasting_horizon} > "
+                f"fit_forecasting_horizon={self.fit_forecasting_horizon_}) is not supported when the "
+                f"actual_transformer produces step columns: step-output features cover only the fit "
+                f"horizon of {self.fit_forecasting_horizon_} steps. Refit with the longer horizon."
+            )
         if forecasting_horizon > self.fit_forecasting_horizon_ and self._X_forecast_raw_ is not None:
             msg = (
                 f"Recursive prediction (forecasting_horizon={forecasting_horizon} > "

@@ -8,7 +8,7 @@ import warnings
 from contextlib import suppress
 from dataclasses import dataclass
 from traceback import format_exc
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 import polars as pl
@@ -701,68 +701,28 @@ def _score_fold(
         if return_train_score:
             if scorer is None:
                 raise ValueError("return_train_score requires a scorer.")
-            # forecaster is stateful and needs to be rewound to predict the past.
-            # ``train`` carries absolute row indices into the original ``y``,
-            # but ``y_train`` is already sliced to ``len(train)`` rows whose
-            # positions run 0..len(train)-1. Use relative positions here so the
-            # rewind/predict split indexes ``y_train`` correctly regardless of
-            # where the training window starts (e.g. SlidingWindowSplitter).
-            n_train_rewind = len(train) - len(test)
-            if n_train_rewind <= 0:
-                # The training window has no more rows than the test window, so
-                # there is no past left to rewind to and score against. Polars
-                # treats the resulting negative indices as wrap-around offsets
-                # from the end of the frame, which would silently score the
-                # wrong rows. Report the train score as unavailable (NaN)
-                # instead. This typically happens on the first fold of an
-                # expanding-window split with a large test_size.
-                warnings.warn(
-                    "Train score is unavailable for a fold whose training "
-                    f"window ({len(train)} rows) is not larger than its test "
-                    f"window ({len(test)} rows); reporting NaN for that fold.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-                if isinstance(scorer, _MultimetricScorer):
-                    train_scores = {name: float("nan") for name in scorer._scorers}
-                else:
-                    train_scores = float("nan")
-            else:
-                train_rewind = np.arange(n_train_rewind)
-                test_rewind = np.arange(n_train_rewind, len(train))
-                # ``_score`` evaluates only the ``y_train_test`` rows (the last
-                # ``len(test)`` rows of the training window), so the score params
-                # must be sliced to those same absolute indices to keep lengths
-                # aligned.
-                score_params_train = _check_method_params(fold.y, params=fold.score_params, indices=train[test_rewind])
-                y_train_rewind, X_actual_train_rewind = _safe_split(forecaster, y_train, X_actual_train, train_rewind)
-                y_train_test, X_actual_train_test = _safe_split(
-                    forecaster, y_train, X_actual_train, test_rewind, train_rewind
-                )
-                forecaster.rewind(
-                    y_train_rewind, X_actual=X_actual_train_rewind, X_future=X_future, X_forecast=X_forecast_train
-                )
-                y_pred_train = _predict(
-                    forecaster,
-                    y_train_test,
-                    X_actual_train_test,
-                    scorer,
-                    predict_func_params=predict_func_params,
-                    predict_forecasting_horizon=predict_forecasting_horizon,
-                    predict_stride=predict_stride,
-                    coverage_rates=coverage_rates,
-                    X_future=X_future,
-                    X_forecast=X_forecast_train,
-                )
-                train_scores = _score(
-                    forecaster,
-                    y_train_rewind,
-                    y_train_test,
-                    y_pred_train,
-                    scorer,
-                    score_params_train,
-                    error_score,
-                )
+            window = _train_window_predictions(
+                forecaster,
+                y_train,
+                X_actual_train,
+                n_rows=len(test),
+                scorer=scorer,
+                predict_func_params=predict_func_params,
+                predict_forecasting_horizon=predict_forecasting_horizon,
+                predict_stride=predict_stride,
+                coverage_rates=coverage_rates,
+                X_future=X_future,
+                X_forecast_train=X_forecast_train,
+            )
+            train_scores = _score_train_window(
+                forecaster,
+                window,
+                scorer,
+                y=fold.y,
+                score_params=fold.score_params,
+                train=train,
+                error_score=error_score,
+            )
 
     if verbose > 1:
         total_time = score_time + fit_time
@@ -1525,3 +1485,181 @@ def _score(
             if scorer_tags.scorer_tags is not None and scorer_tags.scorer_tags.lower_is_better:
                 scores = -scores
     return scores
+
+
+class _TrainWindow(NamedTuple):
+    """Predictions over the stretch of a training window that a train score covers.
+
+    Attributes
+    ----------
+    y_before : pl.DataFrame
+        Training rows before the scored stretch; the forecaster was rewound to
+        their end, and fitted scorers are fitted on them.
+    y_scored : pl.DataFrame
+        The scored training rows.
+    y_pred : pl.DataFrame
+        Walk-forward predictions over ``y_scored``.
+    positions : np.ndarray
+        Positions of the scored rows relative to the start of the training
+        window.
+
+    """
+
+    y_before: pl.DataFrame
+    y_scored: pl.DataFrame
+    y_pred: pl.DataFrame
+    positions: np.ndarray
+
+
+def _train_window_predictions(
+    forecaster: BaseForecaster,
+    y_train: pl.DataFrame,
+    X_actual_train: pl.DataFrame | None,
+    *,
+    n_rows: int,
+    scorer: BaseScorer | _MultimetricScorer | None = None,
+    method: str | None = None,
+    predict_func_params: dict[str, object] | None = None,
+    predict_forecasting_horizon: int | None = None,
+    predict_stride: int | None = None,
+    coverage_rates: list[float] | None = None,
+    X_future: pl.DataFrame | None = None,
+    X_forecast_train: pl.DataFrame | None = None,
+) -> _TrainWindow | None:
+    """Predict over the last ``n_rows`` training rows the forecaster learned from.
+
+    A train score compares the test window with rows the model was fitted on. A
+    forecaster that set a trailing stretch of its fit data aside (its
+    ``holdout_size`` forecaster tag) did not learn from those rows, so the
+    scored stretch ends before them. The fitted forecaster is rewound to the
+    rows before the stretch and walked forward over it, exactly as the test
+    window is predicted. No refit takes place, and the forecaster is left
+    observed up to the end of the stretch.
+
+    Positions are relative to ``y_train``, so the right rows are scored however
+    the training window is placed in the full series.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        Forecaster fitted on ``y_train``.
+    y_train : pl.DataFrame
+        The training window the forecaster was fitted on.
+    X_actual_train : pl.DataFrame or None
+        Actual features aligned with ``y_train``.
+    n_rows : int
+        Length of the stretch to score, normally the test window length.
+    scorer : BaseScorer, _MultimetricScorer or None, default=None
+        Scorer resolving the response method. Ignored when ``method`` is given.
+    method : str or None, default=None
+        Explicit response method (``"predict"``, ``"predict_interval"`` or
+        ``"predict_class_proba"``).
+    predict_func_params : dict or None, default=None
+        Routed metadata passed to the prediction function.
+    predict_forecasting_horizon : int or None, default=None
+        Forecasting horizon for the walk-forward; ``None`` uses the fit default.
+    predict_stride : int or None, default=None
+        Stride for the walk-forward; ``None`` uses the forecaster default.
+    coverage_rates : list of float or None, default=None
+        Coverage rates for interval predictions.
+    X_future : pl.DataFrame or None, default=None
+        Known future features.
+    X_forecast_train : pl.DataFrame or None, default=None
+        External forecasts for the training window.
+
+    Returns
+    -------
+    _TrainWindow or None
+        The rows before the stretch, the scored rows, their predictions and
+        their positions; or ``None``, after a warning, when no training rows
+        would remain before the stretch.
+
+    """
+    forecaster_tags = forecaster.__sklearn_tags__().forecaster_tags
+    holdout = forecaster_tags.holdout_size if forecaster_tags is not None else 0
+    n_before = len(y_train) - holdout - n_rows
+    if n_before <= 0:
+        # Negative positions would wrap around to the end of the frame and score
+        # the wrong rows, so the train score is reported as unavailable instead.
+        # This typically happens on an early expanding-window fold whose training
+        # window is short next to the test window plus the held-back stretch.
+        warnings.warn(
+            "Train score is unavailable for a fold whose training window "
+            f"({len(y_train)} rows) is not larger than its test window ({n_rows} rows) "
+            f"plus the forecaster's held-back rows ({holdout}); reporting NaN for that fold.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    before = np.arange(n_before)
+    positions = np.arange(n_before, n_before + n_rows)
+    y_before, X_actual_before = _safe_split(forecaster, y_train, X_actual_train, before)
+    y_scored, X_actual_scored = _safe_split(forecaster, y_train, X_actual_train, positions, before)
+    forecaster.rewind(y_before, X_actual=X_actual_before, X_future=X_future, X_forecast=X_forecast_train)
+    y_pred = _predict(
+        forecaster,
+        y_scored,
+        X_actual_scored,
+        scorer,
+        method=method,
+        predict_func_params=predict_func_params,
+        predict_forecasting_horizon=predict_forecasting_horizon,
+        predict_stride=predict_stride,
+        coverage_rates=coverage_rates,
+        X_future=X_future,
+        X_forecast=X_forecast_train,
+    )
+    return _TrainWindow(y_before, y_scored, y_pred, positions)
+
+
+def _score_train_window(
+    forecaster: BaseForecaster,
+    window: _TrainWindow | None,
+    scorer: BaseScorer | _MultimetricScorer,
+    *,
+    y: pl.DataFrame,
+    score_params: dict[str, object] | None,
+    train: np.ndarray,
+    error_score: str | float = "raise",
+) -> float | dict[str, float | str] | str:
+    """Score the predictions of ``_train_window_predictions``.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster that produced the predictions.
+    window : _TrainWindow or None
+        The train window, or ``None`` when the train score is unavailable.
+    scorer : BaseScorer or _MultimetricScorer
+        Scorer(s) to evaluate.
+    y : pl.DataFrame
+        The full series ``train`` indexes into, used to slice ``score_params``.
+    score_params : dict or None
+        Per-row score parameters over ``y``; sliced to the scored rows.
+    train : np.ndarray
+        Absolute indices of the training window in ``y``.
+    error_score : 'raise' or float, default='raise'
+        Passed to ``_score``.
+
+    Returns
+    -------
+    float, dict or str
+        As ``_score``; NaN (per scorer for a multimetric scorer) when ``window``
+        is ``None``.
+
+    """
+    if window is None:
+        if isinstance(scorer, _MultimetricScorer):
+            return {name: float("nan") for name in scorer._scorers}
+        return float("nan")
+    score_params_train = _check_method_params(y, params=score_params or {}, indices=train[window.positions])
+    return _score(
+        forecaster,
+        window.y_before,
+        window.y_scored,
+        window.y_pred,
+        scorer,
+        score_params_train,
+        error_score,
+    )

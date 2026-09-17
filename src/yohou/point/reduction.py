@@ -341,7 +341,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
+            fit_params=params,
         )
+        self._warn_unfiltered_step_output_columns()
 
         eval_data = None
         if y_tail is not None:

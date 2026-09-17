@@ -56,6 +56,33 @@ __all__ = [
 ]
 
 
+def _fit(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, *, fit_params: dict | None = None):
+    """Fit a transformer, forwarding the check's fit metadata.
+
+    Every check that refits a clone goes through this helper, so a transformer that
+    requires fit metadata (a forecasting horizon, say) can run the whole suite by
+    passing ``fit_params`` once to ``_yield_yohou_transformer_checks``.
+
+    Parameters
+    ----------
+    transformer : BaseActualTransformer
+        Transformer to fit.
+    X : pl.DataFrame
+        Training data with "time" column.
+    y : pl.DataFrame, optional
+        Target data for supervised transformers.
+    fit_params : dict, optional
+        Fit metadata forwarded to ``fit``.
+
+    Returns
+    -------
+    BaseActualTransformer
+        The fitted transformer.
+
+    """
+    return transformer.fit(X, y, **(fit_params or {}))
+
+
 def _build_X_p(transformer, X: pl.DataFrame, X_trans: pl.DataFrame) -> pl.DataFrame | None:
     """Build the ``X_p`` past-observations frame for inverse_transform.
 
@@ -87,7 +114,9 @@ def _build_X_p(transformer, X: pl.DataFrame, X_trans: pl.DataFrame) -> pl.DataFr
     return X[n_dropped - horizon : n_dropped]
 
 
-def check_fit_sets_attributes(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_fit_sets_attributes(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check fit() sets required attributes.
 
     Validates that fit() creates feature_names_in_, n_features_in_,
@@ -101,6 +130,9 @@ def check_fit_sets_attributes(transformer, X: pl.DataFrame, y: pl.DataFrame | No
         Training data with "time" column
     y : pl.DataFrame, optional
         Target data for supervised transformers
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -109,7 +141,7 @@ def check_fit_sets_attributes(transformer, X: pl.DataFrame, y: pl.DataFrame | No
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     # Check sklearn-required attributes
     assert hasattr(transformer_clone, "feature_names_in_"), "fit() must set feature_names_in_ attribute"
@@ -167,7 +199,9 @@ def check_observation_horizon_not_fitted(transformer, X: pl.DataFrame) -> None:
         pass
 
 
-def check_observation_horizon_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_observation_horizon_after_fit(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check observation_horizon is valid after fit().
 
     After fitting, observation_horizon should be a non-negative integer.
@@ -180,6 +214,9 @@ def check_observation_horizon_after_fit(transformer, X: pl.DataFrame, y: pl.Data
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -188,7 +225,7 @@ def check_observation_horizon_after_fit(transformer, X: pl.DataFrame, y: pl.Data
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
 
@@ -196,7 +233,9 @@ def check_observation_horizon_after_fit(transformer, X: pl.DataFrame, y: pl.Data
     assert horizon >= 0, f"observation_horizon must be non-negative, got {horizon}"
 
 
-def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_transform_drops_warmup_rows(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check stateful transformers drop exactly observation_horizon rows.
 
     Stateful transformers (observation_horizon > 0) must drop the first
@@ -212,6 +251,9 @@ def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFr
         Training data (must have enough rows)
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -220,7 +262,7 @@ def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFr
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
     X_t = transformer_clone.transform(X)
@@ -239,7 +281,9 @@ def check_transform_drops_warmup_rows(transformer, X: pl.DataFrame, y: pl.DataFr
     )
 
 
-def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_rewind_updates_memory(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check rewind(X) sets _X_observed to X.tail(observation_horizon).
 
     The rewind() method should update the transformer's memory to contain
@@ -253,6 +297,9 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
         Training data (should have at least observation_horizon rows)
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -267,7 +314,7 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
 
@@ -289,7 +336,9 @@ def check_rewind_updates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | 
     assert_frame_equal(transformer_clone._X_observed, expected)
 
 
-def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_observe_concatenates_memory(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check observe() appends new data and maintains horizon size.
 
     The observe() method should append new observations to _X_observed
@@ -303,6 +352,9 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
         Initial training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -322,7 +374,7 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
     X_train, X_temp = train_test_split(X, test_size=0.2, shuffle=False)
     X_update = X_temp.head(10)  # Take first 10 rows from remaining 20%
 
-    transformer_clone.fit(X_train, y)
+    _fit(transformer_clone, X_train, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
     initial_memory_len = len(transformer_clone._X_observed)
@@ -341,7 +393,9 @@ def check_observe_concatenates_memory(transformer, X: pl.DataFrame, y: pl.DataFr
     )
 
 
-def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_observe_transform_equivalence(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check observe() does not change transform() output for a fitted transformer.
 
     ``transform()`` does not consult ``_X_observed``; it transforms the provided
@@ -358,6 +412,9 @@ def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.Data
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -374,12 +431,12 @@ def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.Data
     # X_second is the natural continuation of X_first.
     # Path 1: fit only.
     transformer1 = clone(transformer)
-    transformer1.fit(X_first, y_first)
+    _fit(transformer1, X_first, y_first, fit_params=fit_params)
     X_trans1 = transformer1.transform(X_second)
 
     # Path 2: fit, then observe (updates memory, not fitted params).
     transformer2 = clone(transformer)
-    transformer2.fit(X_first, y_first)
+    _fit(transformer2, X_first, y_first, fit_params=fit_params)
     transformer2.observe(X_second)
     X_trans2 = transformer2.transform(X_second)
 
@@ -387,7 +444,9 @@ def check_observe_transform_equivalence(transformer, X: pl.DataFrame, y: pl.Data
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-6, abs_tol=1e-8)
 
 
-def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_observe_transform_sequential_consistency(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check observe_transform(A) then observe_transform(B) == observe_transform(A+B).
 
     Sequential observe_transform calls should produce the same output as a
@@ -402,6 +461,9 @@ def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame,
         Training data (will be split into fit, A, B portions)
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -433,14 +495,14 @@ def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame,
 
     # Path 1: Sequential observe_transform calls
     transformer1 = clone(transformer)
-    transformer1.fit(X_fit, y)
+    _fit(transformer1, X_fit, y, fit_params=fit_params)
     A_trans = transformer1.observe_transform(A)
     B_trans = transformer1.observe_transform(B)
     output_sequential = pl.concat([A_trans, B_trans])
 
     # Path 2: Single observe_transform on concatenated data
     transformer2 = clone(transformer)
-    transformer2.fit(X_fit, y)
+    _fit(transformer2, X_fit, y, fit_params=fit_params)
     AB = pl.concat([A, B])
     output_combined = transformer2.observe_transform(AB)
 
@@ -462,7 +524,9 @@ def check_observe_transform_sequential_consistency(transformer, X: pl.DataFrame,
         )
 
 
-def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_batch_invariance(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check that a transformer declaring ``batch_invariant`` earns the claim.
 
     Observing a block of rows in one ``observe_transform`` call must yield the same
@@ -481,6 +545,9 @@ def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None 
         Training data, split into a fit portion and a replay portion.
     y : pl.DataFrame, optional
         Target data.
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -513,11 +580,11 @@ def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None 
     X_fit, block = X[:fit_size], X[fit_size:]
 
     bulk_transformer = clone(transformer)
-    bulk_transformer.fit(X_fit, y)
+    _fit(bulk_transformer, X_fit, y, fit_params=fit_params)
     bulk = bulk_transformer.observe_transform(block)
 
     row_transformer = clone(transformer)
-    row_transformer.fit(X_fit, y)
+    _fit(row_transformer, X_fit, y, fit_params=fit_params)
     per_row = pl.concat([row_transformer.observe_transform(block[i : i + 1]) for i in range(len(block))])
 
     assert bulk.columns == per_row.columns, (
@@ -532,7 +599,9 @@ def check_batch_invariance(transformer, X: pl.DataFrame, y: pl.DataFrame | None 
     )
 
 
-def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_rewind_transform_behavior(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check rewind_transform() behavior and contract.
 
     Verifies that rewind_transform():
@@ -550,6 +619,9 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
         Training data (needs to be long enough)
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -559,7 +631,7 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
     """
     # Need enough data for meaningful test
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
 
@@ -575,14 +647,14 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
 
     # Test that rewind_transform doesn't use pre-existing memory
     transformer1 = clone(transformer)
-    transformer1.fit(X_fit, y)
+    _fit(transformer1, X_fit, y, fit_params=fit_params)
 
     # Apply rewind_transform
     X_rewind_trans = transformer1.rewind_transform(X_new)
 
     # Expected behavior: transform(X_new) (transform already drops warmup rows)
     transformer2 = clone(transformer)
-    transformer2.fit(X_fit, y)  # Fit with same data to have same fitted params
+    _fit(transformer2, X_fit, y, fit_params=fit_params)  # Fit with same data to have same fitted params
     X_expected = transformer2.transform(X_new)
 
     # Check outputs match
@@ -604,7 +676,9 @@ def check_rewind_transform_behavior(transformer, X: pl.DataFrame, y: pl.DataFram
         )
 
 
-def check_insufficient_data_raises(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_insufficient_data_raises(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check behavior when data length < observation_horizon.
 
     Transformers should either raise appropriate errors or gracefully handle
@@ -618,6 +692,9 @@ def check_insufficient_data_raises(transformer, X: pl.DataFrame, y: pl.DataFrame
         Test data (will be truncated)
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Notes
     -----
@@ -627,7 +704,7 @@ def check_insufficient_data_raises(transformer, X: pl.DataFrame, y: pl.DataFrame
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
 
@@ -652,7 +729,9 @@ def check_insufficient_data_raises(transformer, X: pl.DataFrame, y: pl.DataFrame
         pass
 
 
-def check_transform_output_structure(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_transform_output_structure(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check transform() output has "time" column and valid structure.
 
     Transform output must be a polars DataFrame with a "time" column
@@ -666,6 +745,9 @@ def check_transform_output_structure(transformer, X: pl.DataFrame, y: pl.DataFra
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -674,7 +756,7 @@ def check_transform_output_structure(transformer, X: pl.DataFrame, y: pl.DataFra
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     X_trans = transformer_clone.transform(X)
 
@@ -694,7 +776,9 @@ def check_transform_output_structure(transformer, X: pl.DataFrame, y: pl.DataFra
     assert len(feature_cols) > 0, "transform() output must have at least one feature column besides 'time'"
 
 
-def check_feature_names_out_match(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_feature_names_out_match(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check get_feature_names_out() matches transform() output columns.
 
     The feature names returned by get_feature_names_out() should match
@@ -708,6 +792,9 @@ def check_feature_names_out_match(transformer, X: pl.DataFrame, y: pl.DataFrame 
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -716,7 +803,7 @@ def check_feature_names_out_match(transformer, X: pl.DataFrame, y: pl.DataFrame 
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     X_trans = transformer_clone.transform(X)
     feature_names = transformer_clone.get_feature_names_out()
@@ -735,6 +822,7 @@ def check_inverse_transform_identity(
     y: pl.DataFrame | None = None,
     atol: float = 1e-6,
     rtol: float = 1e-5,
+    fit_params: dict | None = None,
 ) -> None:
     """Check inverse_transform(transform(X)) ≈ X.
 
@@ -752,6 +840,9 @@ def check_inverse_transform_identity(
         Absolute tolerance for numerical comparison
     rtol : float
         Relative tolerance for numerical comparison
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -764,7 +855,7 @@ def check_inverse_transform_identity(
         return
 
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     # Transform the data - this may drop some rows (e.g., differencing)
     X_trans = transformer_clone.transform(X)
@@ -795,6 +886,7 @@ def check_inverse_observe_transform_identity(
     y: pl.DataFrame | None = None,
     atol: float = 1e-6,
     rtol: float = 1e-5,
+    fit_params: dict | None = None,
 ) -> None:
     """Check inverse_transform(observe_transform(X)) ≈ X.
 
@@ -814,6 +906,9 @@ def check_inverse_observe_transform_identity(
         Absolute tolerance for numerical comparison
     rtol : float
         Relative tolerance for numerical comparison
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -842,7 +937,7 @@ def check_inverse_observe_transform_identity(
     X_update = X[split_idx:]
 
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X_fit, y)
+    _fit(transformer_clone, X_fit, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
 
@@ -869,7 +964,9 @@ def check_inverse_observe_transform_identity(
     assert_frame_equal(X_expected, X_reconstructed, rel_tol=rtol, abs_tol=atol)
 
 
-def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_panel_data_support(
+    transformer, X_panel: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check transformer handles panel columns (panel data) correctly.
 
     Panel data uses columns with __ separator to represent multiple time series.
@@ -883,6 +980,9 @@ def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame
         Panel data with panel columns
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -900,7 +1000,7 @@ def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame
     transformer_clone = clone(transformer)
 
     try:
-        transformer_clone.fit(X_panel, y)
+        _fit(transformer_clone, X_panel, y, fit_params=fit_params)
         X_trans = transformer_clone.transform(X_panel)
 
         # Check output is valid
@@ -912,7 +1012,9 @@ def check_panel_data_support(transformer, X_panel: pl.DataFrame, y: pl.DataFrame
         pass
 
 
-def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_panel_group_preservation(
+    transformer, X_panel: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check that transformers preserve panel group names after transformation.
 
     Panel data uses columns with ``__`` separator (``<GROUP>__<SERIES>``).
@@ -928,6 +1030,9 @@ def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.Dat
         Panel data with panel columns.
     y : pl.DataFrame, optional
         Target data.
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -947,7 +1052,7 @@ def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.Dat
     transformer_clone = clone(transformer)
 
     try:
-        transformer_clone.fit(X_panel, y)
+        _fit(transformer_clone, X_panel, y, fit_params=fit_params)
         X_trans = transformer_clone.transform(X_panel)
     except NotImplementedError:
         # Transformer explicitly doesn't support panel data
@@ -967,7 +1072,7 @@ def check_panel_group_preservation(transformer, X_panel: pl.DataFrame, y: pl.Dat
     )
 
 
-def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
+def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame, fit_params: dict | None = None) -> None:
     """Check stateless transformers transform deterministically across fits.
 
     Every transformer requires ``fit()`` before ``transform()`` (BaseActualTransformer
@@ -982,6 +1087,9 @@ def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
         Unfitted transformer expected to be stateless.
     X : pl.DataFrame
         Test data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -990,7 +1098,7 @@ def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
 
     """
     transformer1 = clone(transformer)
-    transformer1.fit(X)
+    _fit(transformer1, X, fit_params=fit_params)
 
     # Only exercise genuinely stateless transformers.
     if transformer1.observation_horizon != 0:
@@ -999,13 +1107,15 @@ def check_transformers_unfitted_stateless(transformer, X: pl.DataFrame) -> None:
     X_trans1 = transformer1.transform(X)
 
     transformer2 = clone(transformer)
-    transformer2.fit(X)
+    _fit(transformer2, X, fit_params=fit_params)
     X_trans2 = transformer2.transform(X)
 
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-6, abs_tol=1e-8)
 
 
-def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_transformer_preserve_dtypes(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check transformer preserves input dtypes.
 
     Transform and inverse_transform should maintain dtype consistency
@@ -1019,6 +1129,9 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
         Test data with known dtypes
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1027,7 +1140,7 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     X_numeric = X.select(cs.numeric() & ~cs.by_name("time"))
     input_dtypes = dict(zip(X_numeric.columns, X_numeric.dtypes, strict=False))
@@ -1068,7 +1181,9 @@ def check_transformer_preserve_dtypes(transformer, X: pl.DataFrame, y: pl.DataFr
             pass
 
 
-def check_fit_idempotent(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_fit_idempotent(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check that fit(X).fit(X) equals fit(X).
 
     Calling fit multiple times with same data should yield identical
@@ -1082,6 +1197,9 @@ def check_fit_idempotent(transformer, X: pl.DataFrame, y: pl.DataFrame | None = 
         Training data
     y : pl.DataFrame, optional
         Target data for supervised transformers
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1093,11 +1211,11 @@ def check_fit_idempotent(transformer, X: pl.DataFrame, y: pl.DataFrame | None = 
     transformer2 = clone(transformer)
 
     # Single fit
-    transformer1.fit(X, y)
+    _fit(transformer1, X, y, fit_params=fit_params)
     X_trans1 = transformer1.transform(X)
 
     # Double fit
-    transformer2.fit(X, y).fit(X, y)
+    _fit(_fit(transformer2, X, y, fit_params=fit_params), X, y, fit_params=fit_params)
     X_trans2 = transformer2.transform(X)
 
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-5, abs_tol=1e-8)
@@ -1122,6 +1240,7 @@ def check_inverse_transform_round_trip(
     y: pl.DataFrame | None = None,
     atol: float = 1e-6,
     rtol: float = 1e-5,
+    fit_params: dict | None = None,
 ) -> None:
     """Check inverse_transform(transform(X)) ≈ X with shape validation.
 
@@ -1143,6 +1262,9 @@ def check_inverse_transform_round_trip(
         Absolute tolerance for numerical comparison
     rtol : float
         Relative tolerance for numerical comparison
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1155,7 +1277,7 @@ def check_inverse_transform_round_trip(
         return
 
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     # Forward transform
     X_trans = transformer_clone.transform(X)
@@ -1189,7 +1311,9 @@ def check_inverse_transform_round_trip(
     assert_frame_equal(X_expected, X_reconstructed, rel_tol=rtol, abs_tol=atol)
 
 
-def check_fit_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_fit_transform_equivalence(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check fit_transform(X) == fit(X).transform(X).
 
     The convenience method fit_transform should produce identical
@@ -1203,6 +1327,9 @@ def check_fit_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFram
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1214,10 +1341,10 @@ def check_fit_transform_equivalence(transformer, X: pl.DataFrame, y: pl.DataFram
     transformer2 = clone(transformer)
 
     # Separate fit and transform
-    X_trans1 = transformer1.fit(X, y).transform(X)
+    X_trans1 = _fit(transformer1, X, y, fit_params=fit_params).transform(X)
 
     # Combined fit_transform (BaseActualTransformer always defines fit_transform())
-    X_trans2 = transformer2.fit_transform(X, y)
+    X_trans2 = transformer2.fit_transform(X, y, **(fit_params or {}))
 
     assert_frame_equal(X_trans1, X_trans2, rel_tol=1e-7, abs_tol=1e-10)
 
@@ -1228,6 +1355,7 @@ def check_memory_bounded(
     X_test: pl.DataFrame,
     y: pl.DataFrame | None = None,
     n_updates: int = 5,
+    fit_params: dict | None = None,
 ) -> None:
     """Check memory doesn't grow unbounded with sequential updates.
 
@@ -1246,6 +1374,9 @@ def check_memory_bounded(
         Target data
     n_updates : int
         Number of update iterations to test
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1260,7 +1391,7 @@ def check_memory_bounded(
 
     """
     transformer_clone = clone(transformer)
-    transformer_clone.fit(X_train, y)
+    _fit(transformer_clone, X_train, y, fit_params=fit_params)
 
     horizon = transformer_clone.observation_horizon
     max_memory_factor = 2.0
@@ -1321,7 +1452,9 @@ def check_tags_accessible_before_fit(transformer, X: pl.DataFrame | None = None)
     assert hasattr(tags, "input_tags"), "Tags must have input_tags attribute"
 
 
-def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_tags_static_after_fit(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check tags remain static (don't change) after fit().
 
     Tags represent capabilities, not fitted state. They should have
@@ -1335,6 +1468,9 @@ def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | 
         Training data
     y : pl.DataFrame, optional
         Target data
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1351,7 +1487,7 @@ def check_tags_static_after_fit(transformer, X: pl.DataFrame, y: pl.DataFrame | 
     min_value_before = tags_before.input_tags.min_value if tags_before.input_tags else None
 
     # Fit the transformer
-    transformer_clone.fit(X, y)
+    _fit(transformer_clone, X, y, fit_params=fit_params)
 
     # Get tags after fit
     tags_after = transformer_clone.__sklearn_tags__()
@@ -1425,7 +1561,9 @@ def check_tags_match_capabilities(transformer, X: pl.DataFrame, y: pl.DataFrame 
             )
 
 
-def check_transformer_methods_call_check_is_fitted(transformer, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+def check_transformer_methods_call_check_is_fitted(
+    transformer, X: pl.DataFrame, y: pl.DataFrame | None = None, fit_params: dict | None = None
+) -> None:
     """Check all transformer methods (except fit) raise NotFittedError when unfitted.
 
     Validates that transform(), rewind(), observe(), observe_transform(), and
@@ -1440,6 +1578,9 @@ def check_transformer_methods_call_check_is_fitted(transformer, X: pl.DataFrame,
         Training/test data with "time" column (should have at least 100 rows for slicing)
     y : pl.DataFrame, optional
         Target data for supervised transformers
+    fit_params : dict, optional
+        Fit metadata forwarded to every ``fit`` call, for transformers that require
+        it (such as a forecasting horizon)
 
     Raises
     ------
@@ -1497,7 +1638,7 @@ def check_transformer_methods_call_check_is_fitted(transformer, X: pl.DataFrame,
     # Test inverse_transform() if implemented
     if hasattr(transformer_clone, "inverse_transform"):
         # Need to fit the transformer first to be able to call transform and get X_t
-        transformer_clone.fit(X, y)
+        _fit(transformer_clone, X, y, fit_params=fit_params)
         X_t = transformer_clone.transform(X)
 
         # Create a fresh unfitted clone

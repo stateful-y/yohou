@@ -1,12 +1,13 @@
 """Standard (non-panel) forecaster mixin for type-safe operations."""
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import polars.selectors as cs
 
 from yohou.base.utils import (
+    _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_capture,
@@ -72,7 +73,7 @@ class BaseStandardForecaster:
             self.local_X_actual_schema_ = dict(X_actual.select(~cs.by_name("time")).schema)
 
     def _fit_transform_inputs_standard(
-        self, y: pl.DataFrame, X_actual: pl.DataFrame | None
+        self, y: pl.DataFrame, X_actual: pl.DataFrame | None, actual_fit_params: dict[str, Any] | None = None
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
         """Fit transformers and transform inputs for standard data.
 
@@ -82,6 +83,8 @@ class BaseStandardForecaster:
             Target time series (standard data).
         X_actual : pl.DataFrame or None
             Feature time series (standard data).
+        actual_fit_params : dict or None, default=None
+            Fit metadata for the actual transformer, narrowed to the keys it consumes.
 
         Returns
         -------
@@ -103,6 +106,7 @@ class BaseStandardForecaster:
             target_transformer=self.target_transformer,
             actual_transformer=self.actual_transformer,
             target_as_feature=self.target_as_feature,
+            actual_fit_params=actual_fit_params,
         )
 
         self.target_transformer_ = target_transformer
@@ -195,6 +199,7 @@ class BaseStandardForecaster:
         forecasting_horizon: int,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        fit_params: dict[str, Any] | None = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
         """Preprocessing and transform for standard data (narrow types).
 
@@ -210,6 +215,10 @@ class BaseStandardForecaster:
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        fit_params : dict or None, default=None
+            Fit metadata passed to the forecaster's ``fit``. Together with
+            ``forecasting_horizon``, the keys the actual transformer requests are
+            routed to it.
 
         Returns
         -------
@@ -229,7 +238,12 @@ class BaseStandardForecaster:
 
         """
         self._set_input_attributes_standard(y, X_actual)
-        y_t, X_t = self._fit_transform_inputs_standard(y, X_actual)
+        y_t, X_t = self._fit_transform_inputs_standard(
+            y,
+            X_actual,
+            _actual_transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+        )
+        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
 
         # Fit the forecast_transformer and apply it before deriving step columns,
         # so the step columns are built from transformed values. Returns X_forecast

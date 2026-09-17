@@ -4,6 +4,7 @@ This module provides _yield_* generator functions that dynamically generate
 applicable check functions based on estimator tags.
 """
 
+import inspect
 import numbers
 from collections.abc import Callable, Generator
 from typing import Any
@@ -210,6 +211,7 @@ def _yield_yohou_transformer_checks(
     X_test: pl.DataFrame,
     y_test: pl.DataFrame | None = None,
     tags: dict[str, Any] | None = None,
+    fit_params: dict | None = None,
 ) -> Generator[tuple[str, Callable, dict], None, None]:
     """Generate applicable checks for a transformer based on tags.
 
@@ -232,6 +234,10 @@ def _yield_yohou_transformer_checks(
         - stateful: bool
         - invertible: bool
         - supports_panel_data: bool
+    fit_params : dict, optional
+        Fit metadata that every check forwards to the ``fit`` calls it makes, for a
+        transformer that requires it (for example ``{"forecasting_horizon": 48}``).
+        Checks that never refit are yielded unchanged.
 
     Yields
     ------
@@ -239,6 +245,16 @@ def _yield_yohou_transformer_checks(
         ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
 
     """
+    if fit_params is not None:
+        for check_name, check_func, check_kwargs in _yield_yohou_transformer_checks(
+            transformer, X_train, y_train, X_test, y_test=y_test, tags=tags
+        ):
+            forwarded = check_kwargs
+            if "fit_params" in inspect.signature(check_func).parameters:
+                forwarded = {**check_kwargs, "fit_params": fit_params}
+            yield check_name, check_func, forwarded
+        return
+
     if tags is None:
         # Get tags from __sklearn_tags__ method
         sklearn_tags = transformer.__sklearn_tags__()

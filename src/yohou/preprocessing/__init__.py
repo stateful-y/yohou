@@ -45,8 +45,8 @@ from .step import (
 from .time_features import FourierFeatureTransformer, TimeIndexTransformer
 from .window import (
     ExponentialMovingAverage,
+    HorizonRollingStatisticsTransformer,
     LagTransformer,
-    MeanLagTransformer,
     RollingStatisticsTransformer,
     SlidingWindowFunctionTransformer,
 )
@@ -68,8 +68,8 @@ __all__ = [
     "Downsampler",
     "Upsampler",
     # Windowing
+    "HorizonRollingStatisticsTransformer",
     "LagTransformer",
-    "MeanLagTransformer",
     # Sklearn scalers
     "SklearnScaler",
     "StandardScaler",

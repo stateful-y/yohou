@@ -33,7 +33,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.10"
+          version: "0.12.15"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -62,7 +62,7 @@ jobs:
       # Gated on the entry that produces the report. It was gated on 3.12, which
       # uploaded a 3.11 run's coverage under a 3.12 label; now only 3.11 measures.
       - name: Upload coverage reports
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         if: ${{ matrix.python-version == '3.11' }}
         with:
           use_oidc: true
@@ -100,7 +100,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.10"
+          version: "0.12.15"
 
       - name: Build package
         run: uv build --python 3.11 --python-preference only-managed --sdist --wheel . --out-dir dist
@@ -115,7 +115,7 @@ jobs:
           # The annotation must sit directly above the line carrying the version; see
           # publish-release.yml for what happens when it does not.
           # renovate: datasource=pypi depName=cyclonedx-bom
-          uvx --from cyclonedx-bom==7.3.1 cyclonedx-py requirements sbom-requirements.txt \
+          uvx --from cyclonedx-bom==7.4.0 cyclonedx-py requirements sbom-requirements.txt \
             --output-format JSON --output-file sbom.cdx.json
 
       # Producing a file is not evidence it is usable: the step that broke exited 2

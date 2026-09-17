@@ -1,13 +1,14 @@
 """Panel (multi-series) forecaster mixin for type-safe operations."""
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import polars.selectors as cs
 
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS
 from yohou.base.utils import (
+    _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_capture,
@@ -195,7 +196,7 @@ class BasePanelForecaster:
         return X_schema
 
     def _fit_transform_inputs_panel(
-        self, y: pl.DataFrame, X_actual: pl.DataFrame | None
+        self, y: pl.DataFrame, X_actual: pl.DataFrame | None, actual_fit_params: dict[str, Any] | None = None
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Fit transformers and transform inputs for panel data.
 
@@ -205,6 +206,9 @@ class BasePanelForecaster:
             Target time series with panel columns.
         X_actual : pl.DataFrame or None
             Feature time series with panel columns.
+        actual_fit_params : dict or None, default=None
+            Fit metadata for each group's actual transformer, narrowed to the keys it
+            consumes.
 
         Returns
         -------
@@ -239,6 +243,7 @@ class BasePanelForecaster:
                 target_transformer=self.target_transformer,
                 actual_transformer=self.actual_transformer,
                 target_as_feature=self.target_as_feature,
+                actual_fit_params=actual_fit_params,
             )
 
             y_t[group_name] = y_t_local
@@ -325,6 +330,7 @@ class BasePanelForecaster:
         X_panel_groups: dict[str, list[str]] | None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        fit_params: dict[str, Any] | None = None,
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Preprocessing and transform for panel data (narrow types).
 
@@ -344,6 +350,10 @@ class BasePanelForecaster:
             Known future features with a ``"time"`` column.
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
+        fit_params : dict or None, default=None
+            Fit metadata passed to the forecaster's ``fit``. Together with
+            ``forecasting_horizon``, the keys the actual transformer requests are
+            routed to it.
 
         Returns
         -------
@@ -354,7 +364,12 @@ class BasePanelForecaster:
 
         """
         self._set_input_attributes_panel(y, X_actual, y_panel_groups, X_panel_groups)
-        y_t, X_t = self._fit_transform_inputs_panel(y, X_actual)
+        y_t, X_t = self._fit_transform_inputs_panel(
+            y,
+            X_actual,
+            _actual_transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+        )
+        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
 
         # Inject step columns from X_future / X_forecast
         # Use first group's observation times (all groups share the same time index)

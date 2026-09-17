@@ -1724,6 +1724,13 @@ class GridSearchCV(BaseSearchCV):
         expensive and is not strictly required to select the parameters that
         yield the best generalization performance.
 
+        Each fold's training score covers a stretch as long as the test window,
+        ending before the rows the forecaster holds back from learning (its
+        ``holdout_size`` tag, such as a split-conformal forecaster's calibration
+        rows). The fitted forecaster is rewound and walked forward over it the
+        way the test window is predicted. When the training window is no longer
+        than the test window plus those rows, the score is NaN with a warning.
+
     validation : {"cv"} or None, default=None
         Early stopping on each fold's test window, for reduction forecasters
         whose estimator is a boosting model (LightGBM, XGBoost, CatBoost, or
@@ -2182,6 +2189,13 @@ class RandomizedSearchCV(BaseSearchCV):
         However computing the scores on the training set can be computationally
         expensive and is not strictly required to select the parameters that
         yield the best generalization performance.
+
+        Each fold's training score covers a stretch as long as the test window,
+        ending before the rows the forecaster holds back from learning (its
+        ``holdout_size`` tag, such as a split-conformal forecaster's calibration
+        rows). The fitted forecaster is rewound and walked forward over it the
+        way the test window is predicted. When the training window is no longer
+        than the test window plus those rows, the score is NaN with a warning.
 
     validation : {"cv"} or None, default=None
         Early stopping on each fold's test window, for reduction forecasters

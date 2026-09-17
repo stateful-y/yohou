@@ -161,14 +161,14 @@ def _(mo):
     ## 3. Fill Gaps with SeasonalImputer
 
     Use [`SeasonalImputer`](/pages/api/generated/yohou.preprocessing.imputation.SeasonalImputer/) to replace each missing value with the average
-    at the same seasonal position. Set `period=12` for monthly data so a
+    at the same seasonal position. Set `seasonality=12` for monthly data so a
     missing January is filled using Januaries from other years.
     """)
 
 
 @app.cell
 def _(SeasonalImputer, plot_time_series, y_missing):
-    seasonal_imp = SeasonalImputer(period=12)
+    seasonal_imp = SeasonalImputer(seasonality=12)
     seasonal_imp.fit(y_missing)
     y_seasonal = seasonal_imp.transform(y_missing)
 
@@ -176,7 +176,7 @@ def _(SeasonalImputer, plot_time_series, y_missing):
         y_missing.rename({"tourists": "with gaps"}),
         on="time",
     )
-    plot_time_series(_combined, title="After Seasonal Imputation (period=12)")
+    plot_time_series(_combined, title="After Seasonal Imputation (seasonality=12)")
     return seasonal_imp, y_seasonal
 
 

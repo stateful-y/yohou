@@ -299,6 +299,11 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         tags.forecaster_tags.supports_panel_data = all(
             getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for _, f in self.forecasters
         )
+        # The stretch a train score may use must be learned-from by every child.
+        tags.forecaster_tags.holdout_size = max(
+            (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for _, f in self.forecasters),
+            default=0,
+        )
         # DecompositionPipeline delegates observation tracking to child forecasters with
         # custom residual-based logic, so standard observe/rewind behavior doesn't apply
         tags.forecaster_tags.tracks_observations = False
@@ -374,7 +379,12 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         # Apply transformers and get transformed data
         y_t, X_t = self._pre_fit(
-            y=y, X_actual=X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast
+            y=y,
+            X_actual=X_actual,
+            forecasting_horizon=forecasting_horizon,
+            X_future=X_future,
+            X_forecast=X_forecast,
+            fit_params=params,
         )
 
         y_t = dict_to_panel(y_t)
@@ -404,7 +414,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         # owns that spelling knowledge for every caller.
         X_t_components = X_t
         if X_t is not None and self._step_column_names_:
-            drop_cols = [c for c in X_t.columns if self._is_step_column(c)]
+            drop_cols = [c for c in X_t.columns if self._is_step_column(c, derived_only=True)]
             if drop_cols:
                 X_t_components = X_t.drop(drop_cols)
 
