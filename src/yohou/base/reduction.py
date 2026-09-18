@@ -1981,11 +1981,11 @@ default="first_step"
         pl.DataFrame | dict[str, pl.DataFrame],
         pl.DataFrame | dict[str, pl.DataFrame],
     ]:
-        """Walk the validation tail through the observe path, capturing transforms.
+        """Observe the validation tail and keep the transformed rows it produces.
 
         Delegates the state update to the same ``observe()`` machinery every
-        other caller uses (`_observe_standard_capture` /
-        `_observe_panel_capture`), then joins the step columns the evaluation
+        other caller uses (`_observe_standard_transform` /
+        `_observe_panel_transform`), then joins the step columns the evaluation
         matrix needs. This pass is the only observation of the tail: fit must
         not observe it again.
 
@@ -2028,12 +2028,12 @@ default="first_step"
             )
 
         if self.groups_ is None:
-            y_t_tail, X_t_cap = self._observe_standard_capture(y_tail, X_tail, X_future, X_forecast)
-            X_t_tail = self._join_tail_step_columns(X_t_cap, step_columns, y_t_tail)
+            y_t_tail, X_t_observed_tail = self._observe_standard_transform(y_tail, X_tail, X_future, X_forecast)
+            X_t_tail = self._join_tail_step_columns(X_t_observed_tail, step_columns, y_t_tail)
             return y_t_tail, X_t_tail
 
         groups = self.groups_
-        y_t_tails, X_t_caps = self._observe_panel_capture(y_tail, X_tail, groups, X_future, X_forecast)
+        y_t_tails, X_t_observed_tails = self._observe_panel_transform(y_tail, X_tail, groups, X_future, X_forecast)
 
         step_schema_per_group = getattr(self, "_step_schema_per_group_", None)
         X_t_tails: dict[str, pl.DataFrame] = {}
@@ -2050,7 +2050,7 @@ default="first_step"
                 }
                 step_local = get_group_df(step_columns, panel_group_name, step_schema)
             X_t_tails[panel_group_name] = self._join_tail_step_columns(
-                X_t_caps[panel_group_name], step_local, y_t_tails[panel_group_name]
+                X_t_observed_tails[panel_group_name], step_local, y_t_tails[panel_group_name]
             )
 
         return y_t_tails, X_t_tails

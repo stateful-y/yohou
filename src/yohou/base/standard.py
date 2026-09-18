@@ -10,8 +10,8 @@ from yohou.base.utils import (
     _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
-    _observe_transformers_capture,
     _observe_transformers_one,
+    _observe_transformers_transform,
     _retained_forecast_vintages,
     _rewind_transformers_one,
     _warn_rank_deficient_step_columns,
@@ -383,21 +383,30 @@ class BaseStandardForecaster:
         accumulation is a core part of the stateful lifecycle.
 
         """
-        self._observe_standard_capture(y, X_actual, X_future, X_forecast)
+        self._observe_standard_transform(y, X_actual, X_future, X_forecast)
         return self
 
-    def _observe_standard_capture(
+    def _observe_standard_transform(
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-        """Perform `_observe_standard`'s state update, returning the transformed rows.
+        """Observe new rows and return them as the fitted transformers produce them.
 
-        Identical in effect to `_observe_standard`; it additionally hands back
-        the transformed new observations, which the reduction validation
-        holdout assembles its evaluation set from.
+        The state update is exactly `_observe_standard`'s, which is a one-line
+        wrapper around this method. The difference is the return value:
+        observing runs the new rows through the fitted target and actual
+        transformers anyway, and this keeps that output instead of discarding
+        it. The name mirrors ``observe_transform`` on transformers, which does
+        the same thing one level down.
+
+        Its one caller that uses the output is
+        `BaseReductionForecaster._observe_validation_tail`, which builds the
+        validation holdout's evaluation rows from these transformed rows. Doing
+        the transform a second time there would observe the tail twice, which
+        a stateful transformer does not tolerate.
 
         Parameters
         ----------
@@ -419,7 +428,7 @@ class BaseStandardForecaster:
 
         """
         # Update transformers with only new data (X_actual only, no step columns)
-        y_t, X_t_updated = _observe_transformers_capture(
+        y_t, X_t_updated = _observe_transformers_transform(
             y, X_actual, self.target_transformer_, self.actual_transformer_, self.target_as_feature
         )
 

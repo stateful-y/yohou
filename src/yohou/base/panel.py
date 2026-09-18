@@ -11,8 +11,8 @@ from yohou.base.utils import (
     _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
-    _observe_transformers_capture,
     _observe_transformers_one,
+    _observe_transformers_transform,
     _retained_forecast_vintages,
     _rewind_transformers_one,
     _warn_rank_deficient_step_columns,
@@ -579,10 +579,10 @@ class BasePanelForecaster:
         self
 
         """
-        self._observe_panel_capture(y, X_actual, groups, X_future, X_forecast)
+        self._observe_panel_transform(y, X_actual, groups, X_future, X_forecast)
         return self
 
-    def _observe_panel_capture(
+    def _observe_panel_transform(
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
@@ -590,11 +590,18 @@ class BasePanelForecaster:
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame | None]]:
-        """Perform `_observe_panel`'s state update, returning the transformed rows.
+        """Observe new rows per group and return them as the fitted transformers produce them.
 
-        Identical in effect to `_observe_panel`; it additionally hands back the
-        transformed new observations per group, which the reduction validation
-        holdout assembles its evaluation set from.
+        The panel counterpart of `_observe_standard_transform`: the state update
+        is exactly `_observe_panel`'s, which is a one-line wrapper around this
+        method, and the per-group transformed rows that observing computes are
+        returned instead of discarded.
+
+        Its one caller that uses the output is
+        `BaseReductionForecaster._observe_validation_tail`, which builds the
+        validation holdout's evaluation rows from them. Transforming the tail a
+        second time there would observe it twice, which a stateful transformer
+        does not tolerate.
 
         Parameters
         ----------
@@ -640,7 +647,7 @@ class BasePanelForecaster:
                 local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             # Update transformers with new data only
-            y_t_new[panel_group_name], X_t_updated[panel_group_name] = _observe_transformers_capture(
+            y_t_new[panel_group_name], X_t_updated[panel_group_name] = _observe_transformers_transform(
                 y_local,
                 X_local,
                 local_target_transformer,

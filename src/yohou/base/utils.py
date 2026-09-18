@@ -563,22 +563,24 @@ def _observe_transformers_one(
         Transformed new observations.
 
     """
-    _, X_t = _observe_transformers_capture(y, X_actual, target_transformer, actual_transformer, target_as_feature)
+    _, X_t = _observe_transformers_transform(y, X_actual, target_transformer, actual_transformer, target_as_feature)
     return X_t
 
 
-def _observe_transformers_capture(
+def _observe_transformers_transform(
     y: pl.DataFrame,
     X_actual: pl.DataFrame | None,
     target_transformer: BaseActualTransformer | None,
     actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
-    """Observe new data through transformers, returning both transformed frames.
+    """Observe new rows through the transformers and return both transformed frames.
 
-    Same state effects as `_observe_transformers_one`, but also returns the
-    transformed target rows, which the validation-holdout path needs to
-    assemble evaluation targets.
+    The same state effects as `_observe_transformers_one`, which wraps this
+    function and keeps only the features. This one also returns the
+    transformed target rows, because the validation holdout needs them to
+    build evaluation targets in the space the estimator trains in. The name
+    mirrors ``observe_transform`` on the transformers it calls.
 
     Parameters
     ----------
