@@ -445,17 +445,34 @@ matters more than training data, set `validation_size` on the forecaster and
 leave `validation=None`: each fold then stops on the end of its own training
 window and is scored on rows the stopping decision never saw.
 
-Two configurations cannot be used. With `reduction_strategy="dir-rec"`, each
-step trains on the predictions of the steps before it, so cutting an earlier
-step to its own count would change a later step's inputs between training and
-prediction. And CatBoost estimators need an explicit `learning_rate`: CatBoost
-derives the default from the iteration ceiling, so a refit with the chosen
-count would otherwise train with a different learning rate than the folds.
+**Two configurations are rejected**, with an error before any fold is fitted.
 
-The refit relies on one property of gradient boosting: the first k iterations
-of a model trained for more iterations are the model trained for k. That is why
-the refit trains every estimator up to the largest chosen count and then cuts
-each one to its own, rather than fitting each with a different setting.
+The first is `reduction_strategy="dir-rec"`. Its step models are not
+independent: step 2 trains on features that include step 1's predictions, step
+3 on steps 1 and 2, and so on. Suppose the search picks 40 iterations for step
+1 and 90 for step 2. Step 2 learned from features holding the predictions of
+the whole step-1 model, so cutting step 1 back to 40 iterations afterwards
+changes what step 2 sees when it predicts. Rather than return a model whose
+inputs shifted after training, the search refuses the strategy. Use `"direct"`,
+whose step models are independent, or `"multi-output"`.
+
+The second is a CatBoost estimator with no `learning_rate` set. CatBoost then
+chooses one itself, partly from `iterations`: on one dataset it used 0.066 at
+`iterations=500` and 0.431 at `iterations=50`. Because the refit trains the
+chosen count rather than the ceiling the folds used, CatBoost would pick a
+different learning rate for it, and the final model would not be the model the
+search evaluated. Setting `learning_rate` explicitly keeps it fixed across the
+folds and the refit.
+
+**One estimator, several counts.** Every step model is a copy of the single
+estimator passed to the forecaster, so the refit cannot give step 1 forty
+iterations and step 2 ninety through parameters. It trains every model to the
+largest chosen count, 90 here, then cuts each one back to its own, step 1 to
+40. That is sound because an iteration of gradient boosting only adds a tree
+and never revises the earlier ones: the first 40 trees of a model trained for
+90 iterations are the model trained for 40. CatBoost's iteration-dependent
+default learning rate is precisely what would break this equivalence, which is
+why it is rejected above.
 
 ## References
 
