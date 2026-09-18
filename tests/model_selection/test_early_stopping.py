@@ -225,6 +225,26 @@ class TestResolution:
         with mock.patch.dict(sys.modules, {"xgboost": None, "catboost": None}):
             assert isinstance(_resolve_early_stopping_adapter(_regressor("lightgbm")), LightGBMEarlyStoppingAdapter)
 
+    def test_explicit_adapter_that_does_not_support_the_estimator_is_rejected(self):
+        """A passed adapter is used for every candidate, so a mismatch must be caught.
+
+        Without the check, the LightGBM adapter clears ``early_stopping`` and
+        ``n_iter_no_change`` on a scikit-learn model (LightGBM aliases both) and
+        the failure surfaces later, blaming the estimator's settings.
+        """
+        with pytest.raises(ValueError, match=r"LightGBMEarlyStoppingAdapter.*HistGradientBoostingRegressor"):
+            _resolve_early_stopping_adapter(HistGradientBoostingRegressor(), LightGBMEarlyStoppingAdapter())
+
+    def test_explicit_adapter_is_checked_on_the_pipeline_final_step(self):
+        pipeline = Pipeline([("scale", StandardScaler()), ("model", HistGradientBoostingRegressor())])
+        with pytest.raises(ValueError, match="does not support HistGradientBoostingRegressor"):
+            _resolve_early_stopping_adapter(pipeline, XGBoostEarlyStoppingAdapter())
+
+    @pytest.mark.parametrize("library", LIBRARIES)
+    def test_explicit_supporting_adapter_is_returned_unchanged(self, library):
+        adapter = ADAPTERS[library]()
+        assert _resolve_early_stopping_adapter(_regressor(library), adapter) is adapter
+
     def test_explicit_adapter_skips_builtins(self):
         custom = mock.create_autospec(BaseEarlyStoppingAdapter, instance=True)
         with mock.patch.object(

@@ -1777,8 +1777,13 @@ class GridSearchCV(BaseSearchCV):
         fitted estimators are cut to ``best_rounds_``.
     early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
         Only used when ``validation="cv"``. Translates early stopping for the
-        estimator's library. ``None`` selects the built-in adapter for
-        LightGBM, XGBoost, or CatBoost estimators.
+        estimator's library. The default ``None`` is the normal choice: the
+        search picks a built-in adapter for each candidate from its estimator's
+        class, covering LightGBM, XGBoost, CatBoost, and scikit-learn's
+        histogram gradient boosting, so a grid that swaps estimators needs
+        nothing here. Pass an adapter only for an estimator none of those
+        cover, or to change a built-in's behaviour. A passed adapter is used
+        for every candidate and must support each one's estimator.
 
     Attributes
     ----------
@@ -2243,8 +2248,13 @@ class RandomizedSearchCV(BaseSearchCV):
         fitted estimators are cut to ``best_rounds_``.
     early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
         Only used when ``validation="cv"``. Translates early stopping for the
-        estimator's library. ``None`` selects the built-in adapter for
-        LightGBM, XGBoost, or CatBoost estimators.
+        estimator's library. The default ``None`` is the normal choice: the
+        search picks a built-in adapter for each candidate from its estimator's
+        class, covering LightGBM, XGBoost, CatBoost, and scikit-learn's
+        histogram gradient boosting, so a grid that swaps estimators needs
+        nothing here. Pass an adapter only for an estimator none of those
+        cover, or to change a built-in's behaviour. A passed adapter is used
+        for every candidate and must support each one's estimator.
 
     Attributes
     ----------

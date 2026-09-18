@@ -66,8 +66,9 @@ class BaseEarlyStoppingAdapter(BaseEstimator, abc.ABC):
     def supports(self, estimator: BaseEstimator) -> bool:
         """Return whether this adapter handles the estimator.
 
-        Used when the search resolves an adapter automatically. It must not
-        import a library the caller has not imported.
+        Used when the search resolves an adapter automatically, and to check
+        an adapter passed explicitly, which is used for every candidate. It
+        must not import a library the caller has not imported.
 
         Parameters
         ----------
@@ -973,7 +974,7 @@ def _resolve_early_stopping_adapter(
     estimator : BaseEstimator
         A forecaster's ``estimator`` (a ``Pipeline`` resolves on its final step).
     adapter : BaseEarlyStoppingAdapter or None, default=None
-        An explicit adapter, returned unchanged.
+        An explicit adapter, returned unchanged when it supports the estimator.
 
     Returns
     -------
@@ -984,12 +985,24 @@ def _resolve_early_stopping_adapter(
     Raises
     ------
     ValueError
-        If no adapter is given and no built-in adapter supports the estimator.
+        If no adapter is given and no built-in adapter supports the estimator,
+        or if the given adapter's ``supports`` rejects it.
 
     """
-    if adapter is not None:
-        return adapter
     target = _eval_target(estimator)
+    if adapter is not None:
+        # An explicit adapter is used for every candidate, so a grid that swaps
+        # the estimator can hand it one it was not written for. It would then
+        # translate another library's parameters and fail far from the cause,
+        # or read a meaningless curve, so its own `supports` is consulted here.
+        if not adapter.supports(target):
+            raise ValueError(
+                f"early_stopping_adapter={adapter.__class__.__name__}() does not support "
+                f"{target.__class__.__name__}, and an explicit adapter is used for every "
+                f"candidate. Leave early_stopping_adapter=None to choose a built-in adapter "
+                f"per candidate, or pass an adapter whose supports() accepts this estimator."
+            )
+        return adapter
     for adapter_cls in _BUILTIN_ADAPTERS:
         candidate = adapter_cls()
         if candidate.supports(target):
