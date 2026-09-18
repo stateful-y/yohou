@@ -1744,18 +1744,42 @@ class TestEvaluationWeightsAlignment:
         for estimator in forecaster.estimator_:
             assert len(_delivered_weights(estimator)) == len(_eval_pair(estimator)[0])
 
-    def test_vintage_weighter_over_an_explicit_window(self):
+    @pytest.mark.parametrize("source", ["validation_size", "y_val"])
+    def test_vintage_weighter_over_the_evaluation_window(self, source):
+        """A vintage weighter looks weights up by time on the evaluation frame too.
+
+        The lookup gives the last few timestamps five times the weight, so
+        exactly the evaluation rows anchored there must carry the larger weight.
+        """
+        from yohou.weighting import LookupWeighter
+
         y = _make_y()
-        head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
-        forecaster = PointReductionForecaster(
-            estimator=WeightRecordingRegressor(),
-            reduction_strategy="direct",
-            time_weighter=ExponentialDecayWeighter(half_life=8),
-        )
-        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        times = y["time"].to_list()
+        heavy = set(times[LENGTH - 4 :])
+        weighter = LookupWeighter(mapping={t: (5.0 if t in heavy else 1.0) for t in times}, default=1.0)
+        if source == "validation_size":
+            forecaster = PointReductionForecaster(
+                estimator=WeightRecordingRegressor(),
+                reduction_strategy="direct",
+                validation_size=VAL_SIZE,
+                vintage_weighter=weighter,
+            )
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        else:
+            head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
+            forecaster = PointReductionForecaster(
+                estimator=WeightRecordingRegressor(), reduction_strategy="direct", vintage_weighter=weighter
+            )
+            forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+
         for estimator in forecaster.estimator_:
             weights = _delivered_weights(estimator)
             assert len(weights) == len(_eval_pair(estimator)[0])
+            # Two distinct values: the heavily weighted anchors and the rest,
+            # with the heavy ones strictly larger.
+            assert len(set(np.round(weights, 9))) == 2
+            assert weights.max() > weights.min()
+            assert weights[-1] == weights.max()
 
 
 class TestCatBoostEvaluationWeights:
