@@ -4,7 +4,7 @@ import abc
 import inspect
 import numbers
 import warnings
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 from typing import cast as typing_cast
 
 import numpy as np
@@ -27,9 +27,10 @@ from yohou.base.forecast_transformer import BaseForecastTransformer
 from yohou.base.forecaster import BaseForecaster
 from yohou.base.step_transformer import BaseStepTransformer, _is_step_indexed, _step_index
 from yohou.base.transformer import BaseActualTransformer
-from yohou.base.utils import _derive_step_columns, _observe_transformers_one
+from yohou.base.utils import UnweightedEvaluationSetWarning, _derive_step_columns, _observe_transformers_one
 from yohou.utils import Tags, cast, tabularize
 from yohou.utils._compat import HasMethods, Interval, StrOptions
+from yohou.utils._modules import _loaded_module
 from yohou.utils.panel import get_group_df
 from yohou.utils.validation import add_interval, check_interval_consistency
 from yohou.weighting import BaseWeighter
@@ -101,6 +102,30 @@ def _predict_direct_step(
     pred = np.asarray(estimator.predict(kept))  # ty: ignore[unresolved-attribute]
     out[row_ok] = pred.reshape(kept.height, -1)[:, :n_targets]
     return out
+
+
+class _EvalSet(NamedTuple):
+    """The evaluation pair delivered to an estimator's fit, with its weights.
+
+    A bare ``(X, y)`` tuple is unpacked positionally at several call sites, so
+    the weights ride along as a third field rather than as a parallel argument
+    that one of those sites could forget.
+
+    Attributes
+    ----------
+    X : pl.DataFrame
+        Evaluation feature matrix, in the space the estimator trains in.
+    y : pl.DataFrame or pl.Series
+        Evaluation target.
+    sample_weight : np.ndarray or None
+        One weight per evaluation row, or None when the forecaster has no
+        weighter, which is the common case.
+
+    """
+
+    X: pl.DataFrame
+    y: Any
+    sample_weight: np.ndarray | None = None
 
 
 class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -671,7 +696,7 @@ default="first_step"
         forecasting_horizon: StrictInt,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-        eval_data: tuple[pl.DataFrame, pl.DataFrame] | None = None,
+        eval_data: _EvalSet | None = None,
     ) -> BaseEstimator | list[BaseEstimator]:
         """Dispatch estimator fitting to the strategy-specific method.
 
@@ -692,7 +717,7 @@ default="first_step"
             Additional parameters to pass to the estimator's set_params method.
         estimator_fit_params : dict or None
             Additional parameters to pass to the estimator's fit method.
-        eval_data : tuple or None
+        eval_data : _EvalSet or None
             The stacked validation-holdout ``(X_tab_eval, y_tab_eval)``
             pair, or None when ``validation_size`` is unset.
 
@@ -1153,11 +1178,13 @@ default="first_step"
         that is given an evaluation set; ``**kwargs`` on ``Pipeline.fit``
         itself does not count as support.
 
-        Two delivery conventions exist. ``eval_set=[(X, y)]`` is what XGBoost
+        Three delivery conventions exist. ``eval_set=[(X, y)]`` is what XGBoost
         and CatBoost take, and what LightGBM took until it deprecated the
-        argument in favour of the keyword-only ``eval_X``/``eval_y`` pair. The
-        returned keyword tells `_eval_set_fit_params` which one to build, so
-        yohou follows the estimator rather than pinning it to either.
+        argument in favour of the keyword-only ``eval_X``/``eval_y`` pair.
+        scikit-learn's histogram gradient boosting takes ``X_val``/``y_val``
+        instead, since 1.7. The returned keyword tells `_eval_set_fit_params`
+        which one to build, so yohou follows the estimator rather than pinning
+        it to any of them.
 
         The ``**kwargs`` fallback is a permissive heuristic: an estimator that
         accepts arbitrary keywords is assumed to want ``eval_set``, because a
@@ -1177,8 +1204,8 @@ default="first_step"
         Returns
         -------
         str
-            ``"eval_set"`` or ``"eval_X"``, naming the convention the target's
-            fit accepts.
+            ``"eval_set"``, ``"eval_X"`` or ``"X_val"``, naming the convention
+            the target's fit accepts.
 
         Raises
         ------
@@ -1220,20 +1247,99 @@ default="first_step"
             return "eval_X"
         if "eval_set" in fit_sig.parameters:
             return "eval_set"
+        # scikit-learn's histogram gradient boosting, since 1.7. Declared
+        # parameters are checked before the **kwargs fallback below, which is
+        # only a guess.
+        if "X_val" in fit_sig.parameters and "y_val" in fit_sig.parameters:
+            return "X_val"
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values()):
             return "eval_set"
         raise ValueError(
-            f"{label or 'Estimator '}{target.__class__.__name__} does not support an eval_set "
-            f"fit parameter, so {source} cannot deliver an evaluation set to it. "
-            f"Use an estimator whose fit accepts eval_set (e.g. LightGBM, XGBoost, "
-            f"CatBoost), or {_holdout_remedy(source)}."
+            f"{label or 'Estimator '}{target.__class__.__name__} does not support an "
+            f"evaluation-set fit parameter, so {source} cannot deliver an evaluation set "
+            f"to it. Use an estimator whose fit accepts eval_set (e.g. XGBoost, CatBoost), "
+            f"eval_X/eval_y (LightGBM), or X_val/y_val (scikit-learn's histogram gradient "
+            f"boosting), or {_holdout_remedy(source)}."
         )
+
+    @staticmethod
+    def _eval_weight_key(target: BaseEstimator, dialect: str) -> str | None:
+        """Return the evaluation-weight keyword the target declares, if any.
+
+        Keyed on the dialect but confirmed against the signature: an estimator
+        can speak a dialect without accepting weights for it, and passing a
+        keyword its fit never declared would raise inside that fit.
+
+        Parameters
+        ----------
+        target : BaseEstimator
+            The estimator that receives the evaluation set (a ``Pipeline``'s
+            final step, where applicable).
+        dialect : str
+            ``"eval_set"``, ``"eval_X"`` or ``"X_val"``.
+
+        Returns
+        -------
+        str or None
+            The keyword to fill, or None when the target declares none.
+
+        """
+        expected = {"eval_X": "eval_sample_weight", "X_val": "sample_weight_val"}.get(dialect, "sample_weight_eval_set")
+        parameters = inspect.signature(target.fit).parameters  # ty: ignore[unresolved-attribute]
+        return expected if expected in parameters else None
+
+    @staticmethod
+    def _check_early_stopping_enabled(estimator: BaseEstimator, source: str = "validation_size") -> None:
+        """Reject an estimator that would ignore the evaluation set it is given.
+
+        Applies to the ``X_val`` dialect only. scikit-learn's histogram gradient
+        boosting raises when ``X_val`` arrives with ``early_stopping=False``,
+        and, worse, silently ignores the pair with the default ``"auto"``
+        whenever the training rows are below its internal threshold: the fit
+        succeeds, records an empty ``validation_score_``, and never stops early.
+        Requiring ``True`` is deliberately stricter than the library, which
+        would honour ``"auto"`` on a large enough series, so that the same
+        configuration does not work on one series and quietly do nothing on a
+        shorter one.
+
+        A search in ``validation="cv"`` mode needs no exemption: its adapter
+        sets ``early_stopping=True`` on the estimator before the forecaster ever
+        sees it, so this check passes by construction.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The estimator the validation holdout will deliver an evaluation set to.
+        source : str, default="validation_size"
+            The fit input supplying the evaluation window (``"validation_size"``
+            or ``"y_val"``), named in the error message.
+
+        Raises
+        ------
+        ValueError
+            If the target takes the ``X_val`` dialect and its ``early_stopping``
+            is anything other than ``True``.
+
+        """
+        if BaseReductionForecaster._check_eval_set_support(estimator, source) != "X_val":
+            return
+        target, label = BaseReductionForecaster._eval_set_target(estimator, source)
+        early_stopping = getattr(target, "early_stopping", True)
+        if early_stopping is not True:
+            raise ValueError(
+                f"{label or 'Estimator '}{target.__class__.__name__} has "
+                f"early_stopping={early_stopping!r}, so the evaluation set {source} "
+                f"builds would be rejected or silently ignored, and no early stopping "
+                f"would happen. Set early_stopping=True on the estimator, or "
+                f"{_holdout_remedy(source)}."
+            )
 
     @staticmethod
     def _eval_set_fit_params(
         estimator: BaseEstimator,
         X_eval: pl.DataFrame,
         y_eval: pl.DataFrame | pl.Series,
+        sample_weight: np.ndarray | None = None,
     ) -> dict[str, Any]:
         """Build the fit parameters delivering one evaluation pair.
 
@@ -1246,17 +1352,48 @@ default="first_step"
             Evaluation features, in the space the estimator trains in.
         y_eval : pl.DataFrame or pl.Series
             Evaluation target.
+        sample_weight : np.ndarray or None, default=None
+            One weight per evaluation row, delivered in whichever spelling the
+            estimator accepts. None passes no weights at all.
 
         Returns
         -------
         dict
-            ``{"eval_set": [(X, y)]}`` or ``{"eval_X": X, "eval_y": y}``,
-            whichever the estimator's fit accepts.
+            ``{"eval_set": [(X, y)]}``, ``{"eval_X": X, "eval_y": y}`` or
+            ``{"X_val": X, "y_val": y}``, whichever the estimator's fit accepts,
+            plus that dialect's evaluation-weight key when weights apply.
 
         """
-        if BaseReductionForecaster._check_eval_set_support(estimator) == "eval_X":
-            return {"eval_X": X_eval, "eval_y": y_eval}
-        return {"eval_set": [(X_eval, y_eval)]}
+        dialect = BaseReductionForecaster._check_eval_set_support(estimator)
+        pair: dict[str, Any] = (
+            {"eval_X": X_eval, "eval_y": y_eval}
+            if dialect == "eval_X"
+            else {"X_val": X_eval, "y_val": y_eval}
+            if dialect == "X_val"
+            else {"eval_set": [(X_eval, y_eval)]}
+        )
+        if sample_weight is None:
+            return pair
+
+        target = BaseReductionForecaster._eval_set_target(estimator, "validation_size")[0]
+        key = BaseReductionForecaster._eval_weight_key(target, dialect)
+        if key is not None:
+            # LightGBM and XGBoost take a list, one entry per evaluation set.
+            return {**pair, key: sample_weight if key == "sample_weight_val" else [sample_weight]}
+
+        catboost = _loaded_module("catboost")
+        if catboost is not None and isinstance(target, catboost.CatBoost):
+            # CatBoost declares no evaluation-weight parameter at all; a Pool is
+            # the only way to weight its evaluation set.
+            pool = catboost.Pool(X_eval.to_numpy(), label=np.asarray(y_eval), weight=sample_weight)
+            return {"eval_set": [pool]}
+
+        # Nothing here can carry the weights, so the pair is delivered in the
+        # estimator's own dialect without them. The caller was warned once per
+        # fit by `_warn_if_weights_cannot_be_delivered`, so this stays silent:
+        # this function runs once per estimator, and a per-step strategy would
+        # otherwise repeat the same warning H times.
+        return pair
 
     @staticmethod
     def _rebuild_pipeline(template: Pipeline, steps: list) -> Pipeline:
@@ -1292,7 +1429,7 @@ default="first_step"
         y_tab: pl.DataFrame | pl.Series,
         sample_weight: np.ndarray | None,
         fit_params: dict[str, Any],
-        eval_data: tuple[pl.DataFrame, pl.DataFrame | pl.Series],
+        eval_data: _EvalSet,
     ) -> Pipeline:
         """Fit a ``Pipeline`` in two phases so its final step evaluates in its own space.
 
@@ -1319,8 +1456,8 @@ default="first_step"
             because this path bypasses ``Pipeline.fit`` and its routing.
         fit_params : dict
             Additional fit parameters for the final step.
-        eval_data : tuple
-            The ``(X_eval, y_eval)`` pair, in the pipeline's input space.
+        eval_data : _EvalSet
+            The evaluation pair and its weights, in the pipeline's input space.
 
         Returns
         -------
@@ -1340,17 +1477,31 @@ default="first_step"
         # ever non-None downstream of it.
         final_name, final_estimator = estimator.steps[-1]
         prefix_steps = estimator.steps[:-1]
-        X_eval, y_eval = eval_data
+        X_eval, y_eval = eval_data.X, eval_data.y
 
         if prefix_steps:
             prefix = BaseReductionForecaster._rebuild_pipeline(estimator, prefix_steps)
             X_train_t = prefix.fit_transform(X_tab, y_tab)
             X_eval_t = prefix.transform(X_eval)
             prefix_steps = prefix.steps
+            # `Pipeline.fit` would push every input named in transform_input
+            # through the fitted prefix before the final step sees it. This path
+            # bypasses `Pipeline.fit`, so it does that itself; without this the
+            # caller's setting would be silently ignored. Only the caller's own
+            # parameters are transformed, never the evaluation pair yohou builds
+            # below, which is already in the transformed space.
+            named = estimator.get_params(deep=False).get("transform_input") or ()
+            if named:
+                fit_params = {
+                    key: prefix.transform(value) if key in named else value for key, value in fit_params.items()
+                }
         else:
             X_train_t, X_eval_t = X_tab, X_eval
 
-        final_fit_params = {**fit_params, **self._eval_set_fit_params(final_estimator, X_eval_t, y_eval)}
+        final_fit_params = {
+            **fit_params,
+            **self._eval_set_fit_params(final_estimator, X_eval_t, y_eval, eval_data.sample_weight),
+        }
         if sample_weight is not None:
             try:
                 final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
@@ -1475,6 +1626,7 @@ default="first_step"
         """
         self._reject_raw_eval_params(params, "validation_size")
         self._check_eval_set_support(self.estimator)
+        self._check_early_stopping_enabled(self.estimator)
         self._validate_validation_split(y, forecasting_horizon)
         return self._split_validation_tail(y, X_actual)
 
@@ -1493,13 +1645,29 @@ default="first_step"
         Raises
         ------
         ValueError
-            If ``params`` contains ``eval_set``, ``eval_X``, or ``eval_y``.
+            If ``params`` contains any evaluation-set or evaluation-weight key
+            yohou fills itself.
 
         """
-        # Both delivery conventions must be rejected, not just eval_set: the
-        # internally built pair is spread last over the caller's params, so an
-        # unguarded key would be silently overwritten rather than honoured.
-        conflicting = [key for key in ("eval_set", "eval_X", "eval_y") if key in params]
+        # Every delivery convention must be rejected, not just eval_set, and so
+        # must the evaluation-weight keys: the internally built pair is spread
+        # last over the caller's params, so an unguarded key would be silently
+        # overwritten rather than honoured. ``y_val`` is absent from this list
+        # on purpose: it is a named parameter of the forecaster's own fit, so it
+        # binds there and can never reach ``**params``.
+        conflicting = [
+            key
+            for key in (
+                "eval_set",
+                "eval_X",
+                "eval_y",
+                "X_val",
+                "eval_sample_weight",
+                "sample_weight_val",
+                "sample_weight_eval_set",
+            )
+            if key in params
+        ]
         if conflicting:
             state = "is set" if source == "validation_size" else "is given"
             raise ValueError(
@@ -1672,14 +1840,23 @@ default="first_step"
             )
         self._reject_raw_eval_params(params, "y_val")
         self._check_eval_set_support(self.estimator, "y_val")
+        self._check_early_stopping_enabled(self.estimator, "y_val")
         self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
 
         X_forecast_eval = X_forecast
         if X_forecast_val is not None:
-            X_forecast_eval = (
-                X_forecast_val
-                if X_forecast is None
-                else pl.concat([X_forecast, X_forecast_val], how="vertical_relaxed").unique(maintain_order=True)
+            if X_forecast is None:
+                # Without X_forecast at fit there is no forecast transformer and
+                # no forecast-derived feature, so these vintages would be
+                # accepted and then silently discarded.
+                raise ValueError(
+                    "X_forecast_val was given but X_forecast was not: the forecaster was "
+                    "not fitted with external forecasts, so the window's vintages would not "
+                    "reach any feature. Pass X_forecast for the training rows too, or drop "
+                    "X_forecast_val."
+                )
+            X_forecast_eval = pl.concat([X_forecast, X_forecast_val], how="vertical_relaxed").unique(
+                maintain_order=True
             )
         return y, X_actual, y_val, X_actual_val, X_forecast_eval, "y_val"
 
@@ -1918,7 +2095,7 @@ default="first_step"
         y_t_tail: pl.DataFrame | dict[str, pl.DataFrame],
         X_t_tail: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
+    ) -> _EvalSet:
         """Tabularize the boundary window into the evaluation pair.
 
         In strict mode (``validation_overlap=False``) the evaluation anchors
@@ -1943,10 +2120,17 @@ default="first_step"
 
         Returns
         -------
-        X_tab_eval : pl.DataFrame
-            Evaluation feature matrix, stacked per group.
-        y_tab_eval : pl.DataFrame
-            Evaluation target matrix, stacked per group.
+        _EvalSet
+            The evaluation pair, stacked per group, with one sample weight per
+            evaluation row when the forecaster has a weighter.
+
+        Notes
+        -----
+        The weights are computed over the same concatenated window the pair is
+        tabularized from, the last ``head_rows`` head rows followed by the tail,
+        not over the tail alone: an evaluation row reaches back into the head
+        for its lag window, so the tail alone yields ``head_rows`` too few
+        values.
 
         """
         # A reduction forecaster always reports requires_exogenous=True, and
@@ -1956,6 +2140,9 @@ default="first_step"
         # `_build_validation_eval_data` before the tail was observed.
         assert X_t is not None
         head_rows = 1 if not self.validation_overlap else forecasting_horizon
+        # The frames the pair is tabularized from, kept so the evaluation
+        # weights are computed over exactly the same rows.
+        windows: dict[str, pl.DataFrame] = {}
 
         def one(
             y_t_head_local: pl.DataFrame,
@@ -1963,6 +2150,7 @@ default="first_step"
             y_t_tail_local: pl.DataFrame,
             X_t_tail_local: pl.DataFrame,
             y_columns: list[str] | None,
+            group_key: str,
         ) -> tuple[pl.DataFrame, pl.DataFrame]:
             """Tabularize one group's boundary window into its eval pair."""
             window_y = pl.concat(
@@ -1973,6 +2161,7 @@ default="first_step"
                 [X_t_head_local[-head_rows:], X_t_tail_local.select(X_t_head_local.columns)],
                 how="vertical",
             )
+            windows[group_key] = window_y
             return self._get_tabularized_dataset(window_y, window_X, forecasting_horizon, y_columns=y_columns)
 
         if self.groups_ is None:
@@ -1980,7 +2169,8 @@ default="first_step"
             assert isinstance(X_t, pl.DataFrame)
             assert isinstance(y_t_tail, pl.DataFrame)
             assert isinstance(X_t_tail, pl.DataFrame)
-            return one(y_t, X_t, y_t_tail, X_t_tail, y_columns=None)
+            X_tab_eval, y_tab_eval = one(y_t, X_t, y_t_tail, X_t_tail, y_columns=None, group_key="")
+            return self._with_eval_weights(X_tab_eval, y_tab_eval, windows[""], forecasting_horizon)
 
         assert isinstance(y_t, dict)
         assert isinstance(X_t, dict)
@@ -1995,10 +2185,81 @@ default="first_step"
                 y_t_tail[panel_group_name],
                 X_t_tail[panel_group_name],
                 y_columns=y_columns,
+                group_key=panel_group_name,
             )
             X_tab_list.append(X_tab_local)
             y_tab_list.append(y_tab_local)
-        return pl.concat(X_tab_list), pl.concat(y_tab_list)
+        return self._with_eval_weights(pl.concat(X_tab_list), pl.concat(y_tab_list), windows, forecasting_horizon)
+
+    def _warn_if_weights_cannot_be_delivered(self) -> None:
+        """Warn once when the estimator has nowhere to put evaluation weights.
+
+        Emitted here, where the weights are computed once per fit, rather than
+        where they are delivered, which runs once per estimator and would repeat
+        the same warning for every step of a per-step strategy.
+        """
+        target = BaseReductionForecaster._eval_set_target(self.estimator, "validation_size")[0]
+        dialect = BaseReductionForecaster._check_eval_set_support(self.estimator)
+        if BaseReductionForecaster._eval_weight_key(target, dialect) is not None:
+            return
+        catboost = _loaded_module("catboost")
+        if catboost is not None and isinstance(target, catboost.CatBoost):
+            return
+        warnings.warn(
+            f"{target.__class__.__name__} accepts an evaluation set but declares no "
+            f"evaluation-weight parameter, so its stopping metric is unweighted while its "
+            f"training loss is weighted. Remove the weighter, or use an estimator whose fit "
+            f"accepts eval_sample_weight, sample_weight_eval_set or sample_weight_val.",
+            UnweightedEvaluationSetWarning,
+            stacklevel=2,
+        )
+
+    def _with_eval_weights(
+        self,
+        X_tab_eval: pl.DataFrame,
+        y_tab_eval: pl.DataFrame,
+        windows: pl.DataFrame | dict[str, pl.DataFrame],
+        forecasting_horizon: int,
+    ) -> _EvalSet:
+        """Attach evaluation-row sample weights to the evaluation pair.
+
+        The weighters are the ones fitted on the training rows; they are only
+        applied here, never refitted, so the holdout stays leak-free. Weighting
+        the evaluation rows is what keeps the estimator's stopping metric on the
+        same basis as the training loss it is fitting.
+
+        Parameters
+        ----------
+        X_tab_eval : pl.DataFrame
+            Evaluation feature matrix.
+        y_tab_eval : pl.DataFrame
+            Evaluation target matrix.
+        windows : pl.DataFrame or dict[str, pl.DataFrame]
+            The transformed window(s) the pair was tabularized from, global or
+            per group.
+        forecasting_horizon : int
+            Number of steps to forecast.
+
+        Returns
+        -------
+        _EvalSet
+            The pair, with weights when the forecaster has a weighter.
+
+        Raises
+        ------
+        AssertionError
+            If the weights do not align one-to-one with the evaluation rows.
+
+        """
+        sample_weight = self._process_fit_weights(windows, forecasting_horizon)
+        if sample_weight is not None:
+            self._warn_if_weights_cannot_be_delivered()
+            # A silent misalignment would weight the wrong rows, so it is a
+            # hard failure rather than a broadcast.
+            assert len(sample_weight) == X_tab_eval.height, (
+                f"evaluation weights ({len(sample_weight)}) do not match evaluation rows ({X_tab_eval.height})."
+            )
+        return _EvalSet(X_tab_eval, y_tab_eval, sample_weight)
 
     def _build_validation_eval_data(
         self,
@@ -2009,7 +2270,7 @@ default="first_step"
         forecasting_horizon: int,
         X_future: pl.DataFrame | None,
         X_forecast: pl.DataFrame | None,
-    ) -> tuple[pl.DataFrame, pl.DataFrame]:
+    ) -> _EvalSet:
         """Observe the tail and build the evaluation pair, in one call.
 
         Parameters
@@ -2031,8 +2292,9 @@ default="first_step"
 
         Returns
         -------
-        tuple[pl.DataFrame, pl.DataFrame]
-            The stacked ``(X_tab_eval, y_tab_eval)`` pair.
+        _EvalSet
+            The stacked evaluation pair, with one sample weight per row when
+            the forecaster has a weighter.
 
         Raises
         ------
@@ -2115,7 +2377,7 @@ default="first_step"
         sample_weight: np.ndarray | None,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-        eval_data: tuple[pl.DataFrame, pl.DataFrame | pl.Series] | None = None,
+        eval_data: _EvalSet | None = None,
     ) -> BaseEstimator:
         """Clone, configure, and fit a single estimator instance.
 
@@ -2131,7 +2393,7 @@ default="first_step"
             Parameters to pass to set_params.
         estimator_fit_params : dict or None
             Additional parameters for the fit call.
-        eval_data : tuple or None
+        eval_data : _EvalSet or None
             The ``(X_eval, y_eval)`` validation-holdout pair, delivered as
             the estimator's ``eval_set`` fit argument. Shaped exactly like
             ``(X_tab, y_tab)``. A ``Pipeline`` estimator is fitted in two
@@ -2153,7 +2415,10 @@ default="first_step"
         if sample_weight is not None:
             fit_params = {**fit_params, **self._resolve_sample_weight_params(estimator, sample_weight)}
         if eval_data is not None:
-            fit_params = {**fit_params, **self._eval_set_fit_params(estimator, *eval_data)}
+            fit_params = {
+                **fit_params,
+                **self._eval_set_fit_params(estimator, eval_data.X, eval_data.y, eval_data.sample_weight),
+            }
 
         estimator.fit(X_tab, y_tab, **fit_params)
         return estimator
@@ -2165,7 +2430,7 @@ default="first_step"
         forecasting_horizon: StrictInt,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-        eval_data: tuple[pl.DataFrame, pl.DataFrame] | None = None,
+        eval_data: _EvalSet | None = None,
     ) -> BaseEstimator:
         """Fit a single multi-output estimator on tabularized time series data.
 
@@ -2184,7 +2449,7 @@ default="first_step"
             Additional parameters to pass to the estimator's set_params method.
         estimator_fit_params : dict or None
             Additional parameters to pass to the estimator's fit method.
-        eval_data : tuple or None
+        eval_data : _EvalSet or None
             The stacked validation-holdout ``(X_tab_eval, y_tab_eval)``
             pair, delivered whole (full-width target) as ``eval_set``.
 
@@ -2209,8 +2474,10 @@ default="first_step"
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
         eval_pair = None
         if eval_data is not None:
-            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, is_validation=True)
-            eval_pair = (X_eval, y_eval)
+            X_eval, y_eval, w_eval = self._apply_nan_handling(
+                eval_data.X, eval_data.y, eval_data.sample_weight, is_validation=True
+            )
+            eval_pair = _EvalSet(X_eval, y_eval, w_eval)
         return self._fit_single_estimator(
             X_tab,
             y_tab,
@@ -2320,7 +2587,7 @@ default="first_step"
         forecasting_horizon: StrictInt,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-        eval_data: tuple[pl.DataFrame, pl.DataFrame] | None = None,
+        eval_data: _EvalSet | None = None,
     ) -> list[BaseEstimator]:
         """Fit H independent estimators, one per horizon step.
 
@@ -2341,7 +2608,7 @@ default="first_step"
             Additional parameters to pass to each estimator's set_params.
         estimator_fit_params : dict or None
             Additional parameters to pass to each estimator's fit.
-        eval_data : tuple or None
+        eval_data : _EvalSet or None
             The stacked validation-holdout pair; each step's estimator
             receives its own step's evaluation targets, with the same
             step-feature filtering applied to the evaluation features.
@@ -2380,12 +2647,19 @@ default="first_step"
             )
             eval_pair = None
             if eval_data is not None:
-                y_eval_step = self._select_step_target(eval_data[1], step_col_names)
-                X_eval_step = self._filter_step_features(eval_data[0], step + 1)
-                X_eval_step, y_eval_step, _ = self._apply_nan_handling(
-                    X_eval_step, y_eval_step, None, context=f" (step {step + 1})", is_validation=True
+                y_eval_step = self._select_step_target(eval_data.y, step_col_names)
+                X_eval_step = self._filter_step_features(eval_data.X, step + 1)
+                # Each step filters its own rows, so the one row-indexed weight
+                # vector is filtered alongside that step's survivors; different
+                # steps can therefore end up with different lengths.
+                X_eval_step, y_eval_step, w_eval_step = self._apply_nan_handling(
+                    X_eval_step,
+                    y_eval_step,
+                    eval_data.sample_weight,
+                    context=f" (step {step + 1})",
+                    is_validation=True,
                 )
-                eval_pair = (X_eval_step, y_eval_step)
+                eval_pair = _EvalSet(X_eval_step, y_eval_step, w_eval_step)
             return self._fit_single_estimator(
                 X_tab_step,
                 y_step,
@@ -2407,7 +2681,7 @@ default="first_step"
         forecasting_horizon: StrictInt,
         estimator_params: dict[str, Any] | None = None,
         estimator_fit_params: dict[str, Any] | None = None,
-        eval_data: tuple[pl.DataFrame, pl.DataFrame] | None = None,
+        eval_data: _EvalSet | None = None,
     ) -> list[BaseEstimator]:
         """Fit H estimators sequentially with recursive feature augmentation.
 
@@ -2432,7 +2706,7 @@ default="first_step"
             Additional parameters to pass to each estimator's set_params.
         estimator_fit_params : dict or None
             Additional parameters to pass to each estimator's fit.
-        eval_data : tuple or None
+        eval_data : _EvalSet or None
             The stacked validation-holdout pair; evaluation features are
             augmented with earlier-step predictions in lockstep with the
             training features.
@@ -2467,8 +2741,11 @@ default="first_step"
 
         X_eval_aug: pl.DataFrame | None = None
         y_eval_tab: pl.DataFrame | None = None
+        w_eval_dir_rec: np.ndarray | None = None
         if eval_data is not None:
-            X_eval, y_eval, _ = self._apply_nan_handling(eval_data[0], eval_data[1], None, is_validation=True)
+            X_eval, y_eval, w_eval_dir_rec = self._apply_nan_handling(
+                eval_data.X, eval_data.y, eval_data.sample_weight, is_validation=True
+            )
             assert isinstance(y_eval, pl.DataFrame)
             X_eval_aug = X_eval.clone()
             y_eval_tab = y_eval
@@ -2481,7 +2758,7 @@ default="first_step"
             eval_pair = None
             if X_eval_aug is not None:
                 assert y_eval_tab is not None
-                eval_pair = (X_eval_aug, self._select_step_target(y_eval_tab, step_col_names))
+                eval_pair = _EvalSet(X_eval_aug, self._select_step_target(y_eval_tab, step_col_names), w_eval_dir_rec)
             est = self._fit_single_estimator(
                 X_aug,
                 y_step,

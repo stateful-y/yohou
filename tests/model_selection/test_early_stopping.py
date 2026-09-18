@@ -6,6 +6,7 @@ the library's own truncated prediction, and refit preparation against a model
 trained for the same number of rounds.
 """
 
+import pickle
 import sys
 from unittest import mock
 
@@ -15,17 +16,23 @@ import numpy as np
 import pytest
 import xgboost
 from sklearn.base import clone
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.ensemble import (
+    GradientBoostingRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from yohou.model_selection import (
     BaseEarlyStoppingAdapter,
     CatBoostEarlyStoppingAdapter,
+    HistGradientBoostingEarlyStoppingAdapter,
     LightGBMEarlyStoppingAdapter,
     XGBoostEarlyStoppingAdapter,
 )
 from yohou.model_selection.early_stopping import _resolve_early_stopping_adapter
+from yohou.model_selection.utils import _select_shared_rounds
 
 PATIENCE = 10
 
@@ -65,6 +72,15 @@ def _regressor(library: str, **overrides):
             "n_jobs": 1,
         }
         return xgboost.XGBRegressor(**{**params, **overrides})
+    if library == "sklearn":
+        params = {
+            "max_iter": 400,
+            "learning_rate": 0.3,
+            "early_stopping": True,
+            "n_iter_no_change": PATIENCE,
+            "random_state": 0,
+        }
+        return HistGradientBoostingRegressor(**{**params, **overrides})
     params = {
         "iterations": 400,
         "learning_rate": 0.3,
@@ -95,6 +111,15 @@ def _classifier(library: str):
             random_state=0,
             n_jobs=1,
         )
+    if library == "sklearn":
+        return HistGradientBoostingClassifier(
+            max_iter=300,
+            learning_rate=0.3,
+            early_stopping=True,
+            n_iter_no_change=PATIENCE,
+            scoring="roc_auc",
+            random_state=0,
+        )
     return catboost.CatBoostClassifier(
         iterations=300,
         learning_rate=0.3,
@@ -109,17 +134,28 @@ ADAPTERS = {
     "lightgbm": LightGBMEarlyStoppingAdapter,
     "xgboost": XGBoostEarlyStoppingAdapter,
     "catboost": CatBoostEarlyStoppingAdapter,
+    "sklearn": HistGradientBoostingEarlyStoppingAdapter,
 }
 LIBRARIES = list(ADAPTERS)
+# scikit-learn stores a score on its validation set, the other three store a
+# loss, so the regression curve's direction is per library.
+CURVE_HIGHER_IS_BETTER = {"lightgbm": False, "xgboost": False, "catboost": False, "sklearn": True}
+# The parameter each library spells its round ceiling with.
+ROUND_PARAM = {"lightgbm": "n_estimators", "xgboost": "n_estimators", "catboost": "iterations", "sklearn": "max_iter"}
 
 
 def _fit_eval(estimator, fit_params, data):
     X_train, y_train, X_eval, y_eval = data
+    if isinstance(estimator, HistGradientBoostingRegressor | HistGradientBoostingClassifier):
+        # scikit-learn speaks the third dialect: X_val/y_val, not eval_set.
+        return estimator.fit(X_train, y_train, X_val=X_eval, y_val=y_eval, **fit_params)
     extra = {"verbose": False} if isinstance(estimator, xgboost.XGBModel) else {}
     return estimator.fit(X_train, y_train, eval_set=[(X_eval, y_eval)], **fit_params, **extra)
 
 
 def _rounds(fitted) -> int:
+    if isinstance(fitted, HistGradientBoostingRegressor | HistGradientBoostingClassifier):
+        return fitted.n_iter_
     if isinstance(fitted, lightgbm.LGBMModel):
         return fitted.booster_.current_iteration()
     if isinstance(fitted, xgboost.XGBModel):
@@ -128,6 +164,11 @@ def _rounds(fitted) -> int:
 
 
 def _explicit_truncated(fitted, X, k, method="predict"):
+    if isinstance(fitted, HistGradientBoostingRegressor | HistGradientBoostingClassifier):
+        # No truncated-prediction argument exists; the staged sequence is the
+        # library's own answer for "the model after k rounds".
+        staged = getattr(fitted, f"staged_{method}")(X)
+        return next(step for i, step in enumerate(staged, start=1) if i == k)
     if isinstance(fitted, lightgbm.LGBMModel):
         return getattr(fitted, method)(X, num_iteration=k)
     if isinstance(fitted, xgboost.XGBModel):
@@ -139,6 +180,9 @@ def _library_best_round(library, data) -> int:
     """The best round the library itself reports with its own early stopping."""
     estimator = _regressor(library)
     fitted = _fit_eval(estimator, {}, data)
+    if library == "sklearn":
+        # Entry 0 is the score before any iteration, and higher is better.
+        return int(np.argmax(np.asarray(fitted.validation_score_)[1:])) + 1
     if library == "lightgbm":
         return fitted.best_iteration_
     if library == "xgboost":
@@ -165,8 +209,17 @@ class TestResolution:
         assert isinstance(_resolve_early_stopping_adapter(pipeline), ADAPTERS[library])
 
     def test_unsupported_estimator(self):
-        with pytest.raises(ValueError, match=r"HistGradientBoostingRegressor.*early_stopping_adapter"):
-            _resolve_early_stopping_adapter(HistGradientBoostingRegressor())
+        # GradientBoostingRegressor takes no validation data at all (only a
+        # monitor callback), so no adapter can reach it.
+        with pytest.raises(ValueError, match=r"GradientBoostingRegressor.*early_stopping_adapter"):
+            _resolve_early_stopping_adapter(GradientBoostingRegressor())
+
+    def test_rejection_names_every_supported_library(self):
+        with pytest.raises(ValueError) as excinfo:
+            _resolve_early_stopping_adapter(GradientBoostingRegressor())
+        message = str(excinfo.value)
+        for library in ("LightGBM", "XGBoost", "CatBoost", "histogram gradient boosting"):
+            assert library in message
 
     def test_missing_library_does_not_import(self):
         with mock.patch.dict(sys.modules, {"xgboost": None, "catboost": None}):
@@ -211,7 +264,7 @@ class TestFoldFitReachesTheCeiling:
         fitted = _fit_eval(prepared, fit_params, regression_data)
         curve, higher_is_better = adapter.stopping_curve(fitted)
         library_best = _library_best_round(library, regression_data)
-        assert higher_is_better is False
+        assert higher_is_better is CURVE_HIGHER_IS_BETTER[library]
         assert _best_round(curve[: library_best + PATIENCE], higher_is_better) == library_best
 
     def test_xgboost_early_stopping_callback_keeps_its_direction(self, regression_data):
@@ -255,7 +308,7 @@ class TestTruncation:
                 iterations=30, learning_rate=0.3, verbose=False, random_seed=0, thread_count=1
             )
         else:
-            estimator = clone(_classifier(library)).set_params(n_estimators=30)
+            estimator = clone(_classifier(library)).set_params(**{ROUND_PARAM[library]: 30})
         prepared, fit_params = adapter.prepare_fold_fit(estimator)
         fitted = _fit_eval(prepared, fit_params, classification_data)
         X_eval = classification_data[2]
@@ -470,3 +523,50 @@ class TestAdapterErrorPaths:
     def test_xgboost_refit_with_only_early_stopping_clears_callbacks(self):
         estimator = xgboost.XGBRegressor(callbacks=[xgboost.callback.EarlyStopping(rounds=5)])
         assert XGBoostEarlyStoppingAdapter().prepare_refit(estimator, 15).get_params()["callbacks"] is None
+
+
+class TestHistGradientBoostingSpecifics:
+    """Behaviour particular to the scikit-learn adapter."""
+
+    def test_truncation_survives_pickling(self, regression_data):
+        adapter = HistGradientBoostingEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(_regressor("sklearn", max_iter=40))
+        fitted = _fit_eval(prepared, fit_params, regression_data)
+        X_eval = regression_data[2]
+        adapter.truncate(fitted, 12)
+        before = fitted.predict(X_eval)
+        restored = pickle.loads(pickle.dumps(fitted))
+        np.testing.assert_array_equal(restored.predict(X_eval), before)
+        assert restored.n_iter_ == 12
+
+    def test_selected_round_follows_the_reported_direction(self):
+        """A wrong direction would pick the opposite end of the curve.
+
+        The adapter reports higher-is-better, so the shared-round selection must
+        take the curve's maximum. This pins the orientation itself: nothing else
+        in the suite fails if it is reported backwards.
+        """
+        # Best value at round 3 (index 2) on every fold.
+        curve = np.array([0.1, 0.5, 0.9, 0.4, 0.2])
+        rounds, at_boundary = _select_shared_rounds({"pos": [(curve, True), (curve, True)]})
+        assert rounds["pos"] == 3
+        assert at_boundary["pos"] is False
+        # The same curve read as a loss would choose round 1, so the two
+        # directions are genuinely distinguishable on this input.
+        flipped, _ = _select_shared_rounds({"pos": [(curve, False), (curve, False)]})
+        assert flipped["pos"] == 1
+
+    def test_fold_fit_reports_higher_is_better(self, regression_data):
+        adapter = HistGradientBoostingEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(_regressor("sklearn", max_iter=30))
+        fitted = _fit_eval(prepared, fit_params, regression_data)
+        _, higher_is_better = adapter.stopping_curve(fitted)
+        assert higher_is_better is True
+
+    def test_curve_without_an_evaluation_set_is_rejected(self, regression_data):
+        """With early_stopping='auto' below the threshold, no curve is recorded."""
+        X_train, y_train, X_eval, y_eval = regression_data
+        estimator = HistGradientBoostingRegressor(max_iter=20, early_stopping="auto")
+        estimator.fit(X_train, y_train, X_val=X_eval, y_val=y_eval)
+        with pytest.raises(ValueError, match="no validation curve"):
+            HistGradientBoostingEarlyStoppingAdapter().stopping_curve(estimator)

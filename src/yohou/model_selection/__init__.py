@@ -3,6 +3,7 @@
 from .early_stopping import (
     BaseEarlyStoppingAdapter,
     CatBoostEarlyStoppingAdapter,
+    HistGradientBoostingEarlyStoppingAdapter,
     LightGBMEarlyStoppingAdapter,
     XGBoostEarlyStoppingAdapter,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "BaseSearchCV",
     "BaseSplitter",
     "CatBoostEarlyStoppingAdapter",
+    "HistGradientBoostingEarlyStoppingAdapter",
     "ExpandingWindowSplitter",
     "GridSearchCV",
     "LightGBMEarlyStoppingAdapter",

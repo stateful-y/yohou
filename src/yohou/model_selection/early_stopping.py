@@ -28,16 +28,18 @@ from __future__ import annotations
 import abc
 import importlib
 import numbers
-import sys
 from typing import Any
 
 import numpy as np
 from sklearn.base import BaseEstimator, clone
 from sklearn.pipeline import Pipeline
 
+from yohou.utils._modules import _loaded_module
+
 __all__ = [
     "BaseEarlyStoppingAdapter",
     "CatBoostEarlyStoppingAdapter",
+    "HistGradientBoostingEarlyStoppingAdapter",
     "LightGBMEarlyStoppingAdapter",
     "XGBoostEarlyStoppingAdapter",
 ]
@@ -171,26 +173,6 @@ class BaseEarlyStoppingAdapter(BaseEstimator, abc.ABC):
             An unfitted, configured clone that fits without an evaluation set.
 
         """
-
-
-def _loaded_module(name: str) -> Any:
-    """Return an already imported library module, without importing it.
-
-    An estimator of a library can only exist once that library is imported, so
-    an absent module means the estimator cannot belong to it.
-
-    Parameters
-    ----------
-    name : str
-        Top-level module name.
-
-    Returns
-    -------
-    module or None
-        The module, or None when it has not been imported.
-
-    """
-    return sys.modules.get(name)
 
 
 def _check_rounds(fitted_rounds: int, n_rounds: int, library: str) -> None:
@@ -770,10 +752,171 @@ class CatBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         return self._without_stopping(estimator, {round_param: int(n_rounds), "use_best_model": False})
 
 
+class HistGradientBoostingEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
+    """Early-stopping adapter for scikit-learn's histogram gradient boosting.
+
+    ``HistGradientBoostingRegressor`` and ``HistGradientBoostingClassifier``
+    only record a stopping curve when early stopping is switched on, and they
+    reject an evaluation set outright when it is switched off. Fold fits
+    therefore set ``early_stopping=True`` with ``n_iter_no_change`` above
+    ``max_iter``, whatever the candidate carried: the patience can never expire,
+    so every round up to the ceiling is trained and ``validation_score_`` holds
+    the whole curve.
+
+    scikit-learn records a *score*, so the curve is higher-is-better whatever
+    the configured ``scoring``. Its first entry is the score before any
+    iteration, which the curve drops so that entry i is the model after round
+    i+1, matching every other adapter.
+
+    Truncation slices the fitted predictor list, the only route the library
+    offers: it exposes no truncated-prediction argument. ``n_iter_`` follows
+    the cut because it is derived from that list.
+
+    See Also
+    --------
+    - [`BaseEarlyStoppingAdapter`][yohou.model_selection.BaseEarlyStoppingAdapter] : The adapter contract.
+
+    """
+
+    def supports(self, estimator: BaseEstimator) -> bool:
+        """Return whether the estimator is a histogram gradient boosting model.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The unfitted estimator that receives the evaluation set.
+
+        Returns
+        -------
+        bool
+            True for ``HistGradientBoostingRegressor`` and
+            ``HistGradientBoostingClassifier``.
+
+        """
+        # scikit-learn is a hard dependency, so this import always resolves;
+        # it is local to keep the module's import graph flat.
+        from sklearn.ensemble import HistGradientBoostingClassifier, HistGradientBoostingRegressor
+
+        return isinstance(estimator, HistGradientBoostingRegressor | HistGradientBoostingClassifier)
+
+    def validate(self, estimator: BaseEstimator) -> None:
+        """Accept every configuration; nothing here blocks the shared-round mode.
+
+        In particular an ``early_stopping`` of ``False`` or ``"auto"`` is not
+        rejected: `prepare_fold_fit` switches it on, which is what the mode
+        promises to do with whatever stopping settings the candidate carries.
+        The holdout path, which has no adapter to correct the estimator, is the
+        one that rejects those values.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The unfitted estimator that receives the evaluation set.
+
+        """
+
+    def prepare_fold_fit(self, estimator: BaseEstimator) -> tuple[BaseEstimator, dict[str, Any]]:
+        """Return a clone that trains every round and records the curve.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The candidate's estimator.
+
+        Returns
+        -------
+        BaseEstimator
+            A clone with early stopping on and a patience above the ceiling.
+        dict
+            No extra fit parameters; the evaluation set is delivered by the
+            forecaster in the ``X_val`` dialect.
+
+        """
+        prepared = clone(estimator)
+        max_iter = int(prepared.get_params()["max_iter"])
+        # Patience above the ceiling cannot expire, so switching early stopping
+        # on buys the curve without ever shortening the fit.
+        prepared.set_params(early_stopping=True, n_iter_no_change=max_iter + 1)
+        return prepared, {}
+
+    def stopping_curve(self, fitted: BaseEstimator) -> tuple[np.ndarray, bool]:
+        """Return the validation curve and its direction.
+
+        Parameters
+        ----------
+        fitted : BaseEstimator
+            A fitted histogram gradient boosting estimator.
+
+        Returns
+        -------
+        np.ndarray
+            ``validation_score_`` without its pre-iteration baseline entry.
+        bool
+            Always True: scikit-learn stores a score, not a loss.
+
+        Raises
+        ------
+        ValueError
+            If the model was fitted without an evaluation set, so no curve was
+            recorded.
+
+        """
+        model: Any = fitted
+        curve = np.asarray(getattr(model, "validation_score_", []), dtype=float)
+        if curve.size <= 1:
+            raise ValueError(
+                "This scikit-learn model recorded no validation curve. Its fit needs an "
+                "evaluation set and early_stopping=True; with early_stopping='auto' and "
+                "fewer rows than the library's automatic threshold the evaluation set is "
+                "accepted and then ignored."
+            )
+        # Entry 0 is the score before any iteration, which is not a round any
+        # model here can express.
+        return curve[1:], True
+
+    def truncate(self, fitted: BaseEstimator, n_rounds: int) -> None:
+        """Cut the fitted model to its first ``n_rounds`` rounds, in place.
+
+        Parameters
+        ----------
+        fitted : BaseEstimator
+            A fitted histogram gradient boosting estimator. Mutated in place.
+        n_rounds : int
+            Number of rounds to keep.
+
+        """
+        model: Any = fitted
+        _check_rounds(len(model._predictors), n_rounds, "scikit-learn")
+        # The library offers no truncated-prediction argument, so the predictor
+        # list is cut directly. ``n_iter_`` is derived from it and follows.
+        model._predictors = model._predictors[: int(n_rounds)]
+
+    def prepare_refit(self, estimator: BaseEstimator, n_rounds: int) -> BaseEstimator:
+        """Return a clone that trains exactly ``n_rounds`` rounds with no validation set.
+
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The candidate's estimator.
+        n_rounds : int
+            The shared round count chosen across folds.
+
+        Returns
+        -------
+        BaseEstimator
+            A clone with ``max_iter=n_rounds`` and early stopping off.
+
+        """
+        prepared = clone(estimator)
+        prepared.set_params(max_iter=int(n_rounds), early_stopping=False)
+        return prepared
+
+
 _BUILTIN_ADAPTERS: tuple[type[BaseEarlyStoppingAdapter], ...] = (
     LightGBMEarlyStoppingAdapter,
     XGBoostEarlyStoppingAdapter,
     CatBoostEarlyStoppingAdapter,
+    HistGradientBoostingEarlyStoppingAdapter,
 )
 
 
@@ -853,6 +996,7 @@ def _resolve_early_stopping_adapter(
             return candidate
     raise ValueError(
         f"validation='cv' has no early-stopping adapter for {target.__class__.__name__}. Built-in adapters "
-        f"cover LightGBM, XGBoost, and CatBoost estimators; for another estimator, subclass "
+        f"cover LightGBM, XGBoost, CatBoost, and scikit-learn histogram gradient boosting "
+        f"estimators; for another estimator, subclass "
         f"BaseEarlyStoppingAdapter and pass an instance as early_stopping_adapter."
     )

@@ -87,8 +87,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
     validation_size : int or None, default=None
         Number of trailing time steps (per group on panel data) to hold out
         from classifier training and deliver to the wrapped estimator's
-        ``fit`` as ``eval_set``, enabling estimator-side early stopping
-        (LightGBM, XGBoost, CatBoost). Class discovery and label encoding
+        ``fit`` in whichever evaluation-set dialect that estimator declares
+        (``eval_set``, ``eval_X``/``eval_y``, or ``X_val``/``y_val``), enabling
+        estimator-side early stopping (LightGBM, XGBoost, CatBoost, and
+        scikit-learn's histogram gradient boosting, which additionally requires
+        ``early_stopping=True``). Class discovery and label encoding
         use the remaining head only, so a class occurring only inside the
         tail raises ``ValueError``. Transformers and sample weights are
         fitted on the head only too; the held-out tail is then observed, so
@@ -123,6 +126,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         Per-timestep training-sample weighter (e.g.
         [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter]).
         Its parameters are tunable via search. If None, samples are unweighted.
+        With ``validation_size`` or ``y_val``, the evaluation rows are weighted
+        by the same weighter, so early stopping judges the model on the basis
+        it is fitted on; an estimator that accepts an evaluation set but
+        declares no evaluation-weight parameter receives it unweighted, with an
+        ``UnweightedEvaluationSetWarning``.
     vintage_weighter : BaseWeighter or None, default=None
         Per-vintage training-sample weighter, combined multiplicatively with
         ``time_weighter``. If None, no vintage weighting is applied.
@@ -276,9 +284,12 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             Target rows of an evaluation window that starts one interval
             after ``y`` ends, with the same columns as ``y``. Its rows are
             turned into evaluation rows through the transformers fitted on
-            ``y`` and delivered to the wrapped estimator's ``fit`` as
-            ``eval_set``, enabling estimator-side early stopping on data the
-            caller holds out (for example the next cross-validation fold).
+            ``y`` and delivered to the wrapped estimator's ``fit`` in whichever
+            evaluation-set dialect it declares, enabling estimator-side early
+            stopping on data the caller holds out (for example the next
+            cross-validation fold). The window is the raw series, not the
+            tabular feature/target pair the estimator finally receives: yohou
+            builds that pair from it.
             The window is not training data: after fitting, the observation
             state ends at the last time of ``y``, exactly as without it.
             Mutually exclusive with ``validation_size``; ``validation_overlap``
@@ -289,7 +300,11 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         X_forecast_val : pl.DataFrame or None, default=None
             Forecast vintages published during the ``y_val`` window,
             added to ``X_forecast`` when resolving the evaluation rows'
-            features as of each row's time.
+            features as of each row's time. Optional even when ``X_forecast``
+            is given, because a vintage published earlier can already cover
+            the window; rejected when ``X_forecast`` was not given, since a
+            forecaster fitted without external forecasts derives no forecast
+            features and would ignore these vintages.
         **params : dict
             Metadata to route to nested estimators.
 

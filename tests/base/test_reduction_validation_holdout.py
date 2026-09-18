@@ -14,6 +14,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler as SkStandardScaler
 from sklearn.utils.validation import check_is_fitted
 
+from yohou import UnweightedEvaluationSetWarning
 from yohou.base.reduction import BaseReductionForecaster
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import FeaturePipeline
@@ -443,7 +444,7 @@ class TestErrorContract:
     """Task 5.4: the six ValueError cases."""
 
     def test_estimator_without_eval_set(self):
-        with pytest.raises(ValueError, match="does not support an eval_set"):
+        with pytest.raises(ValueError, match="does not support an evaluation-set"):
             PointReductionForecaster(estimator=LinearRegression(), validation_size=VAL_SIZE).fit(
                 y=_make_y(), forecasting_horizon=HORIZON
             )
@@ -569,10 +570,18 @@ class TestPipelineEstimator:
         X_train = np.asarray(rec.train_X_)
         assert len(X_eval) == STRICT_ROWS
         assert X_eval.shape[1] == X_train.shape[1]
-        # Both sides are standardized: raw targets run to LENGTH, so an
-        # untransformed eval matrix would carry values far outside this band.
-        assert np.abs(X_train).max() < 6.0
-        assert np.abs(X_eval).max() < 6.0
+        # An exact oracle, not a plausibility band: the delivered matrix must
+        # equal the fitted prefix applied to the raw evaluation window. A band
+        # check passes even when the prefix was fitted on the wrong rows.
+        bare = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
+        bare.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        raw_eval = _eval_pair(bare.estimator_)[0]
+        prefix = forecaster.estimator_.named_steps["scaler"]
+        np.testing.assert_allclose(X_eval, np.asarray(prefix.transform(raw_eval)))
+        # And the prefix itself must have seen training rows only: refitting it
+        # on the bare training matrix reproduces the same transform.
+        fresh = SkStandardScaler().fit(bare.estimator_.train_X_)
+        np.testing.assert_allclose(X_eval, np.asarray(fresh.transform(raw_eval)))
         assert forecaster.predict().height == HORIZON
 
     def test_pipeline_transformers_fitted_on_head_only(self):
@@ -1333,3 +1342,632 @@ class TestEvalSetDeliveryConvention:
         # The evaluation set really arrived: LightGBM only records a validation
         # curve when it is given one.
         assert all(est.evals_result_ for est in forecaster.estimator_)
+
+
+class XValDialectStub(RegressorMixin, BaseEstimator):
+    """Stub speaking scikit-learn's ``X_val``/``y_val`` convention."""
+
+    def fit(self, X, y, sample_weight=None, X_val=None, y_val=None, sample_weight_val=None):
+        self.received_X_val_ = X_val
+        self.received_y_val_ = y_val
+        self.received_sample_weight_val_ = sample_weight_val
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+class XValKwargsStub(XValDialectStub):
+    """Declares the ``X_val`` pair *and* ``**kwargs``; the declaration must win."""
+
+    def fit(self, X, y, X_val=None, y_val=None, **kwargs):
+        return super().fit(X, y, X_val=X_val, y_val=y_val)
+
+
+class BothDialectsStub(RegressorMixin, BaseEstimator):
+    """Declares ``eval_set`` and the ``X_val`` pair; ``eval_set`` comes first."""
+
+    def fit(self, X, y, eval_set=None, X_val=None, y_val=None, sample_weight=None):
+        self.received_eval_set_ = eval_set
+        self.received_X_val_ = X_val
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+def _histgb(**kwargs):
+    """A HistGradientBoosting regressor configured for these small fixtures."""
+    sklearn_ensemble = pytest.importorskip("sklearn.ensemble")
+    params = {"max_iter": 20, "early_stopping": True, "n_iter_no_change": 50, "min_samples_leaf": 2}
+    params.update(kwargs)
+    return sklearn_ensemble.HistGradientBoostingRegressor(**params)
+
+
+class TestXValDialect:
+    """Task 2: the third evaluation-set dialect, ``X_val``/``y_val``."""
+
+    def test_histgb_receives_x_val_and_no_eval_set(self):
+        forecaster = PointReductionForecaster(
+            estimator=_histgb(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            # The curve is only recorded when the pair actually arrived.
+            assert len(estimator.validation_score_) == estimator.n_iter_ + 1
+            assert estimator.n_iter_ == 20
+
+    def test_stub_receives_the_pair_with_training_columns(self):
+        forecaster = PointReductionForecaster(
+            estimator=XValDialectStub(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_X_val_ is not None
+            assert not hasattr(estimator, "received_eval_set_")
+            assert len(estimator.received_X_val_) == STRICT_ROWS
+            assert list(estimator.received_X_val_.columns) == list(estimator.train_X_.columns)
+
+    def test_explicit_window_uses_the_dialect(self):
+        y = _make_y()
+        head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
+        forecaster = PointReductionForecaster(estimator=XValDialectStub(), reduction_strategy="direct")
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_X_val_ is not None
+            assert len(estimator.received_X_val_) == STRICT_ROWS
+
+    def test_pipeline_final_step_uses_the_dialect(self):
+        forecaster = PointReductionForecaster(
+            estimator=Pipeline([("scaler", SkStandardScaler()), ("model", XValDialectStub())]),
+            reduction_strategy="direct",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for pipeline in forecaster.estimator_:
+            model = pipeline.named_steps["model"]
+            assert model.received_X_val_ is not None
+            assert np.asarray(model.received_X_val_).shape[1] == np.asarray(model.train_X_).shape[1]
+
+    def test_declared_pair_beats_the_kwargs_fallback(self):
+        forecaster = PointReductionForecaster(
+            estimator=XValKwargsStub(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_X_val_ is not None
+
+    def test_eval_set_wins_when_both_are_declared(self):
+        forecaster = PointReductionForecaster(
+            estimator=BothDialectsStub(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_eval_set_ is not None
+            assert estimator.received_X_val_ is None
+
+    def test_classifier_under_class_proba(self):
+        sklearn_ensemble = pytest.importorskip("sklearn.ensemble")
+        y = _make_y().with_columns((pl.col("value").cast(pl.Int64) % 2).cast(pl.Utf8).alias("value"))
+        forecaster = ClassProbaReductionForecaster(
+            estimator=sklearn_ensemble.HistGradientBoostingClassifier(
+                max_iter=10, early_stopping=True, n_iter_no_change=50, min_samples_leaf=2
+            ),
+            reduction_strategy="direct",
+            validation_size=VAL_SIZE,
+        )
+        forecaster.fit(y=y, forecasting_horizon=HORIZON)
+        assert forecaster.predict_class_proba().height == HORIZON
+
+
+class TestXValRejections:
+    """Task 2: configurations the ``X_val`` dialect must refuse."""
+
+    @pytest.mark.parametrize("key", ["X_val", "sample_weight_val", "eval_sample_weight", "sample_weight_eval_set"])
+    def test_raw_dialect_key_in_fit_params_rejected(self, key):
+        forecaster = PointReductionForecaster(
+            estimator=XValDialectStub(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        with pytest.raises(ValueError, match=key):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON, **{key: "anything"})
+        assert not hasattr(forecaster, "estimator_")
+
+    @pytest.mark.parametrize("value", ["auto", False])
+    def test_early_stopping_not_true_rejected(self, value):
+        forecaster = PointReductionForecaster(
+            estimator=_histgb(early_stopping=value), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        with pytest.raises(ValueError, match="early_stopping"):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert not hasattr(forecaster, "estimator_")
+
+    def test_early_stopping_true_fits(self):
+        forecaster = PointReductionForecaster(
+            estimator=_histgb(early_stopping=True), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.predict().height == HORIZON
+
+    def test_early_stopping_check_is_scoped_to_the_dialect(self):
+        """An eval_set estimator carrying early_stopping=False is not rejected."""
+        forecaster = PointReductionForecaster(
+            estimator=EarlyStoppingStub(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.estimator.early_stopping = False
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.predict().height == HORIZON
+
+
+class EvalXWeightRegressor(RegressorMixin, BaseEstimator):
+    """LightGBM's dialect including its evaluation-weight keyword."""
+
+    def fit(self, X, y, sample_weight=None, *, eval_X=None, eval_y=None, eval_sample_weight=None):
+        self.received_eval_X_ = eval_X
+        self.received_eval_sample_weight_ = eval_sample_weight
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+class WeightRecordingRegressor(RegressorMixin, BaseEstimator):
+    """Records the evaluation weights delivered in each dialect."""
+
+    def fit(
+        self,
+        X,
+        y,
+        eval_set=None,
+        sample_weight=None,
+        sample_weight_eval_set=None,
+    ):
+        self.received_eval_set_ = eval_set
+        self.received_sample_weight_eval_set_ = sample_weight_eval_set
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+def _weighted(estimator, **kwargs):
+    kwargs.setdefault("reduction_strategy", "direct")
+    return PointReductionForecaster(
+        estimator=estimator,
+        validation_size=VAL_SIZE,
+        time_weighter=ExponentialDecayWeighter(half_life=5),
+        **kwargs,
+    )
+
+
+def _delivered_weights(estimator):
+    """The evaluation weights an estimator received, whatever its dialect."""
+    if getattr(estimator, "received_sample_weight_eval_set_", None) is not None:
+        return np.asarray(estimator.received_sample_weight_eval_set_[0])
+    if getattr(estimator, "received_sample_weight_val_", None) is not None:
+        return np.asarray(estimator.received_sample_weight_val_)
+    return None
+
+
+class TestEvaluationWeights:
+    """Task 4: the evaluation rows carry the forecaster's weights."""
+
+    def test_weights_reach_the_estimator_with_one_entry_per_row(self):
+        forecaster = _weighted(WeightRecordingRegressor())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            weights = _delivered_weights(estimator)
+            assert weights is not None
+            assert len(weights) == len(_eval_pair(estimator)[0])
+
+    def test_x_val_dialect_receives_sample_weight_val(self):
+        forecaster = _weighted(XValDialectStub())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_sample_weight_val_ is not None
+            assert len(estimator.received_sample_weight_val_) == len(estimator.received_X_val_)
+
+    def test_eval_x_dialect_receives_eval_sample_weight(self):
+        forecaster = _weighted(EvalXWeightRegressor())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_eval_sample_weight_ is not None
+            assert len(estimator.received_eval_sample_weight_[0]) == len(estimator.received_eval_X_)
+
+    def test_dialect_without_a_weight_parameter_warns(self):
+        """Speaking a dialect is not the same as accepting weights for it."""
+        forecaster = _weighted(EvalXRegressor(), reduction_strategy="multi-output")
+        with pytest.warns(UnweightedEvaluationSetWarning, match="EvalXRegressor"):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+    @pytest.mark.parametrize("overlap", [False, True])
+    def test_weight_count_matches_rows_under_both_overlap_settings(self, overlap):
+        forecaster = _weighted(WeightRecordingRegressor(), validation_overlap=overlap)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        expected = VAL_SIZE if overlap else STRICT_ROWS
+        for estimator in forecaster.estimator_:
+            weights = _delivered_weights(estimator)
+            assert len(weights) == len(_eval_pair(estimator)[0]) == expected
+
+    def test_no_weighter_passes_no_weights(self):
+        forecaster = PointReductionForecaster(
+            estimator=WeightRecordingRegressor(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert estimator.received_sample_weight_eval_set_ is None
+
+    def test_weights_are_normalized_over_the_evaluation_rows(self):
+        forecaster = _weighted(WeightRecordingRegressor())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            weights = _delivered_weights(estimator)
+            assert np.isclose(weights.sum(), len(weights))
+
+    def test_later_evaluation_rows_weigh_more(self):
+        """A decay weighter must produce an increasing vector over the window."""
+        forecaster = _weighted(WeightRecordingRegressor())
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        weights = _delivered_weights(forecaster.estimator_[0])
+        assert np.all(np.diff(weights) > 0), weights
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    def test_every_strategy_delivers_weights(self, strategy):
+        forecaster = _weighted(WeightRecordingRegressor(), reduction_strategy=strategy)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        estimators = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
+        for estimator in estimators:
+            weights = _delivered_weights(estimator)
+            assert weights is not None
+            assert len(weights) == len(_eval_pair(estimator)[0])
+
+    def test_panel_weights_match_stacked_rows(self):
+        forecaster = _weighted(WeightRecordingRegressor(), actual_transformer=LagTransformer(lag=[1, 2]))
+        forecaster.fit(y=_make_y_panel(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            weights = _delivered_weights(estimator)
+            assert len(weights) == len(_eval_pair(estimator)[0])
+
+    def test_pipeline_final_step_receives_weights(self):
+        forecaster = _weighted(
+            Pipeline([("scaler", SkStandardScaler()), ("model", WeightRecordingRegressor())]),
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for pipeline in forecaster.estimator_:
+            model = pipeline.named_steps["model"]
+            weights = _delivered_weights(model)
+            assert weights is not None
+            assert len(weights) == len(_eval_pair(model)[0])
+
+    def test_explicit_window_delivers_weights(self):
+        y = _make_y()
+        head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
+        forecaster = PointReductionForecaster(
+            estimator=WeightRecordingRegressor(),
+            reduction_strategy="direct",
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        )
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        for estimator in forecaster.estimator_:
+            assert _delivered_weights(estimator) is not None
+
+
+class TestEvaluationWeightsCannotBeDelivered:
+    """Task 4: the warning path, for an estimator with nowhere to put them."""
+
+    def test_warns_once_naming_the_estimator(self):
+        forecaster = _weighted(RecordingRegressor(), reduction_strategy="multi-output")
+        with pytest.warns(UnweightedEvaluationSetWarning, match="RecordingRegressor"):
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+    def test_one_warning_per_fit_not_one_per_step(self):
+        """A per-step strategy fits H estimators; the warning is about the fit."""
+        forecaster = _weighted(RecordingRegressor(), reduction_strategy="direct")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        unweighted = [w for w in caught if issubclass(w.category, UnweightedEvaluationSetWarning)]
+        assert len(unweighted) == 1, f"{len(unweighted)} warnings for {HORIZON} estimators"
+
+    def test_fit_still_succeeds_unweighted(self):
+        forecaster = _weighted(RecordingRegressor(), reduction_strategy="multi-output")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UnweightedEvaluationSetWarning)
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.predict().height == HORIZON
+
+    def test_no_warning_when_the_dialect_can_carry_weights(self):
+        forecaster = _weighted(XValDialectStub())
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert not [w for w in caught if issubclass(w.category, UnweightedEvaluationSetWarning)]
+
+    def test_no_warning_without_a_weighter(self):
+        forecaster = PointReductionForecaster(
+            estimator=RecordingRegressor(), reduction_strategy="direct", validation_size=VAL_SIZE
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert not [w for w in caught if issubclass(w.category, UnweightedEvaluationSetWarning)]
+
+
+class TestEvaluationWeightsAlignment:
+    """Task 4: weights follow the rows through every filter."""
+
+    @staticmethod
+    def _with_null_target(row: int) -> pl.DataFrame:
+        y = _make_y()
+        values = y["value"].to_list()
+        values[row] = None
+        return y.with_columns(pl.Series("value", values))
+
+    def test_weights_follow_dropped_evaluation_rows(self):
+        clean = _weighted(WeightRecordingRegressor(), reduction_strategy="multi-output")
+        clean.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        baseline = len(_delivered_weights(clean.estimator_))
+
+        dropped = _weighted(WeightRecordingRegressor(), reduction_strategy="multi-output", nan_handling="drop")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            dropped.fit(y=self._with_null_target(LENGTH - 2), forecasting_horizon=HORIZON)
+        weights = _delivered_weights(dropped.estimator_)
+        assert len(weights) == len(_eval_pair(dropped.estimator_)[0])
+        assert len(weights) < baseline, "the null row should have been dropped"
+
+    def test_direct_steps_keep_their_own_alignment_under_drop(self):
+        forecaster = _weighted(WeightRecordingRegressor(), reduction_strategy="direct", nan_handling="drop")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            forecaster.fit(y=self._with_null_target(LENGTH - 2), forecasting_horizon=HORIZON)
+        # Each step filters its own rows, so lengths may differ between steps;
+        # what must hold is that each step's weights match its own rows.
+        for estimator in forecaster.estimator_:
+            assert len(_delivered_weights(estimator)) == len(_eval_pair(estimator)[0])
+
+    def test_vintage_weighter_over_an_explicit_window(self):
+        y = _make_y()
+        head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
+        forecaster = PointReductionForecaster(
+            estimator=WeightRecordingRegressor(),
+            reduction_strategy="direct",
+            time_weighter=ExponentialDecayWeighter(half_life=8),
+        )
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        for estimator in forecaster.estimator_:
+            weights = _delivered_weights(estimator)
+            assert len(weights) == len(_eval_pair(estimator)[0])
+
+
+class TestCatBoostEvaluationWeights:
+    """Task 4: CatBoost has no weight keyword, so a Pool carries them."""
+
+    def test_pool_delivery_changes_the_recorded_metric(self):
+        catboost = pytest.importorskip("catboost")
+        y = _make_y()
+
+        def _fit(weighter):
+            forecaster = PointReductionForecaster(
+                estimator=catboost.CatBoostRegressor(
+                    iterations=20, learning_rate=0.3, verbose=False, allow_writing_files=False
+                ),
+                reduction_strategy="direct",
+                validation_size=VAL_SIZE,
+                time_weighter=weighter,
+            )
+            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+            return forecaster.estimator_[0].get_evals_result()
+
+        weighted = _fit(ExponentialDecayWeighter(half_life=3))
+        unweighted = _fit(None)
+        key = next(iter(weighted["validation"]))
+        assert weighted["validation"][key] != unweighted["validation"][key], (
+            "weights did not reach CatBoost's evaluation set"
+        )
+
+    def test_pool_is_the_delivered_eval_set(self):
+        catboost = pytest.importorskip("catboost")
+        estimator = catboost.CatBoostRegressor(iterations=5, verbose=False, allow_writing_files=False)
+        params = BaseReductionForecaster._eval_set_fit_params(
+            estimator,
+            pl.DataFrame({"a": [1.0, 2.0, 3.0]}),
+            pl.DataFrame({"t": [1.0, 2.0, 3.0]}),
+            np.array([1.0, 2.0, 3.0]),
+        )
+        assert isinstance(params["eval_set"][0], catboost.Pool)
+        np.testing.assert_allclose(params["eval_set"][0].get_weight(), [1.0, 2.0, 3.0])
+
+
+class TestWeightSpellingPerLibrary:
+    """Task 4.17: every library gets the keyword its own fit declares."""
+
+    @staticmethod
+    def _delivered(estimator):
+        """The fit parameters the holdout would build for this estimator."""
+        return BaseReductionForecaster._eval_set_fit_params(
+            estimator,
+            pl.DataFrame({"a": [1.0, 2.0, 3.0]}),
+            pl.DataFrame({"t": [1.0, 2.0, 3.0]}),
+            np.array([0.5, 1.0, 1.5]),
+        )
+
+    def test_lightgbm_gets_eval_sample_weight(self):
+        lightgbm = pytest.importorskip("lightgbm")
+        params = self._delivered(lightgbm.LGBMRegressor())
+        assert "eval_sample_weight" in params
+        np.testing.assert_allclose(params["eval_sample_weight"][0], [0.5, 1.0, 1.5])
+
+    def test_xgboost_gets_sample_weight_eval_set(self):
+        xgboost = pytest.importorskip("xgboost")
+        params = self._delivered(xgboost.XGBRegressor())
+        assert "sample_weight_eval_set" in params
+        np.testing.assert_allclose(params["sample_weight_eval_set"][0], [0.5, 1.0, 1.5])
+
+    def test_histgradientboosting_gets_sample_weight_val(self):
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        params = self._delivered(HistGradientBoostingRegressor())
+        assert "sample_weight_val" in params
+        assert "X_val" in params and "eval_set" not in params
+        np.testing.assert_allclose(params["sample_weight_val"], [0.5, 1.0, 1.5])
+
+
+class TestPipelineEvaluationMatrixOracle:
+    """Task 5: the delivered matrix equals the prefix, proven exactly."""
+
+    @staticmethod
+    def _pipeline(*steps):
+        return Pipeline([*steps, ("rec", RecordingRegressor())])
+
+    def _compare(self, forecaster, bare, panel=False):
+        """Assert each delivered matrix equals its own fitted prefix's transform."""
+        pipelines = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
+        bares = bare.estimator_ if isinstance(bare.estimator_, list) else [bare.estimator_]
+        assert len(pipelines) == len(bares)
+        for pipeline, plain in zip(pipelines, bares, strict=True):
+            prefix = Pipeline(pipeline.steps[:-1])
+            delivered = np.asarray(_eval_pair(pipeline.named_steps["rec"])[0])
+            raw_eval = _eval_pair(plain)[0]
+            np.testing.assert_allclose(delivered, np.asarray(prefix.transform(raw_eval)))
+            # Leak check: a prefix refitted on the training rows alone agrees.
+            fresh = Pipeline([(name, clone(step)) for name, step in pipeline.steps[:-1]])
+            fresh.fit(plain.train_X_)
+            np.testing.assert_allclose(delivered, np.asarray(fresh.transform(raw_eval)))
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    def test_every_strategy(self, strategy):
+        kwargs = {"reduction_strategy": strategy, "validation_size": VAL_SIZE}
+        forecaster = PointReductionForecaster(estimator=self._pipeline(("scaler", SkStandardScaler())), **kwargs)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        bare = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        bare.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        self._compare(forecaster, bare)
+
+    def test_explicit_window(self):
+        y = _make_y()
+        head, tail = y[: LENGTH - VAL_SIZE], y[LENGTH - VAL_SIZE :]
+        forecaster = PointReductionForecaster(estimator=self._pipeline(("scaler", SkStandardScaler())))
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        bare = PointReductionForecaster(estimator=RecordingRegressor())
+        bare.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+        self._compare(forecaster, bare)
+
+    def test_two_step_prefix(self):
+        kwargs = {"validation_size": VAL_SIZE, "actual_transformer": LagTransformer(lag=[1, 2, 3])}
+        forecaster = PointReductionForecaster(
+            estimator=self._pipeline(("scaler", SkStandardScaler()), ("second", SkStandardScaler())), **kwargs
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        bare = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        bare.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        self._compare(forecaster, bare)
+
+    @pytest.mark.parametrize("shaper", ["reduce", "expand"])
+    def test_prefix_that_changes_the_column_count(self, shaper):
+        from sklearn.decomposition import PCA
+        from sklearn.preprocessing import PolynomialFeatures
+
+        step = ("pca", PCA(n_components=2)) if shaper == "reduce" else ("poly", PolynomialFeatures(2))
+        kwargs = {"validation_size": VAL_SIZE, "actual_transformer": LagTransformer(lag=[1, 2, 3])}
+        forecaster = PointReductionForecaster(estimator=self._pipeline(step), **kwargs)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        bare = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        bare.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        self._compare(forecaster, bare)
+        delivered = np.asarray(_eval_pair(forecaster.estimator_.named_steps["rec"])[0])
+        train = np.asarray(forecaster.estimator_.named_steps["rec"].train_X_)
+        assert delivered.shape[1] == train.shape[1]
+
+    def test_panel_data(self):
+        kwargs = {"validation_size": VAL_SIZE, "actual_transformer": LagTransformer(lag=[1, 2])}
+        forecaster = PointReductionForecaster(estimator=self._pipeline(("scaler", SkStandardScaler())), **kwargs)
+        forecaster.fit(y=_make_y_panel(), forecasting_horizon=HORIZON)
+        bare = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
+        bare.fit(y=_make_y_panel(), forecasting_horizon=HORIZON)
+        self._compare(forecaster, bare, panel=True)
+
+    def test_pipeline_configuration_survives_the_two_phase_fit(self):
+        """`memory` and `verbose` must not be dropped when the pipeline is rebuilt."""
+        pipeline = Pipeline(
+            [("scaler", SkStandardScaler()), ("rec", RecordingRegressor())],
+            verbose=True,
+        )
+        forecaster = PointReductionForecaster(estimator=pipeline, validation_size=VAL_SIZE)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        assert forecaster.estimator_.get_params()["verbose"] is True
+
+
+class ExtraInputRegressor(RegressorMixin, BaseEstimator):
+    """Records a caller-supplied routed input alongside the evaluation set."""
+
+    def fit(self, X, y, eval_set=None, sample_weight=None, extra=None):
+        self.received_eval_set_ = eval_set
+        self.received_extra_ = extra
+        self.train_X_ = X
+        arr = np.asarray(y, dtype=float)
+        self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
+        self._mean = float(np.nanmean(arr))
+        return self
+
+    def predict(self, X):
+        out = np.full((len(X), self._ncols), self._mean)
+        return out.ravel() if self._ncols == 1 else out
+
+
+class TestPipelineTransformInput:
+    """Task 5.8: a caller's transform_input is honoured, not silently ignored."""
+
+    @staticmethod
+    def _forecaster(transform_input):
+        pipeline = Pipeline(
+            [("scaler", SkStandardScaler()), ("model", ExtraInputRegressor())],
+            transform_input=transform_input,
+        )
+        return PointReductionForecaster(estimator=pipeline, validation_size=VAL_SIZE)
+
+    def _fit_with_extra(self, forecaster, extra):
+        forecaster.estimator.steps[-1][1].set_fit_request(extra=True)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON, extra=extra)
+        return forecaster.estimator_.named_steps["model"].received_extra_
+
+    def test_named_input_is_transformed_by_the_fitted_prefix(self):
+        extra = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
+        forecaster = self._forecaster(["extra"])
+        received = self._fit_with_extra(forecaster, extra)
+        expected = forecaster.estimator_.named_steps["scaler"].transform(extra)
+        np.testing.assert_allclose(np.asarray(received), np.asarray(expected))
+
+    def test_input_is_untouched_without_transform_input(self):
+        extra = pl.DataFrame({"value": [10.0, 20.0, 30.0]})
+        received = self._fit_with_extra(self._forecaster(None), extra)
+        np.testing.assert_allclose(np.asarray(received), np.asarray(extra))
+
+    def test_evaluation_pair_is_not_transformed_twice(self):
+        """yohou builds the pair already transformed, so naming it changes nothing."""
+        plain = self._forecaster(None)
+        plain.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        named = self._forecaster(["X_val", "eval_set"])
+        named.fit(y=_make_y(), forecasting_horizon=HORIZON)
+        np.testing.assert_allclose(
+            np.asarray(_eval_pair(named.estimator_.named_steps["model"])[0]),
+            np.asarray(_eval_pair(plain.estimator_.named_steps["model"])[0]),
+        )

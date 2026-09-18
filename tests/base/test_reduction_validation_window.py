@@ -419,7 +419,7 @@ class TestRejectedConfigurations:
     def test_estimator_without_eval_set_support(self):
         head, tail = _split(_make_y())
         forecaster = PointReductionForecaster(estimator=LinearRegression())
-        self._fit_raises(forecaster, "does not support an eval_set", y=head, y_val=tail)
+        self._fit_raises(forecaster, "does not support an evaluation-set", y=head, y_val=tail)
 
     def test_strict_window_too_small(self):
         head, tail = _split(_make_y(), n=HORIZON - 1)
@@ -538,3 +538,31 @@ class TestPipelineWithoutSampleWeight:
         )
         with pytest.raises(ValueError, match="final step NoWeightRegressor does not support sample_weight"):
             forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
+
+
+class TestWindowForecastsRequireFitForecasts:
+    """Task 6: X_forecast_val without X_forecast is rejected, not ignored."""
+
+    def test_window_forecasts_without_fit_forecasts_rejected(self):
+        y = _make_y()
+        head, tail = _split(y)
+        X_forecast = _vintage_forecast()
+        cutoff = head["time"][-1]
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        with pytest.raises(ValueError, match="X_forecast_val was given but X_forecast was not"):
+            forecaster.fit(
+                y=head,
+                forecasting_horizon=HORIZON,
+                y_val=tail,
+                X_forecast_val=X_forecast.filter(pl.col("vintage_time") > cutoff),
+            )
+        assert not hasattr(forecaster, "estimator_")
+
+    def test_window_forecasts_stay_optional(self):
+        """X_forecast alone still fits: its vintages may already cover the window."""
+        y = _make_y()
+        head, tail = _split(y)
+        X_forecast = _vintage_forecast()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        forecaster.fit(y=head, forecasting_horizon=HORIZON, X_forecast=X_forecast, y_val=tail)
+        assert forecaster.predict().height == HORIZON

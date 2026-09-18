@@ -598,3 +598,79 @@ class TestRefitWithoutRounds:
         search.best_rounds_ = {}
         with pytest.raises(ValueError, match="cannot refit: no fold of the best candidate fitted successfully"):
             search._prepare_shared_round_refit(_point())
+
+
+class TestHistGradientBoostingCandidate:
+    """Task 3: an end-to-end search over scikit-learn's histogram gradient boosting."""
+
+    @staticmethod
+    def _forecaster(**kwargs):
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        return _point(
+            estimator=HistGradientBoostingRegressor(max_iter=25, min_samples_leaf=2, random_state=0),
+            **kwargs,
+        )
+
+    def test_search_picks_a_shared_round_and_refits(self):
+        search = GridSearchCV(
+            forecaster=self._forecaster(),
+            param_grid={"estimator__learning_rate": [0.1, 0.3]},
+            scoring=MeanAbsoluteError(),
+            cv=_cv(),
+            validation="cv",
+        )
+        search.fit(y=_series(), forecasting_horizon=HORIZON)
+
+        assert search.best_rounds_
+        for rounds in search.best_rounds_.values():
+            assert 1 <= rounds <= 25
+        # The refit trains exactly the shared count with early stopping off.
+        for position, estimator in zip(search.best_rounds_, search.best_forecaster_.estimator_, strict=True):
+            assert estimator.get_params()["early_stopping"] is False
+            assert estimator.n_iter_ == search.best_rounds_[position]
+        assert search.predict().height == HORIZON
+
+    def test_adapter_resolves_without_being_named(self):
+        """No early_stopping_adapter is passed; resolution finds the built-in."""
+        search = GridSearchCV(
+            forecaster=self._forecaster(),
+            param_grid={"estimator__learning_rate": [0.2]},
+            scoring=MeanAbsoluteError(),
+            cv=_cv(),
+            validation="cv",
+        )
+        search.fit(y=_series(), forecasting_horizon=HORIZON)
+        assert "rounds" in search.cv_results_
+
+    def test_default_early_stopping_is_not_rejected_in_cv_mode(self):
+        """The holdout path rejects early_stopping='auto'; cv mode overrides it."""
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        forecaster = _point(
+            estimator=HistGradientBoostingRegressor(
+                max_iter=20, min_samples_leaf=2, random_state=0, early_stopping="auto"
+            )
+        )
+        search = GridSearchCV(
+            forecaster=forecaster,
+            param_grid={"estimator__learning_rate": [0.2]},
+            scoring=MeanAbsoluteError(),
+            cv=_cv(),
+            validation="cv",
+        )
+        search.fit(y=_series(), forecasting_horizon=HORIZON)
+        assert search.best_rounds_
+
+
+class TestCvModeRejectsSuppliedEvaluationKeys:
+    """Task 3.14: the cv guard refuses every key the mode supplies itself."""
+
+    @pytest.mark.parametrize(
+        "key", ["eval_set", "eval_X", "X_val", "sample_weight_val", "eval_sample_weight", "sample_weight_eval_set"]
+    )
+    def test_key_rejected_before_any_fold(self, key):
+        search = _search()
+        with pytest.raises(ValueError, match=key):
+            search.fit(y=_series(), forecasting_horizon=HORIZON, **{key: "anything"})
+        assert not hasattr(search, "best_forecaster_")

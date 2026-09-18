@@ -26,6 +26,22 @@ _YOHOU_ROOT = str(Path(__file__).resolve().parents[1])
 _SKLEARN_ROOT = str(Path(sklearn.__file__).resolve().parent)
 
 
+class UnweightedEvaluationSetWarning(UserWarning):
+    """Raised when a weighted forecaster cannot weight its evaluation set.
+
+    ``time_weighter`` and ``vintage_weighter`` weight the rows the estimator
+    trains on. yohou also weights the evaluation rows, so early stopping judges
+    the model on the same basis it is fitted on, but an estimator whose ``fit``
+    declares no evaluation-weight parameter gives it nowhere to put them.
+    Guessing a keyword would raise inside the estimator's own ``fit``, so the
+    evaluation set is delivered unweighted and this warning says so.
+
+    Subclasses ``UserWarning`` so existing ``pytest.warns(UserWarning)`` and
+    application ``filterwarnings`` entries keep matching, while still being
+    specific enough to silence on its own.
+    """
+
+
 class ForecastCoverageWarning(UserWarning):
     """Raised when ``X_forecast`` covers fewer steps than the forecasting horizon.
 

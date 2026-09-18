@@ -619,8 +619,26 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         """
         _check_shared_round_forecaster(self.forecaster)
+        # Every evaluation-set dialect and every evaluation-weight key the
+        # holdout path fills, plus the window arguments: the mode supplies all
+        # of them itself, so a caller-supplied one would be silently replaced.
+        # This list is the cv-mode twin of `_reject_raw_eval_params`.
         conflicting = sorted(
-            key for key in params if key in ("eval_set", "eval_X", "eval_y", "y_val", "X_actual_val", "X_forecast_val")
+            key
+            for key in params
+            if key
+            in (
+                "eval_set",
+                "eval_X",
+                "eval_y",
+                "X_val",
+                "eval_sample_weight",
+                "sample_weight_val",
+                "sample_weight_eval_set",
+                "y_val",
+                "X_actual_val",
+                "X_forecast_val",
+            )
         )
         if conflicting:
             raise ValueError(
@@ -659,8 +677,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                 warnings.warn(
                     f"validation='cv': for candidate {candidate_params[idx]}, the chosen boosting round for "
                     f"{record['boundary_positions']} is the last round every fold trained, so a later round "
-                    f"may have been better. Raise the estimator's round ceiling (for example n_estimators or "
-                    f"iterations).",
+                    f"may have been better. Raise the estimator's round ceiling (for example n_estimators, "
+                    f"iterations, or max_iter).",
                     UserWarning,
                     stacklevel=4,
                 )
