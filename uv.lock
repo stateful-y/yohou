@@ -3467,7 +3467,7 @@ requires-dist = [
     { name = "polars", specifier = ">=1.39.2" },
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pytz", marker = "extra == 'plotting'" },
-    { name = "scikit-learn", specifier = ">=1.6.0" },
+    { name = "scikit-learn", specifier = ">=1.7.0" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "sklearn-wrap" },
     { name = "statsmodels", marker = "extra == 'plotting'", specifier = ">=0.14" },
