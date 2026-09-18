@@ -355,10 +355,10 @@ class TestSharedCallbackConcurrency:
         prepared, fit_params = adapter.prepare_fold_fit(forecaster.estimator)
         forecaster.set_params(estimator=prepared)
         if backend is None:
-            forecaster.fit(y=head, forecasting_horizon=3, y_validation=window, **fit_params)
+            forecaster.fit(y=head, forecasting_horizon=3, y_val=window, **fit_params)
         else:
             with joblib.parallel_backend(backend):
-                forecaster.fit(y=head, forecasting_horizon=3, y_validation=window, **fit_params)
+                forecaster.fit(y=head, forecasting_horizon=3, y_val=window, **fit_params)
         return adapter, forecaster
 
     def _reference(self):

@@ -335,9 +335,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         coverage_rates: list[StrictFloat] | None = None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        y_validation: pl.DataFrame | None = None,
-        X_actual_validation: pl.DataFrame | None = None,
-        X_forecast_validation: pl.DataFrame | None = None,
+        y_val: pl.DataFrame | None = None,
+        X_actual_val: pl.DataFrame | None = None,
+        X_forecast_val: pl.DataFrame | None = None,
         **params,
     ) -> "IntervalReductionForecaster":
         """Fit the forecaster to historical data.
@@ -368,7 +368,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Bypasses the actual transformer.
-        y_validation : pl.DataFrame or None, default=None
+        y_val : pl.DataFrame or None, default=None
             Target rows of an evaluation window that starts one interval
             after ``y`` ends, with the same columns as ``y``. Its rows are
             turned into evaluation rows through the transformers fitted on
@@ -379,11 +379,11 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             state ends at the last time of ``y``, exactly as without it.
             Mutually exclusive with ``validation_size``; ``validation_overlap``
             applies as it does to the ``validation_size`` tail.
-        X_actual_validation : pl.DataFrame or None, default=None
-            Actual feature rows covering the ``y_validation`` window. Required
+        X_actual_val : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``y_val`` window. Required
             when ``X_actual`` is given, rejected otherwise.
-        X_forecast_validation : pl.DataFrame or None, default=None
-            Forecast vintages published during the ``y_validation`` window,
+        X_forecast_val : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``y_val`` window,
             added to ``X_forecast`` when resolving the evaluation rows'
             features as of each row's time.
         **params : dict
@@ -401,7 +401,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             more than one quantile parameter, or if a MultiQuantile
             estimator is used with more than one target column or with
             ``forecasting_horizon > 1``. With ``validation_size`` or
-            ``y_validation`` set, also on any rejected holdout configuration;
+            ``y_val`` set, also on any rejected holdout configuration;
             see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
@@ -417,9 +417,9 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             forecasting_horizon,
             params,
             X_forecast,
-            y_validation,
-            X_actual_validation,
-            X_forecast_validation,
+            y_val,
+            X_actual_val,
+            X_forecast_val,
         )
 
         y_t, X_t = self._pre_fit(

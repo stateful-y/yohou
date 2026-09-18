@@ -44,12 +44,12 @@ def _holdout_remedy(source: str) -> str:
     Parameters
     ----------
     source : str
-        ``"validation_size"`` or ``"y_validation"``.
+        ``"validation_size"`` or ``"y_val"``.
 
     Returns
     -------
     str
-        ``"leave validation_size=None"`` or ``"omit y_validation"``.
+        ``"leave validation_size=None"`` or ``"omit y_val"``.
 
     """
     return "leave validation_size=None" if source == "validation_size" else f"omit {source}"
@@ -391,7 +391,7 @@ default="first_step"
         tags.forecaster_tags.supports_vintage_weight = True
 
         # The validation_size tail is held back from estimator training, so a
-        # train score must end before it. An explicit y_validation window is
+        # train score must end before it. An explicit y_val window is
         # not part of the fit data and holds nothing back.
         tags.forecaster_tags.holdout_size = getattr(self, "validation_size", None) or 0
 
@@ -1118,7 +1118,7 @@ default="first_step"
             The estimator the validation holdout will deliver an evaluation set to.
         source : str, default="validation_size"
             The fit input supplying the evaluation window (``"validation_size"``
-            or ``"y_validation"``), named in error messages.
+            or ``"y_val"``), named in error messages.
 
         Returns
         -------
@@ -1172,7 +1172,7 @@ default="first_step"
             The estimator the validation holdout will deliver an evaluation set to.
         source : str, default="validation_size"
             The fit input supplying the evaluation window (``"validation_size"``
-            or ``"y_validation"``), named in error messages.
+            or ``"y_val"``), named in error messages.
 
         Returns
         -------
@@ -1488,7 +1488,7 @@ default="first_step"
             The fit ``**params``.
         source : str
             The fit input supplying the evaluation window (``"validation_size"``
-            or ``"y_validation"``), named in the error message.
+            or ``"y_val"``), named in the error message.
 
         Raises
         ------
@@ -1513,8 +1513,8 @@ default="first_step"
         self,
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
-        y_validation: pl.DataFrame,
-        X_actual_validation: pl.DataFrame | None,
+        y_val: pl.DataFrame,
+        X_actual_val: pl.DataFrame | None,
         forecasting_horizon: int,
     ) -> None:
         """Validate an explicitly supplied evaluation window against the training data.
@@ -1525,9 +1525,9 @@ default="first_step"
             Training target time series.
         X_actual : pl.DataFrame or None
             Training feature time series.
-        y_validation : pl.DataFrame
+        y_val : pl.DataFrame
             Target rows of the evaluation window.
-        X_actual_validation : pl.DataFrame or None
+        X_actual_val : pl.DataFrame or None
             Feature rows of the evaluation window.
         forecasting_horizon : int
             Number of steps to forecast.
@@ -1537,45 +1537,45 @@ default="first_step"
         ValueError
             If the window's columns differ from ``y``'s, the window does not
             start exactly one interval after ``y`` ends, ``X_actual`` and
-            ``X_actual_validation`` are not given together, the window is
+            ``X_actual_val`` are not given together, the window is
             shorter than ``forecasting_horizon`` in strict mode, or ``y`` is too
             short to build one training row.
 
         """
-        if set(y_validation.columns) != set(y.columns):
+        if set(y_val.columns) != set(y.columns):
             raise ValueError(
-                f"y_validation must have the same columns as y (the same value "
-                f"columns and panel groups); got {sorted(y_validation.columns)} "
-                f"for y_validation and {sorted(y.columns)} for y."
+                f"y_val must have the same columns as y (the same value "
+                f"columns and panel groups); got {sorted(y_val.columns)} "
+                f"for y_val and {sorted(y.columns)} for y."
             )
-        if X_actual is not None and X_actual_validation is None:
+        if X_actual is not None and X_actual_val is None:
             raise ValueError(
-                "X_actual_validation is required when X_actual is given: the evaluation "
+                "X_actual_val is required when X_actual is given: the evaluation "
                 "rows need the window's actual features. Pass the X_actual rows covering "
-                "the y_validation window."
+                "the y_val window."
             )
-        if X_actual is None and X_actual_validation is not None:
+        if X_actual is None and X_actual_val is not None:
             raise ValueError(
-                "X_actual_validation was given but X_actual was not: the forecaster was "
+                "X_actual_val was given but X_actual was not: the forecaster was "
                 "not fitted with actual features, so the window cannot use any."
             )
-        if y.height < 2 or y_validation.height < 1:
+        if y.height < 2 or y_val.height < 1:
             raise ValueError(
-                f"y_validation needs y with at least 2 rows and a non-empty window; got "
-                f"{y.height} rows in y and {y_validation.height} in y_validation."
+                f"y_val needs y with at least 2 rows and a non-empty window; got "
+                f"{y.height} rows in y and {y_val.height} in y_val."
             )
         interval = check_interval_consistency(y.select("time"))
         expected_start = add_interval(y["time"][-1], interval)
-        if y_validation["time"][0] != expected_start:
+        if y_val["time"][0] != expected_start:
             raise ValueError(
-                f"y_validation must start one interval after the last time of y: y ends "
-                f"at {y['time'][-1]} with interval {interval!r}, so y_validation must "
-                f"start at {expected_start}, but it starts at {y_validation['time'][0]}."
+                f"y_val must start one interval after the last time of y: y ends "
+                f"at {y['time'][-1]} with interval {interval!r}, so y_val must "
+                f"start at {expected_start}, but it starts at {y_val['time'][0]}."
             )
-        n = y_validation.height
+        n = y_val.height
         if not self.validation_overlap and n < forecasting_horizon:
             raise ValueError(
-                f"y_validation has {n} rows, fewer than forecasting_horizon="
+                f"y_val has {n} rows, fewer than forecasting_horizon="
                 f"{forecasting_horizon}: no evaluation row's target window fits "
                 f"inside it. Supply at least {forecasting_horizon} rows, or set "
                 f"validation_overlap=True to evaluate boundary rows whose targets "
@@ -1586,7 +1586,7 @@ default="first_step"
             raise ValueError(
                 f"y has {y.height} rows, but at least {min_rows} are needed to build "
                 f"one training row at forecasting_horizon={forecasting_horizon} when "
-                f"y_validation is given."
+                f"y_val is given."
             )
 
     def _resolve_validation_window(
@@ -1596,9 +1596,9 @@ default="first_step"
         forecasting_horizon: int,
         params: dict[str, Any],
         X_forecast: pl.DataFrame | None,
-        y_validation: pl.DataFrame | None,
-        X_actual_validation: pl.DataFrame | None,
-        X_forecast_validation: pl.DataFrame | None,
+        y_val: pl.DataFrame | None,
+        X_actual_val: pl.DataFrame | None,
+        X_forecast_val: pl.DataFrame | None,
     ) -> tuple[
         pl.DataFrame,
         pl.DataFrame | None,
@@ -1607,7 +1607,7 @@ default="first_step"
         pl.DataFrame | None,
         str | None,
     ]:
-        """Choose the evaluation window: the ``validation_size`` tail, ``y_validation``, or none.
+        """Choose the evaluation window: the ``validation_size`` tail, ``y_val``, or none.
 
         The families share this preamble verbatim. Every check runs before any
         fitted or observation state changes.
@@ -1624,11 +1624,11 @@ default="first_step"
             The fit ``**params``, checked for a conflicting raw ``eval_set``.
         X_forecast : pl.DataFrame or None
             External forecasts, as passed to fit.
-        y_validation : pl.DataFrame or None
+        y_val : pl.DataFrame or None
             Target rows of an explicitly supplied evaluation window.
-        X_actual_validation : pl.DataFrame or None
+        X_actual_val : pl.DataFrame or None
             Feature rows of that window.
-        X_forecast_validation : pl.DataFrame or None
+        X_forecast_val : pl.DataFrame or None
             Forecast vintages published during that window.
 
         Returns
@@ -1639,26 +1639,26 @@ default="first_step"
             The evaluation window, or None when no holdout applies.
         X_forecast_eval : pl.DataFrame or None
             The external forecasts the evaluation rows resolve vintages from:
-            the fit ``X_forecast`` plus ``X_forecast_validation``.
+            the fit ``X_forecast`` plus ``X_forecast_val``.
         source : str or None
-            ``"validation_size"``, ``"y_validation"``, or None.
+            ``"validation_size"``, ``"y_val"``, or None.
 
         Raises
         ------
         ValueError
-            If both window sources are set, if ``X_actual_validation`` or
-            ``X_forecast_validation`` is given without ``y_validation``, or on
+            If both window sources are set, if ``X_actual_val`` or
+            ``X_forecast_val`` is given without ``y_val``, or on
             any invalid holdout configuration.
 
         """
-        if y_validation is None:
+        if y_val is None:
             for name, value in (
-                ("X_actual_validation", X_actual_validation),
-                ("X_forecast_validation", X_forecast_validation),
+                ("X_actual_val", X_actual_val),
+                ("X_forecast_val", X_forecast_val),
             ):
                 if value is not None:
                     raise ValueError(
-                        f"{name} requires y_validation: it supplies features for an "
+                        f"{name} requires y_val: it supplies features for an "
                         f"evaluation window, but no window target was given."
                     )
             y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
@@ -1666,22 +1666,22 @@ default="first_step"
 
         if self.validation_size is not None:
             raise ValueError(
-                f"validation_size={self.validation_size} and y_validation are mutually "
+                f"validation_size={self.validation_size} and y_val are mutually "
                 f"exclusive: each supplies the evaluation window. Set validation_size=None "
-                f"to use y_validation, or omit y_validation."
+                f"to use y_val, or omit y_val."
             )
-        self._reject_raw_eval_params(params, "y_validation")
-        self._check_eval_set_support(self.estimator, "y_validation")
-        self._validate_explicit_window(y, X_actual, y_validation, X_actual_validation, forecasting_horizon)
+        self._reject_raw_eval_params(params, "y_val")
+        self._check_eval_set_support(self.estimator, "y_val")
+        self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
 
         X_forecast_eval = X_forecast
-        if X_forecast_validation is not None:
+        if X_forecast_val is not None:
             X_forecast_eval = (
-                X_forecast_validation
+                X_forecast_val
                 if X_forecast is None
-                else pl.concat([X_forecast, X_forecast_validation], how="vertical_relaxed").unique(maintain_order=True)
+                else pl.concat([X_forecast, X_forecast_val], how="vertical_relaxed").unique(maintain_order=True)
             )
-        return y, X_actual, y_validation, X_actual_validation, X_forecast_eval, "y_validation"
+        return y, X_actual, y_val, X_actual_val, X_forecast_eval, "y_val"
 
     def _rewind_after_explicit_window(
         self,
@@ -1691,10 +1691,10 @@ default="first_step"
         X_future: pl.DataFrame | None,
         X_forecast: pl.DataFrame | None,
     ) -> None:
-        """Return the observation state to the end of the training data after a ``y_validation`` fit.
+        """Return the observation state to the end of the training data after a ``y_val`` fit.
 
         Building evaluation rows observes the window. For ``validation_size``
-        that is the intended post-fit state; for ``y_validation`` the window is
+        that is the intended post-fit state; for ``y_val`` the window is
         not training data, so the state is rewound to where a plain fit on
         ``y`` would leave it.
 
@@ -1712,7 +1712,7 @@ default="first_step"
             External forecasts, as passed to fit (without the window's vintages).
 
         """
-        if source == "y_validation":
+        if source == "y_val":
             self.rewind(y, X_actual=X_actual, X_future=X_future, X_forecast=X_forecast)
 
     def _fitted_estimator_positions(self) -> list[tuple[str, BaseEstimator]]:

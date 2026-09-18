@@ -144,7 +144,7 @@ class TestValidationHoldout:
         RecordingRegressor, _, _ = self._stubs()
         y, _ = y_X_factory(length=200, n_targets=1, n_features=0)
         forecaster = PointReductionForecaster(RecordingRegressor())
-        forecaster.fit(y[:-48], forecasting_horizon=FH, y_validation=y[-48:])
+        forecaster.fit(y[:-48], forecasting_horizon=FH, y_val=y[-48:])
         assert _declared(forecaster) == 0
 
     def test_tuned_validation_size_shows_after_refit(self, y_X_factory):

@@ -253,9 +253,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
-        y_validation: pl.DataFrame | None = None,
-        X_actual_validation: pl.DataFrame | None = None,
-        X_forecast_validation: pl.DataFrame | None = None,
+        y_val: pl.DataFrame | None = None,
+        X_actual_val: pl.DataFrame | None = None,
+        X_forecast_val: pl.DataFrame | None = None,
         **params,
     ) -> "PointReductionForecaster":
         """Fit the forecaster to historical data.
@@ -284,7 +284,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             recursive prediction (``forecasting_horizon > fit_forecasting_horizon_``
             at predict time) is not supported and raises a ``ValueError``;
             use ``ForecastedFeatureForecaster`` for that use case.
-        y_validation : pl.DataFrame or None, default=None
+        y_val : pl.DataFrame or None, default=None
             Target rows of an evaluation window that starts one interval
             after ``y`` ends, with the same columns as ``y``. Its rows are
             turned into evaluation rows through the transformers fitted on
@@ -295,11 +295,11 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             state ends at the last time of ``y``, exactly as without it.
             Mutually exclusive with ``validation_size``; ``validation_overlap``
             applies as it does to the ``validation_size`` tail.
-        X_actual_validation : pl.DataFrame or None, default=None
-            Actual feature rows covering the ``y_validation`` window. Required
+        X_actual_val : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``y_val`` window. Required
             when ``X_actual`` is given, rejected otherwise.
-        X_forecast_validation : pl.DataFrame or None, default=None
-            Forecast vintages published during the ``y_validation`` window,
+        X_forecast_val : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``y_val`` window,
             added to ``X_forecast`` when resolving the evaluation rows'
             features as of each row's time.
         **params : dict
@@ -316,7 +316,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
             mismatched panel groups). With ``validation_size`` or
-            ``y_validation`` set, also on any rejected holdout configuration;
+            ``y_val`` set, also on any rejected holdout configuration;
             see
             [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
 
@@ -330,9 +330,9 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             forecasting_horizon,
             params,
             X_forecast,
-            y_validation,
-            X_actual_validation,
-            X_forecast_validation,
+            y_val,
+            X_actual_val,
+            X_forecast_val,
         )
 
         y_t, X_t = self._pre_fit(

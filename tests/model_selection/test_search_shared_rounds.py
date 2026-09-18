@@ -268,7 +268,7 @@ class TestRefit:
         with mock.patch.object(PointReductionForecaster, "fit", record):
             search.fit(y, forecasting_horizon=HORIZON)
         refit_kwargs = fit_calls[-1]
-        assert "y_validation" not in refit_kwargs
+        assert "y_val" not in refit_kwargs
         best = search.best_forecaster_
         assert best.estimator.n_rounds == max(search.best_rounds_.values())
         for position, est in best._fitted_estimator_positions():
@@ -346,7 +346,7 @@ class TestEndToEnd:
             ),
             y,
         )
-        assert "['rare']" in folds[0].fit_error and "y_validation window" in folds[0].fit_error
+        assert "['rare']" in folds[0].fit_error and "y_val window" in folds[0].fit_error
 
     def test_search_parallelism_does_not_change_results(self):
         y = _series(n=200)
@@ -403,7 +403,7 @@ class TestRejectedConfigurations:
             search.fit(y, forecasting_horizon=HORIZON)
         fit_fold.assert_not_called()
 
-    @pytest.mark.parametrize("key", ["eval_set", "y_validation"])
+    @pytest.mark.parametrize("key", ["eval_set", "y_val"])
     def test_evaluation_data_in_fit_params(self, key):
         with pytest.raises(ValueError, match=key):
             _search()._check_shared_round_setup({key: object()})

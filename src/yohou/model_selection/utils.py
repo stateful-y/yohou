@@ -452,8 +452,8 @@ def _fit_fold(
     coverage_rates : list of float or None
         Coverage levels passed to ``forecaster.fit``.
     validation_window : bool, default=False
-        Whether to pass the fold's test rows to ``fit`` as ``y_validation``,
-        ``X_actual_validation``, and ``X_forecast_validation``.
+        Whether to pass the fold's test rows to ``fit`` as ``y_val``,
+        ``X_actual_val``, and ``X_forecast_val``.
     extra_fit_params : dict or None, default=None
         Further keyword arguments for ``forecaster.fit``, such as an
         early-stopping adapter's callbacks.
@@ -529,9 +529,9 @@ def _fit_fold(
         if validation_window:
             fit_params = {
                 **fit_params,
-                "y_validation": y_test,
-                "X_actual_validation": X_actual_test,
-                "X_forecast_validation": X_forecast_test,
+                "y_val": y_test,
+                "X_actual_val": X_actual_test,
+                "X_forecast_val": X_forecast_test,
             }
         forecaster.fit(
             y=y_train,

@@ -3,7 +3,7 @@
 This guide shows you how to give gradient boosting estimators (LightGBM,
 XGBoost, CatBoost) an evaluation set so they stop training when their
 validation performance plateaus: a held-out tail with `validation_size`, a
-window you supply with `y_validation`, or each fold's test window inside a
+window you supply with `y_val`, or each fold's test window inside a
 hyperparameter search.
 
 ## Prerequisites
@@ -199,7 +199,7 @@ Inside a hyperparameter search the iteration count can be chosen for you; see
 ## 8. Pass Your Own Evaluation Window
 
 When you already hold the evaluation data separately, for example the next
-period of a manual backtest, pass it to `fit` as `y_validation` instead of
+period of a manual backtest, pass it to `fit` as `y_val` instead of
 setting `validation_size`. The window must start one interval after `y` ends
 and have the same columns:
 
@@ -211,7 +211,7 @@ window_forecaster = PointReductionForecaster(
     reduction_strategy="direct",
     actual_transformer=LagTransformer(lag=[1, 2, 24]),
 )
-window_forecaster.fit(y=train, forecasting_horizon=24, y_validation=window)
+window_forecaster.fit(y=train, forecasting_horizon=24, y_val=window)
 ```
 
 Transformers are fitted on `train` only and the window's evaluation rows are
@@ -219,8 +219,8 @@ built through them, exactly as for the `validation_size` tail. The difference
 is the state after fitting: the window is not training data, so `predict()`
 forecasts the period right after `train`, and you can score the model on the
 window with `observe_predict(window)`. If you fitted with `X_actual`, pass the
-window's rows as `X_actual_validation`; forecast vintages published during the
-window go in `X_forecast_validation`. `y_validation` and `validation_size`
+window's rows as `X_actual_val`; forecast vintages published during the
+window go in `X_forecast_val`. `y_val` and `validation_size`
 cannot be combined.
 
 ## 9. Early Stop Inside a Search
