@@ -365,6 +365,14 @@ encoders, and sample weights on the remaining head only, tabularizes the boundar
 window through those fitted transformers, and passes the result to the estimator's
 `fit`.
 
+The libraries disagree on what that argument is called. XGBoost and CatBoost take
+`eval_set=[(X, y)]`, current LightGBM takes `eval_X` and `eval_y`, and scikit-learn's
+histogram gradient boosting takes `X_val` and `y_val`. Yohou reads the estimator's
+`fit` signature and delivers the pair in whichever of these it declares. When the
+forecaster has a `time_weighter` or `vintage_weighter`, the evaluation rows are
+weighted by the same weighters as the training rows, so the metric the estimator
+stops on is weighted on the same basis as the loss it is fitting.
+
 Two things follow from where the split sits.
 
 First, the split is **temporal and leak-free by construction**. Transformers never see
@@ -414,8 +422,9 @@ applies the same idea to reduction forecasters. For each candidate:
    sample weights see only those rows. The fold's test window is turned into
    evaluation rows through the transformers fitted on the training window, as
    the holdout tail is, and given to the estimator as its evaluation set.
-   The estimator trains every iteration up to its ceiling (`n_estimators` or
-   `iterations`) and records its stopping metric on that set after each one.
+   The estimator trains every iteration up to its ceiling (`n_estimators`,
+   `iterations`, or `max_iter`) and records its stopping metric on that set
+   after each one.
 2. For each fitted estimator (each step of the `"direct"` strategy, each
    interval bound), the stopping metric is averaged across folds, and the best
    iteration of that average is chosen: the shared round.

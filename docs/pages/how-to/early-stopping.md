@@ -1,7 +1,8 @@
 # How to Enable Early Stopping
 
 This guide shows you how to give gradient boosting estimators (LightGBM,
-XGBoost, CatBoost) an evaluation set so they stop training when their
+XGBoost, CatBoost, and scikit-learn's histogram gradient boosting) an
+evaluation set so they stop training when their
 validation performance plateaus: a held-out tail with `validation_size`, a
 window you supply with `y_val`, or each fold's test window inside a
 hyperparameter search.
@@ -33,6 +34,30 @@ estimator = LGBMRegressor(
 
 The same applies to XGBoost (`early_stopping_rounds` on the constructor) and
 CatBoost (`early_stopping_rounds` on the constructor or fit).
+
+scikit-learn's `HistGradientBoostingRegressor` and
+`HistGradientBoostingClassifier` work too, and they need
+`early_stopping=True` set explicitly:
+
+```python
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+estimator = HistGradientBoostingRegressor(
+    max_iter=500,
+    early_stopping=True,
+    n_iter_no_change=20,
+)
+```
+
+Their default is `early_stopping="auto"`, which switches early stopping off
+below 10000 training rows. scikit-learn still accepts the evaluation set in
+that state and then ignores it, so the fit would silently never stop early.
+Yohou rejects anything other than `True` rather than let that happen.
+
+Which keyword the pair arrives under depends on the estimator: `eval_set` for
+XGBoost and CatBoost, `eval_X`/`eval_y` for current LightGBM, and
+`X_val`/`y_val` for scikit-learn. Yohou reads the estimator's `fit` signature
+and follows it, so you do not choose.
 
 ## 2. Hold Out a Validation Tail with `validation_size`
 
@@ -219,8 +244,11 @@ built through them, exactly as for the `validation_size` tail. The difference
 is the state after fitting: the window is not training data, so `predict()`
 forecasts the period right after `train`, and you can score the model on the
 window with `observe_predict(window)`. If you fitted with `X_actual`, pass the
-window's rows as `X_actual_val`; forecast vintages published during the
-window go in `X_forecast_val`. `y_val` and `validation_size`
+window's rows as `X_actual_val`. Forecast vintages published during the
+window go in `X_forecast_val`, which is optional: vintages already in
+`X_forecast` may cover the window on their own. It needs `X_forecast` at fit,
+though, and is rejected without it, because a forecaster fitted without
+external forecasts derives no feature from them. `y_val` and `validation_size`
 cannot be combined.
 
 ## 9. Early Stop Inside a Search
@@ -282,9 +310,32 @@ on the rows it scores, so `best_score_` is optimistic; the first route keeps the
 score unbiased. [Early Stopping on the Scored Fold](../explanation/reduction-forecasting.md#early-stopping-on-the-scored-fold)
 explains the difference.
 
-`validation="cv"` works with LightGBM, XGBoost, and CatBoost estimators, bare
-or as a `Pipeline`'s final step, in point, class-probability, and interval
-forecasters. With an
+The same search runs unchanged on scikit-learn's histogram gradient boosting,
+which needs no third-party dependency. The ceiling is `max_iter`, and the
+adapter is found from the estimator's class, so nothing else changes:
+
+```python
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+search = GridSearchCV(
+    forecaster=PointReductionForecaster(
+        estimator=HistGradientBoostingRegressor(max_iter=1000),
+        reduction_strategy="direct",
+        actual_transformer=LagTransformer(lag=[1, 2, 24]),
+    ),
+    param_grid={"estimator__learning_rate": [0.05, 0.1]},
+    scoring=MeanAbsoluteError(),
+    cv=ExpandingWindowSplitter(n_splits=3, test_size=96),
+    validation="cv",
+)
+search.fit(y=y, forecasting_horizon=24)
+```
+
+`validation="cv"` works with LightGBM, XGBoost, CatBoost, and scikit-learn
+histogram gradient boosting estimators, bare or as a `Pipeline`'s final step, in point, class-probability, and interval
+forecasters. In this mode you do not need to set `early_stopping=True`
+yourself: the adapter switches it on for every fold fit, whatever the candidate
+carries. With an
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
 and an interval scorer, each bound's estimator gets its own count, keyed like
 `"coverage_rate_0.9_lower/step_1"` in `best_rounds_`. It has three requirements:

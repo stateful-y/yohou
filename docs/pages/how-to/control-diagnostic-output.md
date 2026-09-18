@@ -58,6 +58,22 @@ from yohou import ForecastCoverageWarning
 warnings.filterwarnings("ignore", category=ForecastCoverageWarning)
 ```
 
+Yohou has two warning categories you can filter this way:
+
+- `ForecastCoverageWarning`: `X_forecast` covers fewer steps than the forecasting
+  horizon.
+- `UnweightedEvaluationSetWarning`: the forecaster has a `time_weighter` or
+  `vintage_weighter`, but its estimator accepts an evaluation set without declaring
+  any evaluation-weight parameter, so early stopping judges the model on an
+  unweighted metric while it trains on a weighted loss. Silence it once you have
+  decided that mismatch is acceptable for your estimator.
+
+```python
+from yohou import UnweightedEvaluationSetWarning
+
+warnings.filterwarnings("ignore", category=UnweightedEvaluationSetWarning)
+```
+
 ## Read the coverage warning's detail
 
 `ForecastCoverageWarning` carries the per-column breakdown the check computed, not
