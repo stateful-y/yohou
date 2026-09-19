@@ -150,6 +150,15 @@ class TestHorizonAndData:
         with pytest.raises(ValueError, match="at least seasonality \\* n_seasons = 168 rows"):
             HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7).fit(X, forecasting_horizon=48)
 
+    def test_failed_fit_keeps_statistics(self):
+        """A fit that raises on too few rows leaves statistics_ from the previous fit."""
+        transformer = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7)
+        transformer.fit(_hourly(200), forecasting_horizon=48)
+        transformer.set_params(statistics=["mean", "std"])
+        with pytest.raises(ValueError, match="at least seasonality"):
+            transformer.fit(_hourly(167), forecasting_horizon=48)
+        assert transformer.statistics_ == ["mean"]
+
     def test_missing_horizon(self):
         """Fitting without forecasting_horizon names the metadata and how to supply it."""
         X = _hourly(100)

@@ -171,8 +171,8 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         Tags
             Estimator tags with forecaster_type set to POINT_INTERVAL since this
             forecaster produces both point predictions and intervals, and
-            ``holdout_size`` covering the calibration stretch the point
-            forecaster is not fitted on.
+            ``holdout_size`` set to ``calibration_size`` plus the wrapped point
+            forecaster's own ``holdout_size``.
 
         """
         tags = super().__sklearn_tags__()

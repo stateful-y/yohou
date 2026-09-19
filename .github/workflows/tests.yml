@@ -55,6 +55,12 @@ jobs:
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
 
+      - name: Install OpenMP runtime on macOS
+        # LightGBM's and XGBoost's macOS wheels load Homebrew's libomp at import;
+        # without it they raise OSError, which pytest.importorskip cannot catch.
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
       - name: Run fast tests (excluding slow/integration tests)
         run: nox -s test_fast --python ${{ matrix.python-version }}
 
@@ -65,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pins: ["scikit-learn==1.6.0"]
+        pins: ["scikit-learn==1.7.0"]
 
     steps:
       - name: Checkout code

@@ -118,6 +118,24 @@ class TestSystematicChecks:
                 {"search_type": "grid", "refit": True, "multimetric": False, "interval_scoring": True},
                 [],
             ),
+            # GridSearchCV over an interval-only forecaster (no predict)
+            (
+                GridSearchCV,
+                {
+                    "param_grid": {"estimator__alpha": [0.0, 0.1]},
+                    "scoring": IntervalScore(coverage_rates=[0.9]),
+                    "cv": 2,
+                    "refit": True,
+                },
+                {
+                    "search_type": "grid",
+                    "refit": True,
+                    "multimetric": False,
+                    "interval_scoring": True,
+                    "interval_only": True,
+                },
+                [],
+            ),
             # GridSearchCV with list-of-dicts param_grid (multiple grid search spaces)
             (
                 GridSearchCV,
@@ -147,7 +165,18 @@ class TestSystematicChecks:
         y_train, y_test = y[:180], y[180:]
         X_actual_train, X_actual_test = (X_actual[:180], X_actual[180:]) if X_actual is not None else (None, None)
 
-        if tags.get("interval_scoring", False):
+        if tags.get("interval_only", False):
+            from sklearn.linear_model import QuantileRegressor
+
+            from yohou.interval import IntervalReductionForecaster
+            from yohou.preprocessing import LagTransformer
+
+            forecaster = IntervalReductionForecaster(
+                estimator=QuantileRegressor(solver="highs", alpha=0.0),
+                reduction_strategy="direct",
+                actual_transformer=LagTransformer(lag=[1, 2]),
+            )
+        elif tags.get("interval_scoring", False):
             forecaster = SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20)
         else:
             forecaster = SeasonalNaive()
@@ -753,6 +782,116 @@ class TestIncompatibleForecasterScorer:
         )
         search.fit(y_train, X_actual=None, forecasting_horizon=3)
         assert hasattr(search, "best_params_")
+
+
+class TestIntervalOnlyForecasterSearch:
+    """Searches accept forecasters that predict intervals but not points."""
+
+    @staticmethod
+    def _forecaster():
+        from sklearn.linear_model import QuantileRegressor
+
+        from yohou.interval import IntervalReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        return IntervalReductionForecaster(
+            estimator=QuantileRegressor(solver="highs", alpha=0.0),
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2]),
+        )
+
+    @staticmethod
+    def _search(forecaster, scoring, **kwargs):
+        from yohou.model_selection import ExpandingWindowSplitter
+
+        return GridSearchCV(
+            forecaster=forecaster,
+            param_grid=kwargs.pop("param_grid", {"estimator__alpha": [0.0, 0.1]}),
+            scoring=scoring,
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
+            **kwargs,
+        )
+
+    def test_interval_only_forecaster_is_searched(self, y_X_factory):
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        search = self._search(self._forecaster(), IntervalScore(coverage_rates=[0.9]))
+        search.fit(y, forecasting_horizon=3)
+        results = search.cv_results_
+        assert np.isfinite(results["mean_test_score"]).all()
+        assert results["rank_test_score"][search.best_index_] == 1
+        predicted = search.predict_interval(coverage_rates=[0.9])
+        assert len(predicted) == 3
+
+    @pytest.mark.parametrize(
+        ("methods", "accepted"),
+        [(("fit",), False), (("fit", "predict"), True), (("fit", "predict_interval"), True)],
+        ids=["fit-only", "fit-predict", "fit-predict-interval"],
+    )
+    def test_forecaster_constraint(self, methods, accepted):
+        from yohou.utils._compat import InvalidParameterError
+
+        def method(self, *args, **kwargs):
+            return self
+
+        stub = type("Stub", (), dict.fromkeys(methods, method))()
+        search = GridSearchCV(forecaster=stub, param_grid={}, scoring=IntervalScore(coverage_rates=[0.9]))
+        if accepted:
+            search._validate_params()
+        else:
+            with pytest.raises(InvalidParameterError, match="forecaster"):
+                search._validate_params()
+
+    def test_point_forecaster_is_still_accepted(self, y_X_factory):
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        search = self._search(SeasonalNaive(), MeanAbsoluteError(), param_grid={"seasonality": [1, 5]})
+        search.fit(y, forecasting_horizon=3)
+        assert len(search.predict()) == 3
+
+    @pytest.mark.parametrize(
+        "scoring",
+        [MeanAbsoluteError(), {"interval": IntervalScore(coverage_rates=[0.9]), "mae": MeanAbsoluteError()}],
+        ids=["point", "mixed"],
+    )
+    def test_point_scorers_rejected_before_fitting(self, scoring, y_X_factory):
+        from unittest import mock
+
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        refit = "interval" if isinstance(scoring, dict) else True
+        search = self._search(self._forecaster(), scoring, refit=refit)
+        with (
+            mock.patch("yohou.model_selection.search._fit_and_score") as fit_and_score,
+            pytest.raises(ValueError, match="point"),
+        ):
+            search.fit(y, forecasting_horizon=3)
+        fit_and_score.assert_not_called()
+
+    def test_mixed_scorers_on_forecaster_with_both_types(self, y_X_factory):
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
+        search = self._search(
+            SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20),
+            {"interval": IntervalScore(coverage_rates=[0.9]), "mae": MeanAbsoluteError()},
+            param_grid={"point_forecaster__seasonality": [1, 5]},
+            refit="interval",
+        )
+        search.fit(y[:180], forecasting_horizon=3)
+        assert np.all(np.isfinite(search.cv_results_["mean_test_interval"]))
+        assert np.all(np.isfinite(search.cv_results_["mean_test_mae"]))
+
+    def test_delegation_follows_the_best_forecaster(self, y_X_factory):
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        train, new_rows = y[:-6], y[-6:]
+        search = self._search(self._forecaster(), IntervalScore(coverage_rates=[0.9]))
+        search.fit(train, forecasting_horizon=3)
+        assert not hasattr(search, "predict")
+        assert not hasattr(search, "observe_predict")
+        assert hasattr(search, "observe") and hasattr(search, "rewind")
+        reference = clone(search.best_forecaster_)
+        reference.fit(train, forecasting_horizon=3, coverage_rates=[0.9])
+        expected = reference.observe_predict_interval(new_rows, coverage_rates=[0.9])
+        observed = search.observe_predict_interval(new_rows, coverage_rates=[0.9])
+        import polars as pl
+
+        pl.testing.assert_frame_equal(observed, expected)
 
 
 class TestSearchRefitCallable:

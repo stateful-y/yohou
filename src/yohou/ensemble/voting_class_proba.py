@@ -19,6 +19,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.class_proba import BaseClassProbaForecaster
 from yohou.utils import CLASS_PROBA, Tags
 from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _raise_for_params
+from yohou.utils.tags import _max_child_holdout_size
 
 from ._base import _BaseEnsembleForecaster
 
@@ -218,11 +219,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             tags.forecaster_tags.stateful = any(
                 getattr(f.__sklearn_tags__().forecaster_tags, "stateful", False) for f in forecasters_to_check
             )
-            # The stretch a train score may use must be learned-from by every child.
-            tags.forecaster_tags.holdout_size = max(
-                (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for f in forecasters_to_check),
-                default=0,
-            )
+            tags.forecaster_tags.holdout_size = _max_child_holdout_size(forecasters_to_check)
 
         return tags
 

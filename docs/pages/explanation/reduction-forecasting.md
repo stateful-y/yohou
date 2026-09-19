@@ -355,6 +355,134 @@ feature matrix (dir-rec).
 If `nan_handling="drop"` removes all rows, a `ValueError` is raised indicating that
 no training samples remain.
 
+## Validation Holdout
+
+Gradient boosting estimators can stop training once their loss on held-out data stops
+improving. That needs a second dataset, separate from the training rows, which the
+estimator scores after each boosting round. The `validation_size` parameter builds
+one: it holds out the last N time steps (per group on panel data), fits transformers,
+encoders, and sample weights on the remaining head only, tabularizes the boundary
+window through those fitted transformers, and passes the result to the estimator's
+`fit`.
+
+The libraries disagree on what that argument is called. XGBoost and CatBoost take
+`eval_set=[(X, y)]`, current LightGBM takes `eval_X` and `eval_y`, and scikit-learn's
+histogram gradient boosting takes `X_val` and `y_val`. Yohou reads the estimator's
+`fit` signature and delivers the pair in whichever of these it declares. When the
+forecaster has a `time_weighter` or `vintage_weighter`, the evaluation rows are
+weighted by the same weighters as the training rows, so the metric the estimator
+stops on is weighted on the same basis as the loss it is fitting.
+
+Two things follow from where the split sits.
+
+First, the split is **temporal and leak-free by construction**. Transformers never see
+the tail before they are fitted, and no evaluation row is also a training row. By
+default only rows whose entire target window lies inside the tail are evaluated, giving
+`validation_size - forecasting_horizon + 1` rows. Setting `validation_overlap=True`
+adds the `forecasting_horizon - 1` boundary rows whose targets straddle the split,
+giving `validation_size` rows, at the cost of scoring some time points the model also
+trained on. That trade is worth making on short series with long horizons, where strict
+evaluation can consume most of the holdout.
+
+Second, and less obvious: **the tail's information is spent on the stopping decision,
+not on the model**. Boosting libraries do not refit after they stop, so the model you
+get was trained on the head alone. If you want a model trained on everything, read the
+discovered iteration count and refit with `validation_size=None`. The same arithmetic
+applies inside a hyperparameter search: each fold's inner fit holds out the tail of its
+own training window, so the effective training data shrinks fold by fold.
+
+After fitting, the held-out tail is observed, so `predict()` still forecasts from the
+end of all provided data. The holdout changes what the estimator trained on, not where
+the forecast starts. The forecaster declares the tail as its `holdout_size`
+[tag](../reference/tags.md), so a cross-validation train score ends before the rows the
+estimator never trained on.
+
+Early stopping itself, meaning the patience, the metric, and any callbacks, is
+configured on the estimator. Yohou's only job is delivering a correctly built
+evaluation set to it. See
+[Enable Early Stopping](../how-to/early-stopping.md) for the steps.
+
+### Early Stopping on the Scored Fold
+
+A hyperparameter search raises a question the holdout alone does not answer:
+how many boosting iterations should the final model train? Holding out a tail
+inside every fold stops each fold's fit but leaves the refit with no count, and
+spends part of every training window on the stopping decision.
+
+The libraries' own cross-validation functions take a different route.
+XGBoost's and LightGBM's `cv` evaluate every fold on its test fold after each
+iteration, average the metric across folds, and stop all folds at the same
+iteration; that iteration is then the count for a final fit on all data.
+`validation="cv"` on
+[`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and
+[`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/)
+applies the same idea to reduction forecasters. For each candidate:
+
+1. Every fold is fitted on its training window. Transformers, encoders, and
+   sample weights see only those rows. The fold's test window is turned into
+   evaluation rows through the transformers fitted on the training window, as
+   the holdout tail is, and given to the estimator as its evaluation set.
+   The estimator trains every iteration up to its ceiling (`n_estimators`,
+   `iterations`, or `max_iter`) and records its stopping metric on that set
+   after each one.
+2. For each fitted estimator (each step of the `"direct"` strategy, each
+   interval bound), the stopping metric is averaged across folds, and the best
+   iteration of that average is chosen: the shared round.
+3. Every fold's estimators are cut to their chosen iteration, and each fold is
+   scored on its test window as usual.
+4. The refit trains each estimator for its chosen count on all data, with
+   early stopping off.
+
+Scikit-learn's `fit` trains one model to completion per call, so the folds
+cannot be stopped in lockstep as the library functions do. Letting each fold
+stop on its own patience does not work either: a fold whose short training
+window stops early leaves the other folds' later iterations unscored, and on a
+short series the chosen count then lands on that fold's last iteration for most
+candidates. So fold fits never stop early. The average covers every iteration
+up to the ceiling, which makes the ceiling the cost of the search and the
+largest count it can choose. A chosen count equal to the ceiling is flagged as
+`rounds_at_boundary`, with a warning, because a later count might have been
+better.
+
+**The score is optimistic.** The iteration count is chosen on the same rows
+that produce the score, so `best_score_` is better than the performance on
+unseen data. This is the same mechanism as listing `n_estimators` values in the
+parameter grid: whatever a search chooses on its test folds is fitted to those
+folds. Because the count is shared across folds, no fold is scored at its own
+best iteration, which would be more optimistic still. When an unbiased score
+matters more than training data, set `validation_size` on the forecaster and
+leave `validation=None`: each fold then stops on the end of its own training
+window and is scored on rows the stopping decision never saw.
+
+**Two configurations are rejected**, with an error before any fold is fitted.
+
+The first is `reduction_strategy="dir-rec"`. Its step models are not
+independent: step 2 trains on features that include step 1's predictions, step
+3 on steps 1 and 2, and so on. Suppose the search picks 40 iterations for step
+1 and 90 for step 2. Step 2 learned from features holding the predictions of
+the whole step-1 model, so cutting step 1 back to 40 iterations afterwards
+changes what step 2 sees when it predicts. Rather than return a model whose
+inputs shifted after training, the search refuses the strategy. Use `"direct"`,
+whose step models are independent, or `"multi-output"`.
+
+The second is a CatBoost estimator with no `learning_rate` set. CatBoost then
+chooses one itself, partly from `iterations`: on one dataset it used 0.066 at
+`iterations=500` and 0.431 at `iterations=50`. Because the refit trains the
+chosen count rather than the ceiling the folds used, CatBoost would pick a
+different learning rate for it, and the final model would not be the model the
+search evaluated. Setting `learning_rate` explicitly keeps it fixed across the
+folds and the refit.
+
+**One estimator, several counts.** Every step model is a copy of the single
+estimator passed to the forecaster, so the refit cannot give step 1 forty
+iterations and step 2 ninety through parameters. It trains every model to the
+largest chosen count, 90 here, then cuts each one back to its own, step 1 to
+40. That is sound because an iteration of gradient boosting only adds a tree
+and never revises the earlier ones: the first 40 trees of a model trained for
+90 iterations are the model trained for 40. CatBoost's iteration-dependent
+default learning rate is precisely what would break this equivalence, which is
+why it is rejected above.
+
 ## References
 
 - Bontempi, G., Ben Taieb, S., & Le Borgne, Y.-A. (2013). Machine learning strategies

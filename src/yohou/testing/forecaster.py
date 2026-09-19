@@ -15,6 +15,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.compose import PerVintageActualTransformer
 from yohou.preprocessing import FunctionTransformer
 
+from .common import _produces_step_columns
 from .contract import _safe_equal, check_clone_preserves_params
 
 __all__ = [
@@ -1442,10 +1443,7 @@ def check_step_feature_alignment_filters(
     assert "step_feature_alignment" in params, (
         "check_step_feature_alignment_filters needs a forecaster exposing step_feature_alignment"
     )
-    actual_transformer = params.get("actual_transformer")
-    produces_step_columns = actual_transformer is not None and bool(
-        actual_transformer.__sklearn_tags__().transformer_tags.produces_step_columns
-    )
+    produces_step_columns = _produces_step_columns(params.get("actual_transformer"))
     assert X_future is not None or X_forecast is not None or produces_step_columns, (
         "check_step_feature_alignment_filters needs X_future, X_forecast or a step-output actual_transformer "
         "to provide step columns"
@@ -1502,6 +1500,8 @@ def check_observe_auto_rederives_step_columns(
     X_actual_observe: pl.DataFrame | None,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
+    y_baseline: pl.DataFrame | None = None,
+    X_actual_baseline: pl.DataFrame | None = None,
 ) -> None:
     """Check observe() re-derives step columns from stored raws.
 
@@ -1520,12 +1520,25 @@ def check_observe_auto_rederives_step_columns(
         Optional X_future override for observe.
     X_forecast : pl.DataFrame or None
         Optional X_forecast override for observe.
+    y_baseline : pl.DataFrame or None
+        Historical window immediately preceding ``y_observe`` (typically the
+        training series). When provided, the forecaster is rewound to its end
+        first, making this check independent of state left behind by earlier
+        mutating checks in the suite. Earlier checks advance the shared
+        instance past ``y_observe``, and stateful transformers reject the
+        resulting overlap while transformer-less forecasters silently accept
+        it, so without the rewind this check only ever ran on corrupted state.
+    X_actual_baseline : pl.DataFrame or None
+        Features aligned with ``y_baseline``.
 
     """
     # Verify step columns exist before observe
     assert len(forecaster._step_column_names_) > 0, "Forecaster must have non-empty _step_column_names_ before observe"
 
     step_cols_before = forecaster._step_column_names_.copy()
+
+    if y_baseline is not None:
+        forecaster.rewind(y_baseline, X_actual_baseline, X_future=X_future, X_forecast=X_forecast)
 
     # Observe
     forecaster.observe(y_observe, X_actual_observe, X_future=X_future, X_forecast=X_forecast)

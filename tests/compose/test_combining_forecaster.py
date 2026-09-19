@@ -9,6 +9,7 @@ import pytest
 from sklearn.base import clone
 
 from conftest import run_checks
+from holdout_stub import _SelectColumn
 from yohou.base import BaseActualTransformer
 from yohou.compose import CombiningForecaster
 from yohou.point import SeasonalNaive
@@ -33,33 +34,6 @@ _CLONE_CHECK = "check_clone_preserves_forecaster_params"
 # --------------------------------------------------------------------------------------
 # Extractors used across the tests
 # --------------------------------------------------------------------------------------
-
-
-class _SelectColumn(BaseActualTransformer):
-    """Stateless extractor selecting one column and renaming it as the term target."""
-
-    def __init__(self, column: str, out_name: str):
-        self.column = column
-        self.out_name = out_name
-        self._observation_horizon = 0
-
-    @property
-    def observation_horizon(self) -> int:
-        """Return the (zero) observation horizon of this stateless extractor."""
-        return 0
-
-    def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> "_SelectColumn":
-        """Fit against the input frame, setting the transformer schema."""
-        BaseActualTransformer.fit(self, X, y)
-        return self
-
-    def transform(self, X: pl.DataFrame) -> pl.DataFrame:
-        """Return ``time`` plus the selected column renamed to ``out_name``."""
-        return X.select([pl.col("time"), pl.col(self.column).alias(self.out_name)])
-
-    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
-        """Return the single output feature name."""
-        return [self.out_name]
 
 
 class _PanelPassthrough(BaseActualTransformer):

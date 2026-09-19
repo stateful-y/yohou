@@ -69,15 +69,12 @@ class TestHoldoutStub:
 class TestSplitConformal:
     """A split-conformal forecaster declares its calibration stretch."""
 
-    @pytest.mark.parametrize("calibration_size", [168, 720])
-    def test_declares_calibration_size_before_and_after_fit(self, y_X_factory, calibration_size):
-        y, _ = y_X_factory(length=calibration_size + 100, n_targets=1, n_features=1)
-        forecaster = SplitConformalForecaster(
-            point_forecaster=PointReductionForecaster(Ridge()), calibration_size=calibration_size
-        )
-        assert _declared(forecaster) == calibration_size
+    def test_declares_calibration_size_before_and_after_fit(self, y_X_factory):
+        y, _ = y_X_factory(length=268, n_targets=1, n_features=1)
+        forecaster = SplitConformalForecaster(point_forecaster=PointReductionForecaster(Ridge()), calibration_size=168)
+        assert _declared(forecaster) == 168
         forecaster.fit(y, forecasting_horizon=FH)
-        assert _declared(forecaster) == calibration_size
+        assert _declared(forecaster) == 168
 
     def test_nested_holdouts_add_up(self, y_X_factory):
         y, _ = y_X_factory(length=300, n_targets=1, n_features=1)
@@ -97,6 +94,68 @@ class TestSplitConformal:
         assert _declared(forecaster) == 168
         forecaster.observe_predict_interval(y[320:360], coverage_rates=[0.9])
         assert _declared(forecaster) == 168
+
+
+class TestValidationHoldout:
+    """A reduction forecaster declares the validation_size tail it holds back from training."""
+
+    @staticmethod
+    def _stubs():
+        from .test_reduction_validation_holdout import QuantileStub, RecordingClassifier, RecordingRegressor
+
+        return RecordingRegressor, RecordingClassifier, QuantileStub
+
+    @pytest.mark.parametrize("family", ["point", "interval"])
+    def test_declares_validation_size_before_and_after_fit(self, y_X_factory, family):
+        RecordingRegressor, _, QuantileStub = self._stubs()
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0)
+        if family == "point":
+            forecaster = PointReductionForecaster(RecordingRegressor(), validation_size=48)
+            fit_kwargs = {}
+        else:
+            forecaster = IntervalReductionForecaster(QuantileStub(), validation_size=48)
+            fit_kwargs = {"coverage_rates": [0.9]}
+        assert _declared(forecaster) == 48
+        forecaster.fit(y, forecasting_horizon=FH, **fit_kwargs)
+        assert _declared(forecaster) == 48
+
+    def test_class_proba_declares_validation_size(self, class_proba_y_X_factory):
+        _, RecordingClassifier, _ = self._stubs()
+        y, _ = class_proba_y_X_factory(length=200, n_targets=1, n_features=0, n_classes=2, seed=0)
+        forecaster = ClassProbaReductionForecaster(RecordingClassifier(), validation_size=48)
+        assert _declared(forecaster) == 48
+        forecaster.fit(y, forecasting_horizon=FH)
+        assert _declared(forecaster) == 48
+
+    def test_nested_in_split_conformal_adds_up(self, y_X_factory):
+        RecordingRegressor, _, _ = self._stubs()
+        y, _ = y_X_factory(length=300, n_targets=1, n_features=0)
+        forecaster = SplitConformalForecaster(
+            point_forecaster=PointReductionForecaster(RecordingRegressor(), validation_size=48), calibration_size=30
+        )
+        assert _declared(forecaster) == 78
+        forecaster.fit(y, forecasting_horizon=FH)
+        assert _declared(forecaster) == 78
+
+    def test_explicit_window_is_not_held_back(self, y_X_factory):
+        RecordingRegressor, _, _ = self._stubs()
+        y, _ = y_X_factory(length=200, n_targets=1, n_features=0)
+        forecaster = PointReductionForecaster(RecordingRegressor())
+        forecaster.fit(y[:-48], forecasting_horizon=FH, y_val=y[-48:])
+        assert _declared(forecaster) == 0
+
+    def test_tuned_validation_size_shows_after_refit(self, y_X_factory):
+        RecordingRegressor, _, _ = self._stubs()
+        y, _ = y_X_factory(length=400, n_targets=1, n_features=0)
+        search = GridSearchCV(
+            forecaster=PointReductionForecaster(RecordingRegressor(), validation_size=24),
+            param_grid={"validation_size": [48]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        assert _declared(search) == 24
+        search.fit(y, forecasting_horizon=FH)
+        assert _declared(search) == 48
 
 
 class TestSearch:

@@ -1022,7 +1022,9 @@ def check_search_method_availability(
     Raises
     ------
     AssertionError
-        If method availability doesn't match refit setting
+        If method availability doesn't match refit setting. The method checked
+        is ``predict`` when the refitted best forecaster has it, and
+        ``predict_interval`` otherwise.
 
     """
     # Test with refit=True
@@ -1033,9 +1035,11 @@ def check_search_method_availability(
         search_cv_refit.set_params(refit=True)
     search_cv_refit.fit(y, X_actual, forecasting_horizon=forecasting_horizon, X_future=X_future, X_forecast=X_forecast)
 
-    # Methods should be available
-    assert hasattr(search_cv_refit, "predict"), "predict() should be available when refit=True"
-    assert callable(search_cv_refit.predict), "predict should be callable when refit=True"
+    # The search delegates ``predict`` only when the best forecaster has it;
+    # an interval-only forecaster is checked through ``predict_interval``.
+    method = "predict" if hasattr(search_cv_refit.best_forecaster_, "predict") else "predict_interval"
+    assert hasattr(search_cv_refit, method), f"{method}() should be available when refit=True"
+    assert callable(getattr(search_cv_refit, method)), f"{method} should be callable when refit=True"
 
     # Test with refit=False
     search_cv_no_refit = clone(search_cv)
@@ -1046,8 +1050,8 @@ def check_search_method_availability(
 
     # Methods should raise AttributeError
     try:
-        search_cv_no_refit.predict(forecasting_horizon=1)
-        raise AssertionError("predict() should raise AttributeError when refit=False")
+        getattr(search_cv_no_refit, method)(forecasting_horizon=1)
+        raise AssertionError(f"{method}() should raise AttributeError when refit=False")
     except AttributeError:
         # Expected behavior
         pass
@@ -1057,11 +1061,13 @@ def check_search_interval_predict_delegates(
     search_cv,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
+    groups: list[str] | None = None,
 ) -> None:
     """Check predict_interval() works after interval search with refit.
 
     Validates that the best forecaster supports ``predict_interval`` and
-    returns a valid interval prediction DataFrame.
+    returns a valid interval prediction DataFrame. With ``groups``, also
+    checks that every requested panel group appears in the predictions.
 
     Parameters
     ----------
@@ -1071,18 +1077,23 @@ def check_search_interval_predict_delegates(
         Known-future features forwarded to predict_interval().
     X_forecast : pl.DataFrame, optional
         External forecast features forwarded to predict_interval().
+    groups : list of str, optional
+        Panel group names forwarded to predict_interval().
 
     Raises
     ------
     AssertionError
-        If predict_interval() fails or returns invalid predictions.
+        If predict_interval() fails, returns invalid predictions, or omits a
+        requested group.
 
     """
     check_is_fitted(search_cv)
 
     coverage_rates = [0.9]
 
-    y_pred = search_cv.predict_interval(coverage_rates=coverage_rates, X_future=X_future, X_forecast=X_forecast)
+    y_pred = search_cv.predict_interval(
+        coverage_rates=coverage_rates, groups=groups, X_future=X_future, X_forecast=X_forecast
+    )
 
     assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
     assert "vintage_time" in y_pred.columns, "Interval predictions should have 'vintage_time' column"
@@ -1090,3 +1101,10 @@ def check_search_interval_predict_delegates(
 
     interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
     assert len(interval_cols) > 0, f"Interval predictions should have _lower_/_upper_ columns, got {y_pred.columns}"
+
+    if groups is not None:
+        _, panel_groups = inspect_panel(y_pred)
+        for group_name in groups:
+            assert group_name in panel_groups, (
+                f"Requested panel group '{group_name}' not found in interval predictions {set(panel_groups)}"
+            )

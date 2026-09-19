@@ -255,6 +255,26 @@ class ForecasterTags:
                 )
 
 
+def _max_child_holdout_size(children) -> int:
+    """Return the largest ``holdout_size`` declared by any child forecaster.
+
+    A composite declares the largest value among its children, so a train
+    score only uses rows every child learned from.
+
+    Parameters
+    ----------
+    children : iterable of estimators
+        Child forecasters of a composite.
+
+    Returns
+    -------
+    int
+        Largest child ``holdout_size``, or 0 when there are no children.
+
+    """
+    return max((getattr(child.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for child in children), default=0)
+
+
 @dataclass
 class ScorerTags:
     """Tags specific to forecasting metrics/scorers.
