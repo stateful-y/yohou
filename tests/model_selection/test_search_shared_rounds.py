@@ -13,13 +13,18 @@ from sklearn.base import clone
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import DecompositionPipeline
 from yohou.interval import IntervalReductionForecaster
-from yohou.metrics import IntervalScore, LogLoss, MeanAbsoluteError
+from yohou.metrics import IntervalScore, LogLoss, MeanAbsoluteError, RootMeanSquaredError
 from yohou.model_selection import ExpandingWindowSplitter, GridSearchCV, RandomizedSearchCV
 from yohou.model_selection import utils as ms_utils
 from yohou.point import PointReductionForecaster
 from yohou.preprocessing import LagTransformer, MinMaxScaler
 
-from .shared_round_stubs import CurveEarlyStoppingAdapter, CurveRegressor, QuantileCurveRegressor
+from .shared_round_stubs import (
+    CallbackCurveEarlyStoppingAdapter,
+    CurveEarlyStoppingAdapter,
+    CurveRegressor,
+    QuantileCurveRegressor,
+)
 
 N_SPLITS = 3
 TEST_SIZE = 12
@@ -160,10 +165,6 @@ class TestSharedRounds:
             )
         assert len({len(dict(f.forecaster._fitted_estimator_positions())["step_1"].curve_) for f in folds}) > 1
 
-    # yohou's GridSearchCV and RandomizedSearchCV accept only forecasters with
-    # ``predict``, which IntervalReductionForecaster does not have, so interval
-    # positions are checked on the candidate evaluation the searches (and
-    # yohou-optuna) share.
     @staticmethod
     def _evaluate_interval(strategy, forecasting_horizon):
         y = _series()
@@ -235,6 +236,52 @@ class TestSharedRounds:
         cv_lines = [line for line in capsys.readouterr().out.splitlines() if " END " in line]
         assert len(cv_lines) == len(default_lines) == 2 * N_SPLITS
         assert [line.split(" END ")[0] for line in cv_lines] == [line.split(" END ")[0] for line in default_lines]
+
+
+class TestMultimetric:
+    @staticmethod
+    def _search(refit):
+        return _search(
+            scoring={"mae": MeanAbsoluteError(), "rmse": RootMeanSquaredError()},
+            refit=refit,
+            param_grid={"estimator__patience": [4, 8]},
+        )
+
+    def test_refit_metric_sets_best_rounds(self):
+        search = self._search(refit="mae")
+        search.fit(_series(), forecasting_horizon=HORIZON)
+        assert search.best_rounds_ == search.cv_results_["rounds"][search.best_index_]
+        assert {"mean_test_mae", "mean_test_rmse", "rounds", "rounds_at_boundary"} <= set(search.cv_results_)
+
+    def test_refit_false_leaves_best_rounds_unset(self):
+        search = self._search(refit=False)
+        search.fit(_series(), forecasting_horizon=HORIZON)
+        assert not hasattr(search, "best_index_")
+        assert not hasattr(search, "best_rounds_")
+        results = search.cv_results_
+        assert len(results["rounds"]) == 2
+        assert len(results["rounds_at_boundary"]) == 2
+        for i in range(N_SPLITS):
+            assert [set(lengths) for lengths in results[f"split{i}_curve_length"]] == [
+                {"step_1", "step_2", "step_3"}
+            ] * 2
+
+
+class TestAdapterFitParams:
+    def test_caller_fit_params_merge_with_the_adapters(self):
+        y = _series()
+        forecaster = _point(estimator=CurveRegressor(patience=6).set_fit_request(callbacks=True))
+        search = _search(
+            forecaster=forecaster,
+            early_stopping_adapter=CallbackCurveEarlyStoppingAdapter(),
+            param_grid={"estimator__patience": [6]},
+            refit=False,
+        )
+        folds = _captured_folds(search, y, callbacks=["caller"])
+        assert len(folds) == N_SPLITS
+        for fold in folds:
+            for _, est in fold.forecaster._fitted_estimator_positions():
+                assert est.received_callbacks_ == ["caller", "adapter"]
 
 
 class TestFailedFolds:
@@ -392,6 +439,20 @@ class TestRejectedConfigurations:
         search = _search(param_grid={"reduction_strategy": ["direct", "dir-rec"]})
         with pytest.raises(ValueError, match="earlier steps' predictions"):
             search.fit(y, forecasting_horizon=HORIZON)
+
+    @pytest.mark.parametrize(
+        ("template", "grid"),
+        [
+            ({"reduction_strategy": "dir-rec"}, {"reduction_strategy": ["direct"]}),
+            ({"validation_size": 48}, {"validation_size": [None]}),
+        ],
+        ids=["dir-rec", "validation_size"],
+    )
+    def test_grid_overrides_template_configuration(self, template, grid):
+        y = _series()
+        search = _search(forecaster=_point(**template), param_grid=grid)
+        search.fit(y, forecasting_horizon=HORIZON)
+        assert search.best_rounds_
 
     def test_validation_size_on_forecaster(self):
         y = _series()
@@ -601,7 +662,7 @@ class TestRefitWithoutRounds:
 
 
 class TestHistGradientBoostingCandidate:
-    """Task 3: an end-to-end search over scikit-learn's histogram gradient boosting."""
+    """An end-to-end search over scikit-learn's histogram gradient boosting."""
 
     @staticmethod
     def _forecaster(**kwargs):
@@ -664,7 +725,7 @@ class TestHistGradientBoostingCandidate:
 
 
 class TestCvModeRejectsSuppliedEvaluationKeys:
-    """Task 3.14: the cv guard refuses every key the mode supplies itself."""
+    """The cv guard refuses every key the mode supplies itself."""
 
     @pytest.mark.parametrize(
         "key", ["eval_set", "eval_X", "X_val", "sample_weight_val", "eval_sample_weight", "sample_weight_eval_set"]

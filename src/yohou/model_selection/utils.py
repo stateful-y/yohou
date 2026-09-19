@@ -362,9 +362,14 @@ def _fit_and_score(
 class _FoldFit:
     """The outcome of fitting one CV fold, carried to its scoring.
 
+    Carries a fitted fold's state from `_fit_fold` to `_score_fold`.
+
+    Notes
+    -----
     `_fit_and_score` fits and scores a fold in one call. A shared-round search
     fits every fold of a candidate before scoring any of them, so the two
     halves are separate functions and this record passes between them.
+
     """
 
     forecaster: BaseForecaster
@@ -463,6 +468,13 @@ def _fit_fold(
     _FoldFit
         The fitted fold, or a record of its fit error.
 
+    Raises
+    ------
+    ValueError
+        If ``error_score`` is neither numeric nor ``"raise"``.
+    Exception
+        The fit error, when ``error_score="raise"``.
+
     """
     if not isinstance(error_score, numbers.Number) and error_score != "raise":
         raise ValueError(
@@ -478,10 +490,7 @@ def _fit_fold(
         if candidate_progress and verbose > 9:
             progress_msg += f"; {candidate_progress[0] + 1}/{candidate_progress[1]}"
 
-    params_msg = ""
-    if verbose > 1 and parameters is not None:
-        sorted_keys = sorted(parameters)  # Ensure deterministic o/p
-        params_msg = ", ".join(f"{k}={parameters[k]}" for k in sorted_keys)
+    params_msg = _params_message(parameters) if verbose > 1 else ""
 
     # Adjust length of sample weights
     fit_params = fit_params if fit_params is not None else {}
@@ -639,6 +648,11 @@ def _score_fold(
     dict
         The `_fit_and_score` result for this fold.
 
+    Raises
+    ------
+    ValueError
+        If ``return_train_score`` is True and ``scorer`` is None.
+
     """
     forecaster = fold.forecaster
     y_train, X_actual_train = fold.y_train, fold.X_actual_train
@@ -774,14 +788,14 @@ def _select_shared_rounds(
 
     Parameters
     ----------
-    curves : dict[str, list[tuple[np.ndarray, bool]]]
+    curves : dict of {str: list of tuple of (ndarray, bool)}
         For each position key, one ``(curve, higher_is_better)`` pair per fold.
 
     Returns
     -------
-    rounds : dict[str, int]
+    rounds : dict of str to int
         The chosen round (1-based) per position, in ``curves`` order.
-    at_boundary : dict[str, bool]
+    at_boundary : dict of str to bool
         Per position, whether the chosen round is the last round every fold
         trained, so a later round might have been better.
 
@@ -849,6 +863,30 @@ def _merge_fit_params(fit_params: dict[str, object], extra: dict[str, object]) -
     return merged
 
 
+def _check_shared_round_forecaster_type(forecaster: BaseForecaster) -> None:
+    """Reject a forecaster class that ``validation="cv"`` cannot use.
+
+    Parameters
+    ----------
+    forecaster : BaseForecaster
+        The forecaster passed to the search.
+
+    Raises
+    ------
+    ValueError
+        If the forecaster is not a reduction forecaster.
+
+    """
+    from yohou.base.reduction import BaseReductionForecaster
+
+    if not isinstance(forecaster, BaseReductionForecaster):
+        raise ValueError(
+            f"validation='cv' requires a reduction forecaster (PointReductionForecaster, "
+            f"IntervalReductionForecaster, or ClassProbaReductionForecaster), whose boosted estimators "
+            f"receive each fold's test window as their evaluation set; got {forecaster.__class__.__name__}."
+        )
+
+
 def _check_shared_round_forecaster(forecaster: BaseForecaster) -> None:
     """Reject a forecaster configuration that ``validation="cv"`` cannot use.
 
@@ -864,14 +902,7 @@ def _check_shared_round_forecaster(forecaster: BaseForecaster) -> None:
         set, or uses the ``"dir-rec"`` strategy.
 
     """
-    from yohou.base.reduction import BaseReductionForecaster
-
-    if not isinstance(forecaster, BaseReductionForecaster):
-        raise ValueError(
-            f"validation='cv' requires a reduction forecaster (PointReductionForecaster, "
-            f"IntervalReductionForecaster, or ClassProbaReductionForecaster), whose boosted estimators "
-            f"receive each fold's test window as their evaluation set; got {forecaster.__class__.__name__}."
-        )
+    _check_shared_round_forecaster_type(forecaster)
     validation_size = getattr(forecaster, "validation_size", None)
     if validation_size is not None:
         raise ValueError(
@@ -888,7 +919,7 @@ def _check_shared_round_forecaster(forecaster: BaseForecaster) -> None:
 
 
 def _params_message(parameters: dict[str, object] | None) -> str:
-    """Format candidate parameters for verbose progress lines, as `_fit_fold` does."""
+    """Format candidate parameters for verbose progress lines, sorted by key."""
     if parameters is None:
         return ""
     return ", ".join(f"{k}={parameters[k]}" for k in sorted(parameters))

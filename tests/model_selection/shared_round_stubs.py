@@ -22,10 +22,11 @@ class CurveRegressor(RegressorMixin, BaseEstimator):
         self.fail_below_train_rows = fail_below_train_rows
         self.scale = scale
 
-    def fit(self, X, y, eval_set=None, **kwargs):
+    def fit(self, X, y, eval_set=None, callbacks=None, **kwargs):
         arr = np.asarray(y, dtype=float)
         if len(arr) < self.fail_below_train_rows:
             raise RuntimeError(f"CurveRegressor refuses {len(arr)} training rows")
+        self.received_callbacks_ = callbacks
         self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
         self.train_mean_ = float(np.nanmean(arr)) * self.scale
         self.received_eval_targets_ = None
@@ -78,6 +79,13 @@ class CurveEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     def prepare_refit(self, estimator, n_rounds):
         self.calls.append(("prepare_refit", n_rounds))
         return clone(estimator).set_params(n_rounds=n_rounds)
+
+
+class CallbackCurveEarlyStoppingAdapter(CurveEarlyStoppingAdapter):
+    """`CurveEarlyStoppingAdapter` whose fold fits carry a ``callbacks`` fit parameter."""
+
+    def prepare_fold_fit(self, estimator):
+        return clone(estimator), {"callbacks": ["adapter"]}
 
 
 class QuantileCurveRegressor(CurveRegressor):

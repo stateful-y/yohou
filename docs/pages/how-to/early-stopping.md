@@ -293,7 +293,7 @@ Read the chosen iteration counts from `best_rounds_`, keyed by fitted estimator
 
 ```python
 print(search.best_rounds_)
-print(search.cv_results_["rounds_at_boundary"])
+print(search.cv_results_["rounds"])
 ```
 
 The refitted `search.best_forecaster_` trained each step for its own count,

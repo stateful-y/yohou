@@ -299,6 +299,39 @@ class TestFoldFitReachesTheCeiling:
         assert len(curve) == _rounds(fitted) == 60
         assert estimator.get_params()["callbacks"] == [callback]
 
+    def test_xgboost_callback_picks_the_named_evaluation_set(self, regression_data):
+        callback = xgboost.callback.EarlyStopping(rounds=5, data_name="validation_0", metric_name="rmse")
+        estimator = xgboost.XGBRegressor(n_estimators=8, learning_rate=0.3, callbacks=[callback], n_jobs=1)
+        adapter = XGBoostEarlyStoppingAdapter()
+        prepared, _ = adapter.prepare_fold_fit(estimator)
+        X_train, y_train, X_eval, y_eval = regression_data
+        fitted = prepared.fit(X_train, y_train, eval_set=[(X_eval, y_eval), (X_train, y_train)], verbose=False)
+        curve, _ = adapter.stopping_curve(fitted)
+        evals = fitted.evals_result()
+        np.testing.assert_array_equal(curve, evals["validation_0"]["rmse"])
+        assert not np.array_equal(curve, evals["validation_1"]["rmse"])
+
+    def test_xgboost_mape_is_minimized(self, regression_data):
+        estimator = xgboost.XGBRegressor(n_estimators=8, learning_rate=0.3, eval_metric="mape", n_jobs=1)
+        adapter = XGBoostEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(estimator)
+        fitted = _fit_eval(prepared, fit_params, regression_data)
+        curve, higher_is_better = adapter.stopping_curve(fitted)
+        assert higher_is_better is False
+        assert len(curve) == 8
+
+    def test_catboost_curve_matches_the_metric_by_prefix(self, regression_data):
+        adapter = CatBoostEarlyStoppingAdapter()
+        prepared, fit_params = adapter.prepare_fold_fit(
+            catboost.CatBoostRegressor(iterations=8, learning_rate=0.3, verbose=False, thread_count=1)
+        )
+        model = _fit_eval(prepared, fit_params, regression_data)
+        expected = np.asarray(model.get_evals_result()["validation"]["RMSE"])
+        with mock.patch.object(type(model), "get_all_params", return_value={"eval_metric": "RMSE:use_weights=false"}):
+            curve, higher_is_better = adapter.stopping_curve(model)
+        np.testing.assert_array_equal(curve, expected)
+        assert higher_is_better is False
+
     @pytest.mark.parametrize("library", LIBRARIES)
     def test_maximized_metric_direction(self, library, classification_data):
         adapter = ADAPTERS[library]()
@@ -337,7 +370,7 @@ class TestTruncation:
         np.testing.assert_array_equal(fitted.predict_proba(X_eval), expected)
 
     @pytest.mark.parametrize("library", LIBRARIES)
-    @pytest.mark.parametrize("n_rounds", [0, 10_000])
+    @pytest.mark.parametrize("n_rounds", [0, 10_000, 1.5])
     def test_out_of_range_rejected(self, library, n_rounds, regression_data):
         adapter = ADAPTERS[library]()
         prepared, fit_params = adapter.prepare_fold_fit(_regressor(library))
@@ -375,6 +408,15 @@ class TestValidate:
         with pytest.raises(ValueError, match="dart"):
             LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(boosting_type="dart"))
         LightGBMEarlyStoppingAdapter().validate(_regressor("lightgbm"))
+
+    @pytest.mark.parametrize("metric", [["l2", "l1"], "l2,l1"])
+    def test_lightgbm_several_metrics_need_first_metric_only(self, metric):
+        with pytest.raises(ValueError, match="first_metric_only"):
+            LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric=metric))
+        LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric=metric, first_metric_only=True))
+
+    def test_lightgbm_single_metric_accepted(self):
+        LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric="l1"))
 
     def test_xgboost_dart_rejected(self):
         with pytest.raises(ValueError, match="dart"):

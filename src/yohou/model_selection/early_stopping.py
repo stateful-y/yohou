@@ -45,7 +45,7 @@ __all__ = [
 ]
 
 
-class BaseEarlyStoppingAdapter(BaseEstimator, abc.ABC):
+class BaseEarlyStoppingAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     """Base class for translating early stopping between a search and a boosting library.
 
     Subclass it to use ``validation="cv"`` with an estimator that no built-in
@@ -59,6 +59,7 @@ class BaseEarlyStoppingAdapter(BaseEstimator, abc.ABC):
     - [`LightGBMEarlyStoppingAdapter`][yohou.model_selection.LightGBMEarlyStoppingAdapter] : Adapter for LightGBM models.
     - [`XGBoostEarlyStoppingAdapter`][yohou.model_selection.XGBoostEarlyStoppingAdapter] : Adapter for XGBoost models.
     - [`CatBoostEarlyStoppingAdapter`][yohou.model_selection.CatBoostEarlyStoppingAdapter] : Adapter for CatBoost models.
+    - [`HistGradientBoostingEarlyStoppingAdapter`][yohou.model_selection.HistGradientBoostingEarlyStoppingAdapter] : Adapter for scikit-learn histogram gradient boosting models.
 
     """
 
@@ -201,6 +202,7 @@ def _check_rounds(fitted_rounds: int, n_rounds: int, library: str) -> None:
 # LightGBM treats every name in each group as the same parameter
 # (lightgbm.basic._ConfigAliases, LightGBM 4.7.0).
 _LGBM_EARLY_STOPPING_ALIASES = ("early_stopping_round", "early_stopping_rounds", "early_stopping", "n_iter_no_change")
+_LGBM_METRIC_ALIASES = ("metric", "metrics", "metric_types")
 _LGBM_ROUND_ALIASES = (
     "n_estimators",
     "num_iterations",
@@ -248,6 +250,31 @@ class _StoppingMetricRecorder:
         env.model._yohou_stopping_higher_better = bool(higher_is_better)
 
 
+def _lgbm_metrics(params: dict[str, Any]) -> list[str]:
+    """Return the metric names a LightGBM estimator's parameters configure.
+
+    Parameters
+    ----------
+    params : dict
+        The estimator's ``get_params()``.
+
+    Returns
+    -------
+    list of str
+        Every name under any ``metric`` alias, with comma-separated strings
+        split.
+
+    """
+    names: list[str] = []
+    for alias in _LGBM_METRIC_ALIASES:
+        value = params.get(alias)
+        if value is None:
+            continue
+        values = value.split(",") if isinstance(value, str) else list(value)
+        names.extend(str(v).strip() for v in values if str(v).strip())
+    return names
+
+
 class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """Early-stopping adapter for LightGBM's scikit-learn estimators.
 
@@ -255,8 +282,9 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     ``LGBMClassifier``, ``LGBMRanker``). Fold fits remove the estimator's
     ``early_stopping_round`` and train every one of ``n_estimators`` rounds,
     recording the metric on the evaluation set after each. The stopping curve
-    is the first metric of the evaluation set, as LightGBM compares with
-    ``first_metric_only=True``.
+    is the first metric of the evaluation set, so more than one ``metric`` is
+    accepted only with ``first_metric_only=True``: LightGBM's own early
+    stopping otherwise compares every metric.
 
     ``boosting_type="dart"`` is rejected: dart rescales earlier trees as it
     adds new ones, so a model cut to k rounds is not the model trained for k.
@@ -285,7 +313,7 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         return lightgbm is not None and isinstance(estimator, lightgbm.LGBMModel)
 
     def validate(self, estimator: BaseEstimator) -> None:
-        """Reject dart boosting.
+        """Reject dart boosting and several metrics without ``first_metric_only``.
 
         Parameters
         ----------
@@ -295,7 +323,9 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         Raises
         ------
         ValueError
-            If ``boosting_type`` (or its ``boosting`` alias) is ``"dart"``.
+            If ``boosting_type`` (or its ``boosting`` alias) is ``"dart"``, or
+            if more than one ``metric`` is configured and ``first_metric_only``
+            is not True.
 
         """
         params = estimator.get_params()
@@ -304,6 +334,15 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
                 "validation='cv' cannot use LightGBM with boosting_type='dart': dart rescales earlier "
                 "trees as it adds new ones, so a model cut to fewer rounds is not the model trained for "
                 "that many. Use boosting_type='gbdt', or validation=None."
+            )
+        metrics = _lgbm_metrics(params)
+        if len(metrics) > 1 and not params.get("first_metric_only"):
+            raise ValueError(
+                f"validation='cv' cannot use LightGBM with metric={metrics!r} and "
+                f"first_metric_only={params.get('first_metric_only')!r}: the stopping curve is the first "
+                f"metric only, while LightGBM's early stopping compares every metric unless "
+                f"first_metric_only=True. Set first_metric_only=True, keep a single metric, or use "
+                f"validation=None."
             )
 
     def prepare_fold_fit(self, estimator: BaseEstimator) -> tuple[BaseEstimator, dict[str, Any]]:

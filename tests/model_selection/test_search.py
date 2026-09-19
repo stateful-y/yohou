@@ -816,7 +816,9 @@ class TestIntervalOnlyForecasterSearch:
         y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
         search = self._search(self._forecaster(), IntervalScore(coverage_rates=[0.9]))
         search.fit(y, forecasting_horizon=3)
-        assert search.best_params_["estimator__alpha"] in (0.0, 0.1)
+        results = search.cv_results_
+        assert np.isfinite(results["mean_test_score"]).all()
+        assert results["rank_test_score"][search.best_index_] == 1
         predicted = search.predict_interval(coverage_rates=[0.9])
         assert len(predicted) == 3
 
@@ -839,8 +841,11 @@ class TestIntervalOnlyForecasterSearch:
             with pytest.raises(InvalidParameterError, match="forecaster"):
                 search._validate_params()
 
-    def test_point_forecasters_still_have_predict(self):
-        assert hasattr(SeasonalNaive(), "predict")
+    def test_point_forecaster_is_still_accepted(self, y_X_factory):
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        search = self._search(SeasonalNaive(), MeanAbsoluteError(), param_grid={"seasonality": [1, 5]})
+        search.fit(y, forecasting_horizon=3)
+        assert len(search.predict()) == 3
 
     @pytest.mark.parametrize(
         "scoring",

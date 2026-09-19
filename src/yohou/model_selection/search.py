@@ -55,7 +55,7 @@ from .early_stopping import (
 from .split import check_cv
 from .utils import (
     _check_scoring,
-    _check_shared_round_forecaster,
+    _check_shared_round_forecaster_type,
     _collect_coverage_rates,
     _evaluate_candidate_shared_rounds,
     _fit_and_score,
@@ -331,6 +331,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         fold trained), and ``split<i>_curve_length`` (each fold's stopping
         curve length per position, None for a failed fold).
 
+        For multi-metric evaluation, this is present only if ``refit`` is
+        specified.
+
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
         ``best_forecaster_`` is defined (see the documentation for the ``refit``
@@ -604,7 +607,10 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         raise NotImplementedError("_run_search not implemented.")
 
     def _check_shared_round_setup(self, params):
-        """Run the ``validation="cv"`` checks that do not depend on a candidate.
+        """Run the ``validation="cv"`` checks no candidate can change.
+
+        ``validation_size``, ``reduction_strategy``, and the estimator are
+        checked per candidate in `_evaluate_candidate_shared_rounds`.
 
         Parameters
         ----------
@@ -614,11 +620,11 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         Raises
         ------
         ValueError
-            If the forecaster cannot be used with ``validation="cv"``, or
-            ``params`` carries its own evaluation set or evaluation window.
+            If the forecaster is not a reduction forecaster, or ``params``
+            carries its own evaluation set or evaluation window.
 
         """
-        _check_shared_round_forecaster(self.forecaster)
+        _check_shared_round_forecaster_type(self.forecaster)
         # Every evaluation-set dialect and every evaluation-weight key the
         # holdout path fills, plus the window arguments: the mode supplies all
         # of them itself, so a caller-supplied one would be silently replaced.
@@ -1042,13 +1048,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                         for cand_idx, parameters in enumerate(candidate_params)
                     )
                     out = [fold_result for fold_results, _ in candidate_out for fold_result in fold_results]
-                    more_results = {
-                        **(more_results or {}),
-                        **self._shared_round_columns(
-                            candidate_params, [record for _, record in candidate_out], n_splits
-                        ),
-                    }
+                    records = [record for _, record in candidate_out]
                 else:
+                    records = None
                     out = parallel(
                         delayed(_fit_and_score)(
                             clone(base_forecaster),
@@ -1076,6 +1078,12 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                         f"inconsistent results. Expected {n_candidates * n_splits} "
                         f"splits, got {len(out)}"
                     )
+
+                if records is not None:
+                    more_results = {
+                        **(more_results or {}),
+                        **self._shared_round_columns(candidate_params, records, n_splits),
+                    }
 
                 _warn_or_raise_about_fit_failures(out, self.error_score)
 
@@ -1728,7 +1736,9 @@ class GridSearchCV(BaseSearchCV):
         Value to assign to the score if an error occurs in forecaster fitting.
         If set to 'raise', the error is raised. If a numeric value is given,
         FitFailedWarning is raised. This parameter does not affect the refit
-        step, which will always raise the error.
+        step, which will always raise the error. With ``validation="cv"``, a
+        candidate whose configuration cannot use shared rounds raises before
+        any fold runs and is not covered by ``error_score``.
 
     return_train_score : bool, default=False
         If ``False``, the ``cv_results_`` attribute will not include training
@@ -1748,33 +1758,16 @@ class GridSearchCV(BaseSearchCV):
         than the test window plus those rows, the score is NaN with a warning.
 
     validation : {"cv"} or None, default=None
-        Early stopping on each fold's test window, for reduction forecasters
-        whose estimator is a boosting model (LightGBM, XGBoost, CatBoost, or
-        any estimator with an ``early_stopping_adapter``).
-
-        With ``"cv"``, every fold is fitted with its own test window delivered
-        to the estimator as ``eval_set``: the evaluation data is the scored
-        fold itself, not an additional holdout. Fold fits do not stop early:
-        each trains every round up to the estimator's round ceiling
-        (``n_estimators`` or ``iterations``), which therefore sets the cost,
-        while the estimator's early-stopping patience is ignored. For each
-        fitted estimator (for
-        example each step of the ``"direct"`` strategy), one round count is
-        chosen from the stopping metric averaged over the folds, every fold is
-        scored with its estimators cut to that round, and the refit trains
-        that many rounds on all data with early stopping off. Choosing the
-        round on the scored folds makes ``best_score_`` optimistic by the same
-        mechanism as searching over the round count in the grid; for an
-        unbiased score, leave this ``None`` and set ``validation_size`` on the
-        forecaster instead, which holds out the end of each fold's training
-        window at the cost of training rows.
-
-        Requires a ``PointReductionForecaster``, ``IntervalReductionForecaster``,
-        or ``ClassProbaReductionForecaster`` with ``validation_size=None`` and a
-        strategy other than ``"dir-rec"``. The refitted
-        ``best_forecaster_.estimator`` carries the adapter's refit
-        configuration (round ceiling set, early stopping removed), and its
-        fitted estimators are cut to ``best_rounds_``.
+        With ``"cv"``, each fold's test window is the early-stopping
+        evaluation set of the candidate's boosting estimator (LightGBM,
+        XGBoost, CatBoost, scikit-learn's histogram gradient boosting, or any
+        estimator with an ``early_stopping_adapter``), and one round count per
+        fitted estimator is chosen for every fold and the refit. It trains on
+        more rows per fold than ``validation_size`` on the forecaster but
+        makes ``best_score_`` optimistic; leave it ``None`` and set
+        ``validation_size`` when the score must be unbiased. Requires a
+        reduction forecaster with ``validation_size=None`` and a strategy
+        other than ``"dir-rec"``. See Notes.
     early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
         Only used when ``validation="cv"``. Translates early stopping for the
         estimator's library. The default ``None`` is the normal choice: the
@@ -1907,6 +1900,9 @@ class GridSearchCV(BaseSearchCV):
         fold trained), and ``split<i>_curve_length`` (each fold's stopping
         curve length per position, None for a failed fold).
 
+        For multi-metric evaluation, this is present only if ``refit`` is
+        specified.
+
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
         ``best_forecaster_`` is defined (see the documentation for the ``refit``
@@ -1939,6 +1935,19 @@ class GridSearchCV(BaseSearchCV):
     this case is to set ``pre_dispatch``. Then, the memory is copied only
     ``pre_dispatch`` many times. A reasonable value for ``pre_dispatch`` is
     ``2 * n_jobs``.
+
+    With ``validation="cv"``, every fold trains its estimators to the round
+    ceiling with the fold's test window as evaluation set, one round per
+    fitted estimator position is chosen from the stopping metric averaged
+    over the folds, each fold is scored cut to that round, and the refit
+    trains that round count on all data with early stopping off and cuts its
+    fitted estimators to ``best_rounds_``. The round is chosen on the rows
+    that produce the score, so ``best_score_`` is optimistic, as it is when
+    the round count is in the grid. The how-to guide "Enable Early Stopping"
+    covers the setup and the round ceiling's role as the search's cost; the
+    "Early Stopping on the Scored Fold" section of the reduction forecasting
+    explanation covers the procedure, the optimism, and the rejected
+    configurations.
 
     Examples
     --------
@@ -2199,7 +2208,9 @@ class RandomizedSearchCV(BaseSearchCV):
         Value to assign to the score if an error occurs in forecaster fitting.
         If set to 'raise', the error is raised. If a numeric value is given,
         FitFailedWarning is raised. This parameter does not affect the refit
-        step, which will always raise the error.
+        step, which will always raise the error. With ``validation="cv"``, a
+        candidate whose configuration cannot use shared rounds raises before
+        any fold runs and is not covered by ``error_score``.
 
     return_train_score : bool, default=False
         If ``False``, the ``cv_results_`` attribute will not include training
@@ -2219,33 +2230,16 @@ class RandomizedSearchCV(BaseSearchCV):
         than the test window plus those rows, the score is NaN with a warning.
 
     validation : {"cv"} or None, default=None
-        Early stopping on each fold's test window, for reduction forecasters
-        whose estimator is a boosting model (LightGBM, XGBoost, CatBoost, or
-        any estimator with an ``early_stopping_adapter``).
-
-        With ``"cv"``, every fold is fitted with its own test window delivered
-        to the estimator as ``eval_set``: the evaluation data is the scored
-        fold itself, not an additional holdout. Fold fits do not stop early:
-        each trains every round up to the estimator's round ceiling
-        (``n_estimators`` or ``iterations``), which therefore sets the cost,
-        while the estimator's early-stopping patience is ignored. For each
-        fitted estimator (for
-        example each step of the ``"direct"`` strategy), one round count is
-        chosen from the stopping metric averaged over the folds, every fold is
-        scored with its estimators cut to that round, and the refit trains
-        that many rounds on all data with early stopping off. Choosing the
-        round on the scored folds makes ``best_score_`` optimistic by the same
-        mechanism as searching over the round count in the grid; for an
-        unbiased score, leave this ``None`` and set ``validation_size`` on the
-        forecaster instead, which holds out the end of each fold's training
-        window at the cost of training rows.
-
-        Requires a ``PointReductionForecaster``, ``IntervalReductionForecaster``,
-        or ``ClassProbaReductionForecaster`` with ``validation_size=None`` and a
-        strategy other than ``"dir-rec"``. The refitted
-        ``best_forecaster_.estimator`` carries the adapter's refit
-        configuration (round ceiling set, early stopping removed), and its
-        fitted estimators are cut to ``best_rounds_``.
+        With ``"cv"``, each fold's test window is the early-stopping
+        evaluation set of the candidate's boosting estimator (LightGBM,
+        XGBoost, CatBoost, scikit-learn's histogram gradient boosting, or any
+        estimator with an ``early_stopping_adapter``), and one round count per
+        fitted estimator is chosen for every fold and the refit. It trains on
+        more rows per fold than ``validation_size`` on the forecaster but
+        makes ``best_score_`` optimistic; leave it ``None`` and set
+        ``validation_size`` when the score must be unbiased. Requires a
+        reduction forecaster with ``validation_size=None`` and a strategy
+        other than ``"dir-rec"``. See Notes.
     early_stopping_adapter : BaseEarlyStoppingAdapter or None, default=None
         Only used when ``validation="cv"``. Translates early stopping for the
         estimator's library. The default ``None`` is the normal choice: the
@@ -2378,6 +2372,9 @@ class RandomizedSearchCV(BaseSearchCV):
         fold trained), and ``split<i>_curve_length`` (each fold's stopping
         curve length per position, None for a failed fold).
 
+        For multi-metric evaluation, this is present only if ``refit`` is
+        specified.
+
     n_features_in_ : int
         Number of features seen during ``fit``. Only defined if
         ``best_forecaster_`` is defined (see the documentation for the ``refit``
@@ -2410,6 +2407,19 @@ class RandomizedSearchCV(BaseSearchCV):
     this case is to set ``pre_dispatch``. Then, the memory is copied only
     ``pre_dispatch`` many times. A reasonable value for ``pre_dispatch`` is
     ``2 * n_jobs``.
+
+    With ``validation="cv"``, every fold trains its estimators to the round
+    ceiling with the fold's test window as evaluation set, one round per
+    fitted estimator position is chosen from the stopping metric averaged
+    over the folds, each fold is scored cut to that round, and the refit
+    trains that round count on all data with early stopping off and cuts its
+    fitted estimators to ``best_rounds_``. The round is chosen on the rows
+    that produce the score, so ``best_score_`` is optimistic, as it is when
+    the round count is in the grid. The how-to guide "Enable Early Stopping"
+    covers the setup and the round ceiling's role as the search's cost; the
+    "Early Stopping on the Scored Fold" section of the reduction forecasting
+    explanation covers the procedure, the optimism, and the rejected
+    configurations.
 
     RandomizedSearchCV is particularly useful when the parameter space is
     large or when evaluating each parameter setting is expensive. By sampling
