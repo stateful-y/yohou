@@ -18,6 +18,7 @@ from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseStepT
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, add_interval, cast, dict_to_panel, get_group_df, validate_forecaster_data
 from yohou.utils._compat import _BaseComposition, _fit_context, _raise_for_params
+from yohou.utils.tags import _max_child_holdout_size
 
 __all__ = ["DecompositionPipeline"]
 
@@ -299,11 +300,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
         tags.forecaster_tags.supports_panel_data = all(
             getattr(f.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for _, f in self.forecasters
         )
-        # The stretch a train score may use must be learned-from by every child.
-        tags.forecaster_tags.holdout_size = max(
-            (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for _, f in self.forecasters),
-            default=0,
-        )
+        tags.forecaster_tags.holdout_size = _max_child_holdout_size((forecaster for _, forecaster in self.forecasters))
         # DecompositionPipeline delegates observation tracking to child forecasters with
         # custom residual-based logic, so standard observe/rewind behavior doesn't apply
         tags.forecaster_tags.tracks_observations = False

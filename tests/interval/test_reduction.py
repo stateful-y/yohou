@@ -8,7 +8,10 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.model_selection import train_test_split
 
 from conftest import run_checks
+from point.test_step_output_alignment import _StepProbe
+from yohou.compose import FeatureUnion
 from yohou.interval import IntervalReductionForecaster
+from yohou.preprocessing import LagTransformer
 from yohou.testing import _yield_yohou_forecaster_checks
 
 
@@ -780,3 +783,15 @@ class TestIntervalReductionTargetTransformer:
         # proving the target_transformer flowed into the reduction pipeline at fit time.
         assert forecaster.local_y_t_schema_ == {"diff_s_7_value": pl.Float64}
         assert forecaster.target_transformer_ is not None
+
+
+def test_unfiltered_step_columns_warn(y_X_factory):
+    """Direct with alignment "all" gives every model all step columns, and fit says so."""
+    y, X = y_X_factory(length=80, n_targets=1, n_features=1)
+    forecaster = IntervalReductionForecaster(
+        estimator=_MockLGBMQuantileRegressor(),
+        actual_transformer=FeatureUnion([("lag", LagTransformer(lag=1)), ("seasonal", _StepProbe())]),
+        reduction_strategy="direct",
+    )
+    with pytest.warns(UserWarning, match=r"produces 6 step column\(s\).*step_feature_alignment='all'"):
+        forecaster.fit(y, X, forecasting_horizon=3, coverage_rates=[0.9])

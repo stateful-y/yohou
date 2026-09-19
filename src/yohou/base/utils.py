@@ -327,9 +327,7 @@ def _actual_transformer_fit_params(
 
     The forecaster offers its fit ``forecasting_horizon`` together with any fit
     metadata the caller passed, and keeps only the keys the actual transformer (or a
-    transformer nested inside it) requests. Passing an unrequested key would make a
-    composite's ``process_routing`` reject it, so the narrowing is what lets every
-    existing actual transformer keep receiving a bare ``fit_transform`` call.
+    transformer nested inside it) requests.
 
     Parameters
     ----------
@@ -346,6 +344,12 @@ def _actual_transformer_fit_params(
         The metadata to pass to ``actual_transformer.fit_transform``. Empty when there
         is no actual transformer, when nothing is requested, or when metadata routing
         is disabled.
+
+    Notes
+    -----
+    Passing an unrequested key would make a composite's ``process_routing`` reject
+    it, so the narrowing is what lets every existing actual transformer keep
+    receiving a bare ``fit_transform`` call.
 
     """
     if actual_transformer is None or not _routing_enabled():

@@ -138,6 +138,14 @@ class TestValidation:
         with pytest.raises(ValueError, match=r"_ramp_step_<n>' cover steps \[2\]"):
             _forecaster(union).fit(y, X, forecasting_horizon=4)
 
+    @pytest.mark.parametrize("panel_strategy", ["global", "multivariate"])
+    def test_stray_incomplete_block_panel(self, y_X_panel_factory, panel_strategy):
+        """The same incomplete block fails under both panel strategies."""
+        y, X = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=1)
+        union = FeatureUnion([("seasonal", _StepProbe()), ("custom", _Rename())])
+        with pytest.raises(ValueError, match=r"_ramp_step_<n>' cover steps \[2\]"):
+            _forecaster(union, panel_strategy=panel_strategy).fit(y, X, forecasting_horizon=4)
+
     def test_renamed_by_later_pipeline_step(self, y_X_factory):
         """A LagTransformer after the probe renames every step column away."""
         y, X = y_X_factory(length=80, n_targets=1, n_features=1)

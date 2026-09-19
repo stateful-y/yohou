@@ -395,18 +395,10 @@ class BaseStandardForecaster:
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
         """Observe new rows and return them as the fitted transformers produce them.
 
-        The state update is exactly `_observe_standard`'s, which is a one-line
-        wrapper around this method. The difference is the return value:
-        observing runs the new rows through the fitted target and actual
-        transformers anyway, and this keeps that output instead of discarding
-        it. The name mirrors ``observe_transform`` on transformers, which does
-        the same thing one level down.
-
-        Its one caller that uses the output is
-        `BaseReductionForecaster._observe_validation_tail`, which builds the
-        validation holdout's evaluation rows from these transformed rows. Doing
-        the transform a second time there would observe the tail twice, which
-        a stateful transformer does not tolerate.
+        The state update is exactly `_observe_standard`'s. The difference is
+        the return value: observing runs the new rows through the fitted target
+        and actual transformers anyway, and this keeps that output instead of
+        discarding it.
 
         Parameters
         ----------
@@ -425,6 +417,18 @@ class BaseStandardForecaster:
             Transformed new target observations.
         X_t : pl.DataFrame or None
             Transformed new feature observations, before step columns.
+
+        Notes
+        -----
+        `_observe_standard` is a one-line wrapper around this method. The name
+        mirrors ``observe_transform`` on transformers, which does the same
+        thing one level down.
+
+        Its one caller that uses the output is
+        `BaseReductionForecaster._observe_validation_tail`, which builds the
+        validation holdout's evaluation rows from these transformed rows. Doing
+        the transform a second time there would observe the tail twice, which
+        a stateful transformer does not tolerate.
 
         """
         # Update transformers with only new data (X_actual only, no step columns)

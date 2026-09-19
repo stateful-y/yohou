@@ -593,15 +593,8 @@ class BasePanelForecaster:
         """Observe new rows per group and return them as the fitted transformers produce them.
 
         The panel counterpart of `_observe_standard_transform`: the state update
-        is exactly `_observe_panel`'s, which is a one-line wrapper around this
-        method, and the per-group transformed rows that observing computes are
-        returned instead of discarded.
-
-        Its one caller that uses the output is
-        `BaseReductionForecaster._observe_validation_tail`, which builds the
-        validation holdout's evaluation rows from them. Transforming the tail a
-        second time there would observe it twice, which a stateful transformer
-        does not tolerate.
+        is exactly `_observe_panel`'s, and the per-group transformed rows that
+        observing computes are returned instead of discarded.
 
         Parameters
         ----------
@@ -623,6 +616,16 @@ class BasePanelForecaster:
         X_t_new : dict[str, pl.DataFrame or None]
             Transformed new feature observations, per group, before step
             columns.
+
+        Notes
+        -----
+        `_observe_panel` is a one-line wrapper around this method.
+
+        Its one caller that uses the output is
+        `BaseReductionForecaster._observe_validation_tail`, which builds the
+        validation holdout's evaluation rows from them. Transforming the tail a
+        second time there would observe it twice, which a stateful transformer
+        does not tolerate.
 
         """
         y_t_new: dict[str, pl.DataFrame] = {}

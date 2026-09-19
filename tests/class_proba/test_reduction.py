@@ -8,7 +8,9 @@ from sklearn.base import clone
 from sklearn.tree import DecisionTreeClassifier
 
 from conftest import run_checks
+from point.test_step_output_alignment import _StepProbe
 from yohou.class_proba import ClassProbaReductionForecaster
+from yohou.compose import FeatureUnion
 from yohou.preprocessing import LagTransformer
 from yohou.testing import _yield_yohou_forecaster_checks
 
@@ -445,3 +447,33 @@ class TestEstimatorPredictProbaDispatch:
         )
         with pytest.raises(TypeError, match="single estimator for the 'multi-output' strategy"):
             forecaster._estimator_predict_proba_one(estimator=[DecisionTreeClassifier()], groups=[])
+
+
+class TestStepOutputColumns:
+    """Step columns from the actual transformer are filtered per step or warned about."""
+
+    @staticmethod
+    def _forecaster(**params):
+        return ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            actual_transformer=FeatureUnion([("lag", LagTransformer(lag=1)), ("seasonal", _StepProbe())]),
+            target_as_feature=None,
+            **params,
+        )
+
+    def test_matched_direct_predicts(self, class_proba_y_X_factory):
+        """Direct with matched alignment filters at predict time too."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = self._forecaster(reduction_strategy="direct", step_feature_alignment="matched")
+        forecaster.fit(y, X, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert y_pred.height == 3
+        assert len([c for c in y_pred.columns if "_proba_" in c]) == 3
+
+    def test_unfiltered_columns_warn(self, class_proba_y_X_factory):
+        """Multi-output gives every model all step columns, and fit says so."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = self._forecaster(reduction_strategy="multi-output")
+        with pytest.warns(UserWarning, match=r"produces 3 step column\(s\).*reduction_strategy='multi-output'"):
+            forecaster.fit(y, X, forecasting_horizon=3)

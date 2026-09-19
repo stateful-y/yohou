@@ -667,16 +667,11 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         A fitted ``actual_transformer_`` tagged ``produces_step_columns`` emits
         ``{base}_step_1..H`` blocks. They are recorded apart from the step columns
-        derived from ``X_future``/``X_forecast``, because a non-empty
-        ``_step_column_names_`` also switches on the paths that re-derive and swap
-        those columns on observe and predict, which would rebuild these from inputs
-        that never produced them. ``_is_step_column`` consults both records, so
-        ``step_feature_alignment`` filters both alike.
+        derived from ``X_future``/``X_forecast``. ``_is_step_column`` consults both
+        records, so ``step_feature_alignment`` filters both alike.
 
         Without the tag, a trailing ``_step_<n>`` means nothing and nothing is
-        recorded. With it, a name ending that way is a step column, and the blocks
-        are checked so a misfiled or renamed column fails here instead of silently
-        reaching every per-step model.
+        recorded. With it, a name ending that way is a step column.
 
         Parameters
         ----------
@@ -691,6 +686,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ValueError
             If the tag is set but no output ends in ``_step_<n>``, or if a block does
             not hold exactly the steps ``1..forecasting_horizon``.
+
+        Notes
+        -----
+        The two records are kept apart because a non-empty ``_step_column_names_``
+        also switches on the paths that re-derive and swap those columns on observe
+        and predict, which would rebuild these from inputs that never produced them.
+        The blocks are checked so a misfiled or renamed column fails here instead of
+        silently reaching every per-step model.
 
         """
         self._actual_step_column_names_: set[str] = set()

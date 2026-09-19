@@ -15,6 +15,7 @@ from yohou.base import BaseActualTransformer
 from yohou.point import BasePointForecaster
 from yohou.utils import POINT, Tags, inspect_panel, validate_forecaster_data
 from yohou.utils._compat import StrOptions, _BaseComposition, _fit_context, _raise_for_params
+from yohou.utils.tags import _max_child_holdout_size
 
 __all__ = ["CombiningForecaster"]
 
@@ -402,10 +403,7 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             tags.forecaster_tags.supports_panel_data = all(
                 getattr(child.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for child in children
             )
-            # The stretch a train score may use must be learned-from by every child.
-            tags.forecaster_tags.holdout_size = max(
-                (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for f in children), default=0
-            )
+            tags.forecaster_tags.holdout_size = _max_child_holdout_size(children)
 
         return tags
 
