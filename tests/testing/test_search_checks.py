@@ -270,7 +270,7 @@ class TestSearchCheckFunctionsIntervalDelegation:
                 self.best_forecaster_ = object()
                 return self
 
-            def predict_interval(self, coverage_rates=None, X_future=None, X_forecast=None):
+            def predict_interval(self, coverage_rates=None, groups=None, X_future=None, X_forecast=None):
                 return pl.DataFrame({
                     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
                     "val_lower_0.9": [0.0, 1.0],

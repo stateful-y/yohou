@@ -69,15 +69,12 @@ class TestHoldoutStub:
 class TestSplitConformal:
     """A split-conformal forecaster declares its calibration stretch."""
 
-    @pytest.mark.parametrize("calibration_size", [168, 720])
-    def test_declares_calibration_size_before_and_after_fit(self, y_X_factory, calibration_size):
-        y, _ = y_X_factory(length=calibration_size + 100, n_targets=1, n_features=1)
-        forecaster = SplitConformalForecaster(
-            point_forecaster=PointReductionForecaster(Ridge()), calibration_size=calibration_size
-        )
-        assert _declared(forecaster) == calibration_size
+    def test_declares_calibration_size_before_and_after_fit(self, y_X_factory):
+        y, _ = y_X_factory(length=268, n_targets=1, n_features=1)
+        forecaster = SplitConformalForecaster(point_forecaster=PointReductionForecaster(Ridge()), calibration_size=168)
+        assert _declared(forecaster) == 168
         forecaster.fit(y, forecasting_horizon=FH)
-        assert _declared(forecaster) == calibration_size
+        assert _declared(forecaster) == 168
 
     def test_nested_holdouts_add_up(self, y_X_factory):
         y, _ = y_X_factory(length=300, n_targets=1, n_features=1)

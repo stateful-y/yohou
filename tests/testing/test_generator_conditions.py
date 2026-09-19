@@ -870,7 +870,7 @@ class TestSearchPredictGating:
         assert "check_search_predict_delegates" not in names
         assert "check_search_method_availability" in names
 
-    def test_interval_only_panel_search_skips_panel_check(self, y_X_panel_factory):
+    def test_interval_only_panel_search_checks_groups_through_interval(self, y_X_panel_factory):
         y_panel, _ = y_X_panel_factory(n_groups=2, length=150, n_targets=1, n_features=0, seed=42)
         search = GridSearchCV(
             forecaster=self._interval_forecaster(),
@@ -878,8 +878,13 @@ class TestSearchPredictGating:
             scoring=IntervalScore(coverage_rates=[0.9]),
             cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
         )
-        names = self._names(search, y_panel, 130)
-        assert not names & self.PREDICT_CHECKS
+        search.fit(y_panel[:130], forecasting_horizon=3)
+        checks = {
+            name: kwargs
+            for name, _, kwargs in _yield_yohou_search_checks(search, y_panel[:130], None, y_panel[130:], None)
+        }
+        assert not set(checks) & self.PREDICT_CHECKS
+        assert len(checks["check_search_interval_predict_delegates"]["groups"]) == 1
 
     def test_point_search_keeps_predict_checks(self, y_X_panel_factory):
         y_panel, _ = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=0, seed=42)

@@ -205,13 +205,15 @@ def check_validation_holdout_fit(
     Clones the forecaster with a recording stub estimator (keeping whatever
     transformers and strategy the instance is equipped with), fits with a
     holdout, and asserts the delivered evaluation pair has training-matching
-    feature columns, the row count for the boundary mode in force, and no row
-    in common with the training matrix, and that the post-fit observation
-    state covers all provided data. Both ``validation_overlap`` modes are
-    exercised, since they select different anchor rows and so have different
-    expected counts. Finally it asserts the training matrix equals the one a
-    plain fit on the head alone produces, which fails if the tail leaked into
-    transformer or sample-weight fitting.
+    feature columns, the row count for the boundary mode in force, and, in
+    strict mode, no row in common with the training matrix (overlap mode is
+    exempt: it deliberately reuses the straddling anchors, which are training
+    rows), and that the post-fit observation state covers all provided data.
+    Both ``validation_overlap`` modes are exercised, since they select
+    different anchor rows and so have different expected counts. Finally it
+    asserts the training matrix equals the one a plain fit on the head alone
+    produces, which fails if the tail leaked into transformer or sample-weight
+    fitting.
 
     Parameters
     ----------
@@ -230,11 +232,12 @@ def check_validation_holdout_fit(
     ------
     AssertionError
         If no evaluation set reaches the stub, its shape or columns diverge
-        from training, any evaluation row also appears in the training matrix,
-        the observation state stops short of the data end, the training matrix
-        differs from a head-only fit's (tail leakage into transformer or
-        sample-weight fitting), or, for a dict-shaped ``estimator_``, one
-        quantile estimator's evaluation pair differs from the others'.
+        from training, any strict-mode evaluation row also appears in the
+        training matrix, the observation state stops short of the data end,
+        the training matrix differs from a head-only fit's (tail leakage into
+        transformer or sample-weight fitting), or, for a dict-shaped
+        ``estimator_``, one quantile estimator's evaluation pair differs from
+        the others'.
 
     """
     strict = _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast, overlap=False)

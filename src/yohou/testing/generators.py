@@ -1360,12 +1360,18 @@ def _yield_yohou_search_checks(
 
     # Interval scoring checks (when interval scorers are used)
     if tags.get("interval_scoring", False) and tags.get("refit", True):
+        interval_groups = None
+        if tags.get("supports_panel_data", True):
+            _, y_panel_groups = inspect_panel(y_train)
+            if len(y_panel_groups) > 0:
+                interval_groups = list(y_panel_groups.keys())[:1]
         yield (
             "check_search_interval_predict_delegates",
             check_search_interval_predict_delegates,
             {
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
+                "groups": interval_groups,
             },
         )
 

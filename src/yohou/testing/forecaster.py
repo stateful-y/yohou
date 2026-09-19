@@ -15,6 +15,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.compose import PerVintageActualTransformer
 from yohou.preprocessing import FunctionTransformer
 
+from .common import _produces_step_columns
 from .contract import _safe_equal, check_clone_preserves_params
 
 __all__ = [
@@ -1442,10 +1443,7 @@ def check_step_feature_alignment_filters(
     assert "step_feature_alignment" in params, (
         "check_step_feature_alignment_filters needs a forecaster exposing step_feature_alignment"
     )
-    actual_transformer = params.get("actual_transformer")
-    produces_step_columns = actual_transformer is not None and bool(
-        actual_transformer.__sklearn_tags__().transformer_tags.produces_step_columns
-    )
+    produces_step_columns = _produces_step_columns(params.get("actual_transformer"))
     assert X_future is not None or X_forecast is not None or produces_step_columns, (
         "check_step_feature_alignment_filters needs X_future, X_forecast or a step-output actual_transformer "
         "to provide step columns"

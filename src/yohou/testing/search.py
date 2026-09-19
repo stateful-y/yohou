@@ -1061,11 +1061,13 @@ def check_search_interval_predict_delegates(
     search_cv,
     X_future: pl.DataFrame | None = None,
     X_forecast: pl.DataFrame | None = None,
+    groups: list[str] | None = None,
 ) -> None:
     """Check predict_interval() works after interval search with refit.
 
     Validates that the best forecaster supports ``predict_interval`` and
-    returns a valid interval prediction DataFrame.
+    returns a valid interval prediction DataFrame. With ``groups``, also
+    checks that every requested panel group appears in the predictions.
 
     Parameters
     ----------
@@ -1075,18 +1077,23 @@ def check_search_interval_predict_delegates(
         Known-future features forwarded to predict_interval().
     X_forecast : pl.DataFrame, optional
         External forecast features forwarded to predict_interval().
+    groups : list of str, optional
+        Panel group names forwarded to predict_interval().
 
     Raises
     ------
     AssertionError
-        If predict_interval() fails or returns invalid predictions.
+        If predict_interval() fails, returns invalid predictions, or omits a
+        requested group.
 
     """
     check_is_fitted(search_cv)
 
     coverage_rates = [0.9]
 
-    y_pred = search_cv.predict_interval(coverage_rates=coverage_rates, X_future=X_future, X_forecast=X_forecast)
+    y_pred = search_cv.predict_interval(
+        coverage_rates=coverage_rates, groups=groups, X_future=X_future, X_forecast=X_forecast
+    )
 
     assert isinstance(y_pred, pl.DataFrame), f"predict_interval should return pl.DataFrame, got {type(y_pred)}"
     assert "vintage_time" in y_pred.columns, "Interval predictions should have 'vintage_time' column"
@@ -1094,3 +1101,10 @@ def check_search_interval_predict_delegates(
 
     interval_cols = [c for c in y_pred.columns if "_lower_" in c or "_upper_" in c]
     assert len(interval_cols) > 0, f"Interval predictions should have _lower_/_upper_ columns, got {y_pred.columns}"
+
+    if groups is not None:
+        _, panel_groups = inspect_panel(y_pred)
+        for group_name in groups:
+            assert group_name in panel_groups, (
+                f"Requested panel group '{group_name}' not found in interval predictions {set(panel_groups)}"
+            )
