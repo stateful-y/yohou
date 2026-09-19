@@ -20,7 +20,7 @@ from sklearn.multioutput import (
     RegressorChain,
 )
 from sklearn.pipeline import Pipeline
-from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping
+from sklearn.utils.metadata_routing import MetadataRouter, MethodMapping, process_routing
 from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base.forecast_transformer import BaseForecastTransformer
@@ -107,10 +107,6 @@ def _predict_direct_step(
 class _EvalSet(NamedTuple):
     """The evaluation pair delivered to an estimator's fit, with its weights.
 
-    A bare ``(X, y)`` tuple is unpacked positionally at several call sites, so
-    the weights ride along as a third field rather than as a parallel argument
-    that one of those sites could forget.
-
     Attributes
     ----------
     X : pl.DataFrame
@@ -120,6 +116,12 @@ class _EvalSet(NamedTuple):
     sample_weight : np.ndarray or None
         One weight per evaluation row, or None when the forecaster has no
         weighter, which is the common case.
+
+    Notes
+    -----
+    A bare ``(X, y)`` tuple is unpacked positionally at several call sites, so
+    the weights ride along as a third field rather than as a parallel argument
+    that one of those sites could forget.
 
     """
 
@@ -1292,19 +1294,8 @@ default="first_step"
     def _check_early_stopping_enabled(estimator: BaseEstimator, source: str = "validation_size") -> None:
         """Reject an estimator that would ignore the evaluation set it is given.
 
-        Applies to the ``X_val`` dialect only. scikit-learn's histogram gradient
-        boosting raises when ``X_val`` arrives with ``early_stopping=False``,
-        and, worse, silently ignores the pair with the default ``"auto"``
-        whenever the training rows are below its internal threshold: the fit
-        succeeds, records an empty ``validation_score_``, and never stops early.
-        Requiring ``True`` is deliberately stricter than the library, which
-        would honour ``"auto"`` on a large enough series, so that the same
-        configuration does not work on one series and quietly do nothing on a
-        shorter one.
-
-        A search in ``validation="cv"`` mode needs no exemption: its adapter
-        sets ``early_stopping=True`` on the estimator before the forecaster ever
-        sees it, so this check passes by construction.
+        Applies to the ``X_val`` dialect only, whose target must have
+        ``early_stopping=True``.
 
         Parameters
         ----------
@@ -1319,6 +1310,21 @@ default="first_step"
         ValueError
             If the target takes the ``X_val`` dialect and its ``early_stopping``
             is anything other than ``True``.
+
+        Notes
+        -----
+        scikit-learn's histogram gradient boosting raises when ``X_val``
+        arrives with ``early_stopping=False``, and, worse, silently ignores the
+        pair with the default ``"auto"`` whenever the training rows are below
+        its internal threshold: the fit succeeds, records an empty
+        ``validation_score_``, and never stops early. Requiring ``True`` is
+        deliberately stricter than the library, which would honour ``"auto"``
+        on a large enough series, so that the same configuration does not work
+        on one series and quietly do nothing on a shorter one.
+
+        A search in ``validation="cv"`` mode needs no exemption: its adapter
+        sets ``early_stopping=True`` on the estimator before the forecaster ever
+        sees it, so this check passes by construction.
 
         """
         if BaseReductionForecaster._check_eval_set_support(estimator, source) != "X_val":
@@ -1361,7 +1367,9 @@ default="first_step"
         dict
             ``{"eval_set": [(X, y)]}``, ``{"eval_X": X, "eval_y": y}`` or
             ``{"X_val": X, "y_val": y}``, whichever the estimator's fit accepts,
-            plus that dialect's evaluation-weight key when weights apply.
+            plus that dialect's evaluation-weight key when weights apply. For a
+            weighted CatBoost target the ``eval_set`` entry holds a
+            ``catboost.Pool`` carrying the weights instead of an ``(X, y)`` tuple.
 
         """
         dialect = BaseReductionForecaster._check_eval_set_support(estimator)
@@ -1455,7 +1463,8 @@ default="first_step"
             Training sample weights, delivered straight to the final step
             because this path bypasses ``Pipeline.fit`` and its routing.
         fit_params : dict
-            Additional fit parameters for the final step.
+            The caller's fit metadata, routed to the steps that request it as
+            ``Pipeline.fit`` would.
         eval_data : _EvalSet
             The evaluation pair and its weights, in the pipeline's input space.
 
@@ -1479,29 +1488,31 @@ default="first_step"
         prefix_steps = estimator.steps[:-1]
         X_eval, y_eval = eval_data.X, eval_data.y
 
+        # This path bypasses `Pipeline.fit`, so it routes the caller's metadata
+        # itself: each step receives what it requested and nothing else.
+        routed = process_routing(estimator, "fit", **fit_params)
+        final_fit_params: dict[str, Any] = dict(routed[final_name].fit)
+
         if prefix_steps:
             prefix = BaseReductionForecaster._rebuild_pipeline(estimator, prefix_steps)
-            X_train_t = prefix.fit_transform(X_tab, y_tab)
+            consumed = prefix.get_metadata_routing().consumes("fit_transform", fit_params)
+            X_train_t = prefix.fit_transform(X_tab, y_tab, **{key: fit_params[key] for key in consumed})
             X_eval_t = prefix.transform(X_eval)
             prefix_steps = prefix.steps
             # `Pipeline.fit` would push every input named in transform_input
-            # through the fitted prefix before the final step sees it. This path
-            # bypasses `Pipeline.fit`, so it does that itself; without this the
-            # caller's setting would be silently ignored. Only the caller's own
-            # parameters are transformed, never the evaluation pair yohou builds
-            # below, which is already in the transformed space.
+            # through the fitted prefix before the final step sees it; without
+            # this the caller's setting would be silently ignored. Only the
+            # caller's own parameters are transformed, never the evaluation pair
+            # yohou builds below, which is already in the transformed space.
             named = estimator.get_params(deep=False).get("transform_input") or ()
             if named:
-                fit_params = {
-                    key: prefix.transform(value) if key in named else value for key, value in fit_params.items()
+                final_fit_params = {
+                    key: prefix.transform(value) if key in named else value for key, value in final_fit_params.items()
                 }
         else:
             X_train_t, X_eval_t = X_tab, X_eval
 
-        final_fit_params = {
-            **fit_params,
-            **self._eval_set_fit_params(final_estimator, X_eval_t, y_eval, eval_data.sample_weight),
-        }
+        final_fit_params.update(self._eval_set_fit_params(final_estimator, X_eval_t, y_eval, eval_data.sample_weight))
         if sample_weight is not None:
             try:
                 final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
@@ -1578,7 +1589,7 @@ default="first_step"
 
         Returns
         -------
-        y_head, X_head, y_tail, X_tail
+        y_head, X_head, y_tail, X_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
             The split frames; the X halves are None when ``X_actual`` is.
 
         """
@@ -1615,7 +1626,7 @@ default="first_step"
 
         Returns
         -------
-        y_head, X_head, y_tail, X_tail
+        y_head, X_head, y_tail, X_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
             The raw split, as returned by `_split_validation_tail`.
 
         Raises
@@ -1754,8 +1765,47 @@ default="first_step"
             raise ValueError(
                 f"y has {y.height} rows, but at least {min_rows} are needed to build "
                 f"one training row at forecasting_horizon={forecasting_horizon} when "
-                f"y_val is given."
+                f"y_val is given. Provide more data before y_val, or reduce "
+                f"forecasting_horizon."
             )
+
+    def _prepare_y_val_fit(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        y_val: pl.DataFrame,
+        X_actual_val: pl.DataFrame | None,
+        forecasting_horizon: int,
+        params: dict[str, Any],
+    ) -> None:
+        """Run the fail-fast checks for an explicitly supplied ``y_val`` window.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            Target time series, as passed to fit.
+        X_actual : pl.DataFrame or None
+            Feature time series, as passed to fit.
+        y_val : pl.DataFrame
+            Target rows of the evaluation window.
+        X_actual_val : pl.DataFrame or None
+            Feature rows of that window.
+        forecasting_horizon : int
+            Number of steps to forecast.
+        params : dict
+            The fit ``**params``, checked for a conflicting raw ``eval_set``
+            or ``eval_X``/``eval_y``.
+
+        Raises
+        ------
+        ValueError
+            On any invalid ``y_val`` configuration.
+
+        """
+        self._reject_raw_eval_params(params, "y_val")
+        self._check_eval_set_support(self.estimator, "y_val")
+        self._check_early_stopping_enabled(self.estimator, "y_val")
+        self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
 
     def _resolve_validation_window(
         self,
@@ -1838,10 +1888,7 @@ default="first_step"
                 f"exclusive: each supplies the evaluation window. Set validation_size=None "
                 f"to use y_val, or omit y_val."
             )
-        self._reject_raw_eval_params(params, "y_val")
-        self._check_eval_set_support(self.estimator, "y_val")
-        self._check_early_stopping_enabled(self.estimator, "y_val")
-        self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
+        self._prepare_y_val_fit(y, X_actual, y_val, X_actual_val, forecasting_horizon, params)
 
         X_forecast_eval = X_forecast
         if X_forecast_val is not None:
@@ -1961,9 +2008,11 @@ default="first_step"
 
         Returns
         -------
-        y_fit, X_fit, y_tail, X_tail
-            The head to fit on and the held-out tail. With no holdout the head
-            is ``y``/``X_actual`` unchanged and both tail frames are None.
+        y_fit, X_fit : pl.DataFrame, pl.DataFrame or None
+            The head to fit on. With no holdout this is ``y``/``X_actual``
+            unchanged.
+        y_tail, X_tail : pl.DataFrame or None
+            The held-out tail, or None when no holdout applies.
 
         """
         if self.validation_size is None:
@@ -2394,10 +2443,11 @@ default="first_step"
         estimator_fit_params : dict or None
             Additional parameters for the fit call.
         eval_data : _EvalSet or None
-            The ``(X_eval, y_eval)`` validation-holdout pair, delivered as
-            the estimator's ``eval_set`` fit argument. Shaped exactly like
-            ``(X_tab, y_tab)``. A ``Pipeline`` estimator is fitted in two
-            phases so its final step evaluates in the transformed space; see
+            The ``(X_eval, y_eval)`` validation-holdout pair, delivered in
+            whichever dialect the estimator's fit accepts (see
+            `_eval_set_fit_params`). Shaped exactly like ``(X_tab, y_tab)``. A
+            ``Pipeline`` estimator is fitted in two phases so its final step
+            evaluates in the transformed space; see
             `_fit_pipeline_with_eval_set`.
 
         Returns
@@ -2451,7 +2501,8 @@ default="first_step"
             Additional parameters to pass to the estimator's fit method.
         eval_data : _EvalSet or None
             The stacked validation-holdout ``(X_tab_eval, y_tab_eval)``
-            pair, delivered whole (full-width target) as ``eval_set``.
+            pair, delivered whole (full-width target) in whichever dialect
+            the estimator's fit accepts (see `_eval_set_fit_params`).
 
         Returns
         -------

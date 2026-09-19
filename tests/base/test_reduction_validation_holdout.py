@@ -7,7 +7,7 @@ from unittest import mock
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, clone
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin, TransformerMixin, clone
 from sklearn.linear_model import LinearRegression
 from sklearn.multioutput import ClassifierChain, MultiOutputRegressor, RegressorChain
 from sklearn.pipeline import Pipeline
@@ -169,7 +169,7 @@ def _eval_pair(estimator):
 
 
 class TestDeliveryShape:
-    """Task 5.1: delivery shape per strategy, on standard and panel data."""
+    """Delivery shape per strategy, on standard and panel data."""
 
     @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
     @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
@@ -291,7 +291,7 @@ class TestDeliveryShape:
 
 
 class TestBoundaryPolicy:
-    """Task 5.2: strict versus overlap anchor selection."""
+    """Strict versus overlap anchor selection."""
 
     def test_strict_no_training_target_overlap(self):
         y = _make_y()
@@ -355,7 +355,7 @@ class TestBoundaryPolicy:
 
 
 class TestLeakage:
-    """Task 5.3: nothing fitted sees the holdout tail."""
+    """Nothing fitted sees the holdout tail."""
 
     def test_transformer_statistics_head_only(self):
         y = _make_y()
@@ -441,7 +441,7 @@ class TestLeakage:
 
 
 class TestErrorContract:
-    """Task 5.4: the six ValueError cases."""
+    """The six ValueError cases."""
 
     def test_estimator_without_eval_set(self):
         with pytest.raises(ValueError, match="does not support an evaluation-set"):
@@ -554,7 +554,7 @@ class TestErrorContract:
 
 
 class TestPipelineEstimator:
-    """Task 1: a wrapped Pipeline evaluates in its own transformed space."""
+    """A wrapped Pipeline evaluates in its own transformed space."""
 
     def test_eval_set_is_transformed_like_training(self):
         forecaster = PointReductionForecaster(
@@ -642,7 +642,7 @@ class TestParameterOwnership:
 
 
 class TestDefaultNoOp:
-    """Task 5.5: validation_size=None is byte-equivalent to omitting it."""
+    """Validation_size=None is byte-equivalent to omitting it."""
 
     def test_no_op_equivalence_and_no_holdout_code_paths(self, mocker):
         y = _make_y()
@@ -662,7 +662,7 @@ class TestDefaultNoOp:
 
 
 class TestPostFitState:
-    """Task 5.6: observation state ends at the end of all provided data."""
+    """Observation state ends at the end of all provided data."""
 
     @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
     def test_predict_starts_after_all_data(self, panel):
@@ -1394,7 +1394,7 @@ def _histgb(**kwargs):
 
 
 class TestXValDialect:
-    """Task 2: the third evaluation-set dialect, ``X_val``/``y_val``."""
+    """The third evaluation-set dialect, ``X_val``/``y_val``."""
 
     def test_histgb_receives_x_val_and_no_eval_set(self):
         forecaster = PointReductionForecaster(
@@ -1470,7 +1470,7 @@ class TestXValDialect:
 
 
 class TestXValRejections:
-    """Task 2: configurations the ``X_val`` dialect must refuse."""
+    """Configurations the ``X_val`` dialect must refuse."""
 
     @pytest.mark.parametrize("key", ["X_val", "sample_weight_val", "eval_sample_weight", "sample_weight_eval_set"])
     def test_raw_dialect_key_in_fit_params_rejected(self, key):
@@ -1568,7 +1568,7 @@ def _delivered_weights(estimator):
 
 
 class TestEvaluationWeights:
-    """Task 4: the evaluation rows carry the forecaster's weights."""
+    """The evaluation rows carry the forecaster's weights."""
 
     def test_weights_reach_the_estimator_with_one_entry_per_row(self):
         forecaster = _weighted(WeightRecordingRegressor())
@@ -1671,7 +1671,7 @@ class TestEvaluationWeights:
 
 
 class TestEvaluationWeightsCannotBeDelivered:
-    """Task 4: the warning path, for an estimator with nowhere to put them."""
+    """The warning path, for an estimator with nowhere to put them."""
 
     def test_warns_once_naming_the_estimator(self):
         forecaster = _weighted(RecordingRegressor(), reduction_strategy="multi-output")
@@ -1712,7 +1712,7 @@ class TestEvaluationWeightsCannotBeDelivered:
 
 
 class TestEvaluationWeightsAlignment:
-    """Task 4: weights follow the rows through every filter."""
+    """Weights follow the rows through every filter."""
 
     @staticmethod
     def _with_null_target(row: int) -> pl.DataFrame:
@@ -1783,7 +1783,7 @@ class TestEvaluationWeightsAlignment:
 
 
 class TestCatBoostEvaluationWeights:
-    """Task 4: CatBoost has no weight keyword, so a Pool carries them."""
+    """CatBoost has no weight keyword, so a Pool carries them."""
 
     def test_pool_delivery_changes_the_recorded_metric(self):
         catboost = pytest.importorskip("catboost")
@@ -1822,7 +1822,7 @@ class TestCatBoostEvaluationWeights:
 
 
 class TestWeightSpellingPerLibrary:
-    """Task 4.17: every library gets the keyword its own fit declares."""
+    """Every library gets the keyword its own fit declares."""
 
     @staticmethod
     def _delivered(estimator):
@@ -1856,7 +1856,7 @@ class TestWeightSpellingPerLibrary:
 
 
 class TestPipelineEvaluationMatrixOracle:
-    """Task 5: the delivered matrix equals the prefix, proven exactly."""
+    """The delivered matrix equals the prefix, proven exactly."""
 
     @staticmethod
     def _pipeline(*steps):
@@ -1958,7 +1958,7 @@ class ExtraInputRegressor(RegressorMixin, BaseEstimator):
 
 
 class TestPipelineTransformInput:
-    """Task 5.8: a caller's transform_input is honoured, not silently ignored."""
+    """A caller's transform_input is honoured, not silently ignored."""
 
     @staticmethod
     def _forecaster(transform_input):
@@ -1995,3 +1995,45 @@ class TestPipelineTransformInput:
             np.asarray(_eval_pair(named.estimator_.named_steps["model"])[0]),
             np.asarray(_eval_pair(plain.estimator_.named_steps["model"])[0]),
         )
+
+
+class MarkerTransformer(TransformerMixin, BaseEstimator):
+    """Identity transformer that records a routed fit parameter."""
+
+    def fit(self, X, y=None, marker=None):
+        self.marker_ = marker
+        return self
+
+    def transform(self, X):
+        return X
+
+
+class KwargsRecordingRegressor(RegressorMixin, BaseEstimator):
+    """Records every keyword its fit receives, so a misrouted one is visible."""
+
+    def fit(self, X, y, eval_set=None, **kwargs):
+        self.received_eval_set_ = eval_set
+        self.received_kwargs_ = kwargs
+        self._mean = float(np.nanmean(np.asarray(y, dtype=float)))
+        return self
+
+    def predict(self, X):
+        return np.full(len(X), self._mean)
+
+
+class TestPipelinePrefixMetadata:
+    """Fit metadata requested by a prefix step reaches it on both fit paths."""
+
+    @pytest.mark.parametrize("validation_size", [None, VAL_SIZE])
+    def test_prefix_request_is_routed(self, validation_size):
+        pipeline = Pipeline([
+            ("marker", MarkerTransformer().set_fit_request(marker=True)),
+            ("rec", KwargsRecordingRegressor()),
+        ])
+        forecaster = PointReductionForecaster(estimator=pipeline, validation_size=validation_size)
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON, marker="hello")
+
+        steps = forecaster.estimator_.named_steps
+        assert steps["marker"].marker_ == "hello"
+        assert "marker" not in steps["rec"].received_kwargs_
+        assert (steps["rec"].received_eval_set_ is not None) is (validation_size is not None)

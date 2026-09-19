@@ -541,7 +541,7 @@ class TestPipelineWithoutSampleWeight:
 
 
 class TestWindowForecastsRequireFitForecasts:
-    """Task 6: X_forecast_val without X_forecast is rejected, not ignored."""
+    """X_forecast_val without X_forecast is rejected, not ignored."""
 
     def test_window_forecasts_without_fit_forecasts_rejected(self):
         y = _make_y()
