@@ -69,15 +69,7 @@ def _seasonal_rolling_statistic(expr: pl.Expr, stat: str, window_size: int, seas
     """Apply a rolling statistic over ``window_size`` values spaced ``seasonality`` rows apart.
 
     The value at row ``t`` summarises ``x[t], x[t - k], ..., x[t - (window_size - 1) * k]``
-    with ``k = seasonality``. Rows ``k`` apart are consecutive members of the same residue
-    class of the row index, so the ordinary rolling kernel applied within each class is
-    the seasonal window, and it reuses the exact kernels (``ddof``, quantile
-    interpolation) of the consecutive case. Each class holds the same rows wherever a
-    frame starts, so the result does not depend on how rows are batched.
-
-    To end the window ``s`` rows before ``t``, shift the *result* by ``s``. A shift
-    placed inside the grouping would move values within each residue class, that is by
-    ``s * k`` rows.
+    with ``k = seasonality``.
 
     Parameters
     ----------
@@ -94,6 +86,18 @@ def _seasonal_rolling_statistic(expr: pl.Expr, stat: str, window_size: int, seas
     -------
     pl.Expr
         Seasonal rolling statistic expression.
+
+    Notes
+    -----
+    Rows ``k`` apart are consecutive members of the same residue
+    class of the row index, so the ordinary rolling kernel applied within each class is
+    the seasonal window, and it reuses the exact kernels (``ddof``, quantile
+    interpolation) of the consecutive case. Each class holds the same rows wherever a
+    frame starts, so the result does not depend on how rows are batched.
+
+    To end the window ``s`` rows before ``t``, shift the *result* by ``s``. A shift
+    placed inside the grouping would move values within each residue class, that is by
+    ``s * k`` rows.
 
     """
     rolled = _rolling_statistic(expr, stat, window_size)
@@ -791,14 +795,18 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         return self
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Validate statistics and the amount of data."""
-        self.statistics_ = _normalize_statistics(self.statistics)
+        """Validate the amount of data and the statistics."""
         required = self.seasonality * self.n_seasons
         if len(X) < required:
             raise ValueError(
                 f"{type(self).__name__} needs at least seasonality * n_seasons = {required} rows to fill "
                 f"one window, but X has {len(X)} rows."
             )
+        self.statistics_ = _normalize_statistics(self.statistics)
+
+    def _profile_name(self, col: str, stat: str) -> str:
+        """Name of the seasonal profile column for one input column and statistic."""
+        return f"{col}_s{self.seasonality}_{stat}"
 
     def _step_offsets(self) -> list[int]:
         """Rows between the origin and the most recent value each step reads, for steps ``1..H``."""
@@ -825,7 +833,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
             pl.col("time"),
             *[
                 _seasonal_rolling_statistic(pl.col(col), stat, self.n_seasons, self.seasonality).alias(
-                    f"{col}_s{self.seasonality}_{stat}"
+                    self._profile_name(col, stat)
                 )
                 for col in data_cols
                 for stat in self.statistics_
@@ -835,10 +843,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         X_t = profiles.select(
             pl.col("time"),
             *[
-                pl
-                .col(f"{col}_s{self.seasonality}_{stat}")
-                .shift(offset)
-                .alias(f"{col}_s{self.seasonality}_{stat}_step_{h}")
+                pl.col(self._profile_name(col, stat)).shift(offset).alias(f"{self._profile_name(col, stat)}_step_{h}")
                 for col in data_cols
                 for stat in self.statistics_
                 for h, offset in enumerate(offsets, start=1)
@@ -864,7 +869,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         check_is_fitted(self, ["statistics_", "forecasting_horizon_"])
         input_features = _check_feature_names_in(self, input_features)
         feature_names = [
-            f"{col}_s{self.seasonality}_{stat}_step_{h}"
+            f"{self._profile_name(col, stat)}_step_{h}"
             for col in input_features
             for stat in self.statistics_
             for h in range(1, self.forecasting_horizon_ + 1)

@@ -62,6 +62,10 @@ _SKIP_COMMON = {
     # check-generator sweep runs on tz-aware data in
     # tests/preprocessing/test_calendar.py::TestDaylightSavingFeatureTransformerSystematic.
     "DaylightSavingFeatureTransformer",
+    # Requires `seasonality`, so the sweep cannot default-construct it. The systematic
+    # check-generator sweep runs in
+    # tests/preprocessing/test_horizon_rolling_statistics.py::TestSystematic.
+    "HorizonRollingStatisticsTransformer",
 }
 
 # Known check failures per estimator, covered by dedicated test files.
