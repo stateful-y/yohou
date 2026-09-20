@@ -58,11 +58,7 @@ def _produces_step_columns(estimator) -> bool:
 
 
 def _step_output_owners(estimator) -> tuple[set[int], set[str]]:
-    """Collect the step-output transformers in an estimator's parameter tree.
-
-    A metadata request names its owner, but how depends on the scikit-learn version:
-    recent releases store the owning estimator itself, older ones (1.6) only its class
-    name. Both forms are returned so `_owns` can match a request either way.
+    """Collect the step-output transformers in an estimator's parameter tree, as id and class name.
 
     Returns
     -------
@@ -70,6 +66,12 @@ def _step_output_owners(estimator) -> tuple[set[int], set[str]]:
         ``id()`` of each tagged estimator.
     names : set of str
         Class name of each tagged estimator.
+
+    Notes
+    -----
+    A metadata request names its owner differently across scikit-learn versions:
+    1.7 stores the owner's class name, 1.8 and later store the owning estimator
+    itself. Both forms are returned so ``_owns`` can match a request either way.
 
     """
     candidates = [estimator]
@@ -98,10 +100,10 @@ def _assert_default_requests_empty(request, ids: set[int], names: set[str]) -> N
     """Assert every default request in a routing tree is empty, bar the step-output exemption.
 
     A transformer tagged ``produces_step_columns`` requests ``forecasting_horizon`` on
-    ``fit`` by default, because a reduction forecaster routes its fit horizon to it.
-    That one request is the whole exemption, and it applies wherever the transformer
-    sits: bare, inside a composite, or inside a forecaster's ``actual_transformer``.
-    Every other request, on it or on anything else in the tree, must still be empty.
+    ``fit`` by default. That one request is the whole exemption, and it applies wherever
+    the transformer sits: bare, inside a composite, or inside a forecaster's
+    ``actual_transformer``. Every other request, on it or on anything else in the tree,
+    must still be empty.
 
     Parameters
     ----------
@@ -116,6 +118,11 @@ def _assert_default_requests_empty(request, ids: set[int], names: set[str]) -> N
     ------
     AssertionError
         If a default request is not empty.
+
+    Notes
+    -----
+    The exemption exists because a reduction forecaster routes its fit horizon to the
+    transformer.
 
     """
     if isinstance(request, MetadataRouter):

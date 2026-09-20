@@ -101,23 +101,6 @@ def _stub_for(forecaster) -> BaseEstimator:
     return _RecordingEvalRegressor()
 
 
-def _fitted_estimators(forecaster) -> list:
-    """Return the fitted estimators, flattened from any ``estimator_`` shape.
-
-    Handles a single estimator, a per-step list (direct/dir-rec), a dict of
-    estimators (interval multi-output), and a dict of per-step lists
-    (interval with direct/dir-rec).
-    """
-    fitted = forecaster.estimator_
-    values = list(fitted.values()) if isinstance(fitted, dict) else fitted
-    if not isinstance(values, list):
-        return [values]
-    flattened = []
-    for value in values:
-        flattened.extend(value) if isinstance(value, list) else flattened.append(value)
-    return flattened
-
-
 def check_estimator_parameter(forecaster) -> None:
     """Check estimator parameter is sklearn BaseEstimator.
 
@@ -261,7 +244,9 @@ def check_validation_holdout_fit(
         X_future=X_future,
         X_forecast=X_forecast,
     )
-    for holdout_est, reference_est in zip(_fitted_estimators(strict), _fitted_estimators(reference), strict=True):
+    holdout_estimators = [est for _, est in strict._fitted_estimator_positions()]
+    reference_estimators = [est for _, est in reference._fitted_estimator_positions()]
+    for holdout_est, reference_est in zip(holdout_estimators, reference_estimators, strict=True):
         assert holdout_est.train_X_.equals(reference_est.train_X_), (
             "the holdout fit's training matrix differs from a head-only fit's; "
             "the validation tail leaked into transformer or sample-weight fitting"
@@ -324,7 +309,7 @@ def _check_validation_holdout_delivery(
     per_group = _CHECK_VALIDATION_SIZE if overlap else _CHECK_VALIDATION_SIZE - _CHECK_HORIZON + 1
     expected_rows = per_group * n_groups
 
-    estimators = _fitted_estimators(cloned)
+    estimators = [est for _, est in cloned._fitted_estimator_positions()]
     first_pair = None
     for est in estimators:
         assert est.received_eval_set_ is not None, "no eval_set reached the estimator"
@@ -411,5 +396,5 @@ def check_validation_holdout_default_noop(
         X_future=X_future,
         X_forecast=X_forecast,
     )
-    for est in _fitted_estimators(cloned):
+    for _, est in cloned._fitted_estimator_positions():
         assert est.received_eval_set_ is None, "validation_size=None must not deliver an eval_set"

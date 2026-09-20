@@ -517,8 +517,6 @@ class RollingStatisticsTransformer(BaseActualTransformer):
 
     """
 
-    _valid_statistics = _VALID_STATISTICS
-
     _parameter_constraints: dict = {
         "window_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "statistics": [str, list],

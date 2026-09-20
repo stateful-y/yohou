@@ -1523,13 +1523,16 @@ def check_observe_auto_rederives_step_columns(
     y_baseline : pl.DataFrame or None
         Historical window immediately preceding ``y_observe`` (typically the
         training series). When provided, the forecaster is rewound to its end
-        first, making this check independent of state left behind by earlier
-        mutating checks in the suite. Earlier checks advance the shared
-        instance past ``y_observe``, and stateful transformers reject the
-        resulting overlap while transformer-less forecasters silently accept
-        it, so without the rewind this check only ever ran on corrupted state.
+        before observing. See Notes.
     X_actual_baseline : pl.DataFrame or None
         Features aligned with ``y_baseline``.
+
+    Notes
+    -----
+    Earlier mutating checks in the suite advance the shared instance past
+    ``y_observe``. Stateful transformers reject the resulting overlap while
+    transformer-less forecasters silently accept it, so without the rewind this
+    check only ever ran on corrupted state.
 
     """
     # Verify step columns exist before observe

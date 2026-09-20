@@ -93,8 +93,8 @@ evaluated (`validation_size - forecasting_horizon + 1` rows), which requires
 `validation_size >= forecasting_horizon`. An estimator whose `fit` accepts no
 `eval_set` (most plain sklearn estimators), a `sklearn.multioutput` wrapper,
 or a holdout that leaves too little training data all raise a `ValueError` at
-fit; the [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
-parameter documentation lists every rejected configuration.
+fit; the [`BaseReductionForecaster`](/pages/api/generated/yohou.base.BaseReductionForecaster/)
+class documentation lists every rejected configuration.
 
 ## 3. Read the Result from `estimator_`
 

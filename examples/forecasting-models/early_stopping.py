@@ -49,7 +49,7 @@ def _(mo):
     every candidate on each fold's test window.
 
     **Prerequisites:** Familiarity with reduction forecasters
-    ([View](/examples/forecasting-models/catboost_forecasting/) ·
+    ([View](/examples/catboost_forecasting/) ·
     [Open in marimo](/examples/forecasting-models/catboost_forecasting/edit/)).
 
     ## 1. Prepare Data

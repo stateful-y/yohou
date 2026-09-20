@@ -1,10 +1,12 @@
 """Tests for yohou.testing.common check functions."""
 
 import pytest
+from sklearn.utils.metadata_routing import MetadataRequest
 
 from yohou.point.naive import SeasonalNaive
 from yohou.preprocessing.window import LagTransformer
 from yohou.testing.common import (
+    _owns,
     check_metadata_routing_default_request,
     check_metadata_routing_get_metadata_routing,
 )
@@ -80,3 +82,22 @@ class TestMetadataRoutingGetMetadataRouting:
 
         with pytest.raises(AssertionError, match="must return MetadataRouter or MetadataRequest"):
             check_metadata_routing_get_metadata_routing(estimator)
+
+
+class TestOwns:
+    """Tests for the ``_owns`` owner match."""
+
+    def test_string_owner(self):
+        """A request owning a class name matches that name (scikit-learn 1.7)."""
+        request = MetadataRequest(owner="LagTransformer")
+
+        assert _owns(request, set(), {"LagTransformer"})
+        assert not _owns(request, {id(request)}, {"SeasonalNaive"})
+
+    def test_instance_owner(self):
+        """A request owning an estimator matches its id (scikit-learn 1.8 and later)."""
+        transformer = LagTransformer(lag=3)
+        request = MetadataRequest(owner=transformer)
+
+        assert _owns(request, {id(transformer)}, set())
+        assert not _owns(request, set(), {"LagTransformer"})

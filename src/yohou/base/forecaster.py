@@ -675,7 +675,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         Parameters
         ----------
-        X_t : pl.DataFrame or dict of str to pl.DataFrame or None
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             The transformed features: one frame, or one local frame per group under
             ``panel_strategy="global"``.
         forecasting_horizon : int
@@ -709,15 +709,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             return
 
         frames: dict[str | None, pl.DataFrame] = (
-            dict(typing_cast(dict[str | None, pl.DataFrame], X_t)) if isinstance(X_t, dict) else {None: X_t}
+            typing_cast(dict[str | None, pl.DataFrame], X_t) if isinstance(X_t, dict) else {None: X_t}
         )
         for group_name, frame in frames.items():
             columns = [c for c in frame.columns if c != "time"]
+            step_indices = {name: index for name in columns if (index := _step_index(name)) is not None}
             blocks: dict[str, set[int]] = {}
-            for name in columns:
-                step = _step_index(name)
-                if step is not None:
-                    blocks.setdefault(name.rsplit("_step_", 1)[0], set()).add(step)
+            for name, step in step_indices.items():
+                blocks.setdefault(name.rsplit("_step_", 1)[0], set()).add(step)
             if not blocks:
                 raise ValueError(
                     f"actual_transformer declares step-column output, but none of its {len(columns)} output "
@@ -736,7 +735,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                         "output name ending in '_step_<n>' is read as a per-step feature; rename a column that "
                         "is not one."
                     )
-            names = {name for name in columns if _step_index(name) is not None}
+            names = set(step_indices)
             self._actual_step_column_local_names_ |= names
             if group_name is None:
                 self._actual_step_column_names_ |= names

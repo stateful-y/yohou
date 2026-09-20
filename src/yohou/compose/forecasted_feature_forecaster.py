@@ -18,6 +18,7 @@ from sklearn.utils.validation import check_is_fitted
 from yohou.base import BaseForecaster
 from yohou.utils import Tags
 from yohou.utils._compat import Interval, StrOptions, _fit_context, _raise_for_params
+from yohou.utils.tags import _max_child_holdout_size
 
 __all__ = ["ForecastedFeatureForecaster"]
 
@@ -269,10 +270,7 @@ class ForecastedFeatureForecaster(BaseForecaster):
             target_tags.forecaster_tags, "supports_panel_data", True
         ) and getattr(feature_tags.forecaster_tags, "supports_panel_data", True)
         # The stretch a train score may use must be learned-from by both children.
-        tags.forecaster_tags.holdout_size = max(
-            getattr(target_tags.forecaster_tags, "holdout_size", 0),
-            getattr(feature_tags.forecaster_tags, "holdout_size", 0),
-        )
+        tags.forecaster_tags.holdout_size = _max_child_holdout_size((self.target_forecaster, self.feature_forecaster))
 
         # Delegates observation tracking to child forecasters
         tags.forecaster_tags.tracks_observations = False

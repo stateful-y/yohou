@@ -1,9 +1,11 @@
 """Test doubles for exercising the ``holdout_size`` tag through composites.
 
-No yohou point forecaster holds rows back, and a split-conformal forecaster
-cannot sit where a point forecaster is required, so the composite tests use
+A yohou point forecaster holds rows back only as a reduction forecaster with
+``validation_size``, which needs a real regressor and enough rows to tabularize
+an evaluation window, and a split-conformal forecaster cannot sit where a point
+forecaster is required. The composite tests therefore use
 ``_HoldoutStubForecaster``: a real seasonal-naive forecaster that declares a
-fixed held-back count.
+fixed held-back count on any input, including panel data.
 """
 
 import numbers

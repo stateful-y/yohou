@@ -380,6 +380,19 @@ class TestRollingStatisticsTransformerSeasonal:
         expected = [np.mean([price[t], price[t - 24], price[t - 48]]) for t in range(48, 200)]
         np.testing.assert_allclose(X_t["price_s24_mean"].to_numpy(), expected, rtol=1e-12)
 
+    def test_with_panel_data(self, panel_time_series_factory):
+        """Group prefixes survive the seasonal rename and each panel column rolls on its own."""
+        X_panel = panel_time_series_factory(length=60, n_series=1, n_groups=2)
+        transformer = RollingStatisticsTransformer(window_size=3, seasonality=4, statistics="mean")
+        X_t = transformer.fit(X_panel).transform(X_panel)
+
+        assert transformer.observation_horizon == 8
+        assert set(X_t.columns) == {"time", "group0__series_0_s4_mean", "group1__series_0_s4_mean"}
+        assert X_t.height == X_panel.height - 8
+        values = X_panel["group1__series_0"].to_numpy()
+        expected = [np.mean([values[t], values[t - 4], values[t - 8]]) for t in range(8, X_panel.height)]
+        np.testing.assert_allclose(X_t["group1__series_0_s4_mean"].to_numpy(), expected, rtol=1e-12)
+
     def test_seasonality_zero_rejected(self):
         """seasonality must be a positive integer."""
         X = self._hourly(50)

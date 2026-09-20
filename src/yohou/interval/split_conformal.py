@@ -182,7 +182,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         # The point forecaster is fitted on the rows before the calibration stretch,
         # so those rows, plus whatever the point forecaster itself holds back, are
         # never learned from.
-        point = self.point_forecaster_ if hasattr(self, "point_forecaster_") else self.point_forecaster
+        point = getattr(self, "point_forecaster_", self.point_forecaster)
         point_tags = point.__sklearn_tags__().forecaster_tags if point is not None else None
         tags.forecaster_tags.holdout_size = self.calibration_size + (point_tags.holdout_size if point_tags else 0)
         return tags
