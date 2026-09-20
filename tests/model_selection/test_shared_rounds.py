@@ -63,6 +63,15 @@ class TestSelection:
         }
         assert list(rounds) == list(curves)
 
+    def test_boundary_is_flagged_per_position(self):
+        curves = {
+            "step_1": [(np.linspace(2.0, 1.0, 20), False), (np.linspace(2.0, 0.5, 35), False)],
+            "step_2": [(_valley(30, 5), False), (_valley(30, 7), False)],
+        }
+        rounds, boundary = _select_shared_rounds(curves)
+        assert rounds == {"step_1": 20, "step_2": 6}
+        assert boundary == {"step_1": True, "step_2": False}
+
     def test_single_fold(self):
         rounds, _ = _select_shared_rounds({"step_1": [(_valley(25, 9), False)]})
         assert rounds == {"step_1": 9}

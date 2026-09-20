@@ -215,6 +215,30 @@ class TestSharedRounds:
             search.fit(y, forecasting_horizon=HORIZON)
         assert list(search.cv_results_["rounds_at_boundary"]) == [True]
 
+    def test_boundary_warning_points_at_the_caller(self):
+        y = _series()
+        search = _search(
+            refit=False,
+            forecaster=_point(estimator=CurveRegressor(n_rounds=8)),
+            param_grid={"estimator__patience": [6]},
+        )
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            search.fit(y, forecasting_horizon=HORIZON)
+        boundary = [w for w in caught if "last round every fold trained" in str(w.message)]
+        assert len(boundary) == 1
+        assert boundary[0].filename == __file__
+
+    def test_train_scores_of_the_truncated_folds(self):
+        y = _series()
+        search = _search(param_grid={"estimator__patience": [4, 8]}, return_train_score=True, refit=False)
+        search.fit(y, forecasting_horizon=HORIZON)
+        results = search.cv_results_
+        assert np.isfinite(results["mean_train_score"]).all()
+        for i in range(N_SPLITS):
+            assert np.isfinite(results[f"split{i}_train_score"]).all()
+        assert len(results["rounds"]) == len(results["rounds_at_boundary"]) == 2
+
     def test_round_record_is_consistent(self):
         y = _series()
         search = _search(param_grid={"estimator__patience": [4, 8]})
@@ -469,6 +493,17 @@ class TestRejectedConfigurations:
         with pytest.raises(ValueError, match=key):
             _search()._check_shared_round_setup({key: object()})
 
+    def test_lightgbm_several_fit_time_metrics(self):
+        y = _series()
+        estimator = lightgbm.LGBMRegressor(n_estimators=20, n_jobs=1, verbose=-1).set_fit_request(eval_metric=True)
+        search = _search(forecaster=_point(estimator=estimator), early_stopping_adapter=None, param_grid={})
+        with (
+            mock.patch.object(ms_utils, "_fit_fold") as fit_fold,
+            pytest.raises(ValueError, match="first_metric_only"),
+        ):
+            search.fit(y, forecasting_horizon=HORIZON, eval_metric=["l1", "l2"])
+        fit_fold.assert_not_called()
+
     def test_no_adapter_for_estimator(self):
         y = _series()
         search = _search(forecaster=_point(estimator=CurveRegressor()), early_stopping_adapter=None)
@@ -485,6 +520,34 @@ class TestRejectedConfigurations:
         )
         with pytest.raises(ValueError, match="explicit learning_rate"):
             search.fit(y, forecasting_horizon=HORIZON)
+
+
+class TestRandomizedSearch:
+    """Shared rounds are recorded per sampled candidate, not per grid point."""
+
+    def test_each_sampled_candidate_records_its_own_rounds(self):
+        search = RandomizedSearchCV(
+            _point(estimator=CurveRegressor(patience=6)),
+            {"estimator__n_rounds": [4, 6, 8, 10]},
+            n_iter=3,
+            random_state=0,
+            scoring=MeanAbsoluteError(),
+            cv=_cv(),
+            validation="cv",
+            early_stopping_adapter=CurveEarlyStoppingAdapter(),
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            search.fit(_series(), forecasting_horizon=HORIZON)
+        results = search.cv_results_
+        assert len(results["params"]) == len(results["rounds"]) == 3
+        for params, rounds in zip(results["params"], results["rounds"], strict=True):
+            assert list(rounds) == ["step_1", "step_2", "step_3"]
+            # Every curve still improves at these ceilings, so each candidate
+            # is cut at its own sampled ceiling.
+            assert set(rounds.values()) == {params["estimator__n_rounds"]}
+        assert len({tuple(rounds.values()) for rounds in results["rounds"]}) == 3
+        assert search.best_rounds_ == results["rounds"][search.best_index_]
 
 
 class TestSystematicChecks:
@@ -598,6 +661,13 @@ class TestIntervalSearches:
             assert est.rounds_used_ == search.best_rounds_[position]
             assert est.received_eval_targets_ is None
         assert len(search.predict_interval(coverage_rates=[0.9])) == 2
+
+    def test_boundary_warning_names_an_interval_bound(self):
+        search = self._search("multi-output", refit=False)
+        search.set_params(param_grid={"estimator__n_rounds": [8]})
+        with pytest.warns(UserWarning, match=r"coverage_rate_0\.9_lower.*last round every fold trained"):
+            search.fit(_series(), forecasting_horizon=HORIZON)
+        assert list(search.cv_results_["rounds_at_boundary"]) == [True]
 
     def test_lightgbm_quantile_end_to_end(self):
         y = _series(n=200)
@@ -728,7 +798,19 @@ class TestCvModeRejectsSuppliedEvaluationKeys:
     """The cv guard refuses every key the mode supplies itself."""
 
     @pytest.mark.parametrize(
-        "key", ["eval_set", "eval_X", "X_val", "sample_weight_val", "eval_sample_weight", "sample_weight_eval_set"]
+        "key",
+        [
+            "eval_set",
+            "eval_X",
+            "eval_y",
+            "X_val",
+            "y_val",
+            "sample_weight_val",
+            "eval_sample_weight",
+            "sample_weight_eval_set",
+            "X_actual_val",
+            "X_forecast_val",
+        ],
     )
     def test_key_rejected_before_any_fold(self, key):
         search = _search()

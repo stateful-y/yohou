@@ -31,6 +31,7 @@ from sklearn.utils.validation import (
 )
 
 from yohou.base import BaseForecaster
+from yohou.base.reduction import _EVAL_SET_KEYS
 from yohou.metrics.base import BaseScorer
 from yohou.utils import validate_search_data
 from yohou.utils._compat import (
@@ -621,30 +622,17 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         ------
         ValueError
             If the forecaster is not a reduction forecaster, or ``params``
-            carries its own evaluation set or evaluation window.
+            carries its own evaluation set, evaluation weight, or evaluation
+            window.
 
         """
         _check_shared_round_forecaster_type(self.forecaster)
         # Every evaluation-set dialect and every evaluation-weight key the
         # holdout path fills, plus the window arguments: the mode supplies all
         # of them itself, so a caller-supplied one would be silently replaced.
-        # This list is the cv-mode twin of `_reject_raw_eval_params`.
+        # The shared keys come from `_EVAL_SET_KEYS`; the window arguments are cv-mode only.
         conflicting = sorted(
-            key
-            for key in params
-            if key
-            in (
-                "eval_set",
-                "eval_X",
-                "eval_y",
-                "X_val",
-                "eval_sample_weight",
-                "sample_weight_val",
-                "sample_weight_eval_set",
-                "y_val",
-                "X_actual_val",
-                "X_forecast_val",
-            )
+            key for key in params if key in (*_EVAL_SET_KEYS, "y_val", "X_actual_val", "X_forecast_val")
         )
         if conflicting:
             raise ValueError(
@@ -686,7 +674,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                     f"may have been better. Raise the estimator's round ceiling (for example n_estimators, "
                     f"iterations, or max_iter).",
                     UserWarning,
-                    stacklevel=4,
+                    # _shared_round_columns, evaluate_candidates, _run_search,
+                    # fit, its _fit_context wrapper, then the caller.
+                    stacklevel=6,
                 )
         columns = {
             "rounds": rounds,
@@ -1027,8 +1017,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                         f"candidates, totalling {n_candidates * n_splits} fits"
                     )
 
+                splits = list(cv.split(y, X_actual, **routed_params.splitter.split))
                 if self.validation == "cv":
-                    splits = list(cv.split(y, X_actual, **routed_params.splitter.split))
                     candidate_out = parallel(
                         delayed(_evaluate_candidate_shared_rounds)(
                             clone(base_forecaster),
@@ -1067,7 +1057,7 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
                             **fit_and_score_kwargs,
                         )
                         for cand_idx, parameters in enumerate(candidate_params)
-                        for split_idx, (train, test) in enumerate(cv.split(y, X_actual, **routed_params.splitter.split))
+                        for split_idx, (train, test) in enumerate(splits)
                     )
 
                 if len(out) < 1:
