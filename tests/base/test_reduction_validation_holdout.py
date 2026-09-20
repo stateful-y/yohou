@@ -440,6 +440,55 @@ class TestLeakage:
         assert X_eval[col].to_list() == expected
 
 
+class TestForecastWindowOverlap:
+    """``X_forecast_val`` may repeat ``X_forecast`` rows but not contradict them."""
+
+    @staticmethod
+    def _vintage(vintage_time, times, value):
+        return pl.DataFrame({
+            "vintage_time": [vintage_time] * len(times),
+            "time": times,
+            "fx": [value] * len(times),
+        })
+
+    @staticmethod
+    def _split():
+        y = _make_y()
+        boundary = LENGTH - VAL_SIZE
+        times = pl.datetime_range(
+            start=datetime(2021, 1, 1),
+            end=datetime(2021, 1, 1) + timedelta(seconds=LENGTH + HORIZON - 1),
+            interval="1s",
+            eager=True,
+        )
+        return y[:boundary], y[boundary:], times, y["time"][0], y["time"][boundary + 2]
+
+    def test_identical_overlapping_rows_are_accepted(self):
+        head, tail, times, v1, v2 = self._split()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        forecaster.fit(
+            y=head,
+            forecasting_horizon=HORIZON,
+            y_val=tail,
+            X_forecast=self._vintage(v1, times, 1.0),
+            X_forecast_val=pl.concat([self._vintage(v1, times, 1.0), self._vintage(v2, times, 2.0)]),
+        )
+        X_eval, _ = _eval_pair(forecaster.estimator_)
+        assert "fx_step_1" in X_eval.columns
+
+    def test_contradictory_overlapping_rows_are_rejected(self):
+        head, tail, times, v1, _ = self._split()
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor())
+        with pytest.raises(ValueError, match="disagree on"):
+            forecaster.fit(
+                y=head,
+                forecasting_horizon=HORIZON,
+                y_val=tail,
+                X_forecast=self._vintage(v1, times, 1.0),
+                X_forecast_val=self._vintage(v1, times, 9.0),
+            )
+
+
 class TestErrorContract:
     """The six ValueError cases."""
 
@@ -1015,6 +1064,7 @@ class TestLifecycleComposition:
             param_grid={"reduction_strategy": ["multi-output", "direct"]},
             scoring=MeanAbsoluteError(),
             cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
+            error_score="raise",
         )
         fold_eval_sizes: list[int] = []
         original_fit = PointReductionForecaster.fit
@@ -1277,7 +1327,9 @@ class TestIntervalFamily:
 class TestSystematicCheckShapes:
     """The shared holdout checks handle every ``estimator_`` shape."""
 
-    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    # "multi-output" is the default, so tests/test_common.py's systematic
+    # sweep already runs these two checks on it.
+    @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
     def test_interval_strategies_through_holdout_checks(self, strategy):
         from yohou.testing.reduction import (
             check_validation_holdout_default_noop,
@@ -1862,7 +1914,7 @@ class TestPipelineEvaluationMatrixOracle:
     def _pipeline(*steps):
         return Pipeline([*steps, ("rec", RecordingRegressor())])
 
-    def _compare(self, forecaster, bare, panel=False):
+    def _compare(self, forecaster, bare):
         """Assert each delivered matrix equals its own fitted prefix's transform."""
         pipelines = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
         bares = bare.estimator_ if isinstance(bare.estimator_, list) else [bare.estimator_]
@@ -1927,7 +1979,7 @@ class TestPipelineEvaluationMatrixOracle:
         forecaster.fit(y=_make_y_panel(), forecasting_horizon=HORIZON)
         bare = PointReductionForecaster(estimator=RecordingRegressor(), **kwargs)
         bare.fit(y=_make_y_panel(), forecasting_horizon=HORIZON)
-        self._compare(forecaster, bare, panel=True)
+        self._compare(forecaster, bare)
 
     def test_pipeline_configuration_survives_the_two_phase_fit(self):
         """`memory` and `verbose` must not be dropped when the pipeline is rebuilt."""

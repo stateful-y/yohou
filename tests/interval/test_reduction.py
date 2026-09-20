@@ -8,6 +8,7 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.model_selection import train_test_split
 
 from conftest import run_checks
+from point.test_actual_transformer_fit_metadata import _fitted_probes, _RecordingLag
 from point.test_step_output_alignment import _StepProbe
 from yohou.compose import FeatureUnion
 from yohou.interval import IntervalReductionForecaster
@@ -795,3 +796,52 @@ def test_unfiltered_step_columns_warn(y_X_factory):
     )
     with pytest.warns(UserWarning, match=r"produces 6 step column\(s\).*step_feature_alignment='all'"):
         forecaster.fit(y, X, forecasting_horizon=3, coverage_rates=[0.9])
+
+
+class _MarkerQuantileRegressor(_MockLGBMQuantileRegressor):
+    """LGBM-style quantile stub that records a ``marker`` fit parameter."""
+
+    def fit(self, X_actual, y, marker=None, **kwargs):
+        """Record ``marker``, then fit."""
+        self.marker_ = marker
+        return super().fit(X_actual, y, **kwargs)
+
+
+class _MarkerMultiQuantileRegressor(_MockMultiQuantileRegressor):
+    """MultiQuantile stub that records a ``marker`` fit parameter."""
+
+    def fit(self, X_actual, y, marker=None, **kwargs):
+        """Record ``marker``, then fit."""
+        self.marker_ = marker
+        return super().fit(X_actual, y, **kwargs)
+
+
+class TestFitMetadataRouting:
+    """Caller fit metadata reaches the actual transformer and the wrapped estimators."""
+
+    def test_metadata_reaches_transformer_and_quantile_estimators(self, y_X_factory):
+        """Both bound models of a coverage rate receive the caller's metadata."""
+        y, X = y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = IntervalReductionForecaster(
+            estimator=_MarkerQuantileRegressor().set_fit_request(marker=True),
+            actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+        )
+        forecaster.fit(y, X, forecasting_horizon=3, coverage_rates=[0.9], marker="x")
+
+        (probe,) = _fitted_probes(forecaster)
+        assert probe.seen_["marker"] == "x"
+        assert set(forecaster.estimator_) == {"coverage_rate_0.9_lower", "coverage_rate_0.9_upper"}
+        assert all(estimator.marker_ == "x" for estimator in forecaster.estimator_.values())
+
+    def test_metadata_reaches_the_multiquantile_estimator(self, y_X_factory):
+        """The single-model MultiQuantile branch receives it too."""
+        y, X = y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = IntervalReductionForecaster(
+            estimator=_MarkerMultiQuantileRegressor().set_fit_request(marker=True),
+            actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+        )
+        forecaster.fit(y, X, forecasting_horizon=1, coverage_rates=[0.9], marker="x")
+
+        (probe,) = _fitted_probes(forecaster)
+        assert probe.seen_["marker"] == "x"
+        assert forecaster.estimator_["_multiquantile"].marker_ == "x"

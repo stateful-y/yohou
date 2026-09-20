@@ -38,6 +38,18 @@ from yohou.weighting.weighters import _combine_weight_vectors, _resolve_weighter
 
 __all__ = ["BaseReductionForecaster"]
 
+#: Evaluation-set and evaluation-weight keywords the holdout path fills itself.
+#: `yohou.model_selection.search` rejects these plus its own window arguments.
+_EVAL_SET_KEYS = (
+    "eval_set",
+    "eval_X",
+    "eval_y",
+    "X_val",
+    "eval_sample_weight",
+    "sample_weight_val",
+    "sample_weight_eval_set",
+)
+
 
 def _holdout_remedy(source: str) -> str:
     """Return the instruction that removes a validation holdout, for error messages.
@@ -281,6 +293,12 @@ default="first_step"
     because a signature cannot say which keywords ``**kwargs`` honours; such an
     estimator can still fail inside its own ``fit`` rather than up front.
 
+    The evaluation rows are weighted by the same ``time_weighter`` and
+    ``vintage_weighter`` as the training rows, so early stopping judges the
+    model on the basis it is fitted on. An estimator that accepts an
+    evaluation set but declares no evaluation-weight parameter receives it
+    unweighted, with an ``UnweightedEvaluationSetWarning``.
+
     Early stopping itself (rounds, metric, callbacks) is configured on the
     estimator, never by yohou. Because those libraries do not refit after
     stopping, the tail's information is spent on the stopping decision; to
@@ -468,7 +486,8 @@ default="first_step"
 
         A step-output transformer emits ``H`` columns per base, one per forecast step,
         and only ``reduction_strategy="direct"`` with a non-``"all"``
-        ``step_feature_alignment`` narrows each per-step model to its own. Otherwise
+        ``step_feature_alignment`` narrows each per-step model's columns (to its own
+        step for ``"matched"``, to steps ``1..h`` for ``"cumulative"``). Otherwise
         every model reads all of them, which widens the design matrix by a factor of
         ``H`` without saying so.
 
@@ -721,7 +740,8 @@ default="first_step"
             Additional parameters to pass to the estimator's fit method.
         eval_data : _EvalSet or None
             The stacked validation-holdout ``(X_tab_eval, y_tab_eval)``
-            pair, or None when ``validation_size`` is unset.
+            pair, or None when no evaluation window was resolved (neither
+            ``validation_size`` nor ``y_val`` is set).
 
         Returns
         -------
@@ -1134,10 +1154,7 @@ default="first_step"
     def _eval_set_target(estimator: BaseEstimator, source: str = "validation_size") -> tuple[BaseEstimator, str]:
         """Return the estimator that receives ``eval_set``, and how to name it.
 
-        For a ``Pipeline`` this is the final step: `_fit_pipeline_with_eval_set`
-        fits that step directly, because sklearn hands fit parameters to steps
-        untransformed and, under metadata routing, rejects the
-        ``<step>__<param>`` form outright.
+        For a ``Pipeline`` this is the final step.
 
         Parameters
         ----------
@@ -1188,13 +1205,6 @@ default="first_step"
         which one to build, so yohou follows the estimator rather than pinning
         it to any of them.
 
-        The ``**kwargs`` fallback is a permissive heuristic: an estimator that
-        accepts arbitrary keywords is assumed to want ``eval_set``, because a
-        signature cannot say which keywords ``**kwargs`` actually honours. Such
-        an estimator can therefore still fail inside its own ``fit`` rather than
-        here. The explicit rejections below cover the cases where that late
-        failure is known to be confusing.
-
         Parameters
         ----------
         estimator : BaseEstimator
@@ -1218,6 +1228,15 @@ default="first_step"
             nested as another ``Pipeline``'s final step, has a fit signature
             with no evaluation-set parameter and no ``**kwargs``, or is a
             ``Pipeline`` ending in ``"passthrough"``.
+
+        Notes
+        -----
+        The ``**kwargs`` fallback is a permissive heuristic: an estimator that
+        accepts arbitrary keywords is assumed to want ``eval_set``, because a
+        signature cannot say which keywords ``**kwargs`` actually honours. Such
+        an estimator can therefore still fail inside its own ``fit`` rather than
+        here. The explicit rejections cover the cases where that late failure is
+        known to be confusing.
 
         """
         target, label = BaseReductionForecaster._eval_set_target(estimator, source)
@@ -1407,12 +1426,6 @@ default="first_step"
     def _rebuild_pipeline(template: Pipeline, steps: list) -> Pipeline:
         """Rebuild a ``Pipeline`` around new steps, keeping its other parameters.
 
-        Constructing ``Pipeline(steps, memory=..., verbose=...)`` by hand keeps
-        only the parameters named in that call and silently drops the rest, so
-        a user's ``transform_input`` (and whatever sklearn adds next) would not
-        survive the two-phase holdout fit. Taking the template's own
-        ``get_params`` keeps every one of them.
-
         Parameters
         ----------
         template : Pipeline
@@ -1424,6 +1437,14 @@ default="first_step"
         -------
         Pipeline
             A pipeline with ``steps`` and every other parameter of ``template``.
+
+        Notes
+        -----
+        Constructing ``Pipeline(steps, memory=..., verbose=...)`` by hand keeps
+        only the parameters named in that call and silently drops the rest, so
+        a user's ``transform_input`` (and whatever sklearn adds next) would not
+        survive the two-phase holdout fit. Taking the template's own
+        ``get_params`` keeps every one of them.
 
         """
         params = template.get_params(deep=False)
@@ -1517,8 +1538,6 @@ default="first_step"
             try:
                 final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
             except ValueError as exc:
-                if isinstance(final_estimator, Pipeline):
-                    raise
                 # Same wording as the non-holdout Pipeline path, so the two
                 # fit paths report the identical failure identically.
                 raise ValueError(
@@ -1666,19 +1685,7 @@ default="first_step"
         # overwritten rather than honoured. ``y_val`` is absent from this list
         # on purpose: it is a named parameter of the forecaster's own fit, so it
         # binds there and can never reach ``**params``.
-        conflicting = [
-            key
-            for key in (
-                "eval_set",
-                "eval_X",
-                "eval_y",
-                "X_val",
-                "eval_sample_weight",
-                "sample_weight_val",
-                "sample_weight_eval_set",
-            )
-            if key in params
-        ]
+        conflicting = [key for key in _EVAL_SET_KEYS if key in params]
         if conflicting:
             state = "is set" if source == "validation_size" else "is given"
             raise ValueError(
@@ -1807,6 +1814,38 @@ default="first_step"
         self._check_early_stopping_enabled(self.estimator, "y_val")
         self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
 
+    @staticmethod
+    def _reject_conflicting_forecast_rows(X_forecast_eval: pl.DataFrame) -> None:
+        """Reject ``(vintage_time, time)`` keys carrying more than one distinct row.
+
+        Parameters
+        ----------
+        X_forecast_eval : pl.DataFrame
+            The concatenated ``X_forecast`` and ``X_forecast_val``, already
+            reduced to distinct rows.
+
+        Raises
+        ------
+        ValueError
+            If any ``(vintage_time, time)`` key carries two different rows.
+
+        """
+        key = ["vintage_time", "time"]
+        if any(column not in X_forecast_eval.columns for column in key):
+            return
+        conflicts = (
+            X_forecast_eval.group_by(key, maintain_order=True).agg(pl.len().alias("_n")).filter(pl.col("_n") > 1)
+        )
+        if conflicts.is_empty():
+            return
+        listed = ", ".join(str(row) for row in conflicts.select(key).head(3).rows())
+        raise ValueError(
+            f"X_forecast and X_forecast_val disagree on {conflicts.height} "
+            f"(vintage_time, time) key(s), including {listed}: one vintage cannot "
+            f"publish two different forecasts for the same time. Make the two inputs "
+            f"agree on the overlap, or drop the overlapping rows from X_forecast_val."
+        )
+
     def _resolve_validation_window(
         self,
         y: pl.DataFrame,
@@ -1865,7 +1904,8 @@ default="first_step"
         ------
         ValueError
             If both window sources are set, if ``X_actual_val`` or
-            ``X_forecast_val`` is given without ``y_val``, or on
+            ``X_forecast_val`` is given without ``y_val``, if ``X_forecast``
+            and ``X_forecast_val`` carry contradictory rows, or on
             any invalid holdout configuration.
 
         """
@@ -1879,8 +1919,10 @@ default="first_step"
                         f"{name} requires y_val: it supplies features for an "
                         f"evaluation window, but no window target was given."
                     )
-            y_fit, X_fit, y_tail, X_tail = self._maybe_split_validation(y, X_actual, forecasting_horizon, params)
-            return y_fit, X_fit, y_tail, X_tail, X_forecast, (None if y_tail is None else "validation_size")
+            if self.validation_size is None:
+                return y, X_actual, None, None, X_forecast, None
+            y_fit, X_fit, y_tail, X_tail = self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
+            return y_fit, X_fit, y_tail, X_tail, X_forecast, "validation_size"
 
         if self.validation_size is not None:
             raise ValueError(
@@ -1905,6 +1947,7 @@ default="first_step"
             X_forecast_eval = pl.concat([X_forecast, X_forecast_val], how="vertical_relaxed").unique(
                 maintain_order=True
             )
+            self._reject_conflicting_forecast_rows(X_forecast_eval)
         return y, X_actual, y_val, X_actual_val, X_forecast_eval, "y_val"
 
     def _rewind_after_explicit_window(
@@ -1982,42 +2025,6 @@ default="first_step"
                 positions.extend(expand(value, key))
             return positions
         return expand(self.estimator_, None)
-
-    def _maybe_split_validation(
-        self,
-        y: pl.DataFrame,
-        X_actual: pl.DataFrame | None,
-        forecasting_horizon: int,
-        params: dict[str, Any],
-    ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame | None]:
-        """Split off the validation tail when ``validation_size`` is set.
-
-        The families share this preamble verbatim; it exists so each ``fit``
-        states the holdout branch once rather than three times.
-
-        Parameters
-        ----------
-        y : pl.DataFrame
-            Full target time series, as passed to fit.
-        X_actual : pl.DataFrame or None
-            Full feature time series, as passed to fit.
-        forecasting_horizon : int
-            Number of steps to forecast.
-        params : dict
-            The fit ``**params``, checked for a conflicting raw ``eval_set``.
-
-        Returns
-        -------
-        y_fit, X_fit : pl.DataFrame, pl.DataFrame or None
-            The head to fit on. With no holdout this is ``y``/``X_actual``
-            unchanged.
-        y_tail, X_tail : pl.DataFrame or None
-            The held-out tail, or None when no holdout applies.
-
-        """
-        if self.validation_size is None:
-            return y, X_actual, None, None
-        return self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
 
     def _observe_validation_tail(
         self,

@@ -2,12 +2,14 @@
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.tree import DecisionTreeClassifier
 
 from conftest import run_checks
+from point.test_actual_transformer_fit_metadata import _fitted_probes, _RecordingLag
 from point.test_step_output_alignment import _StepProbe
 from yohou.class_proba import ClassProbaReductionForecaster
 from yohou.compose import FeatureUnion
@@ -477,3 +479,46 @@ class TestStepOutputColumns:
         forecaster = self._forecaster(reduction_strategy="multi-output")
         with pytest.warns(UserWarning, match=r"produces 3 step column\(s\).*reduction_strategy='multi-output'"):
             forecaster.fit(y, X, forecasting_horizon=3)
+
+
+class _MarkerClassifier(ClassifierMixin, BaseEstimator):
+    """Classifier stub that records a ``marker`` fit parameter."""
+
+    def fit(self, X, y, marker=None):
+        """Record ``marker``, then fit."""
+        self.marker_ = marker
+        values = np.asarray(y)
+        self.classes_ = np.unique(values.ravel())
+        self._n_outputs = 1 if values.ndim == 1 else values.shape[1]
+        return self
+
+    def predict(self, X):
+        """Predict the first class everywhere."""
+        out = np.full((len(X), self._n_outputs), self.classes_[0])
+        return out.ravel() if self._n_outputs == 1 else out
+
+    def predict_proba(self, X):
+        """Predict a uniform distribution over the fitted classes."""
+        uniform = np.full((len(X), len(self.classes_)), 1.0 / len(self.classes_))
+        return uniform if self._n_outputs == 1 else [uniform] * self._n_outputs
+
+
+class TestFitMetadataRouting:
+    """Caller fit metadata reaches the actual transformer and the wrapped classifier."""
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct"])
+    def test_metadata_reaches_transformer_and_classifier(self, class_proba_y_X_factory, strategy):
+        """Both reduction strategies deliver the caller's metadata to every model."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = ClassProbaReductionForecaster(
+            estimator=_MarkerClassifier().set_fit_request(marker=True),
+            actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+            target_as_feature=None,
+            reduction_strategy=strategy,
+        )
+        forecaster.fit(y, X, forecasting_horizon=3, marker="x")
+
+        (probe,) = _fitted_probes(forecaster)
+        assert probe.seen_["marker"] == "x"
+        fitted = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
+        assert all(estimator.marker_ == "x" for estimator in fitted)

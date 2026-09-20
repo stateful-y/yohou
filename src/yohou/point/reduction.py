@@ -70,12 +70,13 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         for the trade-off, the ``Pipeline`` handling, and the rejected
         configurations.
     validation_overlap : bool, default=False
-        Only used when ``validation_size`` is set. By default only rows
-        whose entire target window lies inside the held-out tail are
-        evaluated (``validation_size - forecasting_horizon + 1`` rows).
-        When ``True``, the ``forecasting_horizon - 1`` boundary rows whose
-        target windows straddle the split are also evaluated, yielding
-        ``validation_size`` rows; those rows score some time points the
+        Applies to whichever holdout is active (``validation_size`` or
+        ``y_val``). By default only rows whose entire target window lies
+        inside the held-out tail are evaluated (with ``validation_size``,
+        ``validation_size - forecasting_horizon + 1`` rows). When ``True``,
+        the ``forecasting_horizon - 1`` boundary rows whose target windows
+        straddle the split are also evaluated (with ``validation_size``,
+        ``validation_size`` rows); those rows score some time points the
         model also trained on, trading evaluation purity for data on short
         series.
     nan_handling : {"drop", "pass"}, default="pass"
@@ -120,12 +121,7 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
         Per-timestep training-sample weighter (e.g.
         [`ExponentialDecayWeighter`][yohou.weighting.weighters.ExponentialDecayWeighter]).
         Its parameters are tunable via search (e.g.
-        ``time_weighter__half_life``). If None, samples are unweighted. With
-        ``validation_size`` or ``y_val``, the evaluation rows are weighted by
-        the same weighter, so early stopping judges the model on the basis it
-        is fitted on; an estimator that accepts an evaluation set but declares
-        no evaluation-weight parameter receives it unweighted, with an
-        ``UnweightedEvaluationSetWarning``.
+        ``time_weighter__half_life``). If None, samples are unweighted.
     vintage_weighter : BaseWeighter or None, default=None
         Per-vintage training-sample weighter. Resolved via direct lookup at
         observation time (no alignment strategy) and combined multiplicatively
