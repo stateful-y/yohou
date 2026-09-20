@@ -62,8 +62,8 @@ class CurveEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     def supports(self, estimator):
         return isinstance(estimator, CurveRegressor)
 
-    def validate(self, estimator):
-        self.calls.append(("validate", estimator.get_params()))
+    def validate(self, estimator, fit_params=None):
+        self.calls.append(("validate", estimator.get_params(), fit_params))
 
     def prepare_fold_fit(self, estimator):
         self.calls.append(("prepare_fold_fit", estimator.get_params()))

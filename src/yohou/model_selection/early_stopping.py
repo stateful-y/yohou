@@ -84,13 +84,16 @@ class BaseEarlyStoppingAdapter(BaseEstimator, metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    def validate(self, estimator: BaseEstimator) -> None:
+    def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
         """Reject configurations the shared-round mode cannot honour.
 
         Parameters
         ----------
         estimator : BaseEstimator
             The unfitted estimator that receives the evaluation set.
+        fit_params : dict or None, default=None
+            The metadata the caller routes to ``fit``, for configurations set
+            at fit time rather than on the estimator.
 
         Raises
         ------
@@ -250,29 +253,33 @@ class _StoppingMetricRecorder:
         env.model._yohou_stopping_higher_better = bool(higher_is_better)
 
 
-def _lgbm_metrics(params: dict[str, Any]) -> list[str]:
-    """Return the metric names a LightGBM estimator's parameters configure.
+def _lgbm_metrics(params: dict[str, Any], fit_params: dict[str, Any] | None = None) -> list[str]:
+    """Return the metric names a LightGBM fit is configured to evaluate.
 
     Parameters
     ----------
     params : dict
         The estimator's ``get_params()``.
+    fit_params : dict or None, default=None
+        The metadata the caller routes to ``fit``.
 
     Returns
     -------
     list of str
-        Every name under any ``metric`` alias, with comma-separated strings
+        Every distinct name, in first-seen order, under any ``metric`` alias
+        and under a fit-time ``eval_metric``, with comma-separated strings
         split.
 
     """
     names: list[str] = []
-    for alias in _LGBM_METRIC_ALIASES:
-        value = params.get(alias)
+    sources = [params.get(alias) for alias in _LGBM_METRIC_ALIASES]
+    sources.append((fit_params or {}).get("eval_metric"))
+    for value in sources:
         if value is None:
             continue
         values = value.split(",") if isinstance(value, str) else list(value)
         names.extend(str(v).strip() for v in values if str(v).strip())
-    return names
+    return list(dict.fromkeys(names))
 
 
 class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
@@ -282,9 +289,10 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     ``LGBMClassifier``, ``LGBMRanker``). Fold fits remove the estimator's
     ``early_stopping_round`` and train every one of ``n_estimators`` rounds,
     recording the metric on the evaluation set after each. The stopping curve
-    is the first metric of the evaluation set, so more than one ``metric`` is
-    accepted only with ``first_metric_only=True``: LightGBM's own early
-    stopping otherwise compares every metric.
+    is the first metric of the evaluation set, so more than one metric, set on
+    the estimator or as a fit-time ``eval_metric`` list, is accepted only with
+    ``first_metric_only=True``: LightGBM's own early stopping otherwise
+    compares every metric.
 
     ``boosting_type="dart"`` is rejected: dart rescales earlier trees as it
     adds new ones, so a model cut to k rounds is not the model trained for k.
@@ -312,20 +320,23 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         lightgbm = _loaded_module("lightgbm")
         return lightgbm is not None and isinstance(estimator, lightgbm.LGBMModel)
 
-    def validate(self, estimator: BaseEstimator) -> None:
+    def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
         """Reject dart boosting and several metrics without ``first_metric_only``.
 
         Parameters
         ----------
         estimator : BaseEstimator
             The unfitted LightGBM estimator.
+        fit_params : dict or None, default=None
+            The metadata the caller routes to ``fit``. Every name under
+            ``eval_metric`` counts towards the metric check.
 
         Raises
         ------
         ValueError
-            If ``boosting_type`` (or its ``boosting`` alias) is ``"dart"``, or
-            if more than one ``metric`` is configured and ``first_metric_only``
-            is not True.
+            If ``boosting_type`` (or its ``boosting``/``boost`` aliases) is
+            ``"dart"``, or if more than one metric is configured and
+            ``first_metric_only`` is not True.
 
         """
         params = estimator.get_params()
@@ -335,10 +346,10 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
                 "trees as it adds new ones, so a model cut to fewer rounds is not the model trained for "
                 "that many. Use boosting_type='gbdt', or validation=None."
             )
-        metrics = _lgbm_metrics(params)
+        metrics = _lgbm_metrics(params, fit_params)
         if len(metrics) > 1 and not params.get("first_metric_only"):
             raise ValueError(
-                f"validation='cv' cannot use LightGBM with metric={metrics!r} and "
+                f"validation='cv' cannot use LightGBM with the metrics {metrics!r} and "
                 f"first_metric_only={params.get('first_metric_only')!r}: the stopping curve is the first "
                 f"metric only, while LightGBM's early stopping compares every metric unless "
                 f"first_metric_only=True. Set first_metric_only=True, keep a single metric, or use "
@@ -465,13 +476,12 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     """
 
     @staticmethod
-    def _early_stopping_callbacks(estimator: BaseEstimator) -> list[Any]:
-        """Return the estimator's XGBoost ``EarlyStopping`` callbacks."""
+    def _early_stopping_callbacks(callbacks: list[Any] | None) -> list[Any]:
+        """Return the XGBoost ``EarlyStopping`` callbacks among ``callbacks``."""
         xgboost = _loaded_module("xgboost")
-        callbacks = estimator.get_params().get("callbacks") or []
         if xgboost is None:
             return []
-        return [cb for cb in callbacks if isinstance(cb, xgboost.callback.EarlyStopping)]
+        return [cb for cb in callbacks or [] if isinstance(cb, xgboost.callback.EarlyStopping)]
 
     def supports(self, estimator: BaseEstimator) -> bool:
         """Return whether the estimator is an XGBoost model.
@@ -490,13 +500,15 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         xgboost = _loaded_module("xgboost")
         return xgboost is not None and isinstance(estimator, xgboost.XGBModel)
 
-    def validate(self, estimator: BaseEstimator) -> None:
+    def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
         """Reject dart boosting.
 
         Parameters
         ----------
         estimator : BaseEstimator
             The unfitted XGBoost estimator.
+        fit_params : dict or None, default=None
+            The metadata the caller routes to ``fit``. Unused.
 
         Raises
         ------
@@ -532,7 +544,7 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         prepared = clone(estimator)
         updates: dict[str, Any] = {"early_stopping_rounds": None}
         callbacks = prepared.get_params().get("callbacks")
-        stopping = self._early_stopping_callbacks(prepared)
+        stopping = self._early_stopping_callbacks(callbacks)
         if stopping:
             xgboost = _loaded_module("xgboost")
             never_stops = (prepared.get_params().get("n_estimators") or 100) + 1
@@ -569,7 +581,7 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         """
         model: Any = fitted
         evals = model.evals_result()
-        callbacks = self._early_stopping_callbacks(fitted)
+        callbacks = self._early_stopping_callbacks(model.get_params().get("callbacks"))
         callback = callbacks[0] if callbacks else None
         data_name = getattr(callback, "data", None) or list(evals)[-1]
         metric_name = getattr(callback, "metric_name", None) or list(evals[data_name])[-1]
@@ -617,7 +629,7 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         updates: dict[str, Any] = {"n_estimators": int(n_rounds), "early_stopping_rounds": None}
         callbacks = prepared.get_params().get("callbacks")
         if callbacks:
-            stopping = self._early_stopping_callbacks(prepared)
+            stopping = self._early_stopping_callbacks(callbacks)
             updates["callbacks"] = [cb for cb in callbacks if cb not in stopping] or None
         return prepared.set_params(**updates)
 
@@ -663,13 +675,15 @@ class CatBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         catboost = _loaded_module("catboost")
         return catboost is not None and isinstance(estimator, catboost.CatBoostRegressor | catboost.CatBoostClassifier)
 
-    def validate(self, estimator: BaseEstimator) -> None:
+    def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
         """Require an explicit learning rate.
 
         Parameters
         ----------
         estimator : BaseEstimator
             The unfitted CatBoost estimator.
+        fit_params : dict or None, default=None
+            The metadata the caller routes to ``fit``. Unused.
 
         Raises
         ------
@@ -839,7 +853,7 @@ class HistGradientBoostingEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
 
         return isinstance(estimator, HistGradientBoostingRegressor | HistGradientBoostingClassifier)
 
-    def validate(self, estimator: BaseEstimator) -> None:
+    def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
         """Accept every configuration; nothing here blocks the shared-round mode.
 
         In particular an ``early_stopping`` of ``False`` or ``"auto"`` is not
@@ -852,6 +866,8 @@ class HistGradientBoostingEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         ----------
         estimator : BaseEstimator
             The unfitted estimator that receives the evaluation set.
+        fit_params : dict or None, default=None
+            The metadata the caller routes to ``fit``. Unused.
 
         """
 

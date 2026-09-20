@@ -388,6 +388,17 @@ class TestRefit:
         fitted = refit.fit(X_train, y_train)
         assert _rounds(fitted) == 15
 
+    def test_catboost_refit_keeps_the_round_alias_the_estimator_uses(self, regression_data):
+        estimator = catboost.CatBoostRegressor(
+            n_estimators=50, learning_rate=0.3, verbose=False, random_seed=0, thread_count=1
+        )
+        refit = CatBoostEarlyStoppingAdapter().prepare_refit(estimator, 15)
+        params = refit.get_params()
+        assert params["n_estimators"] == 15
+        assert "iterations" not in params
+        X_train, y_train, _, _ = regression_data
+        assert _rounds(refit.fit(X_train, y_train)) == 15
+
     @pytest.mark.parametrize("library", LIBRARIES)
     def test_round_prefix_property(self, library, regression_data):
         adapter = ADAPTERS[library]()
@@ -404,9 +415,10 @@ class TestValidate:
             CatBoostEarlyStoppingAdapter().validate(catboost.CatBoostRegressor(iterations=1000, thread_count=1))
         CatBoostEarlyStoppingAdapter().validate(_regressor("catboost"))
 
-    def test_lightgbm_dart_rejected(self):
+    @pytest.mark.parametrize("alias", ["boosting_type", "boosting", "boost"])
+    def test_lightgbm_dart_rejected(self, alias):
         with pytest.raises(ValueError, match="dart"):
-            LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(boosting_type="dart"))
+            LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(**{alias: "dart"}))
         LightGBMEarlyStoppingAdapter().validate(_regressor("lightgbm"))
 
     @pytest.mark.parametrize("metric", [["l2", "l1"], "l2,l1"])
@@ -417,6 +429,33 @@ class TestValidate:
 
     def test_lightgbm_single_metric_accepted(self):
         LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric="l1"))
+
+    def test_lightgbm_several_fit_time_metrics_need_first_metric_only(self):
+        adapter = LightGBMEarlyStoppingAdapter()
+        with pytest.raises(ValueError, match="first_metric_only"):
+            adapter.validate(lightgbm.LGBMRegressor(), fit_params={"eval_metric": ["l1", "l2"]})
+        adapter.validate(lightgbm.LGBMRegressor(first_metric_only=True), fit_params={"eval_metric": ["l1", "l2"]})
+
+    @pytest.mark.parametrize("eval_metric", ["l1", ["l1"], None])
+    def test_lightgbm_single_fit_time_metric_accepted(self, eval_metric):
+        LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(), fit_params={"eval_metric": eval_metric})
+
+    def test_lightgbm_fit_time_metric_adds_to_the_configured_one(self):
+        with pytest.raises(ValueError, match="first_metric_only"):
+            LightGBMEarlyStoppingAdapter().validate(
+                lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": ["l2", "huber"]}
+            )
+
+    @pytest.mark.parametrize("eval_metric", ["l2", ["l2"]])
+    def test_lightgbm_one_fit_time_metric_beside_a_configured_one_is_rejected(self, eval_metric):
+        # LightGBM evaluates both, so the stopping curve would follow only the first.
+        with pytest.raises(ValueError, match="first_metric_only"):
+            LightGBMEarlyStoppingAdapter().validate(
+                lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": eval_metric}
+            )
+
+    def test_lightgbm_repeated_metric_name_is_one_metric(self):
+        LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": ["l1"]})
 
     def test_xgboost_dart_rejected(self):
         with pytest.raises(ValueError, match="dart"):

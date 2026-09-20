@@ -360,9 +360,7 @@ def _fit_and_score(
 
 @dataclass
 class _FoldFit:
-    """The outcome of fitting one CV fold, carried to its scoring.
-
-    Carries a fitted fold's state from `_fit_fold` to `_score_fold`.
+    """The outcome of `_fit_fold`, carried to `_score_fold` for scoring.
 
     Notes
     -----
@@ -1025,7 +1023,7 @@ def _evaluate_candidate_shared_rounds(
         configured.set_params(**clone(parameters, safe=False))
     _check_shared_round_forecaster(configured)
     adapter = _resolve_early_stopping_adapter(configured.estimator, early_stopping_adapter)
-    adapter.validate(_eval_target(configured.estimator))
+    adapter.validate(_eval_target(configured.estimator), fit_params=fit_params)
 
     folds: list[_FoldFit] = []
     curve_lengths: list[dict[str, int] | None] = []
