@@ -9,6 +9,7 @@ import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
+from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
 from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
@@ -316,9 +317,10 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             invalid structure (e.g., missing ``"time"`` column, or
             mismatched panel groups). With ``validation_size`` or
             ``y_val`` set, also if a target class occurs only inside
-            the held-out rows, or on any other rejected holdout configuration;
-            see
-            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
+            the held-out rows, or on another invalid holdout configuration;
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+            lists the common cases and the methods that document every
+            condition.
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
@@ -359,7 +361,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             label_to_code[base_col] = {label: i for i, label in enumerate(labels)}
 
         if y_tail is not None:
-            self._check_tail_classes(y_tail, classes, source=validation_source or "validation_size")
+            self._check_tail_classes(y_tail, classes, source=cast(str, validation_source))
 
         self.classes_: dict[str, list[str]] = classes
         self.n_classes_: dict[str, int] = n_classes
@@ -398,9 +400,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
         return self
 
-    def _check_tail_classes(
-        self, y_tail: pl.DataFrame, classes: dict[str, list[str]], source: str = "validation_size"
-    ) -> None:
+    def _check_tail_classes(self, y_tail: pl.DataFrame, classes: dict[str, list[str]], source: str) -> None:
         """Reject validation-tail classes the head-fitted encoder never saw.
 
         Called before ``classes_`` is assigned, so it takes the discovered
@@ -414,7 +414,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         classes : dict[str, list[str]]
             Classes discovered from the training head, keyed by unprefixed
             column name.
-        source : str, default="validation_size"
+        source : str
             The fit input supplying the held-out rows (``"validation_size"``
             or ``"y_val"``), named in the error message.
 
@@ -571,35 +571,21 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         Notes
         -----
-        The output schema differs between panel and non-panel modes. In
-        non-panel mode the per-step single-row frames are stacked
-        vertically, yielding H rows (one per horizon step) of global
-        probability columns. In panel mode each group's H per-step rows are
-        first stacked vertically, then the per-group blocks are concatenated
-        horizontally, so every group's probability columns sit side by side
-        in the same H rows.
+        Each step is one ``predict_proba`` call over every group's feature
+        row (see ``_direct_step_frames``), dispatched through ``n_jobs``. The
+        output has H rows, one per horizon step. In panel mode each group's
+        prefixed probability columns sit side by side in those rows.
 
         """
-        # Each per-step estimator was fitted on the step columns ``step_feature_alignment``
-        # keeps for its step, so it must predict from the same filtered frame.
+        step_frames = self._direct_step_frames(len(estimators), groups)
+        step_probas = Parallel(n_jobs=self.n_jobs)(
+            delayed(estimator.predict_proba)(frame)  # ty: ignore[unresolved-attribute]
+            for estimator, frame in zip(estimators, step_frames, strict=True)
+        )
         if self.groups_ is None:
-            X_tab = self._get_predict_features()
-            frames = []
-            for step, estimator in enumerate(estimators, start=1):
-                X_step = self._filter_step_features(X_tab, step)
-                frames.append(self._predict_proba_and_reshape_single_step(estimator, X_step))
-            return pl.concat(frames)
-
-        y_pred_dict: dict[str, list[pl.DataFrame]] = {g: [] for g in groups}
-        for panel_group_name in groups:
-            X_tab = self._get_predict_features(panel_group_name)
-            for step, estimator in enumerate(estimators, start=1):
-                X_step = self._filter_step_features(X_tab, step)
-                y_pred_dict[panel_group_name].append(
-                    self._predict_proba_and_reshape_single_step(estimator, X_step, panel_group_name)
-                )
+            return self._reshape_direct_proba(step_probas, 0)
         return pl.concat(
-            [pl.concat(v) for v in y_pred_dict.values()],
+            [self._reshape_direct_proba(step_probas, row, name) for row, name in enumerate(groups)],
             how="horizontal",
         )
 
@@ -710,28 +696,29 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         return pl.DataFrame(result_data)
 
-    def _predict_proba_and_reshape_single_step(
+    def _reshape_direct_proba(
         self,
-        estimator: BaseEstimator,
-        X_tab: pl.DataFrame,
+        step_probas: list[Any],
+        row: int,
         panel_group_name: str | None = None,
     ) -> pl.DataFrame:
-        """Call predict_proba for a single-step direct estimator.
+        """Collect one observation unit's per-step probabilities into a frame.
 
         Parameters
         ----------
-        estimator : BaseEstimator
-            Fitted single-step classifier.
-        X_tab : pl.DataFrame
-            Feature DataFrame, typically of shape ``(1, n_features)`` at
-            predict time (the shape is a caller convention, not enforced here).
+        step_probas : list
+            One ``predict_proba`` output per horizon step: an array of shape
+            ``(n_rows, n_classes)``, or a list of such arrays (one per target).
+        row : int
+            Row of each output to read: 0 for non-panel data, the group's
+            position in the stacked frame otherwise.
         panel_group_name : str or None
             Panel group prefix for column naming.
 
         Returns
         -------
         pl.DataFrame
-            Single-row probability DataFrame.
+            One row per horizon step with ``{target}_proba_{class}`` columns.
 
         Notes
         -----
@@ -744,29 +731,20 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         assert self.local_y_t_schema_ is not None
         y_cols = list(self.local_y_t_schema_.keys())
-
-        proba = estimator.predict_proba(X_tab)  # ty: ignore[unresolved-attribute]
+        prefix = "" if panel_group_name is None else f"{panel_group_name}__"
 
         result_data: dict[str, list[float]] = {}
-
-        if isinstance(proba, list):
-            # Multiple targets
-            for t_idx, target_col in enumerate(y_cols):
-                step_proba = proba[t_idx][0]
-                for c_idx, label in enumerate(self.classes_[target_col]):
-                    col_name = f"{target_col}_proba_{label}"
-                    if panel_group_name is not None:
-                        col_name = f"{panel_group_name}__{col_name}"
-                    result_data[col_name] = [float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0]
-        else:
-            # Single target
-            assert len(y_cols) == 1
-            target_col = y_cols[0]
-            step_proba = proba[0]
-            for c_idx, label in enumerate(self.classes_[target_col]):
-                col_name = f"{target_col}_proba_{label}"
-                if panel_group_name is not None:
-                    col_name = f"{panel_group_name}__{col_name}"
-                result_data[col_name] = [float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0]
+        for t_idx, target_col in enumerate(y_cols):
+            classes = self.classes_[target_col]
+            for c_idx, label in enumerate(classes):
+                column: list[float] = []
+                for proba in step_probas:
+                    if isinstance(proba, list):
+                        step_proba = proba[t_idx][row]
+                    else:
+                        assert len(y_cols) == 1
+                        step_proba = proba[row]
+                    column.append(float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0)
+                result_data[f"{prefix}{target_col}_proba_{label}"] = column
 
         return pl.DataFrame(result_data)

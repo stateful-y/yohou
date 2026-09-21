@@ -411,9 +411,10 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             more than one quantile parameter, or if a MultiQuantile
             estimator is used with more than one target column or with
             ``forecasting_horizon > 1``. With ``validation_size`` or
-            ``y_val`` set, also on any rejected holdout configuration;
-            see
-            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
+            ``y_val`` set, also on an invalid holdout configuration;
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+            lists the common cases and the methods that document every
+            condition.
 
         """
         forecasting_horizon, self.fit_coverage_rates_ = self._validate_interval_fit_params(

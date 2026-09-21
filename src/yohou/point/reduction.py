@@ -327,9 +327,10 @@ class PointReductionForecaster(BaseReductionForecaster, BasePointForecaster):
             If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
             invalid structure (e.g., missing ``"time"`` column, or
             mismatched panel groups). With ``validation_size`` or
-            ``y_val`` set, also on any rejected holdout configuration;
-            see
-            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster].
+            ``y_val`` set, also on an invalid holdout configuration;
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+            lists the common cases and the methods that document every
+            condition.
 
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)

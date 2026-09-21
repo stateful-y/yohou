@@ -481,6 +481,30 @@ class TestStepOutputColumns:
             forecaster.fit(y, X, forecasting_horizon=3)
 
 
+class TestDirectParallelDispatch:
+    """Direct-strategy steps dispatched over ``n_jobs`` give the serial predictions."""
+
+    @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
+    @pytest.mark.parametrize("alignment", ["all", "matched"])
+    def test_n_jobs_does_not_change_predictions(self, class_proba_y_X_factory, panel, alignment):
+        """``n_jobs=1`` and ``n_jobs=2`` predict identical probabilities."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=2, n_features=1, panel=panel, n_groups=3)
+        predictions = []
+        for n_jobs in (1, 2):
+            forecaster = ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=0),
+                actual_transformer=FeatureUnion([("lag", LagTransformer(lag=1)), ("seasonal", _StepProbe())]),
+                target_as_feature=None,
+                reduction_strategy="direct",
+                step_feature_alignment=alignment,
+                n_jobs=n_jobs,
+            )
+            forecaster.fit(y, X, forecasting_horizon=3)
+            predictions.append(forecaster.predict_class_proba(forecasting_horizon=3))
+
+        assert predictions[0].equals(predictions[1])
+
+
 class _MarkerClassifier(ClassifierMixin, BaseEstimator):
     """Classifier stub that records a ``marker`` fit parameter."""
 

@@ -51,6 +51,25 @@ _EVAL_SET_KEYS = (
 )
 
 
+def _eval_target(estimator: BaseEstimator) -> BaseEstimator:
+    """Return the estimator that receives the evaluation set.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator
+        A forecaster's ``estimator``.
+
+    Returns
+    -------
+    BaseEstimator
+        The estimator itself, or a ``Pipeline``'s final step.
+
+    """
+    if isinstance(estimator, Pipeline):
+        return estimator.steps[-1][1]
+    return estimator
+
+
 def _holdout_remedy(source: str) -> str:
     """Return the instruction that removes a validation holdout, for error messages.
 
@@ -315,24 +334,21 @@ default="first_step"
     in the same transformed space it trains in. ``estimator_`` remains a
     fitted ``Pipeline``.
 
-    Fitting raises ``ValueError`` when:
+    Fitting raises ``ValueError`` on an invalid holdout configuration. The
+    most common cases are:
 
-    - the estimator's ``fit`` (or, for a ``Pipeline``, its final step's fit)
-      accepts neither ``eval_set`` nor ``**kwargs``, or the pipeline ends in
-      ``"passthrough"``;
-    - the estimator is a ``sklearn.multioutput`` wrapper (a multi-column
-      ``eval_set`` target cannot be routed per sub-estimator);
-    - the estimator is a ``Pipeline`` whose final step is itself a ``Pipeline``;
-    - the head left after the split cannot build one training row;
+    - the estimator's fit (or, for a ``Pipeline``, its final step's fit)
+      declares no evaluation-set parameter and no ``**kwargs``;
     - ``validation_size`` is smaller than ``forecasting_horizon`` while
       ``validation_overlap=False``;
-    - a class_proba target class appears only inside the tail;
-    - a raw ``eval_set`` or ``eval_X``/``eval_y`` is also passed through fit
-      ``**params``;
-    - the transformed head is too short to anchor the evaluation window
-      (a transformer consumed the boundary rows as warmup);
-    - ``X_forecast`` and ``X_forecast_val`` disagree on a
-      (``vintage_time``, ``time``) key.
+    - the head left after the split cannot build one training row;
+    - ``validation_size`` and ``y_val`` are both set.
+
+    The Raises sections of ``_check_eval_set_support``,
+    ``_check_early_stopping_enabled``, ``_reject_raw_eval_params``,
+    ``_validate_validation_split``, ``_validate_explicit_window``,
+    ``_resolve_validation_window`` and ``_build_validation_eval_data`` (and,
+    for class_proba, ``_check_tail_classes``) list every condition.
 
     See Also
     --------
@@ -1189,32 +1205,26 @@ default="first_step"
         ``<step>__<param>`` form outright.
 
         """
-        if isinstance(estimator, Pipeline):
-            final = estimator.steps[-1][1]
-            if isinstance(final, str):
-                raise ValueError(
-                    f"{source} cannot be used with a Pipeline whose final step "
-                    f"is 'passthrough': there is no estimator to deliver an eval_set to. "
-                    f"End the pipeline with an estimator, or {_holdout_remedy(source)}."
-                )
-            return final, "Pipeline's final step "
-        return estimator, ""
+        final = _eval_target(estimator)
+        if final is estimator:
+            return estimator, ""
+        if isinstance(final, str):
+            raise ValueError(
+                f"{source} cannot be used with a Pipeline whose final step "
+                f"is 'passthrough': there is no estimator to deliver an eval_set to. "
+                f"End the pipeline with an estimator, or {_holdout_remedy(source)}."
+            )
+        return final, "Pipeline's final step "
 
     @staticmethod
-    def _check_eval_set_support(estimator: BaseEstimator, source: str = "validation_size") -> str:
+    def _check_eval_set_support(
+        estimator: BaseEstimator, source: str = "validation_size"
+    ) -> tuple[BaseEstimator, str, str]:
         """Check the estimator's fit can take an evaluation set, and say how.
 
         For a ``Pipeline``, the check applies to its final step, the only step
         that is given an evaluation set; ``**kwargs`` on ``Pipeline.fit``
         itself does not count as support.
-
-        Three delivery conventions exist. ``eval_set=[(X, y)]`` is what XGBoost
-        and CatBoost take, and what LightGBM took until it deprecated the
-        argument in favour of the keyword-only ``eval_X``/``eval_y`` pair.
-        scikit-learn's histogram gradient boosting takes ``X_val``/``y_val``
-        instead, since 1.7. The returned keyword tells `_eval_set_fit_params`
-        which one to build, so yohou follows the estimator rather than pinning
-        it to any of them.
 
         Parameters
         ----------
@@ -1226,7 +1236,11 @@ default="first_step"
 
         Returns
         -------
-        str
+        target : BaseEstimator
+            The estimator whose ``fit`` receives the evaluation set.
+        label : str
+            Prefix naming that estimator in error messages.
+        dialect : str
             ``"eval_set"``, ``"eval_X"`` or ``"X_val"``, naming the convention
             the target's fit accepts.
 
@@ -1242,6 +1256,14 @@ default="first_step"
 
         Notes
         -----
+        Three delivery conventions exist. ``eval_set=[(X, y)]`` is what XGBoost
+        and CatBoost take, and what LightGBM took until it deprecated the
+        argument in favour of the keyword-only ``eval_X``/``eval_y`` pair.
+        scikit-learn's histogram gradient boosting takes ``X_val``/``y_val``
+        instead, since 1.7. The returned dialect tells `_eval_set_fit_params`
+        which one to build, so yohou follows the estimator rather than pinning
+        it to any of them.
+
         The ``**kwargs`` fallback is a permissive heuristic: an estimator that
         accepts arbitrary keywords is assumed to want ``eval_set``, because a
         signature cannot say which keywords ``**kwargs`` actually honours. Such
@@ -1276,16 +1298,16 @@ default="first_step"
         # eval_X/eval_y wins when both are present: LightGBM keeps the
         # deprecated eval_set alongside them and warns on every call.
         if "eval_X" in fit_sig.parameters and "eval_y" in fit_sig.parameters:
-            return "eval_X"
+            return target, label, "eval_X"
         if "eval_set" in fit_sig.parameters:
-            return "eval_set"
+            return target, label, "eval_set"
         # scikit-learn's histogram gradient boosting, since 1.7. Declared
         # parameters are checked before the **kwargs fallback below, which is
         # only a guess.
         if "X_val" in fit_sig.parameters and "y_val" in fit_sig.parameters:
-            return "X_val"
+            return target, label, "X_val"
         if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in fit_sig.parameters.values()):
-            return "eval_set"
+            return target, label, "eval_set"
         raise ValueError(
             f"{label or 'Estimator '}{target.__class__.__name__} does not support an "
             f"evaluation-set fit parameter, so {source} cannot deliver an evaluation set "
@@ -1321,7 +1343,9 @@ default="first_step"
         return expected if expected in parameters else None
 
     @staticmethod
-    def _check_early_stopping_enabled(estimator: BaseEstimator, source: str = "validation_size") -> None:
+    def _check_early_stopping_enabled(
+        target: BaseEstimator, label: str, dialect: str, source: str = "validation_size"
+    ) -> None:
         """Reject an estimator that would ignore the evaluation set it is given.
 
         Applies to the ``X_val`` dialect only, whose target must have
@@ -1329,8 +1353,14 @@ default="first_step"
 
         Parameters
         ----------
-        estimator : BaseEstimator
-            The estimator the validation holdout will deliver an evaluation set to.
+        target : BaseEstimator
+            The estimator whose ``fit`` receives the evaluation set, as returned
+            by `_check_eval_set_support`.
+        label : str
+            Prefix naming ``target`` in the error message, as returned by
+            `_check_eval_set_support`.
+        dialect : str
+            The delivery convention returned by `_check_eval_set_support`.
         source : str, default="validation_size"
             The fit input supplying the evaluation window (``"validation_size"``
             or ``"y_val"``), named in the error message.
@@ -1357,9 +1387,8 @@ default="first_step"
         sees it, so this check passes by construction.
 
         """
-        if BaseReductionForecaster._check_eval_set_support(estimator, source) != "X_val":
+        if dialect != "X_val":
             return
-        target, label = BaseReductionForecaster._eval_set_target(estimator, source)
         early_stopping = getattr(target, "early_stopping", True)
         if early_stopping is not True:
             raise ValueError(
@@ -1402,7 +1431,7 @@ default="first_step"
             ``catboost.Pool`` carrying the weights instead of an ``(X, y)`` tuple.
 
         """
-        dialect = BaseReductionForecaster._check_eval_set_support(estimator)
+        target, _, dialect = BaseReductionForecaster._check_eval_set_support(estimator)
         pair: dict[str, Any] = (
             {"eval_X": X_eval, "eval_y": y_eval}
             if dialect == "eval_X"
@@ -1413,7 +1442,6 @@ default="first_step"
         if sample_weight is None:
             return pair
 
-        target = BaseReductionForecaster._eval_set_target(estimator, "validation_size")[0]
         key = BaseReductionForecaster._eval_weight_key(target, dialect)
         if key is not None:
             # LightGBM and XGBoost take a list, one entry per evaluation set.
@@ -1666,8 +1694,7 @@ default="first_step"
 
         """
         self._reject_raw_eval_params(params, "validation_size")
-        self._check_eval_set_support(self.estimator)
-        self._check_early_stopping_enabled(self.estimator)
+        self._check_early_stopping_enabled(*self._check_eval_set_support(self.estimator))
         self._validate_validation_split(y, forecasting_horizon)
         return self._split_validation_tail(y, X_actual)
 
@@ -1678,7 +1705,7 @@ default="first_step"
         Parameters
         ----------
         params : dict
-            The fit ``**params``.
+            The fit ``**params``, checked for a conflicting raw evaluation-set key.
         source : str
             The fit input supplying the evaluation window (``"validation_size"``
             or ``"y_val"``), named in the error message.
@@ -1821,8 +1848,7 @@ default="first_step"
 
         """
         self._reject_raw_eval_params(params, "y_val")
-        self._check_eval_set_support(self.estimator, "y_val")
-        self._check_early_stopping_enabled(self.estimator, "y_val")
+        self._check_early_stopping_enabled(*self._check_eval_set_support(self.estimator, "y_val"), "y_val")
         self._validate_explicit_window(y, X_actual, y_val, X_actual_val, forecasting_horizon)
 
     @staticmethod
@@ -2265,8 +2291,7 @@ default="first_step"
         where they are delivered, which runs once per estimator and would repeat
         the same warning for every step of a per-step strategy.
         """
-        target = BaseReductionForecaster._eval_set_target(self.estimator, "validation_size")[0]
-        dialect = BaseReductionForecaster._check_eval_set_support(self.estimator)
+        target, _, dialect = BaseReductionForecaster._check_eval_set_support(self.estimator)
         if BaseReductionForecaster._eval_weight_key(target, dialect) is not None:
             return
         catboost = _loaded_module("catboost")
@@ -3000,6 +3025,50 @@ default="first_step"
             y_pred_dict[panel_group_name] = self._reshape_predictions(y_tab_pred, panel_group_name)
         return pl.concat(list(y_pred_dict.values()), how="horizontal")
 
+    def _direct_step_frames(self, n_steps: int, groups: list[str]) -> list[pl.DataFrame]:
+        """Build the feature rows each direct-strategy step predicts from.
+
+        Parameters
+        ----------
+        n_steps : int
+            Number of horizon steps, one per fitted estimator.
+        groups : list of str
+            Panel group names to predict for.
+
+        Returns
+        -------
+        list of pl.DataFrame
+            One frame per step, filtered by ``step_feature_alignment``, with one
+            row per observation unit: the single row for non-panel data, or one
+            row per group in ``groups`` order.
+
+        Notes
+        -----
+        Under ``panel_strategy="global"`` every group shares the step's
+        estimator, so the groups' rows stack into one frame and each step is a
+        single estimator call. That is the same arithmetic with far fewer
+        calls, and it removes the per-call validation overhead that dominates
+        cheap estimators. ``groups_`` is populated only under
+        ``panel_strategy="global"`` (``_pre_fit`` routes ``"multivariate"`` to
+        the standard path), and the assertion pins that invariant: a panel
+        strategy that populated ``groups_`` without shared estimators would
+        batch rows belonging to different models.
+
+        Step filtering depends only on column names, which are the local
+        schema's and so shared across groups, so it runs once per step.
+
+        """
+        assert self.groups_ is None or self.panel_strategy == "global", (
+            "batched prediction assumes every panel group shares the step's estimator, "
+            f"which panel_strategy={self.panel_strategy!r} does not guarantee"
+        )
+        X_tab = (
+            pl.concat([self._get_predict_features(g) for g in groups], how="vertical")
+            if self.groups_ is not None
+            else self._get_predict_features()
+        )
+        return [self._filter_step_features(X_tab, step) for step in range(1, n_steps + 1)]
+
     def _estimator_predict_direct(
         self,
         estimators: list[BaseEstimator],
@@ -3027,34 +3096,9 @@ default="first_step"
         y_cols = list(self.local_y_t_schema_.keys())
         n_targets = len(y_cols)
         drop_nan = self.nan_handling == "drop"
-
-        # One feature row per observation unit: the single row for non-panel data, or one
-        # row per panel group stacked. Under panel_strategy="global" every group shares
-        # `estimators[step]`, so a step is one call over the stacked rows rather than one
-        # call per group. That is the same arithmetic with an order of magnitude fewer
-        # estimator calls, and it removes the per-call validation overhead that dominates
-        # cheap estimators.
-        # `groups_` is populated only under ``panel_strategy="global"``: `_pre_fit` routes
-        # ``"multivariate"`` to the standard path, which leaves it None. That is what makes
-        # one call per step sound, because every group then shares `estimators[step]`. A
-        # future panel strategy that populated `groups_` without that sharing would batch
-        # rows belonging to different models and be wrong in silence, so pin the invariant
-        # rather than leave it implicit.
-        assert self.groups_ is None or self.panel_strategy == "global", (
-            "batched prediction assumes every panel group shares the step's estimator, "
-            f"which panel_strategy={self.panel_strategy!r} does not guarantee"
-        )
-
         panel = self.groups_ is not None
-        X_tab = (
-            pl.concat([self._get_predict_features(g) for g in groups], how="vertical")
-            if panel
-            else self._get_predict_features()
-        )
 
-        # Step filtering depends only on column names, which are the local schema's and so
-        # shared across groups: filter once per step, not once per group per step.
-        step_frames = [self._filter_step_features(X_tab, step + 1) for step in range(len(estimators))]
+        step_frames = self._direct_step_frames(len(estimators), groups)
         row_masks = [
             (self._compute_x_ok_mask(frame).to_numpy() if drop_nan else np.ones(frame.height, dtype=bool))
             for frame in step_frames

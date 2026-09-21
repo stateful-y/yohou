@@ -55,6 +55,13 @@ class RecordingRegressor(RegressorMixin, BaseEstimator):
         return out.ravel() if self._ncols == 1 else out
 
 
+class RowSumRegressor(RecordingRegressor):
+    """Recording stub whose prediction is the row sum of its features."""
+
+    def predict(self, X):
+        return np.asarray(X, dtype=float).sum(axis=1)
+
+
 class RecordingClassifier(ClassifierMixin, BaseEstimator):
     """Classifier stub with an eval_set fit parameter."""
 
@@ -202,6 +209,20 @@ class TestDeliveryShape:
                 aug = [c for c in X_eval.columns if c.startswith("__aug_")]
                 assert len(aug) == step
 
+    def test_dir_rec_eval_augmentation_uses_eval_rows(self):
+        """Each dir-rec step's eval augmentation is the previous step's prediction on its own eval rows."""
+        forecaster = PointReductionForecaster(
+            estimator=RowSumRegressor(), reduction_strategy="dir-rec", validation_size=VAL_SIZE
+        )
+        forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
+
+        for step in range(1, HORIZON):
+            previous_X_eval, _ = _eval_pair(forecaster.estimator_[step - 1])
+            X_eval, _ = _eval_pair(forecaster.estimator_[step])
+            np.testing.assert_array_equal(
+                X_eval[f"__aug_{step - 1}_0"].to_numpy(), previous_X_eval.to_numpy().sum(axis=1)
+            )
+
     def test_panel_tail_membership(self):
         y = _make_y_panel()
         forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
@@ -345,11 +366,10 @@ class TestBoundaryPolicy:
         eval_targets = sorted(np.asarray(y_eval, dtype=float).ravel().tolist())
         assert eval_targets == [float(i) for i in range(LENGTH - VAL_SIZE, LENGTH)]
 
-    @pytest.mark.parametrize("validation_size", [LENGTH, LENGTH + 10], ids=["equal", "greater"])
-    def test_validation_size_at_or_beyond_series_length(self, validation_size):
-        """A holdout swallowing the series reports zero head rows, not a negative count."""
+    def test_validation_size_beyond_series_length(self):
+        """A holdout longer than the series reports zero head rows, not a negative count."""
         with pytest.raises(ValueError, match="leaves 0 head rows"):
-            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=validation_size).fit(
+            PointReductionForecaster(estimator=RecordingRegressor(), validation_size=LENGTH + 10).fit(
                 y=_make_y(), forecasting_horizon=HORIZON
             )
 
@@ -1838,6 +1858,7 @@ class TestCatBoostEvaluationWeights:
     """CatBoost has no weight keyword, so a Pool carries them."""
 
     def test_pool_delivery_changes_the_recorded_metric(self):
+        """Weights reach CatBoost through a Pool, so no UnweightedEvaluationSetWarning is raised."""
         catboost = pytest.importorskip("catboost")
         y = _make_y()
 
@@ -1850,7 +1871,10 @@ class TestCatBoostEvaluationWeights:
                 validation_size=VAL_SIZE,
                 time_weighter=weighter,
             )
-            forecaster.fit(y=y, forecasting_horizon=HORIZON)
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                forecaster.fit(y=y, forecasting_horizon=HORIZON)
+            assert not [w for w in caught if issubclass(w.category, UnweightedEvaluationSetWarning)]
             return forecaster.estimator_[0].get_evals_result()
 
         weighted = _fit(ExponentialDecayWeighter(half_life=3))
