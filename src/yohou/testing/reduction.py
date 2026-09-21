@@ -161,8 +161,9 @@ def check_validation_holdout_parameters(forecaster) -> None:
     Raises
     ------
     AssertionError
-        If the parameters are missing from ``get_params`` or their
-        constructor defaults are not ``None`` / ``False``.
+        If the parameters are missing from ``get_params``, their
+        constructor defaults are not ``None`` / ``False``, or the instance's
+        ``validation_overlap`` value is not a bool.
 
     """
     params = forecaster.get_params(deep=False)
@@ -218,9 +219,9 @@ def check_validation_holdout_fit(
         from training, any strict-mode evaluation row also appears in the
         training matrix, the observation state stops short of the data end,
         the training matrix differs from a head-only fit's (tail leakage into
-        transformer or sample-weight fitting), or, for a dict-shaped
-        ``estimator_``, one quantile estimator's evaluation pair differs from
-        the others'.
+        transformer or sample-weight fitting), or, for an ``estimator_`` dict
+        of single quantile estimators (not per-step lists), one estimator's
+        evaluation pair differs from the others'.
 
     """
     strict = _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast, overlap=False)
