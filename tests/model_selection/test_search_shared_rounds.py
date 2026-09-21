@@ -730,6 +730,12 @@ class TestRefitWithoutRounds:
         with pytest.raises(ValueError, match="cannot refit: no fold of the best candidate fitted successfully"):
             search._prepare_shared_round_refit(_point())
 
+    def test_fit_refuses_refit_when_best_candidate_has_no_rounds(self):
+        """A failing candidate ranked best by a high error_score reaches the refit error through fit."""
+        search = _search(param_grid={"estimator__fail_below_train_rows": [0, 10_000]}, error_score=1e9)
+        with pytest.raises(ValueError, match="cannot refit: no fold of the best candidate fitted successfully"):
+            search.fit(_series(), forecasting_horizon=HORIZON)
+
 
 class TestHistGradientBoostingCandidate:
     """An end-to-end search over scikit-learn's histogram gradient boosting."""

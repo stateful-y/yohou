@@ -311,6 +311,22 @@ class TestFoldFitReachesTheCeiling:
         np.testing.assert_array_equal(curve, evals["validation_0"]["rmse"])
         assert not np.array_equal(curve, evals["validation_1"]["rmse"])
 
+    def test_xgboost_fold_fit_keeps_other_callbacks(self, regression_data):
+        monitor = xgboost.callback.EvaluationMonitor(period=1000)
+        estimator = xgboost.XGBRegressor(
+            n_estimators=20,
+            learning_rate=0.3,
+            n_jobs=1,
+            callbacks=[xgboost.callback.EarlyStopping(rounds=5), monitor],
+        )
+        prepared, fit_params = XGBoostEarlyStoppingAdapter().prepare_fold_fit(estimator)
+        callbacks = prepared.get_params()["callbacks"]
+        assert len(callbacks) == 2
+        assert isinstance(callbacks[0], xgboost.callback.EarlyStopping)
+        assert isinstance(callbacks[1], xgboost.callback.EvaluationMonitor)
+        assert callbacks[1].period == 1000
+        assert _rounds(_fit_eval(prepared, fit_params, regression_data)) == 20
+
     def test_xgboost_mape_is_minimized(self, regression_data):
         estimator = xgboost.XGBRegressor(n_estimators=8, learning_rate=0.3, eval_metric="mape", n_jobs=1)
         adapter = XGBoostEarlyStoppingAdapter()
@@ -679,9 +695,10 @@ class TestHistGradientBoostingSpecifics:
         assert higher_is_better is True
 
     def test_curve_without_an_evaluation_set_is_rejected(self, regression_data):
-        """With early_stopping='auto' below the threshold, no curve is recorded."""
-        X_train, y_train, X_eval, y_eval = regression_data
-        estimator = HistGradientBoostingRegressor(max_iter=20, early_stopping="auto")
-        estimator.fit(X_train, y_train, X_val=X_eval, y_val=y_eval)
+        """A fold fit with no evaluation set and no validation_fraction records no curve."""
+        X_train, y_train, _, _ = regression_data
+        adapter = HistGradientBoostingEarlyStoppingAdapter()
+        prepared, _ = adapter.prepare_fold_fit(HistGradientBoostingRegressor(max_iter=20, validation_fraction=None))
+        prepared.fit(X_train, y_train)
         with pytest.raises(ValueError, match="no validation curve"):
-            HistGradientBoostingEarlyStoppingAdapter().stopping_curve(estimator)
+            adapter.stopping_curve(prepared)

@@ -868,7 +868,7 @@ class TestIntervalOnlyForecasterSearch:
     def test_mixed_scorers_on_forecaster_with_both_types(self, y_X_factory):
         y, _ = y_X_factory(length=200, n_targets=1, n_features=0, seed=42)
         search = self._search(
-            SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=20),
+            SplitConformalForecaster(point_forecaster=SeasonalNaive(), calibration_size=30),
             {"interval": IntervalScore(coverage_rates=[0.9]), "mae": MeanAbsoluteError()},
             param_grid={"point_forecaster__seasonality": [1, 5]},
             refit="interval",
@@ -1235,3 +1235,36 @@ class TestSplitterCallCount:
         search.fit(y[:80], forecasting_horizon=3)
 
         assert len(calls) == 1
+
+    def test_shared_round_search_splits_once(self, y_X_factory):
+        """With validation="cv", a multi-candidate search calls cv.split once."""
+        from yohou.model_selection import ExpandingWindowSplitter
+        from yohou.point import PointReductionForecaster
+        from yohou.preprocessing import LagTransformer
+
+        from .shared_round_stubs import CurveEarlyStoppingAdapter, CurveRegressor
+
+        y, _ = y_X_factory(length=100, seed=42)
+        cv = ExpandingWindowSplitter(n_splits=2, test_size=12)
+        calls = []
+        original = cv.split
+
+        def counting_split(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        cv.split = counting_split
+        search = GridSearchCV(
+            forecaster=PointReductionForecaster(
+                estimator=CurveRegressor(), actual_transformer=LagTransformer(lag=[1, 2])
+            ),
+            param_grid={"estimator__patience": [4, 8, 12]},
+            scoring=MeanAbsoluteError(),
+            cv=cv,
+            validation="cv",
+            early_stopping_adapter=CurveEarlyStoppingAdapter(),
+        )
+        search.fit(y[:80], forecasting_horizon=3)
+
+        assert len(calls) == 1
+        assert "rounds" in search.cv_results_

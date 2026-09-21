@@ -329,8 +329,9 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
         or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
         ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
         ``rounds_at_boundary`` (whether a chosen round was the last round every
-        fold trained), and ``split<i>_curve_length`` (each fold's stopping
-        curve length per position, None for a failed fold).
+        fold trained; ``fit`` then warns that raising the estimator's round
+        ceiling may find a better round), and ``split<i>_curve_length`` (each
+        fold's stopping curve length per position, None for a failed fold).
 
         For multi-metric evaluation, this is present only if ``refit`` is
         specified.
@@ -627,10 +628,8 @@ class BaseSearchCV(BaseForecaster, MetaEstimatorMixin, metaclass=ABCMeta):
 
         """
         _check_shared_round_forecaster_type(self.forecaster)
-        # Every evaluation-set dialect and every evaluation-weight key the
-        # holdout path fills, plus the window arguments: the mode supplies all
-        # of them itself, so a caller-supplied one would be silently replaced.
-        # The shared keys come from `_EVAL_SET_KEYS`; the window arguments are cv-mode only.
+        # validation="cv" fills every key checked here itself, so a
+        # caller-supplied one would be silently overwritten.
         conflicting = sorted(
             key for key in params if key in (*_EVAL_SET_KEYS, "y_val", "X_actual_val", "X_forecast_val")
         )
@@ -1887,8 +1886,9 @@ class GridSearchCV(BaseSearchCV):
         or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
         ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
         ``rounds_at_boundary`` (whether a chosen round was the last round every
-        fold trained), and ``split<i>_curve_length`` (each fold's stopping
-        curve length per position, None for a failed fold).
+        fold trained; ``fit`` then warns that raising the estimator's round
+        ceiling may find a better round), and ``split<i>_curve_length`` (each
+        fold's stopping curve length per position, None for a failed fold).
 
         For multi-metric evaluation, this is present only if ``refit`` is
         specified.
@@ -2359,8 +2359,9 @@ class RandomizedSearchCV(BaseSearchCV):
         or ``"coverage_rate_0.9_lower/step_<k>"``). With ``"cv"``,
         ``cv_results_`` also holds ``rounds`` (these dicts per candidate),
         ``rounds_at_boundary`` (whether a chosen round was the last round every
-        fold trained), and ``split<i>_curve_length`` (each fold's stopping
-        curve length per position, None for a failed fold).
+        fold trained; ``fit`` then warns that raising the estimator's round
+        ceiling may find a better round), and ``split<i>_curve_length`` (each
+        fold's stopping curve length per position, None for a failed fold).
 
         For multi-metric evaluation, this is present only if ``refit`` is
         specified.

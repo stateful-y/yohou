@@ -1,27 +1,4 @@
-"""Early-stopping adapters for searches that stop on each fold's test window.
-
-A search with ``validation="cv"`` fits every fold with that fold's test window
-as the evaluation set, chooses one boosting round count per fitted estimator
-from the fold-average stopping curve, scores every fold at that round, and
-refits with it. The search itself knows nothing about any boosting library:
-everything library-specific lives in an adapter.
-
-An adapter answers six questions about the estimator that receives the
-evaluation set (the estimator itself, or a ``Pipeline``'s final step):
-
-- does it handle this estimator (`supports`),
-- can the mode honour its configuration (`validate`),
-- how to fit a fold up to the round ceiling without stopping early
-  (`prepare_fold_fit`),
-- what the per-round stopping metric was, and which direction is better
-  (`stopping_curve`),
-- how to make plain ``predict`` use only the first k rounds (`truncate`),
-- how to fit on all data with a fixed round count and no early stopping
-  (`prepare_refit`).
-
-The built-in adapters touch library internals where the libraries offer no
-public alternative. Those accesses are confined to this module.
-"""
+"""Early-stopping adapters for searches that stop on each fold's test window."""
 
 from __future__ import annotations
 
@@ -34,6 +11,7 @@ import numpy as np
 from sklearn.base import BaseEstimator, clone
 from sklearn.pipeline import Pipeline
 
+from yohou.base.reduction import _eval_target
 from yohou.utils._modules import _loaded_module
 
 __all__ = [
@@ -60,6 +38,13 @@ class BaseEarlyStoppingAdapter(BaseEstimator, metaclass=abc.ABCMeta):
     - [`XGBoostEarlyStoppingAdapter`][yohou.model_selection.XGBoostEarlyStoppingAdapter] : Adapter for XGBoost models.
     - [`CatBoostEarlyStoppingAdapter`][yohou.model_selection.CatBoostEarlyStoppingAdapter] : Adapter for CatBoost models.
     - [`HistGradientBoostingEarlyStoppingAdapter`][yohou.model_selection.HistGradientBoostingEarlyStoppingAdapter] : Adapter for scikit-learn histogram gradient boosting models.
+
+    Notes
+    -----
+    The search knows nothing about any boosting library: everything
+    library-specific lives in an adapter. The built-in adapters touch library
+    internals where the libraries offer no public alternative, and those
+    accesses are confined to the adapter module.
 
     """
 
@@ -157,6 +142,11 @@ class BaseEarlyStoppingAdapter(BaseEstimator, metaclass=abc.ABCMeta):
         n_rounds : int
             Number of rounds to keep, at least 1 and at most the number of
             trained rounds.
+
+        Raises
+        ------
+        ValueError
+            If ``n_rounds`` is not between 1 and the number of trained rounds.
 
         """
 
@@ -447,6 +437,11 @@ class LightGBMEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         n_rounds : int
             Number of rounds to keep.
 
+        Raises
+        ------
+        ValueError
+            If ``n_rounds`` is not between 1 and the number of trained rounds.
+
         """
         model: Any = fitted
         booster = model.booster_
@@ -629,6 +624,11 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         n_rounds : int
             Number of rounds to keep.
 
+        Raises
+        ------
+        ValueError
+            If ``n_rounds`` is not between 1 and the number of trained rounds.
+
         """
         model: Any = fitted
         booster = model.get_booster()
@@ -750,9 +750,25 @@ class CatBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     def _without_stopping(estimator: BaseEstimator, updates: dict[str, Any]) -> BaseEstimator:
         """Rebuild a CatBoost estimator without its overfitting-detector parameters.
 
+        Parameters
+        ----------
+        estimator : BaseEstimator
+            The unfitted CatBoost estimator. Not mutated.
+        updates : dict
+            Parameters to set on the rebuilt estimator.
+
+        Returns
+        -------
+        BaseEstimator
+            A new estimator of the same type, without the detector's parameters
+            and with ``updates`` applied.
+
+        Notes
+        -----
         CatBoost's ``get_params`` lists only the parameters that were set, so
         rebuilding without the detector's keys removes them rather than passing
         None through to the library.
+
         """
         kept = {k: v for k, v in clone(estimator).get_params().items() if k not in _CATBOOST_STOPPING_PARAMS}
         return type(estimator)(**{**kept, **updates})
@@ -806,6 +822,11 @@ class CatBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
             A fitted CatBoost estimator. Mutated in place.
         n_rounds : int
             Number of rounds to keep.
+
+        Raises
+        ------
+        ValueError
+            If ``n_rounds`` is not between 1 and the number of trained rounds.
 
         """
         model: Any = fitted
@@ -941,18 +962,16 @@ class HistGradientBoostingEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         Raises
         ------
         ValueError
-            If the model was fitted without an evaluation set, so no curve was
-            recorded.
+            If the model recorded no validation curve, because its fit
+            received no evaluation set and ``validation_fraction`` is None.
 
         """
         model: Any = fitted
         curve = np.asarray(getattr(model, "validation_score_", []), dtype=float)
         if curve.size <= 1:
             raise ValueError(
-                "This scikit-learn model recorded no validation curve. Its fit needs an "
-                "evaluation set and early_stopping=True; with early_stopping='auto' and "
-                "fewer rows than the library's automatic threshold the evaluation set is "
-                "accepted and then ignored."
+                "This scikit-learn model recorded no validation curve: its fit received no "
+                "evaluation set (X_val, y_val) and validation_fraction is None."
             )
         # Entry 0 is the score before any iteration, which is not a round any
         # model here can express.
@@ -967,6 +986,11 @@ class HistGradientBoostingEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
             A fitted histogram gradient boosting estimator. Mutated in place.
         n_rounds : int
             Number of rounds to keep.
+
+        Raises
+        ------
+        ValueError
+            If ``n_rounds`` is not between 1 and the number of trained rounds.
 
         """
         model: Any = fitted
@@ -1002,25 +1026,6 @@ _BUILTIN_ADAPTERS: tuple[type[BaseEarlyStoppingAdapter], ...] = (
     CatBoostEarlyStoppingAdapter,
     HistGradientBoostingEarlyStoppingAdapter,
 )
-
-
-def _eval_target(estimator: BaseEstimator) -> BaseEstimator:
-    """Return the estimator that receives the evaluation set.
-
-    Parameters
-    ----------
-    estimator : BaseEstimator
-        A forecaster's ``estimator``.
-
-    Returns
-    -------
-    BaseEstimator
-        The estimator itself, or a ``Pipeline``'s final step.
-
-    """
-    if isinstance(estimator, Pipeline):
-        return estimator.steps[-1][1]
-    return estimator
 
 
 def _replace_eval_target(estimator: BaseEstimator, target: BaseEstimator) -> BaseEstimator:
