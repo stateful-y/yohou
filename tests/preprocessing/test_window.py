@@ -19,6 +19,8 @@ from yohou.preprocessing.window import (
 )
 from yohou.testing import _yield_yohou_transformer_checks
 
+from .conftest import hourly_frame
+
 
 class TestLagTransformerSystematic:
     """Systematic checks for LagTransformer."""
@@ -347,17 +349,9 @@ class TestRollingStatisticsTransformerSeasonalSystematic:
 class TestRollingStatisticsTransformerSeasonal:
     """Seasonal window behaviour of RollingStatisticsTransformer."""
 
-    @staticmethod
-    def _hourly(length: int, seed: int = 0) -> pl.DataFrame:
-        rng = np.random.default_rng(seed)
-        times = pl.datetime_range(
-            datetime(2021, 1, 1), datetime(2021, 1, 1) + timedelta(hours=length - 1), interval="1h", eager=True
-        )
-        return pl.DataFrame({"time": times, "price": rng.normal(size=length)})
-
     def test_default_unchanged(self):
         """seasonality=1 matches a plain polars rolling window, names and row count included."""
-        X = self._hourly(100)
+        X = hourly_frame(100)
         X_t = RollingStatisticsTransformer(window_size=24, statistics=["mean", "std"]).fit(X).transform(X)
 
         expected = X.select(
@@ -369,7 +363,7 @@ class TestRollingStatisticsTransformerSeasonal:
 
     def test_seasonal_window_values(self):
         """The value at t is the statistic over x[t], x[t-24], x[t-48]."""
-        X = self._hourly(200)
+        X = hourly_frame(200)
         transformer = RollingStatisticsTransformer(window_size=3, seasonality=24, statistics="mean").fit(X)
         X_t = transformer.transform(X)
 
@@ -395,13 +389,13 @@ class TestRollingStatisticsTransformerSeasonal:
 
     def test_seasonality_zero_rejected(self):
         """seasonality must be a positive integer."""
-        X = self._hourly(50)
+        X = hourly_frame(50)
         with pytest.raises(ValueError, match="seasonality"):
             RollingStatisticsTransformer(seasonality=0).fit(X)
 
     def test_window_size_not_in_names(self):
         """Tuning the window size leaves the output names unchanged."""
-        X = self._hourly(500)
+        X = hourly_frame(500)
         names_7 = RollingStatisticsTransformer(window_size=7, seasonality=24).fit(X).get_feature_names_out()
         names_14 = RollingStatisticsTransformer(window_size=14, seasonality=24).fit(X).get_feature_names_out()
         assert names_7 == names_14 == ["price_s24_mean"]
@@ -410,7 +404,7 @@ class TestRollingStatisticsTransformerSeasonal:
         """A union of a consecutive and a seasonal window on one column keeps both columns."""
         from yohou.compose import FeatureUnion
 
-        X = self._hourly(300)
+        X = hourly_frame(300)
         union = FeatureUnion(
             [
                 ("consecutive", RollingStatisticsTransformer(window_size=24)),
@@ -425,7 +419,7 @@ class TestRollingStatisticsTransformerSeasonal:
         """Lag then seasonal rolling mean equals mean(x[t-24], x[t-48], x[t-72])."""
         from yohou.compose import FeaturePipeline
 
-        X = self._hourly(300)
+        X = hourly_frame(300)
         pipeline = FeaturePipeline([
             ("lag", LagTransformer(lag=24)),
             ("mean", RollingStatisticsTransformer(window_size=3, seasonality=24)),
@@ -437,6 +431,43 @@ class TestRollingStatisticsTransformerSeasonal:
         (column,) = [c for c in X_t.columns if c != "time"]
         np.testing.assert_allclose(X_t[column].to_numpy(), expected, rtol=1e-12)
         assert offset == 72
+
+
+class TestRollingStatisticsTransformerWindowMinimum:
+    """Sample statistics need two values, so a single-value window is rejected."""
+
+    @pytest.mark.parametrize("seasonality", [1, 24])
+    @pytest.mark.parametrize("statistics", ["std", "var", ["mean", "var"]])
+    def test_single_value_sample_statistic_rejected(self, statistics, seasonality):
+        """std and var over a window of one value raise at fit."""
+        transformer = RollingStatisticsTransformer(window_size=1, statistics=statistics, seasonality=seasonality)
+        with pytest.raises(ValueError, match="set window_size >= 2"):
+            transformer.fit(hourly_frame(200))
+
+    @pytest.mark.parametrize("seasonality", [1, 24])
+    @pytest.mark.parametrize("statistic", ["mean", "min", "max", "median", "sum", "q25", "q75"])
+    def test_single_value_window_accepted_for_other_statistics(self, statistic, seasonality):
+        """Every statistic defined over one value still runs, with no nulls."""
+        X_t = RollingStatisticsTransformer(window_size=1, statistics=statistic, seasonality=seasonality).fit_transform(
+            hourly_frame(200)
+        )
+        assert all(X_t[c].null_count() == 0 for c in X_t.columns if c != "time")
+
+    @pytest.mark.parametrize("seasonality", [1, 24])
+    def test_two_value_window_has_no_nulls(self, seasonality):
+        """The smallest accepted window gives std and var a value in every row."""
+        X_t = RollingStatisticsTransformer(
+            window_size=2, statistics=["std", "var"], seasonality=seasonality
+        ).fit_transform(hourly_frame(200))
+        assert all(X_t[c].null_count() == 0 for c in X_t.columns if c != "time")
+
+    def test_failed_refit_keeps_statistics(self):
+        """A rejected refit leaves the previously fitted statistics in place."""
+        transformer = RollingStatisticsTransformer(window_size=3, statistics="mean").fit(hourly_frame(200))
+        transformer.set_params(window_size=1, statistics=["std"])
+        with pytest.raises(ValueError, match="set window_size >= 2"):
+            transformer.fit(hourly_frame(200))
+        assert transformer.statistics_ == ["mean"]
 
 
 class TestRollingStatisticsTransformerBasic:
