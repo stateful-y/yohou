@@ -297,7 +297,9 @@ default="first_step"
     ``vintage_weighter`` as the training rows, so early stopping judges the
     model on the basis it is fitted on. An estimator that accepts an
     evaluation set but declares no evaluation-weight parameter receives it
-    unweighted, with an ``UnweightedEvaluationSetWarning``.
+    unweighted, with an ``UnweightedEvaluationSetWarning``. CatBoost is the
+    exception: it declares no such parameter but is weighted through a
+    ``catboost.Pool``, so it is weighted and raises no warning.
 
     Early stopping itself (rounds, metric, callbacks) is configured on the
     estimator, never by yohou. Because those libraries do not refit after
@@ -328,7 +330,9 @@ default="first_step"
     - a raw ``eval_set`` or ``eval_X``/``eval_y`` is also passed through fit
       ``**params``;
     - the transformed head is too short to anchor the evaluation window
-      (a transformer consumed the boundary rows as warmup).
+      (a transformer consumed the boundary rows as warmup);
+    - ``X_forecast`` and ``X_forecast_val`` disagree on a
+      (``vintage_time``, ``time``) key.
 
     See Also
     --------
@@ -1176,6 +1180,13 @@ default="first_step"
         ValueError
             If the estimator is a ``Pipeline`` whose final step is
             ``"passthrough"``, which cannot be fitted at all.
+
+        Notes
+        -----
+        `_fit_pipeline_with_eval_set` fits a ``Pipeline``'s final step
+        directly, because scikit-learn hands fit parameters to steps
+        untransformed and, under metadata routing, rejects the
+        ``<step>__<param>`` form outright.
 
         """
         if isinstance(estimator, Pipeline):
