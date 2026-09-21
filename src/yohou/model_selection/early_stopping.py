@@ -253,6 +253,34 @@ class _StoppingMetricRecorder:
         env.model._yohou_stopping_higher_better = bool(higher_is_better)
 
 
+def _metric_names(value: Any) -> list[str]:
+    """Return the metric names one LightGBM metric setting contributes.
+
+    Parameters
+    ----------
+    value : Any
+        A ``metric`` alias or an ``eval_metric``: None, a name, a
+        comma-separated string of names, a custom callable, or a sequence
+        of those.
+
+    Returns
+    -------
+    list of str
+        One name per configured metric. A callable is named by its
+        ``__name__``, since LightGBM evaluates it alongside the rest.
+
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [name.strip() for name in value.split(",") if name.strip()]
+    if callable(value):
+        return [getattr(value, "__name__", "custom")]
+    if isinstance(value, list | tuple):
+        return [name for item in value for name in _metric_names(item)]
+    return [text] if (text := str(value).strip()) else []
+
+
 def _lgbm_metrics(params: dict[str, Any], fit_params: dict[str, Any] | None = None) -> list[str]:
     """Return the metric names a LightGBM fit is configured to evaluate.
 
@@ -267,18 +295,18 @@ def _lgbm_metrics(params: dict[str, Any], fit_params: dict[str, Any] | None = No
     -------
     list of str
         Every distinct name, in first-seen order, under any ``metric`` alias
-        and under a fit-time ``eval_metric``, with comma-separated strings
-        split.
+        and under a fit-time ``eval_metric``.
+
+    Notes
+    -----
+    Only explicitly configured metrics are counted. LightGBM also evaluates
+    the objective's own default metric unless ``metric="None"``, which this
+    check does not attempt to resolve.
 
     """
-    names: list[str] = []
     sources = [params.get(alias) for alias in _LGBM_METRIC_ALIASES]
     sources.append((fit_params or {}).get("eval_metric"))
-    for value in sources:
-        if value is None:
-            continue
-        values = value.split(",") if isinstance(value, str) else list(value)
-        names.extend(str(v).strip() for v in values if str(v).strip())
+    names = [name for value in sources for name in _metric_names(value)]
     return list(dict.fromkeys(names))
 
 

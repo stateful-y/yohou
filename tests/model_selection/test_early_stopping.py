@@ -454,6 +454,20 @@ class TestValidate:
                 lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": eval_metric}
             )
 
+    def test_lightgbm_custom_metric_callable_is_counted(self):
+        # LightGBM evaluates a custom function alongside a configured metric.
+        def my_metric(y_true, y_pred):
+            return "custom", 0.0, False
+
+        adapter = LightGBMEarlyStoppingAdapter()
+        adapter.validate(lightgbm.LGBMRegressor(), fit_params={"eval_metric": my_metric})
+        for eval_metric in (my_metric, ["l2", my_metric]):
+            with pytest.raises(ValueError, match="my_metric"):
+                adapter.validate(lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": eval_metric})
+        adapter.validate(
+            lightgbm.LGBMRegressor(metric="l1", first_metric_only=True), fit_params={"eval_metric": my_metric}
+        )
+
     def test_lightgbm_repeated_metric_name_is_one_metric(self):
         LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": ["l1"]})
 
