@@ -1207,3 +1207,31 @@ class TestWeighterTuning:
         )
         search.fit(y, forecasting_horizon=1)
         assert "time_weighter" in search.best_params_
+
+
+class TestSplitterCallCount:
+    """The splitter is consumed once per evaluate_candidates, not once per candidate."""
+
+    def test_standard_search_splits_once(self, y_X_factory):
+        """A multi-candidate search calls cv.split once, not once per candidate."""
+        from yohou.model_selection import ExpandingWindowSplitter
+
+        y, _ = y_X_factory(length=100, seed=42)
+        cv = ExpandingWindowSplitter(n_splits=2, test_size=12)
+        calls = []
+        original = cv.split
+
+        def counting_split(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        cv.split = counting_split
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [3, 5, 7]},
+            scoring=MeanAbsoluteError(),
+            cv=cv,
+        )
+        search.fit(y[:80], forecasting_horizon=3)
+
+        assert len(calls) == 1

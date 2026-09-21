@@ -520,5 +520,5 @@ class TestFitMetadataRouting:
 
         (probe,) = _fitted_probes(forecaster)
         assert probe.seen_["marker"] == "x"
-        fitted = forecaster.estimator_ if isinstance(forecaster.estimator_, list) else [forecaster.estimator_]
+        fitted = [estimator for _, estimator in forecaster._fitted_estimator_positions()]
         assert all(estimator.marker_ == "x" for estimator in fitted)

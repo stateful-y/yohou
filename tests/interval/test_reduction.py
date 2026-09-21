@@ -819,19 +819,23 @@ class _MarkerMultiQuantileRegressor(_MockMultiQuantileRegressor):
 class TestFitMetadataRouting:
     """Caller fit metadata reaches the actual transformer and the wrapped estimators."""
 
-    def test_metadata_reaches_transformer_and_quantile_estimators(self, y_X_factory):
-        """Both bound models of a coverage rate receive the caller's metadata."""
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct", "dir-rec"])
+    def test_metadata_reaches_transformer_and_quantile_estimators(self, y_X_factory, strategy):
+        """Every reduction strategy delivers the metadata to both bound models."""
         y, X = y_X_factory(length=80, n_targets=1, n_features=1)
         forecaster = IntervalReductionForecaster(
             estimator=_MarkerQuantileRegressor().set_fit_request(marker=True),
             actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+            reduction_strategy=strategy,
         )
         forecaster.fit(y, X, forecasting_horizon=3, coverage_rates=[0.9], marker="x")
 
         (probe,) = _fitted_probes(forecaster)
         assert probe.seen_["marker"] == "x"
         assert set(forecaster.estimator_) == {"coverage_rate_0.9_lower", "coverage_rate_0.9_upper"}
-        assert all(estimator.marker_ == "x" for estimator in forecaster.estimator_.values())
+        fitted = [estimator for _, estimator in forecaster._fitted_estimator_positions()]
+        assert fitted
+        assert all(estimator.marker_ == "x" for estimator in fitted)
 
     def test_metadata_reaches_the_multiquantile_estimator(self, y_X_factory):
         """The single-model MultiQuantile branch receives it too."""
