@@ -21,6 +21,6 @@ __all__ = [
     "BaseStandardForecaster",
     "BaseStepTransformer",
     "ForecastCoverageWarning",
-    "UnweightedEvaluationSetWarning",
     "PredictionType",
+    "UnweightedEvaluationSetWarning",
 ]
