@@ -55,7 +55,7 @@ def _fit_one_group(
     forecaster: BaseForecaster,
     group_name: str,
     y_group: pl.DataFrame,
-    X_group: pl.DataFrame | None,
+    X_actual_group: pl.DataFrame | None,
     forecasting_horizon: int,
     params: Any,
     X_future: pl.DataFrame | None = None,
@@ -71,7 +71,7 @@ def _fit_one_group(
         Panel group name.
     y_group : pl.DataFrame
         Target time series for this group (unprefixed columns).
-    X_group : pl.DataFrame or None
+    X_actual_group : pl.DataFrame or None
         Exogenous features for this group (unprefixed columns).
     forecasting_horizon : int
         Forecasting horizon.
@@ -92,7 +92,7 @@ def _fit_one_group(
     forecaster_clone = clone(forecaster)
     forecaster_clone.fit(
         y_group,
-        X_group,
+        X_actual_group,
         forecasting_horizon=forecasting_horizon,
         X_future=X_future,
         X_forecast=X_forecast,
@@ -300,11 +300,11 @@ class LocalPanelForecaster(BaseForecaster):
 
         # Handle X_actual panel structure
         if X_actual is not None:
-            _, X_panel_groups = inspect_panel(X_actual)
-            if X_panel_groups:
-                first_X_group = sorted(X_panel_groups.keys())[0]
+            _, X_actual_panel_groups = inspect_panel(X_actual)
+            if X_actual_panel_groups:
+                first_X_actual_group = sorted(X_actual_panel_groups.keys())[0]
                 self.local_X_actual_schema_ = {
-                    col.split("__", 1)[1]: X_actual[col].dtype for col in X_panel_groups[first_X_group]
+                    col.split("__", 1)[1]: X_actual[col].dtype for col in X_actual_panel_groups[first_X_actual_group]
                 }
             else:
                 # Global X_actual shared across all groups
@@ -350,26 +350,26 @@ class LocalPanelForecaster(BaseForecaster):
         group_data = []
         for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
-            group_data.append((group_name, y_group, X_group, X_future_group, X_forecast_group))
+            group_data.append((group_name, y_group, X_actual_group, X_future_group, X_forecast_group))
 
         results = Parallel(n_jobs=self.n_jobs)(
             delayed(_fit_one_group)(
                 self.forecaster,
                 group_name,
                 y_group,
-                X_group,
+                X_actual_group,
                 forecasting_horizon,
                 routed_params.forecaster,
                 X_future=X_future_group,
                 X_forecast=X_forecast_group,
             )
-            for group_name, y_group, X_group, X_future_group, X_forecast_group in group_data
+            for group_name, y_group, X_actual_group, X_future_group, X_forecast_group in group_data
         )
 
         self.forecasters_ = dict(results)
@@ -572,14 +572,14 @@ class LocalPanelForecaster(BaseForecaster):
 
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].observe(
-                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group
+                y=y_group, X_actual=X_actual_group, X_future=X_future_group, X_forecast=X_forecast_group
             )
 
         return self
@@ -620,14 +620,14 @@ class LocalPanelForecaster(BaseForecaster):
 
         for group_name in groups:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
             )
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             self.forecasters_[group_name].rewind(
-                y=y_group, X_actual=X_group, X_future=X_future_group, X_forecast=X_forecast_group
+                y=y_group, X_actual=X_actual_group, X_future=X_future_group, X_forecast=X_forecast_group
             )
 
         return self
@@ -692,7 +692,7 @@ class LocalPanelForecaster(BaseForecaster):
         group_predictions: dict[str, pl.DataFrame] = {}
         for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
@@ -700,7 +700,7 @@ class LocalPanelForecaster(BaseForecaster):
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             group_predictions[group_name] = self.forecasters_[group_name].observe_predict(
                 y=y_group,
-                X_actual=X_group,
+                X_actual=X_actual_group,
                 forecasting_horizon=forecasting_horizon,
                 stride=stride,
                 predict_transformed=predict_transformed,
@@ -774,7 +774,7 @@ class LocalPanelForecaster(BaseForecaster):
         group_predictions: dict[str, pl.DataFrame] = {}
         for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
@@ -782,7 +782,7 @@ class LocalPanelForecaster(BaseForecaster):
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             group_predictions[group_name] = self.forecasters_[group_name].observe_predict_interval(
                 y=y_group,
-                X_actual=X_group,
+                X_actual=X_actual_group,
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 recursion_strategy=recursion_strategy,
@@ -851,7 +851,7 @@ class LocalPanelForecaster(BaseForecaster):
         group_predictions: dict[str, pl.DataFrame] = {}
         for group_name in groups_:
             y_group = get_group_df(y, group_name, schema=self.local_y_schema_)
-            X_group = (
+            X_actual_group = (
                 get_group_df(X_actual, group_name, schema=self.local_X_actual_schema_)
                 if X_actual is not None and self.local_X_actual_schema_ is not None
                 else None
@@ -859,7 +859,7 @@ class LocalPanelForecaster(BaseForecaster):
             X_future_group, X_forecast_group = self._split_exogenous_for_group(group_name, X_future, X_forecast)
             group_predictions[group_name] = self.forecasters_[group_name].observe_predict_class_proba(
                 y=y_group,
-                X_actual=X_group,
+                X_actual=X_actual_group,
                 forecasting_horizon=forecasting_horizon,
                 stride=stride,
                 X_future=X_future_group,

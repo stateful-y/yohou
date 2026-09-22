@@ -589,12 +589,12 @@ def validate_scorer_data(
 
     # Panel consistency check
     _, y_groups = inspect_panel(y_true)
-    _, X_groups = inspect_panel(y_pred)
-    if set(y_groups.keys()) != set(X_groups.keys()):
+    _, y_pred_groups = inspect_panel(y_pred)
+    if set(y_groups.keys()) != set(y_pred_groups.keys()):
         raise ValueError(
             f"Panel groups mismatch between `y_true` and `y_pred`. "
             f"`y_true` groups: {sorted(y_groups.keys())}, "
-            f"`y_pred` groups: {sorted(X_groups.keys())}."
+            f"`y_pred` groups: {sorted(y_pred_groups.keys())}."
         )
 
     # Validate column presence and types
@@ -971,16 +971,16 @@ def validate_forecaster_data(
         if forecaster.groups_ is not None:
             # Validate local X_actual columns (with panel prefixes)
             if hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
-                X_local = check_schema(
+                X_actual_local = check_schema(
                     X_actual,
                     forecaster.local_X_actual_schema_,
                     groups=forecaster.groups_,
                 )
 
             # Validate shared X_actual columns (no prefixes)
-            X_shared = None
+            X_actual_shared = None
             if hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
-                X_shared = check_schema(X_actual, forecaster.shared_X_actual_schema_)
+                X_actual_shared = check_schema(X_actual, forecaster.shared_X_actual_schema_)
 
             # Reconstruct X_actual with both local and shared columns
             if (
@@ -989,15 +989,15 @@ def validate_forecaster_data(
                 and hasattr(forecaster, "shared_X_actual_schema_")
                 and forecaster.shared_X_actual_schema_
             ):
-                assert X_shared is not None
+                assert X_actual_shared is not None
                 X_actual = pl.concat(
-                    [X_local, X_shared.select(~cs.by_name("time"))],
+                    [X_actual_local, X_actual_shared.select(~cs.by_name("time"))],
                     how="horizontal",
                 )
             elif hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_:
-                X_actual = X_local
+                X_actual = X_actual_local
             elif hasattr(forecaster, "shared_X_actual_schema_") and forecaster.shared_X_actual_schema_:
-                X_actual = X_shared
+                X_actual = X_actual_shared
         # Non-panel data: simple schema check (if schema exists)
         elif (
             X_actual is not None and hasattr(forecaster, "local_X_actual_schema_") and forecaster.local_X_actual_schema_

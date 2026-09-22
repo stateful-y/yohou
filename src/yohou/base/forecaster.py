@@ -918,7 +918,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Validated feature time series.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (empty dict if global data).
-        X_panel_groups : dict[str, list[str]] or None
+        X_actual_panel_groups : dict[str, list[str]] or None
             Panel groups from X_actual (None if X_actual is None).
 
         """
@@ -933,9 +933,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         self.fit_forecasting_horizon_ = forecasting_horizon
 
         _, y_panel_groups = inspect_panel(y)
-        X_panel_groups = None
+        X_actual_panel_groups = None
         if X_actual is not None:
-            _, X_panel_groups = inspect_panel(X_actual)
+            _, X_actual_panel_groups = inspect_panel(X_actual)
 
             # Use the canonical mismatch check so the error message lists both
             # group sets and matches the shape produced elsewhere (e.g.
@@ -983,7 +983,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 stacklevel=4,
             )
 
-        return y, X_actual, y_panel_groups, X_panel_groups
+        return y, X_actual, y_panel_groups, X_actual_panel_groups
 
     def _pre_fit(
         self,
@@ -1028,7 +1028,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         - `BasePanelForecaster._pre_fit_panel(self, ...)` -> `tuple[dict, dict | None]`
 
         """
-        y, X_actual, y_panel_groups, X_panel_groups = self._validate_pre_fit(
+        y, X_actual, y_panel_groups, X_actual_panel_groups = self._validate_pre_fit(
             y,
             X_actual,
             forecasting_horizon,
@@ -1050,7 +1050,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 X_actual,
                 forecasting_horizon,
                 y_panel_groups,
-                X_panel_groups,
+                X_actual_panel_groups,
                 X_future=X_future,
                 X_forecast=X_forecast,
                 fit_params=fit_params,
@@ -1699,7 +1699,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             Number of rows to observe between successive predictions.
         observe_fn : callable or None, default=None
             Optional callback for meta-forecasters. When provided, called
-            as ``observe_fn(y_slice, X_actual=X_obs_slice, X_future=...,
+            as ``observe_fn(y_slice, X_actual=X_actual_slice, X_future=...,
             X_forecast=...)`` instead of using pre-computed step columns.
         reduce_fn : callable or None, default=None
             How to combine the per-origin results of ``predict_fn``. ``None``
@@ -1752,24 +1752,24 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         for i in range(0, len(y), stride):
             y_slice = y[i : i + stride]
 
-            X_obs_slice = None
+            X_actual_slice = None
             if X_actual is not None:
-                X_obs_slice = X_actual.join(y_slice.select("time"), on="time", how="semi")
+                X_actual_slice = X_actual.join(y_slice.select("time"), on="time", how="semi")
 
             if observe_fn is not None:
                 # Meta-forecaster path: delegate observe to callback
-                observe_fn(y_slice, X_actual=X_obs_slice, X_future=X_future, X_forecast=X_forecast)
+                observe_fn(y_slice, X_actual=X_actual_slice, X_future=X_future, X_forecast=X_forecast)
             elif step_columns_full is not None:
                 # Standard/panel path with pre-computed step columns
                 X_step_slice = step_columns_full.join(y_slice.select("time"), on="time", how="semi")
 
                 if self.groups_ is None:
                     BaseStandardForecaster._observe_with_precomputed_steps_standard(
-                        self, y_slice, X_obs_slice, X_step_slice
+                        self, y_slice, X_actual_slice, X_step_slice
                     )
                 else:
                     BasePanelForecaster._observe_with_precomputed_steps_panel(
-                        self, y_slice, X_obs_slice, X_step_slice, groups or []
+                        self, y_slice, X_actual_slice, X_step_slice, groups or []
                     )
             else:
                 # No step columns and no observe_fn: fall back to regular observe.
@@ -1777,7 +1777,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 # multi-origin helper passes [], the public path passes None),
                 # but observe's validation reads [] as an explicit panel-group
                 # request; normalize so a global replay does not trip it.
-                self.observe(y=y_slice, X_actual=X_obs_slice, groups=groups or None)
+                self.observe(y=y_slice, X_actual=X_actual_slice, groups=groups or None)
 
             outputs.append(predict_fn(groups=groups, **predict_kwargs))
 

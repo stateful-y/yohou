@@ -986,11 +986,13 @@ def _yield_yohou_splitter_checks(
     if tags.get("supports_panel_data", False):
         # Generate panel data for testing
         y_panel = y.rename(lambda c: c if c == "time" else f"{c}__group1")
-        X_panel = X_actual.rename(lambda c: c if c == "time" else f"{c}__group1") if X_actual is not None else None
+        X_actual_panel = (
+            X_actual.rename(lambda c: c if c == "time" else f"{c}__group1") if X_actual is not None else None
+        )
         yield (
             "check_splitter_panel_data_support",
             check_splitter_panel_data_support,
-            {"y_panel": y_panel, "X_panel": X_panel},
+            {"y_panel": y_panel, "X_panel": X_actual_panel},
         )
 
     # Parameter validation checks (yield parametrized invalid values)
