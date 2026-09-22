@@ -1,11 +1,11 @@
-"""Reduction forecasters route fit metadata to the actual transformer that requests it."""
+"""Reduction forecasters route fit metadata to the target and actual transformers that request it."""
 
 import pytest
 from sklearn.linear_model import LinearRegression
 
 from yohou.compose import FeatureUnion
 from yohou.point import PointReductionForecaster
-from yohou.preprocessing import LagTransformer
+from yohou.preprocessing import LagTransformer, StandardScaler
 
 
 class _RecordingLag(LagTransformer):
@@ -15,6 +15,17 @@ class _RecordingLag(LagTransformer):
 
     def fit(self, X, y=None, **params):
         """Record the fit metadata, then fit as a plain lag transformer."""
+        self.seen_ = dict(params)
+        return super().fit(X, y)
+
+
+class _RecordingScaler(StandardScaler):
+    """StandardScaler that requests fit metadata and records what it receives."""
+
+    __metadata_request__fit = {"forecasting_horizon": True, "marker": True}
+
+    def fit(self, X, y=None, **params):
+        """Record the fit metadata, then fit as a plain scaler."""
         self.seen_ = dict(params)
         return super().fit(X, y)
 
@@ -119,3 +130,40 @@ def test_no_metadata_reaches_transformer_when_routing_disabled(y_X_factory):
 
     (probe,) = _fitted_probes(forecaster)
     assert probe.seen_ == {}
+
+
+def _fitted_targets(forecaster):
+    """Return every fitted target transformer, one per panel group or a single one."""
+    fitted = forecaster.target_transformer_
+    return list(fitted.values()) if isinstance(fitted, dict) else [fitted]
+
+
+def test_caller_metadata_reaches_requesting_target_transformer(y_X_factory):
+    """Caller metadata the target transformer requests reaches it, as for the actual one."""
+    y, X = y_X_factory(length=80, n_targets=1, n_features=2)
+    forecaster = PointReductionForecaster(
+        estimator=_RecordingRegressor().set_fit_request(marker=True),
+        actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+        target_transformer=_RecordingScaler(),
+    )
+    forecaster.fit(y, X, forecasting_horizon=3, marker="x")
+
+    (target,) = _fitted_targets(forecaster)
+    assert target.seen_ == {"forecasting_horizon": 3, "marker": "x"}
+
+
+@pytest.mark.parametrize("panel_strategy", ["global", "multivariate"])
+def test_caller_metadata_reaches_target_transformer_panel(y_X_panel_factory, panel_strategy):
+    """Every group's target transformer receives the metadata under both panel strategies."""
+    y, X = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=1)
+    forecaster = PointReductionForecaster(
+        estimator=_RecordingRegressor().set_fit_request(marker=True),
+        actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+        target_transformer=_RecordingScaler(),
+        panel_strategy=panel_strategy,
+    )
+    forecaster.fit(y, X, forecasting_horizon=3, marker="x")
+
+    targets = _fitted_targets(forecaster)
+    assert targets
+    assert all(target.seen_ == {"forecasting_horizon": 3, "marker": "x"} for target in targets)

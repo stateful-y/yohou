@@ -7,13 +7,13 @@ import polars as pl
 import polars.selectors as cs
 
 from yohou.base.utils import (
-    _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_one,
     _observe_transformers_transform,
     _retained_forecast_vintages,
     _rewind_transformers_one,
+    _transformer_fit_params,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval
@@ -73,7 +73,11 @@ class BaseStandardForecaster:
             self.local_X_actual_schema_ = dict(X_actual.select(~cs.by_name("time")).schema)
 
     def _fit_transform_inputs_standard(
-        self, y: pl.DataFrame, X_actual: pl.DataFrame | None, actual_fit_params: dict[str, Any] | None = None
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        actual_fit_params: dict[str, Any] | None = None,
+        target_fit_params: dict[str, Any] | None = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame | None]:
         """Fit transformers and transform inputs for standard data.
 
@@ -85,6 +89,8 @@ class BaseStandardForecaster:
             Feature time series (standard data).
         actual_fit_params : dict or None, default=None
             Fit metadata for the actual transformer, narrowed to the keys it consumes.
+        target_fit_params : dict or None, default=None
+            Fit metadata for the target transformer, narrowed to the keys it consumes.
 
         Returns
         -------
@@ -107,6 +113,7 @@ class BaseStandardForecaster:
             actual_transformer=self.actual_transformer,
             target_as_feature=self.target_as_feature,
             actual_fit_params=actual_fit_params,
+            target_fit_params=target_fit_params,
         )
 
         self.target_transformer_ = target_transformer
@@ -241,7 +248,8 @@ class BaseStandardForecaster:
         y_t, X_t = self._fit_transform_inputs_standard(
             y,
             X_actual,
-            _actual_transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+            _transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+            _transformer_fit_params(self.target_transformer, forecasting_horizon, fit_params),
         )
         self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
 

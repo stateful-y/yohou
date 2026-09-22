@@ -318,21 +318,21 @@ def _require_step_transformer(transformer: object, slot: str) -> None:
         )
 
 
-def _actual_transformer_fit_params(
-    actual_transformer: BaseActualTransformer | None,
+def _transformer_fit_params(
+    transformer: BaseActualTransformer | None,
     forecasting_horizon: int,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Select the fit metadata an actual transformer consumes.
+    """Select the fit metadata a target or actual transformer consumes.
 
     The forecaster offers its fit ``forecasting_horizon`` together with any fit
-    metadata the caller passed, and keeps only the keys the actual transformer (or a
+    metadata the caller passed, and keeps only the keys the transformer (or a
     transformer nested inside it) requests.
 
     Parameters
     ----------
-    actual_transformer : BaseActualTransformer or None
-        The unfitted actual transformer.
+    transformer : BaseActualTransformer or None
+        The unfitted target or actual transformer.
     forecasting_horizon : int
         The forecaster's fit horizon.
     params : dict or None, default=None
@@ -341,21 +341,21 @@ def _actual_transformer_fit_params(
     Returns
     -------
     dict
-        The metadata to pass to ``actual_transformer.fit_transform``. Empty when there
-        is no actual transformer, when nothing is requested, or when metadata routing
-        is disabled.
+        The metadata to pass to ``transformer.fit_transform``. Empty when there is
+        no transformer, when nothing is requested, or when metadata routing is
+        disabled.
 
     Notes
     -----
     Passing an unrequested key would make a composite's ``process_routing`` reject
-    it, so the narrowing is what lets every existing actual transformer keep
-    receiving a bare ``fit_transform`` call.
+    it, so the narrowing is what lets every existing transformer keep receiving a
+    bare ``fit_transform`` call.
 
     """
-    if actual_transformer is None or not _routing_enabled():
+    if transformer is None or not _routing_enabled():
         return {}
     candidates = {**(params or {}), "forecasting_horizon": forecasting_horizon}
-    consumed = get_routing_for_object(actual_transformer).consumes("fit_transform", set(candidates))
+    consumed = get_routing_for_object(transformer).consumes("fit_transform", set(candidates))
     return {key: candidates[key] for key in consumed}
 
 
@@ -366,6 +366,7 @@ def _fit_transform_transformers_one(
     actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
     actual_fit_params: dict[str, Any] | None = None,
+    target_fit_params: dict[str, Any] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseActualTransformer | None, BaseActualTransformer | None]:
     """Fit and apply target and actual transformers to a single time series.
 
@@ -390,7 +391,9 @@ def _fit_transform_transformers_one(
         exogenous features.
     actual_fit_params : dict or None, default=None
         Fit metadata for the actual transformer, already narrowed to the keys it
-        consumes (see ``_actual_transformer_fit_params``).
+        consumes (see ``_transformer_fit_params``).
+    target_fit_params : dict or None, default=None
+        Fit metadata for the target transformer, narrowed the same way.
 
     Returns
     -------
@@ -425,7 +428,7 @@ def _fit_transform_transformers_one(
     target_transformer_fitted = None
     if target_transformer is not None:
         target_transformer_fitted = clone(target_transformer)
-        y_t = target_transformer_fitted.fit_transform(y)
+        y_t = target_transformer_fitted.fit_transform(y, **(target_fit_params or {}))
 
     X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, actual_transformer)
 
