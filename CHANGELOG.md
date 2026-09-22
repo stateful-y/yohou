@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0-alpha.13] - 2026-09-22
+
+This **minor release** includes 17 commits.
+
+
+### Features
+- Emit the point forecast from predict_interval  ([#180](https://github.com/stateful-y/yohou/pull/180)) by @gtauzin
+- Add training and calibration strides and rename strategy= to recursion_strategy=  ([#182](https://github.com/stateful-y/yohou/pull/182)) by @gtauzin
+- Calibrate conformal intervals per entity and column, making pooling opt-in  ([#157](https://github.com/stateful-y/yohou/pull/157)) by @gtauzin
+- Add per-step seasonal rolling statistics and remove MeanLagTransformer  ([#217](https://github.com/stateful-y/yohou/pull/217)) by @gtauzin
+- Compute train scores on rows the model trained on, before any held-back rows  ([#221](https://github.com/stateful-y/yohou/pull/221)) by @gtauzin
+- Add early stopping on a validation holdout and in validation="cv" searches  ([#198](https://github.com/stateful-y/yohou/pull/198)) by @gtauzin
+
+### Bug Fixes
+- Stop ColumnTransformer and FeatureUnion printing on every fit by default  ([#159](https://github.com/stateful-y/yohou/pull/159)) by @gtauzin
+- Fix docs deploys failing when several merges land at once  ([#170](https://github.com/stateful-y/yohou/pull/170)) by @gtauzin
+- Score in Float64 so a bad forecast cannot overflow to inf  ([#230](https://github.com/stateful-y/yohou/pull/230)) by @gtauzin
+
+### Documentation
+- Link the security page from the section index  ([#155](https://github.com/stateful-y/yohou/pull/155)) by @gtauzin
+- Regenerate the stale interval API page  ([#156](https://github.com/stateful-y/yohou/pull/156)) by @gtauzin
+- Tell users how to cite yohou  ([#158](https://github.com/stateful-y/yohou/pull/158)) by @gtauzin
+- Document ForecastCoverageWarning and two diagnostics now logged at INFO  ([#167](https://github.com/stateful-y/yohou/pull/167)) by @gtauzin
+
+### Refactoring
+- Rename internal variables so each names its feature type  ([#231](https://github.com/stateful-y/yohou/pull/231)) by @gtauzin
+- Score only fully held-out rows in the validation holdout  ([#232](https://github.com/stateful-y/yohou/pull/232)) by @gtauzin
+
+### Miscellaneous Tasks
+- Verify tag signatures, allow publish retries, and automerge dep updates  ([#154](https://github.com/stateful-y/yohou/pull/154)) by @gtauzin
+- Merge automated dependency updates one at a time so they stop stalling  ([#168](https://github.com/stateful-y/yohou/pull/168)) by @gtauzin
+
+### Contributors
+
+Thanks to all contributors for this release:
+- @gtauzin
+
 ## [0.1.0-alpha.12] - 2026-08-12
 
 This **minor release** includes 22 commits.
