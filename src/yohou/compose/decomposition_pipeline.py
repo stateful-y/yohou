@@ -736,10 +736,10 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
     def _panel_X_actual_schema(self) -> dict:
         """Build the per-group X_actual schema (local plus shared columns)."""
         assert self.local_X_actual_schema_ is not None
-        X_schema = dict(self.local_X_actual_schema_)
+        X_actual_schema = dict(self.local_X_actual_schema_)
         if self.shared_X_actual_schema_:
-            X_schema.update(self.shared_X_actual_schema_)
-        return X_schema
+            X_actual_schema.update(self.shared_X_actual_schema_)
+        return X_actual_schema
 
     @staticmethod
     def _effective_observation_horizon(forecaster) -> int:

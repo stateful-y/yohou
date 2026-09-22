@@ -1647,19 +1647,19 @@ default="first_step"
 
         Returns
         -------
-        y_head, X_head, y_tail, X_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
+        y_head, X_actual_head, y_tail, X_actual_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
             The split frames; the X halves are None when ``X_actual`` is.
 
         """
         n = self.validation_size
         assert n is not None
         y_head, y_tail = y[:-n], y[-n:]
-        X_head = X_tail = None
+        X_actual_head = X_actual_tail = None
         if X_actual is not None:
             boundary = y_tail["time"][0]
-            X_head = X_actual.filter(pl.col("time") < boundary)
-            X_tail = X_actual.filter(pl.col("time") >= boundary)
-        return y_head, X_head, y_tail, X_tail
+            X_actual_head = X_actual.filter(pl.col("time") < boundary)
+            X_actual_tail = X_actual.filter(pl.col("time") >= boundary)
+        return y_head, X_actual_head, y_tail, X_actual_tail
 
     def _prepare_validation_fit(
         self,
@@ -1684,7 +1684,7 @@ default="first_step"
 
         Returns
         -------
-        y_head, X_head, y_tail, X_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
+        y_head, X_actual_head, y_tail, X_actual_tail : pl.DataFrame, pl.DataFrame or None, pl.DataFrame, pl.DataFrame or None
             The raw split, as returned by `_split_validation_tail`.
 
         Raises
@@ -1927,9 +1927,9 @@ default="first_step"
 
         Returns
         -------
-        y_fit, X_fit : pl.DataFrame, pl.DataFrame or None
+        y_fit, X_actual_fit : pl.DataFrame, pl.DataFrame or None
             The training data.
-        y_tail, X_tail : pl.DataFrame or None
+        y_tail, X_actual_tail : pl.DataFrame or None
             The evaluation window, or None when no holdout applies.
         X_forecast_eval : pl.DataFrame or None
             The external forecasts the evaluation rows resolve vintages from:
@@ -1958,8 +1958,10 @@ default="first_step"
                     )
             if self.validation_size is None:
                 return y, X_actual, None, None, X_forecast, None
-            y_fit, X_fit, y_tail, X_tail = self._prepare_validation_fit(y, X_actual, forecasting_horizon, params)
-            return y_fit, X_fit, y_tail, X_tail, X_forecast, "validation_size"
+            y_fit, X_actual_fit, y_tail, X_actual_tail = self._prepare_validation_fit(
+                y, X_actual, forecasting_horizon, params
+            )
+            return y_fit, X_actual_fit, y_tail, X_actual_tail, X_forecast, "validation_size"
 
         if self.validation_size is not None:
             raise ValueError(
@@ -2066,7 +2068,7 @@ default="first_step"
     def _observe_validation_tail(
         self,
         y_tail: pl.DataFrame,
-        X_tail: pl.DataFrame | None,
+        X_actual_tail: pl.DataFrame | None,
         forecasting_horizon: int,
         X_future: pl.DataFrame | None,
         X_forecast: pl.DataFrame | None,
@@ -2086,7 +2088,7 @@ default="first_step"
         ----------
         y_tail : pl.DataFrame
             The held-out raw target rows (encoded for class_proba).
-        X_tail : pl.DataFrame or None
+        X_actual_tail : pl.DataFrame or None
             The held-out raw feature rows.
         forecasting_horizon : int
             Number of steps to forecast.
@@ -2121,12 +2123,14 @@ default="first_step"
             )
 
         if self.groups_ is None:
-            y_t_tail, X_t_observed_tail = self._observe_standard_transform(y_tail, X_tail, X_future, X_forecast)
+            y_t_tail, X_t_observed_tail = self._observe_standard_transform(y_tail, X_actual_tail, X_future, X_forecast)
             X_t_tail = self._join_tail_step_columns(X_t_observed_tail, step_columns, y_t_tail)
             return y_t_tail, X_t_tail
 
         groups = self.groups_
-        y_t_tails, X_t_observed_tails = self._observe_panel_transform(y_tail, X_tail, groups, X_future, X_forecast)
+        y_t_tails, X_t_observed_tails = self._observe_panel_transform(
+            y_tail, X_actual_tail, groups, X_future, X_forecast
+        )
 
         step_schema_per_group = getattr(self, "_step_schema_per_group_", None)
         X_t_tails: dict[str, pl.DataFrame] = {}
@@ -2358,7 +2362,7 @@ default="first_step"
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         X_t: pl.DataFrame | dict[str, pl.DataFrame] | None,
         y_tail: pl.DataFrame,
-        X_tail: pl.DataFrame | None,
+        X_actual_tail: pl.DataFrame | None,
         forecasting_horizon: int,
         X_future: pl.DataFrame | None,
         X_forecast: pl.DataFrame | None,
@@ -2373,7 +2377,7 @@ default="first_step"
             Transformed head features (from ``_pre_fit``).
         y_tail : pl.DataFrame
             The held-out raw target rows (encoded for class_proba).
-        X_tail : pl.DataFrame or None
+        X_actual_tail : pl.DataFrame or None
             The held-out raw feature rows.
         forecasting_horizon : int
             Number of steps to forecast.
@@ -2412,7 +2416,9 @@ default="first_step"
                     f"reduce validation_size."
                 )
 
-        y_t_tail, X_t_tail = self._observe_validation_tail(y_tail, X_tail, forecasting_horizon, X_future, X_forecast)
+        y_t_tail, X_t_tail = self._observe_validation_tail(
+            y_tail, X_actual_tail, forecasting_horizon, X_future, X_forecast
+        )
         return self._build_validation_eval_set(y_t, X_t, y_t_tail, X_t_tail, forecasting_horizon)
 
     @staticmethod
@@ -3191,9 +3197,11 @@ default="first_step"
         for group_name in group_names:
             if panel:
                 y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
-                X_local = None
+                X_actual_local = None
                 if X_actual is not None and self.local_X_actual_schema_ is not None:
-                    X_local = get_group_df(df=X_actual, group_name=group_name, schema=self._build_X_actual_schema())
+                    X_actual_local = get_group_df(
+                        df=X_actual, group_name=group_name, schema=self._build_X_actual_schema()
+                    )
                 target_transformer = (
                     self.target_transformer_[group_name]
                     if isinstance(self.target_transformer_, dict)
@@ -3205,7 +3213,7 @@ default="first_step"
                     else self.actual_transformer_
                 )
             else:
-                y_local, X_local = y, X_actual
+                y_local, X_actual_local = y, X_actual
                 # Only panel fits keep a per-group dict, and this branch is the non-panel one.
                 assert not isinstance(self.target_transformer_, dict)
                 assert not isinstance(self.actual_transformer_, dict)
@@ -3213,7 +3221,7 @@ default="first_step"
                 actual_transformer = self.actual_transformer_
 
             X_t_local = _observe_transformers_one(
-                y_local, X_local, target_transformer, actual_transformer, self.target_as_feature
+                y_local, X_actual_local, target_transformer, actual_transformer, self.target_as_feature
             )
 
             if step_columns is not None:

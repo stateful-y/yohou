@@ -547,13 +547,13 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             _, panel_groups = inspect_panel(y_i)
             granularity = "panel" if panel_groups else "global"
 
-            X_term = self._narrow_for_granularity(X_actual, granularity)
+            X_actual_term = self._narrow_for_granularity(X_actual, granularity)
 
             forecaster_ = clone(forecaster)
             step_params = routed_params.get(name, Bunch(fit={}))
             forecaster_.fit(
                 y=y_i,
-                X_actual=X_term,
+                X_actual=X_actual_term,
                 forecasting_horizon=forecasting_horizon,
                 X_future=X_future,
                 X_forecast=X_forecast,

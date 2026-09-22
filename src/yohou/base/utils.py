@@ -501,9 +501,9 @@ def _build_feature_input(
         X_feat_in = y_t
         if X_actual is not None:
             # Align X_actual to y_t timestamps before concatenation (y_t may be shorter after transformations)
-            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
+            X_actual_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
             X_feat_in = pl.concat(
-                [y_t, X_aligned.select(~cs.by_name("time"))],
+                [y_t, X_actual_aligned.select(~cs.by_name("time"))],
                 how="horizontal",
             )
     elif target_as_feature == "raw":
@@ -513,9 +513,9 @@ def _build_feature_input(
         X_feat_in = y_aligned
         if X_actual is not None:
             # Also align X_actual to y_t timestamps
-            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
+            X_actual_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
             X_feat_in = pl.concat(
-                [y_aligned, X_aligned.select(~cs.by_name("time"))],
+                [y_aligned, X_actual_aligned.select(~cs.by_name("time"))],
                 how="horizontal",
             )
     elif target_as_feature is None:
@@ -532,8 +532,8 @@ def _build_feature_input(
         else:
             # Align X_actual to y_t timestamps (y_t may be shorter after target
             # transformer), consistent with the "transformed"/"raw" branches.
-            X_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
-            X_feat_in = X_aligned
+            X_actual_aligned = X_actual.join(y_t.select("time"), on="time", how="semi")
+            X_feat_in = X_actual_aligned
     else:
         raise ValueError(
             f"Invalid target_as_feature={target_as_feature!r}. Must be one of: 'transformed', 'raw', or None."
@@ -689,9 +689,11 @@ def _rewind_transformers_one(
             start = max(0, len(y) - observation_horizon - deficit - target_obs)
             end = len(y) - observation_horizon
             y_extra = y[start:end]
-            X_extra = X_actual[start:end] if X_actual is not None else None
+            X_actual_extra = X_actual[start:end] if X_actual is not None else None
             y_t_extra = target_transformer.rewind_transform(y_extra) if len(y_extra) > target_obs else y_extra
-            X_feat_extra = _build_feature_input(y_extra, y_t_extra, X_extra, target_as_feature, actual_transformer)
+            X_feat_extra = _build_feature_input(
+                y_extra, y_t_extra, X_actual_extra, target_as_feature, actual_transformer
+            )
             if X_feat_extra is not None:
                 # Only keep the tail; rewind_transform may drop observation_horizon rows
                 X_feat_extra = X_feat_extra.tail(deficit)

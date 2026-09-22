@@ -61,7 +61,7 @@ class BasePanelForecaster:
         y: pl.DataFrame,
         X_actual: pl.DataFrame | None,
         y_panel_groups: dict[str, list[str]],
-        X_panel_groups: dict[str, list[str]] | None,
+        X_actual_panel_groups: dict[str, list[str]] | None,
     ) -> None:
         """Set input attributes for panel data.
 
@@ -73,7 +73,7 @@ class BasePanelForecaster:
             Feature time series with panel columns.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
-        X_panel_groups : dict[str, list[str]] or None
+        X_actual_panel_groups : dict[str, list[str]] or None
             Panel groups from X_actual.
 
         """
@@ -100,33 +100,33 @@ class BasePanelForecaster:
 
         self.local_X_actual_schema_ = None
         self.shared_X_actual_schema_ = None
-        if X_actual is not None and X_panel_groups is not None:
-            X_shared_names, _ = inspect_panel(X_actual)
+        if X_actual is not None and X_actual_panel_groups is not None:
+            X_actual_shared_names, _ = inspect_panel(X_actual)
 
-            if X_panel_groups:
+            if X_actual_panel_groups:
                 # X_actual has panel columns: validate suffixes match across groups
-                first_X_group_cols = X_panel_groups[self.groups_[0]]
-                first_X_suffixes = [col.split("__", 1)[1] for col in first_X_group_cols]
+                first_X_actual_group_cols = X_actual_panel_groups[self.groups_[0]]
+                first_X_actual_suffixes = [col.split("__", 1)[1] for col in first_X_actual_group_cols]
 
                 for group_name in self.groups_[1:]:
-                    group_cols = X_panel_groups[group_name]
+                    group_cols = X_actual_panel_groups[group_name]
                     group_suffixes = [col.split("__", 1)[1] for col in group_cols]
-                    if sorted(group_suffixes) != sorted(first_X_suffixes):
+                    if sorted(group_suffixes) != sorted(first_X_actual_suffixes):
                         raise ValueError(
                             f"The local groups in `X_actual` do not have the same column suffixes. "
-                            f"Group '{self.groups_[0]}': {sorted(first_X_suffixes)}, "
+                            f"Group '{self.groups_[0]}': {sorted(first_X_actual_suffixes)}, "
                             f"Group '{group_name}': {sorted(group_suffixes)}"
                         )
 
                 # Extract X_actual schema (local + shared)
-                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
-                local_X = X_actual.select(first_X_group_cols).rename({
-                    col: col.split("__", 1)[1] for col in first_X_group_cols
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_actual_shared_names).schema)
+                local_X_actual = X_actual.select(first_X_actual_group_cols).rename({
+                    col: col.split("__", 1)[1] for col in first_X_actual_group_cols
                 })
-                self.local_X_actual_schema_ = dict(local_X.schema)
+                self.local_X_actual_schema_ = dict(local_X_actual.schema)
             else:
                 # Global-only X_actual: all non-time columns are shared across groups
-                self.shared_X_actual_schema_ = dict(X_actual.select(X_shared_names).schema)
+                self.shared_X_actual_schema_ = dict(X_actual.select(X_actual_shared_names).schema)
                 self.local_X_actual_schema_ = {}
 
     def _build_X_actual_schema(self) -> dict[str, pl.DataType]:
@@ -139,10 +139,10 @@ class BasePanelForecaster:
 
         """
         assert self.local_X_actual_schema_ is not None
-        X_schema = dict(self.local_X_actual_schema_)
+        X_actual_schema = dict(self.local_X_actual_schema_)
         if self.shared_X_actual_schema_:
-            X_schema.update(self.shared_X_actual_schema_)
-        return X_schema
+            X_actual_schema.update(self.shared_X_actual_schema_)
+        return X_actual_schema
 
     def _set_X_forecast_schemas_panel(self, X_forecast: pl.DataFrame | None) -> None:
         """Derive the per-group ``X_forecast`` schemas used to split before transforming.
@@ -190,10 +190,10 @@ class BasePanelForecaster:
             Local X_forecast schema updated with any shared (global) columns.
 
         """
-        X_schema = dict(self.local_X_forecast_schema_ or {})
+        X_forecast_schema = dict(self.local_X_forecast_schema_ or {})
         if self.shared_X_forecast_schema_:
-            X_schema.update(self.shared_X_forecast_schema_)
-        return X_schema
+            X_forecast_schema.update(self.shared_X_forecast_schema_)
+        return X_forecast_schema
 
     def _fit_transform_inputs_panel(
         self,
@@ -234,10 +234,10 @@ class BasePanelForecaster:
             # Extract group data using get_group_df
             y_local = get_group_df(df=y, group_name=group_name, schema=self.local_y_schema_)
 
-            X_local = None
+            X_actual_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                X_schema = self._build_X_actual_schema()
-                X_local = get_group_df(df=X_actual, group_name=group_name, schema=X_schema)
+                X_actual_schema = self._build_X_actual_schema()
+                X_actual_local = get_group_df(df=X_actual, group_name=group_name, schema=X_actual_schema)
 
             (
                 y_t_local,
@@ -246,7 +246,7 @@ class BasePanelForecaster:
                 actual_transformer_local,
             ) = _fit_transform_transformers_one(
                 y=y_local,
-                X_actual=X_local,
+                X_actual=X_actual_local,
                 target_transformer=self.target_transformer,
                 actual_transformer=self.actual_transformer,
                 target_as_feature=self.target_as_feature,
@@ -335,7 +335,7 @@ class BasePanelForecaster:
         X_actual: pl.DataFrame | None,
         forecasting_horizon: int,
         y_panel_groups: dict[str, list[str]],
-        X_panel_groups: dict[str, list[str]] | None,
+        X_actual_panel_groups: dict[str, list[str]] | None,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
         fit_params: dict[str, Any] | None = None,
@@ -352,7 +352,7 @@ class BasePanelForecaster:
             Number of steps ahead to forecast.
         y_panel_groups : dict[str, list[str]]
             Panel groups from y (group_name -> column_names).
-        X_panel_groups : dict[str, list[str]] or None
+        X_actual_panel_groups : dict[str, list[str]] or None
             Panel groups from X_actual.
         X_future : pl.DataFrame or None, default=None
             Known future features with a ``"time"`` column.
@@ -371,7 +371,7 @@ class BasePanelForecaster:
             Transformed features per group.
 
         """
-        self._set_input_attributes_panel(y, X_actual, y_panel_groups, X_panel_groups)
+        self._set_input_attributes_panel(y, X_actual, y_panel_groups, X_actual_panel_groups)
         y_t, X_t = self._fit_transform_inputs_panel(
             y,
             X_actual,
@@ -521,10 +521,10 @@ class BasePanelForecaster:
             # Extract group data using get_group_df
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
-            X_local = None
+            X_actual_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                X_schema = self._build_X_actual_schema()
-                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
+                X_actual_schema = self._build_X_actual_schema()
+                X_actual_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_actual_schema)
 
             local_target_transformer = None
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
@@ -536,7 +536,7 @@ class BasePanelForecaster:
 
             X_t_local = _rewind_transformers_one(
                 y_local,
-                X_local,
+                X_actual_local,
                 local_target_transformer,
                 local_actual_transformer,
                 self.observation_horizon,
@@ -645,10 +645,10 @@ class BasePanelForecaster:
             # Extract group data for new observations only
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
-            X_local = None
+            X_actual_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                X_schema = self._build_X_actual_schema()
-                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
+                X_actual_schema = self._build_X_actual_schema()
+                X_actual_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_actual_schema)
 
             local_target_transformer = None
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
@@ -661,7 +661,7 @@ class BasePanelForecaster:
             # Update transformers with new data only
             y_t_new[panel_group_name], X_t_updated[panel_group_name] = _observe_transformers_transform(
                 y_local,
-                X_local,
+                X_actual_local,
                 local_target_transformer,
                 local_actual_transformer,
                 self.target_as_feature,
@@ -796,10 +796,10 @@ class BasePanelForecaster:
         for panel_group_name in groups:
             y_local = get_group_df(df=y, group_name=panel_group_name, schema=self.local_y_schema_)
 
-            X_local = None
+            X_actual_local = None
             if X_actual is not None and self.local_X_actual_schema_ is not None:
-                X_schema = self._build_X_actual_schema()
-                X_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_schema)
+                X_actual_schema = self._build_X_actual_schema()
+                X_actual_local = get_group_df(df=X_actual, group_name=panel_group_name, schema=X_actual_schema)
 
             local_target_transformer = None
             if self.target_transformer is not None and isinstance(self.target_transformer_, dict):
@@ -811,7 +811,7 @@ class BasePanelForecaster:
 
             X_t_local = _observe_transformers_one(
                 y_local,
-                X_local,
+                X_actual_local,
                 local_target_transformer,
                 local_actual_transformer,
                 self.target_as_feature,

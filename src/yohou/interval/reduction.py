@@ -422,20 +422,22 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         )
         self._warn_inapplicable_step_alignment()
 
-        y_fit, X_fit, y_tail, X_tail, X_forecast_eval, validation_source = self._resolve_validation_window(
-            y,
-            X_actual,
-            forecasting_horizon,
-            params,
-            X_forecast,
-            y_val,
-            X_actual_val,
-            X_forecast_val,
+        y_fit, X_actual_fit, y_tail, X_actual_tail, X_forecast_eval, validation_source = (
+            self._resolve_validation_window(
+                y,
+                X_actual,
+                forecasting_horizon,
+                params,
+                X_forecast,
+                y_val,
+                X_actual_val,
+                X_forecast_val,
+            )
         )
 
         y_t, X_t = self._pre_fit(
             y=y_fit,
-            X_actual=X_fit,
+            X_actual=X_actual_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -446,7 +448,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         eval_data = None
         if y_tail is not None:
             eval_data = self._build_validation_eval_data(
-                y_t, X_t, y_tail, X_tail, forecasting_horizon, X_future, X_forecast_eval
+                y_t, X_t, y_tail, X_actual_tail, forecasting_horizon, X_future, X_forecast_eval
             )
 
         # Detect multi-quantile estimator (e.g. CatBoost ``MultiQuantile`` loss).
@@ -552,7 +554,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
 
             self.estimator_ = estimators
 
-        self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
+        self._rewind_after_explicit_window(validation_source, y_fit, X_actual_fit, X_future, X_forecast)
         return self
 
     def _predict_one(

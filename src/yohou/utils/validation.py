@@ -545,18 +545,18 @@ def check_panel_groups_match(
     >>> check_panel_groups_match(y, X_actual)  # No error
 
     >>> # Valid: panel y with global-only X_actual (broadcast to all groups)
-    >>> X_global = pl.DataFrame({
+    >>> X_actual_global = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "weather": [25.0],
     ... })
-    >>> check_panel_groups_match(y, X_global)  # No error
+    >>> check_panel_groups_match(y, X_actual_global)  # No error
 
     >>> # Invalid: different entity prefixes
-    >>> X_bad = pl.DataFrame({
+    >>> X_actual_bad = pl.DataFrame({
     ...     "time": [datetime(2020, 1, 1)],
     ...     "sensor_1__temp": [25.0],
     ... })
-    >>> check_panel_groups_match(y, X_bad)  # doctest: +SKIP
+    >>> check_panel_groups_match(y, X_actual_bad)  # doctest: +SKIP
     Traceback (most recent call last):
         ...
     ValueError: Panel groups mismatch between y and X_actual...
@@ -572,15 +572,15 @@ def check_panel_groups_match(
         return  # Can't check if one is missing
 
     _, y_groups = inspect_panel(y)
-    _, X_groups = inspect_panel(X_actual)
+    _, X_actual_groups = inspect_panel(X_actual)
 
     # Global-only X_actual (no panel columns) is valid with any y structure.
     # Global features are broadcast to every panel group.
-    if X_groups and set(y_groups.keys()) != set(X_groups.keys()):
+    if X_actual_groups and set(y_groups.keys()) != set(X_actual_groups.keys()):
         raise ValueError(
             f"Panel groups mismatch between `y` and `X_actual`. "
             f"`y` groups: {sorted(y_groups.keys())}, "
-            f"`X_actual` groups: {sorted(X_groups.keys())}."
+            f"`X_actual` groups: {sorted(X_actual_groups.keys())}."
         )
 
 
@@ -839,12 +839,12 @@ def check_inputs(y: pl.DataFrame, X_actual: pl.DataFrame | None) -> str:
 
     y_interval = check_interval_consistency(y)
     if X_actual is not None:
-        X_interval = check_interval_consistency(X_actual)
+        X_actual_interval = check_interval_consistency(X_actual)
 
-        if X_interval != y_interval:
+        if X_actual_interval != y_interval:
             raise ValueError(
                 f"Time interval mismatch: y has interval {y_interval}, but X_actual has interval "
-                f"{X_interval}. All inputs must have the same time interval."
+                f"{X_actual_interval}. All inputs must have the same time interval."
             )
 
     return y_interval
