@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import numbers
 import time
 import warnings
@@ -713,8 +714,10 @@ def _score_fold(
         if return_train_score:
             if scorer is None:
                 raise ValueError("return_train_score requires a scorer.")
+            # Train scoring rewinds the forecaster, so score a copy when it is returned.
+            train_forecaster = copy.deepcopy(forecaster) if return_forecaster else forecaster
             window = _train_window_predictions(
-                forecaster,
+                train_forecaster,
                 y_train,
                 X_actual_train,
                 n_rows=len(test),
@@ -727,7 +730,7 @@ def _score_fold(
                 X_forecast_train=X_forecast_train,
             )
             train_scores = _score_train_window(
-                forecaster,
+                train_forecaster,
                 window,
                 scorer,
                 y=fold.y,

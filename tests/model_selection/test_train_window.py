@@ -207,3 +207,34 @@ class TestCrossValidateAgreement:
             )
             assert score == pytest.approx(results[f"train_{name}"][0])
         assert len(calls) == 1
+
+
+class TestReturnedForecaster:
+    """Train scoring leaves the returned forecaster where test scoring left it."""
+
+    @pytest.mark.parametrize(
+        "make",
+        [
+            lambda: SeasonalNaive(seasonality=1),
+            lambda: SplitConformalForecaster(point_forecaster=SeasonalNaive(seasonality=1), calibration_size=FH),
+        ],
+        ids=["no-holdout", "split-conformal-holdout"],
+    )
+    def test_train_score_does_not_move_the_returned_forecaster(self, make):
+        """The forecast origin and test scores are the same with and without train scores."""
+        y = _hourly(10 * FH)
+        runs = {}
+        for return_train_score in (False, True):
+            result = cross_validate(
+                make(),
+                y,
+                forecasting_horizon=3,
+                cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
+                scoring=MeanAbsoluteError(),
+                return_forecaster=True,
+                return_train_score=return_train_score,
+            )
+            origins = [f.predict(forecasting_horizon=3)["vintage_time"][0] for f in result["forecaster"]]
+            runs[return_train_score] = (origins, result["results"]["test_score"].to_list())
+        assert runs[True][0] == runs[False][0]
+        assert runs[True][1] == runs[False][1]
