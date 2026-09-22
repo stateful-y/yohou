@@ -13,30 +13,30 @@ This **minor release** includes 17 commits.
 
 ### Features
 - Emit the point forecast from predict_interval  ([#180](https://github.com/stateful-y/yohou/pull/180)) by @gtauzin
-- Training stride, calibration stride, stride routing  ([#182](https://github.com/stateful-y/yohou/pull/182)) by @gtauzin
-- Fix panel interval calibration and add opt-in panel staretgy  ([#157](https://github.com/stateful-y/yohou/pull/157)) by @gtauzin
-- Per-step seasonal rolling statistics as reduction features  ([#217](https://github.com/stateful-y/yohou/pull/217)) by @gtauzin
-- Score train scores on rows the model learned from  ([#221](https://github.com/stateful-y/yohou/pull/221)) by @gtauzin
-- Add validation_size holdout and validation="cv" search  ([#198](https://github.com/stateful-y/yohou/pull/198)) by @gtauzin
+- Add training and calibration strides and rename strategy= to recursion_strategy=  ([#182](https://github.com/stateful-y/yohou/pull/182)) by @gtauzin
+- Calibrate conformal intervals per entity and column, making pooling opt-in  ([#157](https://github.com/stateful-y/yohou/pull/157)) by @gtauzin
+- Add per-step seasonal rolling statistics and remove MeanLagTransformer  ([#217](https://github.com/stateful-y/yohou/pull/217)) by @gtauzin
+- Compute train scores on rows the model trained on, before any held-back rows  ([#221](https://github.com/stateful-y/yohou/pull/221)) by @gtauzin
+- Add early stopping on a validation holdout and in validation="cv" searches  ([#198](https://github.com/stateful-y/yohou/pull/198)) by @gtauzin
 
 ### Bug Fixes
-- Restore the verbose guard the sklearn ports dropped  ([#159](https://github.com/stateful-y/yohou/pull/159)) by @gtauzin
-- Serialise the docs deploy so concurrent merges stop racing  ([#170](https://github.com/stateful-y/yohou/pull/170)) by @gtauzin
+- Stop ColumnTransformer and FeatureUnion printing on every fit by default  ([#159](https://github.com/stateful-y/yohou/pull/159)) by @gtauzin
+- Fix docs deploys failing when several merges land at once  ([#170](https://github.com/stateful-y/yohou/pull/170)) by @gtauzin
 - Score in Float64 so a bad forecast cannot overflow to inf  ([#230](https://github.com/stateful-y/yohou/pull/230)) by @gtauzin
 
 ### Documentation
 - Link the security page from the section index  ([#155](https://github.com/stateful-y/yohou/pull/155)) by @gtauzin
 - Regenerate the stale interval API page  ([#156](https://github.com/stateful-y/yohou/pull/156)) by @gtauzin
 - Tell users how to cite yohou  ([#158](https://github.com/stateful-y/yohou/pull/158)) by @gtauzin
-- Give the coverage warning an API page and reconcile the docs  ([#167](https://github.com/stateful-y/yohou/pull/167)) by @gtauzin
+- Document ForecastCoverageWarning and two diagnostics now logged at INFO  ([#167](https://github.com/stateful-y/yohou/pull/167)) by @gtauzin
 
 ### Refactoring
-- Name the feature type in variables that hold one  ([#231](https://github.com/stateful-y/yohou/pull/231)) by @gtauzin
-- Drop validation_overlap and keep strict evaluation  ([#232](https://github.com/stateful-y/yohou/pull/232)) by @gtauzin
+- Rename internal variables so each names its feature type  ([#231](https://github.com/stateful-y/yohou/pull/231)) by @gtauzin
+- Score only fully held-out rows in the validation holdout  ([#232](https://github.com/stateful-y/yohou/pull/232)) by @gtauzin
 
 ### Miscellaneous Tasks
 - Verify tag signatures, allow publish retries, and automerge dep updates  ([#154](https://github.com/stateful-y/yohou/pull/154)) by @gtauzin
-- Drain the dependency queue one PR at a time  ([#168](https://github.com/stateful-y/yohou/pull/168)) by @gtauzin
+- Merge automated dependency updates one at a time so they stop stalling  ([#168](https://github.com/stateful-y/yohou/pull/168)) by @gtauzin
 
 ### Contributors
 
