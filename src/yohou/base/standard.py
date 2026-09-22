@@ -224,8 +224,8 @@ class BaseStandardForecaster:
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
         fit_params : dict or None, default=None
             Fit metadata passed to the forecaster's ``fit``. Together with
-            ``forecasting_horizon``, the keys the actual transformer requests are
-            routed to it.
+            ``forecasting_horizon``, the keys the target and actual transformers
+            each request are routed to them.
 
         Returns
         -------
