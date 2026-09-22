@@ -2,13 +2,18 @@
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.tree import DecisionTreeClassifier
 
 from conftest import run_checks
+from point.test_actual_transformer_fit_metadata import _fitted_probes, _RecordingLag
+from point.test_step_output_alignment import _StepProbe
 from yohou.class_proba import ClassProbaReductionForecaster
+from yohou.compose import FeatureUnion
+from yohou.preprocessing import LagTransformer
 from yohou.testing import _yield_yohou_forecaster_checks
 
 
@@ -60,6 +65,10 @@ class TestClassProbaReductionSystematic:
             ClassProbaReductionForecaster(
                 estimator=DecisionTreeClassifier(random_state=42),
                 reduction_strategy="direct",
+            ),
+            ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=42),
+                actual_transformer=LagTransformer(lag=[1, 2]),
             ),
         ],
     )
@@ -440,3 +449,100 @@ class TestEstimatorPredictProbaDispatch:
         )
         with pytest.raises(TypeError, match="single estimator for the 'multi-output' strategy"):
             forecaster._estimator_predict_proba_one(estimator=[DecisionTreeClassifier()], groups=[])
+
+
+class TestStepOutputColumns:
+    """Step columns from the actual transformer are filtered per step or warned about."""
+
+    @staticmethod
+    def _forecaster(**params):
+        return ClassProbaReductionForecaster(
+            estimator=DecisionTreeClassifier(random_state=42),
+            actual_transformer=FeatureUnion([("lag", LagTransformer(lag=1)), ("seasonal", _StepProbe())]),
+            target_as_feature=None,
+            **params,
+        )
+
+    def test_matched_direct_predicts(self, class_proba_y_X_factory):
+        """Direct with matched alignment filters at predict time too."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = self._forecaster(reduction_strategy="direct", step_feature_alignment="matched")
+        forecaster.fit(y, X, forecasting_horizon=3)
+        y_pred = forecaster.predict_class_proba(forecasting_horizon=3)
+
+        assert y_pred.height == 3
+        assert len([c for c in y_pred.columns if "_proba_" in c]) == 3
+
+    def test_unfiltered_columns_warn(self, class_proba_y_X_factory):
+        """Multi-output gives every model all step columns, and fit says so."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = self._forecaster(reduction_strategy="multi-output")
+        with pytest.warns(UserWarning, match=r"produces 3 step column\(s\).*reduction_strategy='multi-output'"):
+            forecaster.fit(y, X, forecasting_horizon=3)
+
+
+class TestDirectParallelDispatch:
+    """Direct-strategy steps dispatched over ``n_jobs`` give the serial predictions."""
+
+    @pytest.mark.parametrize("panel", [False, True], ids=["standard", "panel"])
+    @pytest.mark.parametrize("alignment", ["all", "matched"])
+    def test_n_jobs_does_not_change_predictions(self, class_proba_y_X_factory, panel, alignment):
+        """``n_jobs=1`` and ``n_jobs=2`` predict identical probabilities."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=2, n_features=1, panel=panel, n_groups=3)
+        predictions = []
+        for n_jobs in (1, 2):
+            forecaster = ClassProbaReductionForecaster(
+                estimator=DecisionTreeClassifier(random_state=0),
+                actual_transformer=FeatureUnion([("lag", LagTransformer(lag=1)), ("seasonal", _StepProbe())]),
+                target_as_feature=None,
+                reduction_strategy="direct",
+                step_feature_alignment=alignment,
+                n_jobs=n_jobs,
+            )
+            forecaster.fit(y, X, forecasting_horizon=3)
+            predictions.append(forecaster.predict_class_proba(forecasting_horizon=3))
+
+        assert predictions[0].equals(predictions[1])
+
+
+class _MarkerClassifier(ClassifierMixin, BaseEstimator):
+    """Classifier stub that records a ``marker`` fit parameter."""
+
+    def fit(self, X, y, marker=None):
+        """Record ``marker``, then fit."""
+        self.marker_ = marker
+        values = np.asarray(y)
+        self.classes_ = np.unique(values.ravel())
+        self._n_outputs = 1 if values.ndim == 1 else values.shape[1]
+        return self
+
+    def predict(self, X):
+        """Predict the first class everywhere."""
+        out = np.full((len(X), self._n_outputs), self.classes_[0])
+        return out.ravel() if self._n_outputs == 1 else out
+
+    def predict_proba(self, X):
+        """Predict a uniform distribution over the fitted classes."""
+        uniform = np.full((len(X), len(self.classes_)), 1.0 / len(self.classes_))
+        return uniform if self._n_outputs == 1 else [uniform] * self._n_outputs
+
+
+class TestFitMetadataRouting:
+    """Caller fit metadata reaches the actual transformer and the wrapped classifier."""
+
+    @pytest.mark.parametrize("strategy", ["multi-output", "direct"])
+    def test_metadata_reaches_transformer_and_classifier(self, class_proba_y_X_factory, strategy):
+        """Both reduction strategies deliver the caller's metadata to every model."""
+        y, X = class_proba_y_X_factory(length=80, n_targets=1, n_features=1)
+        forecaster = ClassProbaReductionForecaster(
+            estimator=_MarkerClassifier().set_fit_request(marker=True),
+            actual_transformer=FeatureUnion([("probe", _RecordingLag(lag=1))]),
+            target_as_feature=None,
+            reduction_strategy=strategy,
+        )
+        forecaster.fit(y, X, forecasting_horizon=3, marker="x")
+
+        (probe,) = _fitted_probes(forecaster)
+        assert probe.seen_["marker"] == "x"
+        fitted = [estimator for _, estimator in forecaster._fitted_estimator_positions()]
+        assert all(estimator.marker_ == "x" for estimator in fitted)

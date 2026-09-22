@@ -26,6 +26,22 @@ _YOHOU_ROOT = str(Path(__file__).resolve().parents[1])
 _SKLEARN_ROOT = str(Path(sklearn.__file__).resolve().parent)
 
 
+class UnweightedEvaluationSetWarning(UserWarning):
+    """Raised when a weighted forecaster cannot weight its evaluation set.
+
+    ``time_weighter`` and ``vintage_weighter`` weight the rows the estimator
+    trains on. yohou also weights the evaluation rows, so early stopping judges
+    the model on the same basis it is fitted on, but an estimator whose ``fit``
+    declares no evaluation-weight parameter gives it nowhere to put them.
+    Guessing a keyword would raise inside the estimator's own ``fit``, so the
+    evaluation set is delivered unweighted and this warning says so.
+
+    Subclasses ``UserWarning`` so existing ``pytest.warns(UserWarning)`` and
+    application ``filterwarnings`` entries keep matching, while still being
+    specific enough to silence on its own.
+    """
+
+
 class ForecastCoverageWarning(UserWarning):
     """Raised when ``X_forecast`` covers fewer steps than the forecasting horizon.
 
@@ -302,23 +318,21 @@ def _require_step_transformer(transformer: object, slot: str) -> None:
         )
 
 
-def _actual_transformer_fit_params(
-    actual_transformer: BaseActualTransformer | None,
+def _transformer_fit_params(
+    transformer: BaseActualTransformer | None,
     forecasting_horizon: int,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Select the fit metadata an actual transformer consumes.
+    """Select the fit metadata a target or actual transformer consumes.
 
     The forecaster offers its fit ``forecasting_horizon`` together with any fit
-    metadata the caller passed, and keeps only the keys the actual transformer (or a
-    transformer nested inside it) requests. Passing an unrequested key would make a
-    composite's ``process_routing`` reject it, so the narrowing is what lets every
-    existing actual transformer keep receiving a bare ``fit_transform`` call.
+    metadata the caller passed, and keeps only the keys the transformer (or a
+    transformer nested inside it) requests.
 
     Parameters
     ----------
-    actual_transformer : BaseActualTransformer or None
-        The unfitted actual transformer.
+    transformer : BaseActualTransformer or None
+        The unfitted target or actual transformer.
     forecasting_horizon : int
         The forecaster's fit horizon.
     params : dict or None, default=None
@@ -327,15 +341,21 @@ def _actual_transformer_fit_params(
     Returns
     -------
     dict
-        The metadata to pass to ``actual_transformer.fit_transform``. Empty when there
-        is no actual transformer, when nothing is requested, or when metadata routing
-        is disabled.
+        The metadata to pass to ``transformer.fit_transform``. Empty when there is
+        no transformer, when nothing is requested, or when metadata routing is
+        disabled.
+
+    Notes
+    -----
+    Passing an unrequested key would make a composite's ``process_routing`` reject
+    it, so the narrowing is what lets every existing transformer keep receiving a
+    bare ``fit_transform`` call.
 
     """
-    if actual_transformer is None or not _routing_enabled():
+    if transformer is None or not _routing_enabled():
         return {}
     candidates = {**(params or {}), "forecasting_horizon": forecasting_horizon}
-    consumed = get_routing_for_object(actual_transformer).consumes("fit_transform", set(candidates))
+    consumed = get_routing_for_object(transformer).consumes("fit_transform", set(candidates))
     return {key: candidates[key] for key in consumed}
 
 
@@ -346,6 +366,7 @@ def _fit_transform_transformers_one(
     actual_transformer: BaseActualTransformer | None,
     target_as_feature: str | None,
     actual_fit_params: dict[str, Any] | None = None,
+    target_fit_params: dict[str, Any] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, BaseActualTransformer | None, BaseActualTransformer | None]:
     """Fit and apply target and actual transformers to a single time series.
 
@@ -370,7 +391,9 @@ def _fit_transform_transformers_one(
         exogenous features.
     actual_fit_params : dict or None, default=None
         Fit metadata for the actual transformer, already narrowed to the keys it
-        consumes (see ``_actual_transformer_fit_params``).
+        consumes (see ``_transformer_fit_params``).
+    target_fit_params : dict or None, default=None
+        Fit metadata for the target transformer, narrowed the same way.
 
     Returns
     -------
@@ -405,7 +428,7 @@ def _fit_transform_transformers_one(
     target_transformer_fitted = None
     if target_transformer is not None:
         target_transformer_fitted = clone(target_transformer)
-        y_t = target_transformer_fitted.fit_transform(y)
+        y_t = target_transformer_fitted.fit_transform(y, **(target_fit_params or {}))
 
     X_feat_in = _build_feature_input(y, y_t, X_actual, target_as_feature, actual_transformer)
 
@@ -547,6 +570,46 @@ def _observe_transformers_one(
         Transformed new observations.
 
     """
+    _, X_t = _observe_transformers_transform(y, X_actual, target_transformer, actual_transformer, target_as_feature)
+    return X_t
+
+
+def _observe_transformers_transform(
+    y: pl.DataFrame,
+    X_actual: pl.DataFrame | None,
+    target_transformer: BaseActualTransformer | None,
+    actual_transformer: BaseActualTransformer | None,
+    target_as_feature: str | None,
+) -> tuple[pl.DataFrame, pl.DataFrame | None]:
+    """Observe new rows through the transformers and return both transformed frames.
+
+    The same state effects as `_observe_transformers_one`, which wraps this
+    function and keeps only the features. This one also returns the
+    transformed target rows, because the validation holdout needs them to
+    build evaluation targets in the space the estimator trains in. The name
+    mirrors ``observe_transform`` on the transformers it calls.
+
+    Parameters
+    ----------
+    y : pl.DataFrame
+        New target observations.
+    X_actual : pl.DataFrame or None
+        New features.
+    target_transformer : BaseActualTransformer or None
+        Target transformer to observe.
+    actual_transformer : BaseActualTransformer or None
+        Actual transformer to observe.
+    target_as_feature : {"transformed", "raw"} or None
+        Controls whether the target is included as a feature.
+
+    Returns
+    -------
+    y_t : pl.DataFrame
+        Transformed new target observations.
+    X_t : pl.DataFrame or None
+        Transformed new feature observations.
+
+    """
     y_t = y
     if target_transformer is not None:
         y_t = target_transformer.observe_transform(y)
@@ -557,7 +620,7 @@ def _observe_transformers_one(
     if actual_transformer is not None and X_feat_in is not None:
         X_t = actual_transformer.observe_transform(X_feat_in)
 
-    return X_t
+    return y_t, X_t
 
 
 def _rewind_transformers_one(

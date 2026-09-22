@@ -66,6 +66,9 @@ Testing utilities for Yohou estimators.
 | [`check_point_prediction_types`](generated/yohou.testing.check_point_prediction_types.md) | Check point forecaster has 'point' in forecaster_type tag. |
 | [`check_estimator_parameter`](generated/yohou.testing.check_estimator_parameter.md) | Check estimator parameter is sklearn BaseEstimator. |
 | [`check_reduction_strategy`](generated/yohou.testing.check_reduction_strategy.md) | Check reduction_strategy is one of 'direct', 'dir-rec', 'multi-output'. |
+| [`check_validation_holdout_default_noop`](generated/yohou.testing.check_validation_holdout_default_noop.md) | Check that ``validation_size=None`` delivers no eval set at all. |
+| [`check_validation_holdout_fit`](generated/yohou.testing.check_validation_holdout_fit.md) | Check that fitting with ``validation_size`` delivers a valid eval set. |
+| [`check_validation_holdout_parameters`](generated/yohou.testing.check_validation_holdout_parameters.md) | Check the validation-holdout constructor parameters and their defaults. |
 | [`check_scorer_aggregation_methods`](generated/yohou.testing.check_scorer_aggregation_methods.md) | Check all aggregation_method combinations produce valid output. |
 | [`check_scorer_component_subselection`](generated/yohou.testing.check_scorer_component_subselection.md) | Check components filtering works correctly. |
 | [`check_scorer_coverage_rate_subselection`](generated/yohou.testing.check_scorer_coverage_rate_subselection.md) | Check coverage parameter filters interval predictions correctly. |

@@ -1,7 +1,6 @@
 """Tests for HorizonRollingStatisticsTransformer."""
 
 import math
-from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -15,13 +14,7 @@ from yohou.preprocessing import HorizonRollingStatisticsTransformer, LagTransfor
 from yohou.testing import _yield_yohou_transformer_checks
 from yohou.testing.common import check_metadata_routing_default_request
 
-
-def _hourly(length: int, columns=("price",), seed: int = 0) -> pl.DataFrame:
-    rng = np.random.default_rng(seed)
-    times = pl.datetime_range(
-        datetime(2021, 1, 1), datetime(2021, 1, 1) + timedelta(hours=length - 1), interval="1h", eager=True
-    )
-    return pl.DataFrame({"time": times, **{c: rng.normal(size=length) for c in columns}})
+from .conftest import hourly_frame
 
 
 def _expected(values: np.ndarray, t: int, h: int, k: int, n: int, stat=np.mean) -> float:
@@ -35,7 +28,7 @@ class TestOutputs:
 
     def test_names_and_order(self):
         """Two columns x two statistics x 48 steps, ordered by column, statistic, step."""
-        X = _hourly(400, columns=("price", "load"))
+        X = hourly_frame(400, columns=("price", "load"))
         transformer = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7, statistics=["mean", "std"])
         X_t = transformer.fit(X, forecasting_horizon=48).transform(X)
 
@@ -45,23 +38,17 @@ class TestOutputs:
         expected = [f"{c}_s24_{s}_step_{h}" for c in ("price", "load") for s in ("mean", "std") for h in range(1, 49)]
         assert names == expected
         assert transformer.get_feature_names_out() == expected
-        assert {
-            "price_s24_mean_step_1",
-            "price_s24_mean_step_48",
-            "price_s24_std_step_4",
-            "load_s24_mean_step_12",
-        } <= set(names)
 
     def test_string_statistic_equals_list(self):
         """A single statistic given as a string is the same as a one-item list."""
-        X = _hourly(200)
+        X = hourly_frame(200)
         a = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=3, statistics="median")
         b = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=3, statistics=["median"])
         assert a.fit(X, forecasting_horizon=6).transform(X).equals(b.fit(X, forecasting_horizon=6).transform(X))
 
     def test_first_season_value_table(self):
         """k=4, n=2, H=4: step h averages x[t-(4-h)] and x[t-(8-h)]."""
-        X = _hourly(60)
+        X = hourly_frame(60)
         X_t = HorizonRollingStatisticsTransformer(seasonality=4, n_seasons=2).fit(X, forecasting_horizon=4).transform(X)
         x = X["price"].to_numpy()
         offset = X.height - X_t.height
@@ -94,7 +81,7 @@ class TestOutputs:
     def test_matches_spec_formula(self, stat, reference):
         """Every step of every row equals the spec formula, across a season boundary."""
         k, n, horizon = 5, 3, 12
-        X = _hourly(120)
+        X = hourly_frame(120)
         X_t = (
             HorizonRollingStatisticsTransformer(seasonality=k, n_seasons=n, statistics=stat)
             .fit(X, forecasting_horizon=horizon)
@@ -108,7 +95,7 @@ class TestOutputs:
 
     def test_profile_repeats_past_one_season(self):
         """Steps h and h + k share a seasonal position and carry equal values."""
-        X = _hourly(300)
+        X = hourly_frame(300)
         X_t = (
             HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=2).fit(X, forecasting_horizon=48).transform(X)
         )
@@ -117,7 +104,7 @@ class TestOutputs:
 
     def test_future_values_do_not_change_a_row(self):
         """Perturbing values after origin t leaves the row at t unchanged."""
-        X = _hourly(200)
+        X = hourly_frame(200)
         transformer = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=3, statistics=["mean", "max"])
         transformer.fit(X, forecasting_horizon=30)
         before = transformer.transform(X)
@@ -136,7 +123,7 @@ class TestHorizonAndData:
 
     def test_warm_up(self):
         """observation_horizon is k*n - 1, independent of the horizon."""
-        X = _hourly(500)
+        X = hourly_frame(500)
         transformer = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7)
         X_t = transformer.fit(X, forecasting_horizon=48).transform(X)
         assert transformer.observation_horizon == 167
@@ -146,20 +133,51 @@ class TestHorizonAndData:
 
     def test_too_little_data(self):
         """Fewer than k*n rows cannot fill a window."""
-        X = _hourly(167)
+        X = hourly_frame(167)
         with pytest.raises(ValueError, match="at least seasonality \\* n_seasons = 168 rows"):
             HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7).fit(X, forecasting_horizon=48)
 
+    def test_failed_fit_keeps_statistics(self):
+        """A fit that raises on too few rows leaves statistics_ from the previous fit."""
+        transformer = HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=7)
+        transformer.fit(hourly_frame(200), forecasting_horizon=48)
+        transformer.set_params(statistics=["mean", "std"])
+        with pytest.raises(ValueError, match="at least seasonality"):
+            transformer.fit(hourly_frame(167), forecasting_horizon=48)
+        assert transformer.statistics_ == ["mean"]
+
+    @pytest.mark.parametrize("statistics", ["std", "var", ["mean", "var"]])
+    def test_single_season_sample_statistic_rejected(self, statistics):
+        """std and var over one value are undefined, so n_seasons=1 is rejected at fit."""
+        transformer = HorizonRollingStatisticsTransformer(seasonality=24, statistics=statistics)
+        with pytest.raises(ValueError, match="set n_seasons >= 2, got n_seasons=1"):
+            transformer.fit(hourly_frame(100), forecasting_horizon=4)
+
+    @pytest.mark.parametrize(
+        ("n_seasons", "statistic"),
+        [(1, s) for s in ("mean", "min", "max", "median", "sum", "q25", "q75")] + [(2, "std"), (2, "var")],
+    )
+    def test_smallest_accepted_n_seasons_has_no_nulls(self, n_seasons, statistic):
+        """At the smallest accepted n_seasons, every statistic fills every output row."""
+        X = hourly_frame(100)
+        X_t = (
+            HorizonRollingStatisticsTransformer(seasonality=24, n_seasons=n_seasons, statistics=statistic)
+            .fit(X, forecasting_horizon=30)
+            .transform(X)
+        )
+        assert X_t.height == X.height - (24 * n_seasons - 1)
+        assert X_t.null_count().sum_horizontal().item() == 0
+
     def test_missing_horizon(self):
         """Fitting without forecasting_horizon names the metadata and how to supply it."""
-        X = _hourly(100)
+        X = hourly_frame(100)
         with pytest.raises(ValueError, match="requires `forecasting_horizon` as fit metadata"):
             HorizonRollingStatisticsTransformer(seasonality=24).fit(X)
 
     @pytest.mark.parametrize("horizon", [0, -3, 2.5, True])
     def test_invalid_horizon(self, horizon):
         """The horizon must be a positive integer."""
-        X = _hourly(100)
+        X = hourly_frame(100)
         with pytest.raises(ValueError, match="forecasting_horizon"):
             HorizonRollingStatisticsTransformer(seasonality=24).fit(X, forecasting_horizon=horizon)
 
@@ -173,7 +191,7 @@ class TestHorizonAndData:
     )
     def test_invalid_parameters(self, params, name):
         """Invalid constructor parameters are rejected at fit, naming the parameter."""
-        X = _hourly(100)
+        X = hourly_frame(100)
         with pytest.raises(ValueError, match=name if name != "statistics" else "Invalid statistics"):
             HorizonRollingStatisticsTransformer(**params).fit(X, forecasting_horizon=4)
 
@@ -184,7 +202,7 @@ class TestMeanSeasonalNaiveEquivalence:
     @pytest.mark.parametrize("origin", [120, 200, 287])
     def test_equivalence(self, origin):
         """Step values at origin t equal MeanSeasonalNaive's 48-step forecast from t."""
-        y = _hourly(288, columns=("y",), seed=3)
+        y = hourly_frame(288, columns=("y",), seed=3)
         history = y[: origin + 1]
 
         forecaster = MeanSeasonalNaive(seasonality=24, n_seasons=3).fit(y=history, forecasting_horizon=48)
@@ -276,7 +294,7 @@ class TestRoutingThroughComposites:
     )
     def test_horizon_routed(self, make):
         """fit_transform with forecasting_horizon=48 sets the inner horizon and emits steps 1..48."""
-        X = _hourly(200)
+        X = hourly_frame(200)
         composite = clone(make())
         X_t = composite.fit_transform(X, forecasting_horizon=48)
 

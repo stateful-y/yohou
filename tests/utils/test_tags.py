@@ -11,6 +11,7 @@ from yohou.utils.tags import (
     Tags,
     TargetTags,
     TransformerTags,
+    _max_child_holdout_size,
 )
 
 
@@ -271,3 +272,25 @@ class TestEstimatorTags:
         assert tags.splitter_tags is not None
         assert tags.splitter_tags.splitter_type == "expanding"
         assert tags.splitter_tags.supports_panel_data is True
+
+
+class TestMaxChildHoldoutSize:
+    """A composite declares the largest child holdout_size."""
+
+    @staticmethod
+    def _child(holdout_size):
+        class _Child:
+            def __sklearn_tags__(self):
+                tags = Tags(estimator_type="forecaster")
+                tags.forecaster_tags.holdout_size = holdout_size
+                return tags
+
+        return _Child()
+
+    def test_max_over_children(self):
+        """The largest value wins."""
+        assert _max_child_holdout_size([self._child(2), self._child(5), self._child(0)]) == 5
+
+    def test_no_children(self):
+        """No children means 0."""
+        assert _max_child_holdout_size([]) == 0

@@ -3,8 +3,11 @@
 import pytest
 
 # Skip the entire plotting test directory when the plotting extra is not installed
-# (e.g. on Python 3.14 where tsdownsample cannot be built yet).
+# (e.g. on Python 3.14 where tsdownsample cannot be built yet). Plotly alone does
+# not prove it: catboost in the tests group installs plotly too, so statsmodels,
+# which only the extra provides, is checked as well.
 plotly = pytest.importorskip("plotly", reason="plotting extra not installed")
+pytest.importorskip("statsmodels", reason="plotting extra not installed")
 
 import numpy as np  # noqa: E402
 import polars as pl  # noqa: E402

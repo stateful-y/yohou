@@ -79,7 +79,13 @@ from .panel import (
     check_panel_single_group,
 )
 from .point import check_point_prediction_structure, check_point_prediction_types
-from .reduction import check_estimator_parameter, check_reduction_strategy
+from .reduction import (
+    check_estimator_parameter,
+    check_reduction_strategy,
+    check_validation_holdout_default_noop,
+    check_validation_holdout_fit,
+    check_validation_holdout_parameters,
+)
 from .scorer import (
     check_scorer_aggregation_methods,
     check_scorer_coverage_rate_subselection,
@@ -696,6 +702,20 @@ def _yield_yohou_forecaster_checks(
         yield "check_estimator_parameter", check_estimator_parameter, {}
         yield "check_reduction_strategy", check_reduction_strategy, {}
 
+        # Validation-holdout checks: gated on the parameter alone. All three
+        # reduction families expose it, and `_stub_for` picks the family's
+        # recording stub (regressor, classifier, or quantile regressor).
+        if "validation_size" in forecaster.get_params(deep=False):
+            holdout_kwargs = {
+                "y": y_train,
+                "X_actual": X_actual_train,
+                "X_future": X_future_train,
+                "X_forecast": X_forecast_train,
+            }
+            yield "check_validation_holdout_parameters", check_validation_holdout_parameters, {}
+            yield "check_validation_holdout_fit", check_validation_holdout_fit, holdout_kwargs
+            yield "check_validation_holdout_default_noop", check_validation_holdout_default_noop, holdout_kwargs
+
     # Cross-learning checks (for panel data)
     if tags.get("supports_panel_data", False):
         # Need to check if we have panel data available
@@ -825,6 +845,8 @@ def _yield_yohou_forecaster_checks(
                     "X_actual_observe": X_actual_update,
                     "X_future": X_future_test,
                     "X_forecast": X_forecast_test,
+                    "y_baseline": y_train,
+                    "X_actual_baseline": X_actual_train,
                 },
             )
 
@@ -1244,17 +1266,23 @@ def _yield_yohou_search_checks(
     )
 
     # refit checks
+    # Checks that call ``predict`` apply only when the refitted best forecaster
+    # has it: interval-only forecasters are searched without ``predict``, and
+    # the search delegates it on the same ``hasattr`` test.
+    best_has_predict = hasattr(getattr(search_cv, "best_forecaster_", None), "predict")
+
     if tags.get("refit", True):
         # Delegation checks (only when refit=True)
-        yield (
-            "check_search_predict_delegates",
-            check_search_predict_delegates,
-            {
-                "y_test": y_test,
-                "X_future": X_future_test,
-                "X_forecast": X_forecast_test,
-            },
-        )
+        if best_has_predict:
+            yield (
+                "check_search_predict_delegates",
+                check_search_predict_delegates,
+                {
+                    "y_test": y_test,
+                    "X_future": X_future_test,
+                    "X_forecast": X_forecast_test,
+                },
+            )
 
         # Update/reset checks (need enough data)
         if len(y_test) >= 10:
@@ -1330,6 +1358,11 @@ def _yield_yohou_search_checks(
             },
         )
 
+    first_group = None
+    if tags.get("supports_panel_data", True):
+        _, y_panel_groups = inspect_panel(y_train)
+        first_group = list(y_panel_groups.keys())[:1] or None
+
     # Interval scoring checks (when interval scorers are used)
     if tags.get("interval_scoring", False) and tags.get("refit", True):
         yield (
@@ -1338,6 +1371,7 @@ def _yield_yohou_search_checks(
             {
                 "X_future": X_future_test,
                 "X_forecast": X_forecast_test,
+                "groups": first_group,
             },
         )
 
@@ -1414,21 +1448,17 @@ def _yield_yohou_search_checks(
         )
 
     # Panel data checks (if panel data available)
-    if tags.get("supports_panel_data", True):
-        _, y_panel_groups = inspect_panel(y_train)
-        if len(y_panel_groups) > 0:
-            # Extract first group name for testing
-            groups = list(y_panel_groups.keys())[:1]
-            yield (
-                "check_search_panel_data",
-                check_search_panel_data,
-                {
-                    "y_test": y_test,
-                    "groups": groups,
-                    "X_future": X_future_test,
-                    "X_forecast": X_forecast_test,
-                },
-            )
+    if first_group and best_has_predict:
+        yield (
+            "check_search_panel_data",
+            check_search_panel_data,
+            {
+                "y_test": y_test,
+                "groups": first_group,
+                "X_future": X_future_test,
+                "X_forecast": X_forecast_test,
+            },
+        )
 
 
 def _yield_yohou_step_transformer_checks(

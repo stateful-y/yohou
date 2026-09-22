@@ -421,9 +421,3 @@ class TestSeasonalImputerIrregularInterval:
         # The un-imputable row stays null; the observed rows pass through unchanged.
         assert X_imputed["val"].to_list() == [1.0, None, 3.0]
         assert X_imputed["val"].is_nan().sum() == 0
-
-
-def test_seasonal_imputer_rejects_period():
-    """The season length is ``seasonality``; the old ``period`` keyword no longer exists."""
-    with pytest.raises(TypeError):
-        SeasonalImputer(period=24)

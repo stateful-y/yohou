@@ -25,6 +25,9 @@ __all__ = [
 #: Statistics accepted by the rolling-statistics transformers.
 _VALID_STATISTICS = frozenset({"mean", "std", "min", "max", "median", "sum", "var", "q25", "q75"})
 
+#: Statistics that are null over a window of one value (sample statistics, ``ddof=1``).
+_MULTI_VALUE_STATISTICS = frozenset({"std", "var"})
+
 
 def _rolling_statistic(expr: pl.Expr, stat: str, window_size: int) -> pl.Expr:
     """Apply a trailing rolling statistic over ``window_size`` consecutive values.
@@ -69,15 +72,7 @@ def _seasonal_rolling_statistic(expr: pl.Expr, stat: str, window_size: int, seas
     """Apply a rolling statistic over ``window_size`` values spaced ``seasonality`` rows apart.
 
     The value at row ``t`` summarises ``x[t], x[t - k], ..., x[t - (window_size - 1) * k]``
-    with ``k = seasonality``. Rows ``k`` apart are consecutive members of the same residue
-    class of the row index, so the ordinary rolling kernel applied within each class is
-    the seasonal window, and it reuses the exact kernels (``ddof``, quantile
-    interpolation) of the consecutive case. Each class holds the same rows wherever a
-    frame starts, so the result does not depend on how rows are batched.
-
-    To end the window ``s`` rows before ``t``, shift the *result* by ``s``. A shift
-    placed inside the grouping would move values within each residue class, that is by
-    ``s * k`` rows.
+    with ``k = seasonality``.
 
     Parameters
     ----------
@@ -94,6 +89,18 @@ def _seasonal_rolling_statistic(expr: pl.Expr, stat: str, window_size: int, seas
     -------
     pl.Expr
         Seasonal rolling statistic expression.
+
+    Notes
+    -----
+    Rows ``k`` apart are consecutive members of the same residue
+    class of the row index, so the ordinary rolling kernel applied within each class is
+    the seasonal window, and it reuses the exact kernels (``ddof``, quantile
+    interpolation) of the consecutive case. Each class holds the same rows wherever a
+    frame starts, so the result does not depend on how rows are batched.
+
+    To end the window ``s`` rows before ``t``, shift the *result* by ``s``. A shift
+    placed inside the grouping would move values within each residue class, that is by
+    ``s * k`` rows.
 
     """
     rolled = _rolling_statistic(expr, stat, window_size)
@@ -418,7 +425,8 @@ class RollingStatisticsTransformer(BaseActualTransformer):
     Parameters
     ----------
     window_size : int, default=7
-        Number of values in the rolling window. Must be >= 1.
+        Number of values in the rolling window. Must be >= 1, and >= 2 if
+        ``statistics`` includes ``"std"`` or ``"var"``.
     statistics : str or list of str, default="mean"
         Statistic(s) to compute. Options:
         - "mean": Rolling mean
@@ -513,8 +521,6 @@ class RollingStatisticsTransformer(BaseActualTransformer):
 
     """
 
-    _valid_statistics = _VALID_STATISTICS
-
     _parameter_constraints: dict = {
         "window_size": [Interval(numbers.Integral, 1, None, closed="left")],
         "statistics": [str, list],
@@ -543,30 +549,19 @@ class RollingStatisticsTransformer(BaseActualTransformer):
         return (self.window_size - 1) * self.seasonality
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Fit the internal model."""
-        self.statistics_ = _normalize_statistics(self.statistics)
+        """Validate the statistics against the window size."""
+        statistics = _normalize_statistics(self.statistics)
+        multi_value = [stat for stat in statistics if stat in _MULTI_VALUE_STATISTICS]
+        if multi_value and self.window_size < 2:
+            raise ValueError(
+                f"statistics {multi_value} are undefined over a single value: set window_size >= 2, "
+                f"got window_size={self.window_size}."
+            )
+        self.statistics_ = statistics
 
     def _output_name(self, col: str, stat: str) -> str:
         """Name of the output column for one input column and statistic."""
         return f"{col}_{stat}" if self.seasonality == 1 else f"{col}_s{self.seasonality}_{stat}"
-
-    def _apply_rolling_stat(self, col: pl.Expr, stat: str) -> pl.Expr:
-        """Apply a rolling statistic to a column expression.
-
-        Parameters
-        ----------
-        col : pl.Expr
-            Column expression.
-        stat : str
-            Statistic name.
-
-        Returns
-        -------
-        pl.Expr
-            Rolling statistic expression.
-
-        """
-        return _seasonal_rolling_statistic(col, stat, self.window_size, self.seasonality)
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Transform X by computing rolling statistics.
@@ -591,7 +586,7 @@ class RollingStatisticsTransformer(BaseActualTransformer):
         for col_name in data_cols:
             for stat in self.statistics_:
                 col_expr = pl.col(col_name)
-                stat_expr = self._apply_rolling_stat(col_expr, stat)
+                stat_expr = _seasonal_rolling_statistic(col_expr, stat, self.window_size, self.seasonality)
                 exprs.append(stat_expr.alias(self._output_name(col_name, stat)))
 
         X_t = X.select(exprs)
@@ -649,7 +644,9 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         Season length ``k``, in rows (e.g. ``24`` for a daily cycle in hourly data).
         Must be >= 2: with ``1`` every step would carry the same value.
     n_seasons : int, default=1
-        Number of seasons ``n`` in each window. Must be >= 1.
+        Number of seasons ``n`` in each window, which is also the number of values
+        each statistic is computed over. Must be >= 1, and >= 2 if ``statistics``
+        includes ``"std"`` or ``"var"``.
     statistics : str or list of str, default="mean"
         Statistic(s) to compute: ``"mean"``, ``"std"``, ``"min"``, ``"max"``,
         ``"median"``, ``"sum"``, ``"var"``, ``"q25"``, ``"q75"``.
@@ -791,14 +788,25 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         return self
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
-        """Validate statistics and the amount of data."""
-        self.statistics_ = _normalize_statistics(self.statistics)
+        """Validate the amount of data and the statistics."""
+        statistics = _normalize_statistics(self.statistics)
+        multi_value = [stat for stat in statistics if stat in _MULTI_VALUE_STATISTICS]
+        if multi_value and self.n_seasons < 2:
+            raise ValueError(
+                f"statistics {multi_value} are undefined over a single value: set n_seasons >= 2, "
+                f"got n_seasons={self.n_seasons}."
+            )
         required = self.seasonality * self.n_seasons
         if len(X) < required:
             raise ValueError(
                 f"{type(self).__name__} needs at least seasonality * n_seasons = {required} rows to fill "
                 f"one window, but X has {len(X)} rows."
             )
+        self.statistics_ = statistics
+
+    def _profile_name(self, col: str, stat: str) -> str:
+        """Name of the seasonal profile column for one input column and statistic."""
+        return f"{col}_s{self.seasonality}_{stat}"
 
     def _step_offsets(self) -> list[int]:
         """Rows between the origin and the most recent value each step reads, for steps ``1..H``."""
@@ -825,7 +833,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
             pl.col("time"),
             *[
                 _seasonal_rolling_statistic(pl.col(col), stat, self.n_seasons, self.seasonality).alias(
-                    f"{col}_s{self.seasonality}_{stat}"
+                    self._profile_name(col, stat)
                 )
                 for col in data_cols
                 for stat in self.statistics_
@@ -835,10 +843,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         X_t = profiles.select(
             pl.col("time"),
             *[
-                pl
-                .col(f"{col}_s{self.seasonality}_{stat}")
-                .shift(offset)
-                .alias(f"{col}_s{self.seasonality}_{stat}_step_{h}")
+                pl.col(self._profile_name(col, stat)).shift(offset).alias(f"{self._profile_name(col, stat)}_step_{h}")
                 for col in data_cols
                 for stat in self.statistics_
                 for h, offset in enumerate(offsets, start=1)
@@ -864,7 +869,7 @@ class HorizonRollingStatisticsTransformer(BaseActualTransformer):
         check_is_fitted(self, ["statistics_", "forecasting_horizon_"])
         input_features = _check_feature_names_in(self, input_features)
         feature_names = [
-            f"{col}_s{self.seasonality}_{stat}_step_{h}"
+            f"{self._profile_name(col, stat)}_step_{h}"
             for col in input_features
             for stat in self.statistics_
             for h in range(1, self.forecasting_horizon_ + 1)

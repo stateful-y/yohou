@@ -10,6 +10,11 @@ Model selection tools including cross-validation and hyperparameter search.
 
 | Name | Description |
 |------|-------------|
+| [`BaseEarlyStoppingAdapter`](generated/yohou.model_selection.BaseEarlyStoppingAdapter.md) | Base class for translating early stopping between a search and a boosting library. |
+| [`CatBoostEarlyStoppingAdapter`](generated/yohou.model_selection.CatBoostEarlyStoppingAdapter.md) | Early-stopping adapter for CatBoost regressors and classifiers. |
+| [`HistGradientBoostingEarlyStoppingAdapter`](generated/yohou.model_selection.HistGradientBoostingEarlyStoppingAdapter.md) | Early-stopping adapter for scikit-learn's histogram gradient boosting. |
+| [`LightGBMEarlyStoppingAdapter`](generated/yohou.model_selection.LightGBMEarlyStoppingAdapter.md) | Early-stopping adapter for LightGBM's scikit-learn estimators. |
+| [`XGBoostEarlyStoppingAdapter`](generated/yohou.model_selection.XGBoostEarlyStoppingAdapter.md) | Early-stopping adapter for XGBoost's scikit-learn estimators. |
 | [`BaseSearchCV`](generated/yohou.model_selection.BaseSearchCV.md) | Abstract base class for hyperparameter search with cross-validation. |
 | [`GridSearchCV`](generated/yohou.model_selection.GridSearchCV.md) | Exhaustive search over specified parameter values for a forecaster. |
 | [`RandomizedSearchCV`](generated/yohou.model_selection.RandomizedSearchCV.md) | Randomized search on hyperparameters. |

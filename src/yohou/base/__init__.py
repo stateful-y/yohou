@@ -10,7 +10,7 @@ from .reduction import BaseReductionForecaster
 from .standard import BaseStandardForecaster
 from .step_transformer import BaseStepTransformer
 from .transformer import BaseActualTransformer
-from .utils import ForecastCoverageWarning
+from .utils import ForecastCoverageWarning, UnweightedEvaluationSetWarning
 
 __all__ = [
     "BaseActualTransformer",
@@ -22,4 +22,5 @@ __all__ = [
     "BaseStepTransformer",
     "ForecastCoverageWarning",
     "PredictionType",
+    "UnweightedEvaluationSetWarning",
 ]

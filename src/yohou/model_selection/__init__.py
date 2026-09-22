@@ -1,5 +1,12 @@
 """Model selection tools including cross-validation and hyperparameter search."""
 
+from .early_stopping import (
+    BaseEarlyStoppingAdapter,
+    CatBoostEarlyStoppingAdapter,
+    HistGradientBoostingEarlyStoppingAdapter,
+    LightGBMEarlyStoppingAdapter,
+    XGBoostEarlyStoppingAdapter,
+)
 from .search import (
     BaseSearchCV,
     GridSearchCV,
@@ -20,12 +27,17 @@ from .validation import (
 )
 
 __all__ = [
+    "BaseEarlyStoppingAdapter",
     "BaseSearchCV",
     "BaseSplitter",
+    "CatBoostEarlyStoppingAdapter",
     "ExpandingWindowSplitter",
     "GridSearchCV",
+    "HistGradientBoostingEarlyStoppingAdapter",
+    "LightGBMEarlyStoppingAdapter",
     "RandomizedSearchCV",
     "SlidingWindowSplitter",
+    "XGBoostEarlyStoppingAdapter",
     "check_cv",
     "check_cv_alignment",
     "cross_val_predict",

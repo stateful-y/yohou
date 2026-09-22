@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import numbers
 from typing import Any, Literal, cast
 
 import polars as pl
 from pydantic import StrictInt
 from sklearn.base import BaseEstimator
 from sklearn.linear_model import LogisticRegression
+from sklearn.utils.parallel import Parallel, delayed
 
 from yohou.base import BaseActualTransformer, BaseForecastTransformer, BaseReductionForecaster, BaseStepTransformer
-from yohou.utils._compat import HasMethods, StrOptions, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _fit_context
 from yohou.weighting import BaseWeighter
 
 from .base import BaseClassProbaForecaster
@@ -83,6 +85,32 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         keeps every instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
+    validation_size : int or None, default=None
+        Number of trailing time steps (per group on panel data) to hold out
+        from classifier training and deliver to the wrapped estimator's
+        ``fit`` in whichever evaluation-set dialect that estimator declares
+        (``eval_set``, ``eval_X``/``eval_y``, or ``X_val``/``y_val``), enabling
+        estimator-side early stopping (LightGBM, XGBoost, CatBoost, and
+        scikit-learn's histogram gradient boosting, which additionally requires
+        ``early_stopping=True``). Class discovery and label encoding
+        use the remaining head only, so a class occurring only inside the
+        tail raises ``ValueError``. Transformers and sample weights are
+        fitted on the head only too; the held-out tail is then observed, so
+        ``predict_proba()`` still forecasts from the end of all provided
+        data. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for the trade-off, the ``Pipeline`` handling, and the other rejected
+        configurations.
+    validation_overlap : bool, default=False
+        Applies to whichever holdout is active (``validation_size`` or
+        ``y_val``). By default only rows whose entire target window lies
+        inside the held-out tail are evaluated (with ``validation_size``,
+        ``validation_size - forecasting_horizon + 1`` rows). When ``True``,
+        the ``forecasting_horizon - 1`` boundary rows whose target windows
+        straddle the split are also evaluated (with ``validation_size``,
+        ``validation_size`` rows); those rows score some time points the
+        model also trained on, trading evaluation purity for data on short
+        series.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -164,6 +192,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         **BaseReductionForecaster._parameter_constraints,
         "estimator": [HasMethods(["fit", "predict", "predict_proba"])],
         "reduction_strategy": [StrOptions({"direct", "multi-output"})],
+        "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "validation_overlap": ["boolean"],
     }
 
     _supports_panel = True
@@ -180,6 +210,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         target_as_feature: Literal["transformed", "raw"] | None = "transformed",
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
+        validation_size: int | None = None,
+        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -205,6 +237,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
         )
+        self.validation_size = validation_size
+        self.validation_overlap = validation_overlap
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -214,6 +248,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         forecasting_horizon: StrictInt = 1,
         X_future: pl.DataFrame | None = None,
         X_forecast: pl.DataFrame | None = None,
+        y_val: pl.DataFrame | None = None,
+        X_actual_val: pl.DataFrame | None = None,
+        X_forecast_val: pl.DataFrame | None = None,
         **params,
     ) -> ClassProbaReductionForecaster:
         """Fit the forecaster to historical data.
@@ -240,6 +277,31 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         X_forecast : pl.DataFrame or None, default=None
             External forecasts with ``"vintage_time"`` and ``"time"``
             columns. Bypasses the actual transformer.
+        y_val : pl.DataFrame or None, default=None
+            Target rows of an evaluation window that starts one interval
+            after ``y`` ends, with the same columns as ``y``. Its rows are
+            turned into evaluation rows through the transformers fitted on
+            ``y`` and delivered to the wrapped estimator's ``fit`` in whichever
+            evaluation-set dialect it declares, enabling estimator-side early
+            stopping on data the caller holds out (for example the next
+            cross-validation fold). The window is the raw series, not the
+            tabular feature/target pair the estimator finally receives: yohou
+            builds that pair from it.
+            The window is not training data: after fitting, the observation
+            state ends at the last time of ``y``, exactly as without it.
+            Mutually exclusive with ``validation_size``; ``validation_overlap``
+            applies as it does to the ``validation_size`` tail.
+        X_actual_val : pl.DataFrame or None, default=None
+            Actual feature rows covering the ``y_val`` window. Required
+            when ``X_actual`` is given, rejected otherwise.
+        X_forecast_val : pl.DataFrame or None, default=None
+            Forecast vintages published during the ``y_val`` window,
+            added to ``X_forecast`` when resolving the evaluation rows'
+            features as of each row's time. Optional even when ``X_forecast``
+            is given, because a vintage published earlier can already cover
+            the window; rejected when ``X_forecast`` was not given, since a
+            forecaster fitted without external forecasts derives no forecast
+            features and would ignore these vintages.
         **params : dict
             Metadata to route to nested estimators.
 
@@ -248,35 +310,72 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         self
             The fitted forecaster instance.
 
+        Raises
+        ------
+        ValueError
+            If ``forecasting_horizon`` < 1, or if ``y`` / ``X_actual`` have
+            invalid structure (e.g., missing ``"time"`` column, or
+            mismatched panel groups). With ``validation_size`` or
+            ``y_val`` set, also if a target class occurs only inside
+            the held-out rows, or on another invalid holdout configuration;
+            [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+            lists the common cases and the methods that document every
+            condition.
+
         """
         forecasting_horizon = self._validate_fit_params(forecasting_horizon)
         self._warn_inapplicable_step_alignment()
 
-        # Discover classes from y before _pre_fit (which may transform y)
+        y_fit, X_fit, y_tail, X_tail, X_forecast_eval, validation_source = self._resolve_validation_window(
+            y,
+            X_actual,
+            forecasting_horizon,
+            params,
+            X_forecast,
+            y_val,
+            X_actual_val,
+            X_forecast_val,
+        )
+
+        # Discover classes from the training head before _pre_fit (which may
+        # transform y). The validation tail never contributes classes: the
+        # encoder is fitted on the head only, and a tail-only class raises.
         # Use unprefixed (base) column names so panel groups share class labels.
-        self.classes_: dict[str, list[str]] = {}
-        self.n_classes_: dict[str, int] = {}
-        self.label_to_code_: dict[str, dict[str, int]] = {}
-        for col in y.columns:
+        # These are built as locals and only assigned once the tail check has
+        # passed, so a rejected holdout leaves no half-fitted instance behind.
+        classes: dict[str, list[str]] = {}
+        n_classes: dict[str, int] = {}
+        label_to_code: dict[str, dict[str, int]] = {}
+        for col in y_fit.columns:
             if col == "time":
                 continue
             base_col = col.split("__", 1)[1] if "__" in col else col
-            unique_vals = sorted(y[col].drop_nulls().unique().cast(pl.String).to_list())
-            if base_col in self.classes_:
-                merged = sorted(set(self.classes_[base_col]) | set(unique_vals))
-                self.classes_[base_col] = merged
+            unique_vals = sorted(y_fit[col].drop_nulls().unique().cast(pl.String).to_list())
+            if base_col in classes:
+                merged = sorted(set(classes[base_col]) | set(unique_vals))
+                classes[base_col] = merged
             else:
-                self.classes_[base_col] = unique_vals
-        for base_col, labels in self.classes_.items():
-            self.n_classes_[base_col] = len(labels)
-            self.label_to_code_[base_col] = {label: i for i, label in enumerate(labels)}
+                classes[base_col] = unique_vals
+        for base_col, labels in classes.items():
+            n_classes[base_col] = len(labels)
+            label_to_code[base_col] = {label: i for i, label in enumerate(labels)}
+
+        if y_tail is not None:
+            self._check_tail_classes(y_tail, classes, source=cast(str, validation_source))
+
+        self.classes_: dict[str, list[str]] = classes
+        self.n_classes_: dict[str, int] = n_classes
+        self.label_to_code_: dict[str, dict[str, int]] = label_to_code
 
         # Encode target columns to integer codes for tabularization
-        y_encoded = self._encode_target(y)
+        y_encoded = self._encode_target(y_fit)
+        y_tail_encoded: pl.DataFrame | None = None
+        if y_tail is not None:
+            y_tail_encoded = self._encode_target(y_tail)
 
         y_t, X_t = self._pre_fit(
             y=y_encoded,
-            X_actual=X_actual,
+            X_actual=X_fit,
             forecasting_horizon=forecasting_horizon,
             X_future=X_future,
             X_forecast=X_forecast,
@@ -284,14 +383,66 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         )
         self._warn_unfiltered_step_output_columns()
 
+        eval_data = None
+        if y_tail_encoded is not None:
+            eval_data = self._build_validation_eval_data(
+                y_t, X_t, y_tail_encoded, X_tail, forecasting_horizon, X_future, X_forecast_eval
+            )
+
         self.estimator_ = self._estimator_fit_one(
             y_t,
             X_t,
             forecasting_horizon,
             estimator_fit_params=params,
+            eval_data=eval_data,
         )
 
+        self._rewind_after_explicit_window(validation_source, y_fit, X_fit, X_future, X_forecast)
         return self
+
+    def _check_tail_classes(self, y_tail: pl.DataFrame, classes: dict[str, list[str]], source: str) -> None:
+        """Reject validation-tail classes the head-fitted encoder never saw.
+
+        Called before ``classes_`` is assigned, so it takes the discovered
+        mapping as an argument rather than reading fitted state; that keeps a
+        rejected holdout from leaving a half-fitted instance behind.
+
+        Parameters
+        ----------
+        y_tail : pl.DataFrame
+            The held-out raw (unencoded) target rows.
+        classes : dict[str, list[str]]
+            Classes discovered from the training head, keyed by unprefixed
+            column name.
+        source : str
+            The fit input supplying the held-out rows (``"validation_size"``
+            or ``"y_val"``), named in the error message.
+
+        Raises
+        ------
+        ValueError
+            If any target class occurs only inside the validation tail.
+
+        """
+        for col in y_tail.columns:
+            if col == "time":
+                continue
+            base_col = col.split("__", 1)[1] if "__" in col else col
+            known = set(classes.get(base_col, []))
+            tail_vals = set(y_tail[col].drop_nulls().unique().cast(pl.String).to_list())
+            unseen = sorted(tail_vals - known)
+            if unseen:
+                if source == "validation_size":
+                    where, remedy = "validation_size holdout tail", "Reduce validation_size or provide more data."
+                else:
+                    where = f"{source} window"
+                    remedy = f"Include every class in y, or remove the rows holding the unseen class from {source}."
+                raise ValueError(
+                    f"Target column {col!r} contains class(es) {unseen} that occur "
+                    f"only inside the {where}. The label "
+                    f"encoder is fitted on the training data only, so every class "
+                    f"must appear before the holdout. {remedy}"
+                )
 
     def _encode_target(self, y: pl.DataFrame) -> pl.DataFrame:
         """Encode categorical target columns to float codes.
@@ -420,35 +571,21 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         Notes
         -----
-        The output schema differs between panel and non-panel modes. In
-        non-panel mode the per-step single-row frames are stacked
-        vertically, yielding H rows (one per horizon step) of global
-        probability columns. In panel mode each group's H per-step rows are
-        first stacked vertically, then the per-group blocks are concatenated
-        horizontally, so every group's probability columns sit side by side
-        in the same H rows.
+        Each step is one ``predict_proba`` call over every group's feature
+        row (see ``_direct_step_frames``), dispatched through ``n_jobs``. The
+        output has H rows, one per horizon step. In panel mode each group's
+        prefixed probability columns sit side by side in those rows.
 
         """
-        # Each per-step estimator was fitted on the step columns ``step_feature_alignment``
-        # keeps for its step, so it must predict from the same filtered frame.
+        step_frames = self._direct_step_frames(len(estimators), groups)
+        step_probas = Parallel(n_jobs=self.n_jobs)(
+            delayed(estimator.predict_proba)(frame)  # ty: ignore[unresolved-attribute]
+            for estimator, frame in zip(estimators, step_frames, strict=True)
+        )
         if self.groups_ is None:
-            X_tab = self._get_predict_features()
-            frames = []
-            for step, estimator in enumerate(estimators, start=1):
-                X_step = self._filter_step_features(X_tab, step)
-                frames.append(self._predict_proba_and_reshape_single_step(estimator, X_step))
-            return pl.concat(frames)
-
-        y_pred_dict: dict[str, list[pl.DataFrame]] = {g: [] for g in groups}
-        for panel_group_name in groups:
-            X_tab = self._get_predict_features(panel_group_name)
-            for step, estimator in enumerate(estimators, start=1):
-                X_step = self._filter_step_features(X_tab, step)
-                y_pred_dict[panel_group_name].append(
-                    self._predict_proba_and_reshape_single_step(estimator, X_step, panel_group_name)
-                )
+            return self._reshape_direct_proba(step_probas, 0)
         return pl.concat(
-            [pl.concat(v) for v in y_pred_dict.values()],
+            [self._reshape_direct_proba(step_probas, row, name) for row, name in enumerate(groups)],
             how="horizontal",
         )
 
@@ -559,28 +696,29 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         return pl.DataFrame(result_data)
 
-    def _predict_proba_and_reshape_single_step(
+    def _reshape_direct_proba(
         self,
-        estimator: BaseEstimator,
-        X_tab: pl.DataFrame,
+        step_probas: list[Any],
+        row: int,
         panel_group_name: str | None = None,
     ) -> pl.DataFrame:
-        """Call predict_proba for a single-step direct estimator.
+        """Collect one observation unit's per-step probabilities into a frame.
 
         Parameters
         ----------
-        estimator : BaseEstimator
-            Fitted single-step classifier.
-        X_tab : pl.DataFrame
-            Feature DataFrame, typically of shape ``(1, n_features)`` at
-            predict time (the shape is a caller convention, not enforced here).
+        step_probas : list
+            One ``predict_proba`` output per horizon step: an array of shape
+            ``(n_rows, n_classes)``, or a list of such arrays (one per target).
+        row : int
+            Row of each output to read: 0 for non-panel data, the group's
+            position in the stacked frame otherwise.
         panel_group_name : str or None
             Panel group prefix for column naming.
 
         Returns
         -------
         pl.DataFrame
-            Single-row probability DataFrame.
+            One row per horizon step with ``{target}_proba_{class}`` columns.
 
         Notes
         -----
@@ -593,29 +731,20 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         assert self.local_y_t_schema_ is not None
         y_cols = list(self.local_y_t_schema_.keys())
-
-        proba = estimator.predict_proba(X_tab)  # ty: ignore[unresolved-attribute]
+        prefix = "" if panel_group_name is None else f"{panel_group_name}__"
 
         result_data: dict[str, list[float]] = {}
-
-        if isinstance(proba, list):
-            # Multiple targets
-            for t_idx, target_col in enumerate(y_cols):
-                step_proba = proba[t_idx][0]
-                for c_idx, label in enumerate(self.classes_[target_col]):
-                    col_name = f"{target_col}_proba_{label}"
-                    if panel_group_name is not None:
-                        col_name = f"{panel_group_name}__{col_name}"
-                    result_data[col_name] = [float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0]
-        else:
-            # Single target
-            assert len(y_cols) == 1
-            target_col = y_cols[0]
-            step_proba = proba[0]
-            for c_idx, label in enumerate(self.classes_[target_col]):
-                col_name = f"{target_col}_proba_{label}"
-                if panel_group_name is not None:
-                    col_name = f"{panel_group_name}__{col_name}"
-                result_data[col_name] = [float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0]
+        for t_idx, target_col in enumerate(y_cols):
+            classes = self.classes_[target_col]
+            for c_idx, label in enumerate(classes):
+                column: list[float] = []
+                for proba in step_probas:
+                    if isinstance(proba, list):
+                        step_proba = proba[t_idx][row]
+                    else:
+                        assert len(y_cols) == 1
+                        step_proba = proba[row]
+                    column.append(float(step_proba[c_idx]) if c_idx < len(step_proba) else 0.0)
+                result_data[f"{prefix}{target_col}_proba_{label}"] = column
 
         return pl.DataFrame(result_data)

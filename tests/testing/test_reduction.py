@@ -1,12 +1,18 @@
 """Tests for yohou.testing.reduction check functions."""
 
+import polars as pl
+import pytest
 from sklearn.linear_model import LinearRegression
 
+from yohou.base.reduction import _EvalSet
 from yohou.interval.reduction import IntervalReductionForecaster
 from yohou.point.reduction import PointReductionForecaster
 from yohou.testing.reduction import (
     check_estimator_parameter,
     check_reduction_strategy,
+    check_validation_holdout_default_noop,
+    check_validation_holdout_fit,
+    check_validation_holdout_parameters,
 )
 
 
@@ -69,3 +75,112 @@ class TestReductionChecks:
         estimator = LinearRegression()
         # LinearRegression has no reduction_strategy attribute, so check returns early
         check_reduction_strategy(estimator)
+
+
+class _WrongOverlapDefault(PointReductionForecaster):
+    """Reduction forecaster whose ``validation_overlap`` defaults to True."""
+
+    def __init__(self, estimator=LinearRegression(), *, validation_size=None, validation_overlap=True):
+        super().__init__(estimator, validation_size=validation_size, validation_overlap=validation_overlap)
+
+
+class _RewritingEvalForecaster(PointReductionForecaster):
+    """Reduction forecaster that rewrites the evaluation pair before delivery."""
+
+    def _rewrite(self, eval_data, X_tab, y_tab):
+        raise NotImplementedError
+
+    def _estimator_fit_one(
+        self, y_t, X_t, forecasting_horizon, estimator_params=None, estimator_fit_params=None, eval_data=None
+    ):
+        X_tab, y_tab = self._get_stacked_tabularized_data(y_t, X_t, forecasting_horizon)
+        return super()._estimator_fit_one(
+            y_t,
+            X_t,
+            forecasting_horizon,
+            estimator_params=estimator_params,
+            estimator_fit_params=estimator_fit_params,
+            eval_data=self._rewrite(eval_data, X_tab, y_tab),
+        )
+
+
+class _DropsEvalSet(_RewritingEvalForecaster):
+    def _rewrite(self, eval_data, X_tab, y_tab):
+        return None
+
+
+class _ShortEvalSet(_RewritingEvalForecaster):
+    def _rewrite(self, eval_data, X_tab, y_tab):
+        return _EvalSet(eval_data.X[:-1], eval_data.y[:-1], None)
+
+
+class _TrainingRowsEvalSet(_RewritingEvalForecaster):
+    def _rewrite(self, eval_data, X_tab, y_tab):
+        n = len(eval_data.X)
+        return _EvalSet(X_tab.head(n), y_tab.head(n), None)
+
+
+class _LeakingTraining(PointReductionForecaster):
+    """Reduction forecaster whose holdout fit shifts every training feature."""
+
+    def _estimator_fit_one(
+        self, y_t, X_t, forecasting_horizon, estimator_params=None, estimator_fit_params=None, eval_data=None
+    ):
+        if eval_data is not None:
+            X_t = X_t.with_columns(pl.exclude("time") + 1.0)
+        return super()._estimator_fit_one(
+            y_t,
+            X_t,
+            forecasting_horizon,
+            estimator_params=estimator_params,
+            estimator_fit_params=estimator_fit_params,
+            eval_data=eval_data,
+        )
+
+
+class _AlwaysDeliversEvalSet(_RewritingEvalForecaster):
+    def _rewrite(self, eval_data, X_tab, y_tab):
+        return _EvalSet(X_tab.head(1), y_tab.head(1), None)
+
+
+class TestValidationHoldoutChecks:
+    """The validation-holdout checks pass on a correct forecaster and fail on broken ones."""
+
+    @pytest.fixture
+    def y(self, y_X_factory):
+        y, _ = y_X_factory(length=60, n_targets=1, n_features=0)
+        return y
+
+    def test_checks_pass(self, y):
+        forecaster = PointReductionForecaster()
+        check_validation_holdout_parameters(forecaster)
+        check_validation_holdout_fit(forecaster, y)
+        check_validation_holdout_default_noop(forecaster, y)
+
+    def test_parameters_wrong_default(self):
+        with pytest.raises(AssertionError, match="validation_overlap must default to False"):
+            check_validation_holdout_parameters(_WrongOverlapDefault())
+
+    def test_parameters_missing(self):
+        with pytest.raises(AssertionError, match="validation_size must be a constructor parameter"):
+            check_validation_holdout_parameters(LinearRegression())
+
+    def test_fit_no_eval_set(self, y):
+        with pytest.raises(AssertionError, match="no eval_set reached the estimator"):
+            check_validation_holdout_fit(_DropsEvalSet(), y)
+
+    def test_fit_wrong_row_count(self, y):
+        with pytest.raises(AssertionError, match="evaluation rows"):
+            check_validation_holdout_fit(_ShortEvalSet(), y)
+
+    def test_fit_training_rows(self, y):
+        with pytest.raises(AssertionError, match="also appear in the training matrix"):
+            check_validation_holdout_fit(_TrainingRowsEvalSet(), y)
+
+    def test_fit_tail_leak(self, y):
+        with pytest.raises(AssertionError, match="differs from a head-only fit"):
+            check_validation_holdout_fit(_LeakingTraining(), y)
+
+    def test_default_noop_delivers_eval_set(self, y):
+        with pytest.raises(AssertionError, match="must not deliver an eval_set"):
+            check_validation_holdout_default_noop(_AlwaysDeliversEvalSet(), y)

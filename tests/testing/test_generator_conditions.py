@@ -834,3 +834,79 @@ class TestSearchGeneratorConditions:
             )
         )
         assert "check_search_interval_predict_delegates" in names
+
+
+class TestSearchPredictGating:
+    """Checks that call ``predict`` are yielded only when the best forecaster has it."""
+
+    PREDICT_CHECKS = {"check_search_predict_delegates", "check_search_panel_data"}
+
+    @staticmethod
+    def _interval_forecaster():
+        from sklearn.linear_model import QuantileRegressor
+
+        from yohou.interval import IntervalReductionForecaster
+
+        return IntervalReductionForecaster(
+            estimator=QuantileRegressor(solver="highs", alpha=0.0),
+            reduction_strategy="direct",
+            actual_transformer=LagTransformer(lag=[1, 2]),
+        )
+
+    @staticmethod
+    def _names(search, y, n_train):
+        search.fit(y[:n_train], forecasting_horizon=3)
+        return set(_check_names(_yield_yohou_search_checks(search, y[:n_train], None, y[n_train:], None)))
+
+    def test_interval_only_search_skips_predict_checks(self, y_X_factory):
+        y, _ = y_X_factory(length=150, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=self._interval_forecaster(),
+            param_grid={"estimator__alpha": [0.0]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
+        )
+        names = self._names(search, y, 130)
+        assert "check_search_predict_delegates" not in names
+        assert "check_search_method_availability" in names
+
+    def test_interval_only_panel_search_checks_groups_through_interval(self, y_X_panel_factory):
+        y_panel, _ = y_X_panel_factory(n_groups=2, length=150, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=self._interval_forecaster(),
+            param_grid={"estimator__alpha": [0.0]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=12),
+        )
+        search.fit(y_panel[:130], forecasting_horizon=3)
+        checks = {
+            name: kwargs
+            for name, _, kwargs in _yield_yohou_search_checks(search, y_panel[:130], None, y_panel[130:], None)
+        }
+        assert not set(checks) & self.PREDICT_CHECKS
+        assert len(checks["check_search_interval_predict_delegates"]["groups"]) == 1
+
+    def test_point_search_keeps_predict_checks(self, y_X_panel_factory):
+        y_panel, _ = y_X_panel_factory(n_groups=2, length=80, n_targets=1, n_features=0, seed=42)
+        search = GridSearchCV(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        assert self._names(search, y_panel, 60) >= self.PREDICT_CHECKS
+
+    def test_class_proba_search_keeps_predict_delegates(self, class_proba_y_X_factory):
+        from sklearn.tree import DecisionTreeClassifier
+
+        from yohou.class_proba import ClassProbaReductionForecaster
+        from yohou.metrics import LogLoss
+
+        y, _ = class_proba_y_X_factory(length=100, n_targets=1, n_features=0, n_classes=3, seed=42)
+        search = GridSearchCV(
+            forecaster=ClassProbaReductionForecaster(estimator=DecisionTreeClassifier(random_state=42)),
+            param_grid={"estimator__max_depth": [2]},
+            scoring=LogLoss(),
+            cv=2,
+        )
+        assert "check_search_predict_delegates" in self._names(search, y, 80)

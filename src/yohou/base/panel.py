@@ -8,12 +8,13 @@ import polars.selectors as cs
 
 from yohou.base.forecast_transformer import FORECAST_INDEX_COLS
 from yohou.base.utils import (
-    _actual_transformer_fit_params,
     _derive_step_columns,
     _fit_transform_transformers_one,
     _observe_transformers_one,
+    _observe_transformers_transform,
     _retained_forecast_vintages,
     _rewind_transformers_one,
+    _transformer_fit_params,
     _warn_rank_deficient_step_columns,
 )
 from yohou.utils import add_interval, get_group_df, inspect_panel
@@ -195,7 +196,11 @@ class BasePanelForecaster:
         return X_schema
 
     def _fit_transform_inputs_panel(
-        self, y: pl.DataFrame, X_actual: pl.DataFrame | None, actual_fit_params: dict[str, Any] | None = None
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        actual_fit_params: dict[str, Any] | None = None,
+        target_fit_params: dict[str, Any] | None = None,
     ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame] | None]:
         """Fit transformers and transform inputs for panel data.
 
@@ -208,6 +213,9 @@ class BasePanelForecaster:
         actual_fit_params : dict or None, default=None
             Fit metadata for each group's actual transformer, narrowed to the keys it
             consumes.
+        target_fit_params : dict or None, default=None
+            Fit metadata for each group's target transformer, narrowed to the keys
+            it consumes.
 
         Returns
         -------
@@ -243,6 +251,7 @@ class BasePanelForecaster:
                 actual_transformer=self.actual_transformer,
                 target_as_feature=self.target_as_feature,
                 actual_fit_params=actual_fit_params,
+                target_fit_params=target_fit_params,
             )
 
             y_t[group_name] = y_t_local
@@ -351,8 +360,8 @@ class BasePanelForecaster:
             External forecasts with ``"vintage_time"`` and ``"time"`` columns.
         fit_params : dict or None, default=None
             Fit metadata passed to the forecaster's ``fit``. Together with
-            ``forecasting_horizon``, the keys the actual transformer requests are
-            routed to it.
+            ``forecasting_horizon``, the keys the target and actual transformers
+            each request are routed to them.
 
         Returns
         -------
@@ -366,7 +375,8 @@ class BasePanelForecaster:
         y_t, X_t = self._fit_transform_inputs_panel(
             y,
             X_actual,
-            _actual_transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+            _transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
+            _transformer_fit_params(self.target_transformer, forecasting_horizon, fit_params),
         )
         self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
 
@@ -578,6 +588,56 @@ class BasePanelForecaster:
         self
 
         """
+        self._observe_panel_transform(y, X_actual, groups, X_future, X_forecast)
+        return self
+
+    def _observe_panel_transform(
+        self,
+        y: pl.DataFrame,
+        X_actual: pl.DataFrame | None,
+        groups: list[str],
+        X_future: pl.DataFrame | None = None,
+        X_forecast: pl.DataFrame | None = None,
+    ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame | None]]:
+        """Observe new rows per group and return them as the fitted transformers produce them.
+
+        The panel counterpart of `_observe_standard_transform`: the state update
+        is exactly `_observe_panel`'s, and the per-group transformed rows that
+        observing computes are returned instead of discarded.
+
+        Parameters
+        ----------
+        y : pl.DataFrame
+            New target observations with panel columns.
+        X_actual : pl.DataFrame or None
+            New actual feature observations with panel columns.
+        groups : list[str]
+            Panel group names to update.
+        X_future : pl.DataFrame or None, default=None
+            Known future features. If None, re-derived from stored raws.
+        X_forecast : pl.DataFrame or None, default=None
+            External forecasts. If None, re-derived from stored raws.
+
+        Returns
+        -------
+        y_t_new : dict[str, pl.DataFrame]
+            Transformed new target observations, per group.
+        X_t_new : dict[str, pl.DataFrame or None]
+            Transformed new feature observations, per group, before step
+            columns.
+
+        Notes
+        -----
+        `_observe_panel` is a one-line wrapper around this method.
+
+        Its one caller that uses the output is
+        `BaseReductionForecaster._observe_validation_tail`, which builds the
+        validation holdout's evaluation rows from them. Transforming the tail a
+        second time there would observe it twice, which a stateful transformer
+        does not tolerate.
+
+        """
+        y_t_new: dict[str, pl.DataFrame] = {}
         X_t_updated: dict[str, pl.DataFrame | None] = {}
         y_updated: dict[str, pl.DataFrame] = {}
 
@@ -599,7 +659,7 @@ class BasePanelForecaster:
                 local_actual_transformer = self.actual_transformer_[panel_group_name]
 
             # Update transformers with new data only
-            X_t_updated[panel_group_name] = _observe_transformers_one(
+            y_t_new[panel_group_name], X_t_updated[panel_group_name] = _observe_transformers_transform(
                 y_local,
                 X_local,
                 local_target_transformer,
@@ -627,7 +687,7 @@ class BasePanelForecaster:
         # Re-derive step columns and append to per-group _X_t_observed
         self._inject_step_columns_after_update_panel(X_future, X_forecast)
 
-        return self
+        return y_t_new, X_t_updated
 
     def _inject_step_columns_after_update_panel(
         self,

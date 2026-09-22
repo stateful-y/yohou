@@ -667,20 +667,15 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
 
         A fitted ``actual_transformer_`` tagged ``produces_step_columns`` emits
         ``{base}_step_1..H`` blocks. They are recorded apart from the step columns
-        derived from ``X_future``/``X_forecast``, because a non-empty
-        ``_step_column_names_`` also switches on the paths that re-derive and swap
-        those columns on observe and predict, which would rebuild these from inputs
-        that never produced them. ``_is_step_column`` consults both records, so
-        ``step_feature_alignment`` filters both alike.
+        derived from ``X_future``/``X_forecast``. ``_is_step_column`` consults both
+        records, so ``step_feature_alignment`` filters both alike.
 
         Without the tag, a trailing ``_step_<n>`` means nothing and nothing is
-        recorded. With it, a name ending that way is a step column, and the blocks
-        are checked so a misfiled or renamed column fails here instead of silently
-        reaching every per-step model.
+        recorded. With it, a name ending that way is a step column.
 
         Parameters
         ----------
-        X_t : pl.DataFrame or dict of str to pl.DataFrame or None
+        X_t : pl.DataFrame or dict[str, pl.DataFrame] or None
             The transformed features: one frame, or one local frame per group under
             ``panel_strategy="global"``.
         forecasting_horizon : int
@@ -691,6 +686,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
         ValueError
             If the tag is set but no output ends in ``_step_<n>``, or if a block does
             not hold exactly the steps ``1..forecasting_horizon``.
+
+        Notes
+        -----
+        The two records are kept apart because a non-empty ``_step_column_names_``
+        also switches on the paths that re-derive and swap those columns on observe
+        and predict, which would rebuild these from inputs that never produced them.
+        The blocks are checked so a misfiled or renamed column fails here instead of
+        silently reaching every per-step model.
 
         """
         self._actual_step_column_names_: set[str] = set()
@@ -706,15 +709,14 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             return
 
         frames: dict[str | None, pl.DataFrame] = (
-            dict(typing_cast(dict[str | None, pl.DataFrame], X_t)) if isinstance(X_t, dict) else {None: X_t}
+            typing_cast(dict[str | None, pl.DataFrame], X_t) if isinstance(X_t, dict) else {None: X_t}
         )
         for group_name, frame in frames.items():
             columns = [c for c in frame.columns if c != "time"]
+            step_indices = {name: index for name in columns if (index := _step_index(name)) is not None}
             blocks: dict[str, set[int]] = {}
-            for name in columns:
-                step = _step_index(name)
-                if step is not None:
-                    blocks.setdefault(name.rsplit("_step_", 1)[0], set()).add(step)
+            for name, step in step_indices.items():
+                blocks.setdefault(name.rsplit("_step_", 1)[0], set()).add(step)
             if not blocks:
                 raise ValueError(
                     f"actual_transformer declares step-column output, but none of its {len(columns)} output "
@@ -733,7 +735,7 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                         "output name ending in '_step_<n>' is read as a per-step feature; rename a column that "
                         "is not one."
                     )
-            names = {name for name in columns if _step_index(name) is not None}
+            names = set(step_indices)
             self._actual_step_column_local_names_ |= names
             if group_name is None:
                 self._actual_step_column_names_ |= names
@@ -1009,8 +1011,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             description.
         fit_params : dict or None, default=None
             Fit metadata passed to the forecaster's ``fit``. Together with
-            ``forecasting_horizon``, the keys the actual transformer requests are
-            routed to it.
+            ``forecasting_horizon``, the keys the target and actual transformers
+            each request are routed to them.
 
         Returns
         -------

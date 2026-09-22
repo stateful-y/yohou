@@ -21,6 +21,7 @@ Task-oriented recipes for common Yohou workflows. Each guide assumes you have co
 - [Evaluate Forecast Accuracy](evaluate-forecast-accuracy.md): Score predictions with point, interval, and classification metrics.
 - [Evaluate with Multi-vintage Scoring](multi-vintage-scoring.md): Generate forecasts from successive observation points and break down errors by vintage and horizon step.
 - [Tune Forecaster Hyperparameters](tune-hyperparameters.md): Search and tune forecaster hyperparameters with [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/).
+- [Enable Early Stopping](early-stopping.md): Hold out a validation tail with `validation_size` so gradient boosting estimators stop training when validation performance plateaus.
 
 ## Visualization
 

@@ -270,7 +270,7 @@ class TestSearchCheckFunctionsIntervalDelegation:
                 self.best_forecaster_ = object()
                 return self
 
-            def predict_interval(self, coverage_rates=None, X_future=None, X_forecast=None):
+            def predict_interval(self, coverage_rates=None, groups=None, X_future=None, X_forecast=None):
                 return pl.DataFrame({
                     "time": [datetime(2020, 1, 1), datetime(2020, 1, 2)],
                     "val_lower_0.9": [0.0, 1.0],
@@ -481,3 +481,50 @@ class TestSearchCheckTypeGuards:
         )
         with pytest.raises(ValueError, match="dict"):
             check_search_multimetric_scoring(gs, search_data)
+
+
+class TestMethodAvailabilityBranches:
+    """check_search_method_availability checks the prediction method the best forecaster has."""
+
+    def test_interval_only_forecaster_branch(self):
+        from datetime import datetime, timedelta
+
+        import numpy as np
+        from sklearn.linear_model import QuantileRegressor
+
+        from yohou.interval import IntervalReductionForecaster
+        from yohou.metrics.interval import IntervalScore
+        from yohou.preprocessing import LagTransformer
+
+        n = 120
+        times = pl.datetime_range(datetime(2020, 1, 1), datetime(2020, 1, 1) + timedelta(days=n - 1), "1d", eager=True)
+        y = pl.DataFrame({
+            "time": times,
+            "val": np.sin(np.arange(n) / 5.0) + np.random.default_rng(0).normal(0, 0.2, n),
+        })
+        search = GridSearchCV(
+            forecaster=IntervalReductionForecaster(
+                estimator=QuantileRegressor(solver="highs", alpha=0.0),
+                reduction_strategy="direct",
+                actual_transformer=LagTransformer(lag=[1, 2]),
+            ),
+            param_grid={"estimator__alpha": [0.0]},
+            scoring=IntervalScore(coverage_rates=[0.9]),
+            cv=ExpandingWindowSplitter(n_splits=2, test_size=10),
+        )
+        check_search_method_availability(search, y, forecasting_horizon=3)
+
+    def test_broken_predict_delegation_still_fails(self, search_data):
+        class BrokenPredictSearch(GridSearchCV):
+            @property
+            def predict(self):
+                raise AttributeError("predict delegation is broken")
+
+        search = BrokenPredictSearch(
+            forecaster=SeasonalNaive(),
+            param_grid={"seasonality": [1, 5]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        with pytest.raises(AssertionError, match="predict"):
+            check_search_method_availability(search, search_data, forecasting_horizon=3)
