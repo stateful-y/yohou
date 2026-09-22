@@ -376,13 +376,10 @@ stops on is weighted on the same basis as the loss it is fitting.
 Two things follow from where the split sits.
 
 First, the split is **temporal and leak-free by construction**. Transformers never see
-the tail before they are fitted, and no evaluation row is also a training row. By
-default only rows whose entire target window lies inside the tail are evaluated, giving
-`validation_size - forecasting_horizon + 1` rows. Setting `validation_overlap=True`
-adds the `forecasting_horizon - 1` boundary rows whose targets straddle the split,
-giving `validation_size` rows, at the cost of scoring some time points the model also
-trained on. That trade is worth making on short series with long horizons, where strict
-evaluation can consume most of the holdout.
+the tail before they are fitted, and no evaluation row is also a training row. Only
+rows whose entire target window lies inside the tail are evaluated, giving
+`validation_size - forecasting_horizon + 1` rows, so `validation_size` must be at least
+`forecasting_horizon`.
 
 Second, and less obvious: **the tail's information is spent on the stopping decision,
 not on the model**. Boosting libraries do not refit after they stop, so the model you

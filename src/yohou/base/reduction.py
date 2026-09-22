@@ -296,9 +296,9 @@ default="first_step"
     [ForecastedFeatureForecaster][yohou.compose.ForecastedFeatureForecaster]
     for that case.
 
-    Validation holdout (``validation_size``, ``validation_overlap``):
+    Validation holdout (``validation_size``):
 
-    These two parameters are declared by the families that expose them
+    This parameter is declared by the families that expose them
     ([`PointReductionForecaster`][yohou.point.reduction.PointReductionForecaster],
     [`ClassProbaReductionForecaster`][yohou.class_proba.reduction.ClassProbaReductionForecaster],
     and
@@ -339,8 +339,7 @@ default="first_step"
 
     - the estimator's fit (or, for a ``Pipeline``, its final step's fit)
       declares no evaluation-set parameter and no ``**kwargs``;
-    - ``validation_size`` is smaller than ``forecasting_horizon`` while
-      ``validation_overlap=False``;
+    - ``validation_size`` is smaller than ``forecasting_horizon``;
     - the head left after the split cannot build one training row;
     - ``validation_size`` and ``y_val`` are both set.
 
@@ -365,7 +364,6 @@ default="first_step"
     # _parameter_constraints across the MRO and a subclass cannot remove an
     # inherited key.
     validation_size: int | None
-    validation_overlap: bool
 
     _parameter_constraints: dict = {
         **BaseForecaster._parameter_constraints,
@@ -373,8 +371,8 @@ default="first_step"
         "reduction_strategy": [StrOptions({"direct", "dir-rec", "multi-output"})],
         "step_feature_alignment": [StrOptions({"all", "matched", "cumulative"})],
         "training_stride": [Interval(numbers.Integral, 1, None, closed="left")],
-        # validation_size/validation_overlap are declared by the families that
-        # expose them (point, interval, class_proba). Declaring them here would
+        # validation_size is declared by the families that
+        # expose it (point, interval, class_proba). Declaring them here would
         # leak them into every subclass through the MRO merge in
         # BaseForecaster.__init_subclass__, which cannot be undone downstream.
         "nan_handling": [StrOptions({"drop", "pass"})],
@@ -425,9 +423,9 @@ default="first_step"
         self.reduction_strategy = reduction_strategy
         self.step_feature_alignment = step_feature_alignment
         self.training_stride = training_stride
-        # validation_size/validation_overlap are assigned by the families that
-        # expose them (point, interval, class_proba), so a family that does not
-        # accept them carries no attribute sklearn's get_params cannot see.
+        # validation_size is assigned by the families that
+        # expose it (point, interval, class_proba), so a family that does not
+        # accept it carries no attribute sklearn's get_params cannot see.
         self.nan_handling = nan_handling
         self.n_jobs = n_jobs
         self.time_weighter = time_weighter
@@ -1602,20 +1600,20 @@ default="first_step"
         Raises
         ------
         ValueError
-            If ``validation_size < forecasting_horizon`` in strict mode, or
+            If ``validation_size < forecasting_horizon``, or
             the head left after the split cannot build one training row.
 
         """
         n = self.validation_size
         assert n is not None
-        if not self.validation_overlap and n < forecasting_horizon:
+        if n < forecasting_horizon:
             raise ValueError(
                 f"validation_size={n} is smaller than forecasting_horizon="
                 f"{forecasting_horizon}: no evaluation row's target window fits "
                 f"inside the holdout. Increase validation_size to at least "
-                f"{forecasting_horizon}, or set validation_overlap=True to "
-                f"evaluate boundary rows whose targets partially overlap the "
-                f"training data."
+                f"{forecasting_horizon}, reduce forecasting_horizon, or use "
+                f"validation='cv' in GridSearchCV/RandomizedSearchCV to early-stop "
+                f"on each fold's test window."
             )
         head = y.height - n
         min_head = forecasting_horizon + 1
@@ -1762,8 +1760,8 @@ default="first_step"
             If the window's columns differ from ``y``'s, the window does not
             start exactly one interval after ``y`` ends, ``X_actual`` and
             ``X_actual_val`` are not given together, the window is
-            shorter than ``forecasting_horizon`` in strict mode, or ``y`` is too
-            short to build one training row.
+            shorter than ``forecasting_horizon``, or ``y`` is too short to
+            build one training row.
 
         """
         if set(y_val.columns) != set(y.columns):
@@ -1797,13 +1795,14 @@ default="first_step"
                 f"start at {expected_start}, but it starts at {y_val['time'][0]}."
             )
         n = y_val.height
-        if not self.validation_overlap and n < forecasting_horizon:
+        if n < forecasting_horizon:
             raise ValueError(
                 f"y_val has {n} rows, fewer than forecasting_horizon="
                 f"{forecasting_horizon}: no evaluation row's target window fits "
-                f"inside it. Supply at least {forecasting_horizon} rows, or set "
-                f"validation_overlap=True to evaluate boundary rows whose targets "
-                f"partially overlap the training data."
+                f"inside it. Supply at least {forecasting_horizon} rows, reduce "
+                f"forecasting_horizon, or use validation='cv' in "
+                f"GridSearchCV/RandomizedSearchCV to early-stop on each fold's "
+                f"test window."
             )
         min_rows = forecasting_horizon + 1
         if y.height < min_rows:
@@ -2195,12 +2194,9 @@ default="first_step"
     ) -> _EvalSet:
         """Tabularize the boundary window into the evaluation pair.
 
-        In strict mode (``validation_overlap=False``) the evaluation anchors
-        are exactly those whose full target window lies in the tail:
-        ``validation_size - forecasting_horizon + 1`` rows, starting from the
-        last head row. With overlap, the ``forecasting_horizon - 1``
-        boundary anchors whose targets straddle the split are added,
-        yielding ``validation_size`` rows.
+        The evaluation anchors are exactly those whose full target window
+        lies in the tail: ``validation_size - forecasting_horizon + 1`` rows,
+        starting from the last head row.
 
         Parameters
         ----------
@@ -2236,7 +2232,7 @@ default="first_step"
         # The transformed head height was validated by
         # `_build_validation_eval_data` before the tail was observed.
         assert X_t is not None
-        head_rows = 1 if not self.validation_overlap else forecasting_horizon
+        head_rows = 1
         # The frames the pair is tabularized from, kept so the evaluation
         # weights are computed over exactly the same rows.
         windows: dict[str, pl.DataFrame] = {}
@@ -2403,7 +2399,7 @@ default="first_step"
         # Validate the transformed head BEFORE the tail is observed, so this
         # failure mode joins the others that raise before any observation
         # state changes (the tail observation is irreversible).
-        head_rows = 1 if not self.validation_overlap else forecasting_horizon
+        head_rows = 1
         heads = [y_t] if self.groups_ is None else [y_t[g] for g in self.groups_]
         for head_frame in heads:
             assert isinstance(head_frame, pl.DataFrame)

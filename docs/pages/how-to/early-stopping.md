@@ -88,7 +88,7 @@ forecaster.fit(y=y, forecasting_horizon=24)
 After fitting, the forecaster has observed the tail, so `predict()` forecasts
 the period after the end of all provided data, exactly as without a holdout.
 
-By default only rows whose entire target window lies inside the tail are
+Only rows whose entire target window lies inside the tail are
 evaluated (`validation_size - forecasting_horizon + 1` rows), which requires
 `validation_size >= forecasting_horizon`. An estimator whose `fit` accepts no
 `eval_set` (most plain sklearn estimators), a `sklearn.multioutput` wrapper,
@@ -110,27 +110,7 @@ for step, est in enumerate(forecaster.estimator_, start=1):
 
 With `"multi-output"`, `estimator_` is the single fitted estimator.
 
-## 4. Short Series: `validation_overlap`
-
-Strict evaluation discards the `forecasting_horizon - 1` boundary rows whose
-target windows straddle the split, which on short series with long horizons
-can consume most of the holdout. Set `validation_overlap=True` to evaluate
-those rows too, yielding `validation_size` rows. See
-[Validation Holdout](../explanation/reduction-forecasting.md#validation-holdout)
-for what that trades away:
-
-```python
-short_series_forecaster = PointReductionForecaster(
-    estimator=estimator,
-    reduction_strategy="direct",
-    actual_transformer=LagTransformer(lag=[1, 2, 24]),
-    validation_size=30,
-    validation_overlap=True,
-)
-short_series_forecaster.fit(y=y, forecasting_horizon=24)
-```
-
-## 5. Wrap the Estimator in a Pipeline
+## 4. Wrap the Estimator in a Pipeline
 
 An estimator that needs preprocessing of its own can be a
 `sklearn.pipeline.Pipeline`, as long as its final step accepts `eval_set`:
@@ -160,7 +140,7 @@ metric is comparable to the training loss. `estimator_` stays a fitted
 the `"direct"` strategy). A pipeline whose final step cannot accept an
 `eval_set`, or that ends in `"passthrough"`, is rejected at fit.
 
-## 6. Early-Stop Interval Forecasters
+## 5. Early-Stop Interval Forecasters
 
 [`IntervalReductionForecaster`](/pages/api/generated/yohou.interval.IntervalReductionForecaster/)
 takes the same `validation_size` parameter. The holdout splits once, and every
@@ -199,7 +179,7 @@ The default interval estimator (`MultiOutputRegressor(QuantileRegressor())`)
 cannot receive an evaluation set and is rejected with `validation_size` set;
 pick an eval-capable quantile estimator as above.
 
-## 7. Refit on the Full Series
+## 6. Refit on the Full Series
 
 The fitted model was trained on the head alone. To get one trained on
 everything, read the discovered iteration count and refit without the
@@ -219,9 +199,9 @@ final.fit(y=y, forecasting_horizon=24)
 ```
 
 Inside a hyperparameter search the iteration count can be chosen for you; see
-[Early Stop Inside a Search](#9-early-stop-inside-a-search).
+[Early Stop Inside a Search](#8-early-stop-inside-a-search).
 
-## 8. Pass Your Own Evaluation Window
+## 7. Pass Your Own Evaluation Window
 
 When you already hold the evaluation data separately, for example the next
 period of a manual backtest, pass it to `fit` as `y_val` instead of
@@ -251,7 +231,7 @@ though, and is rejected without it, because a forecaster fitted without
 external forecasts derives no feature from them. `y_val` and `validation_size`
 cannot be combined.
 
-## 9. Early Stop Inside a Search
+## 8. Early Stop Inside a Search
 
 [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and
 [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/)

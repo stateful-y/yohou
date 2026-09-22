@@ -312,7 +312,7 @@ class TestDeliveryShape:
 
 
 class TestBoundaryPolicy:
-    """Strict versus overlap anchor selection."""
+    """Evaluation anchor selection."""
 
     def test_strict_no_training_target_overlap(self):
         y = _make_y()
@@ -327,38 +327,13 @@ class TestBoundaryPolicy:
         assert eval_targets.min() >= head_len
         assert len(_eval_pair(est)[0]) == STRICT_ROWS
 
-    def test_overlap_adds_straddling_rows(self):
-        y = _make_y()
-        forecaster = PointReductionForecaster(
-            estimator=RecordingRegressor(), validation_size=VAL_SIZE, validation_overlap=True
-        )
-        forecaster.fit(y=y, forecasting_horizon=HORIZON)
-        est = forecaster.estimator_
-        X_eval, y_eval = _eval_pair(est)
-        assert len(X_eval) == VAL_SIZE
-        head_len = LENGTH - VAL_SIZE
-        eval_targets = np.asarray(y_eval, dtype=float)
-        # The straddling anchors pull head time points into the eval targets.
-        assert eval_targets.min() < head_len
-
-    def test_overlap_allows_small_holdout(self):
-        y = _make_y()
-        forecaster = PointReductionForecaster(
-            estimator=RecordingRegressor(), validation_size=2, validation_overlap=True
-        )
-        forecaster.fit(y=y, forecasting_horizon=HORIZON)
-        assert len(_eval_pair(forecaster.estimator_)[0]) == 2
-
-    @pytest.mark.parametrize("overlap", [False, True], ids=["strict", "overlap"])
-    def test_horizon_one_evaluates_the_whole_tail(self, overlap):
-        """At horizon 1 the strict window is the full tail, so both modes agree.
+    def test_horizon_one_evaluates_the_whole_tail(self):
+        """At horizon 1 the evaluation window is the full tail.
 
         This is the boundary where VAL_SIZE - HORIZON + 1 == VAL_SIZE and the
         ``n < forecasting_horizon`` guard becomes vacuous.
         """
-        forecaster = PointReductionForecaster(
-            estimator=RecordingRegressor(), validation_size=VAL_SIZE, validation_overlap=overlap
-        )
+        forecaster = PointReductionForecaster(estimator=RecordingRegressor(), validation_size=VAL_SIZE)
         forecaster.fit(y=_make_y(), forecasting_horizon=1)
         X_eval, y_eval = _eval_pair(forecaster.estimator_)
         assert len(X_eval) == VAL_SIZE
@@ -564,7 +539,7 @@ class TestErrorContract:
             )
 
     def test_strict_holdout_too_small(self):
-        with pytest.raises(ValueError, match="validation_overlap"):
+        with pytest.raises(ValueError, match="is smaller than forecasting_horizon"):
             PointReductionForecaster(estimator=RecordingRegressor(), validation_size=HORIZON - 1).fit(
                 y=_make_y(), forecasting_horizon=HORIZON
             )
@@ -691,7 +666,7 @@ class TestPipelineEstimator:
 
 
 class TestParameterOwnership:
-    """All three reduction families expose and round-trip the holdout parameters."""
+    """All three reduction families expose and round-trip the holdout parameter."""
 
     @pytest.mark.parametrize(
         "cls, estimator",
@@ -703,10 +678,9 @@ class TestParameterOwnership:
         ids=["point", "class_proba", "interval"],
     )
     def test_exposing_families_round_trip(self, cls, estimator):
-        forecaster = cls(estimator=estimator, validation_size=VAL_SIZE, validation_overlap=True)
+        forecaster = cls(estimator=estimator, validation_size=VAL_SIZE)
         params = forecaster.get_params(deep=False)
         assert params["validation_size"] == VAL_SIZE
-        assert params["validation_overlap"] is True
         assert clone(forecaster).get_params(deep=False)["validation_size"] == VAL_SIZE
 
 
@@ -1190,13 +1164,12 @@ class TestErrorOrdering:
     def test_transformed_head_too_short_raises_before_tail_observed(self):
         y = _make_y()
         head_len = LENGTH - VAL_SIZE
-        # Seasonality head_len - 2 leaves a 2-row transformed head; overlap
-        # mode needs HORIZON (3) anchor rows, so the eval-window check fires.
+        # Seasonality head_len leaves an empty transformed head, which cannot
+        # supply the one anchor row the eval-window check needs.
         forecaster = PointReductionForecaster(
             estimator=RecordingRegressor(),
-            target_transformer=SeasonalDifferencing(seasonality=head_len - 2),
+            target_transformer=SeasonalDifferencing(seasonality=head_len),
             validation_size=VAL_SIZE,
-            validation_overlap=True,
         )
         with pytest.raises(ValueError, match="transformed head has"):
             forecaster.fit(y=y, forecasting_horizon=HORIZON)
@@ -1271,13 +1244,11 @@ class TestIntervalFamily:
         MultiQuantile requires a single target column at horizon 1, so this is
         the one interval path that never splits into lower/upper estimators.
         """
-        forecaster = IntervalReductionForecaster(
-            estimator=MultiQuantileStub(), validation_size=VAL_SIZE, validation_overlap=True
-        )
+        forecaster = IntervalReductionForecaster(estimator=MultiQuantileStub(), validation_size=VAL_SIZE)
         forecaster.fit(y=_make_y(), forecasting_horizon=1, coverage_rates=[0.9])
         assert list(forecaster.estimator_) == ["_multiquantile"]
         X_eval, _ = _eval_pair(forecaster.estimator_["_multiquantile"])
-        # Horizon 1: strict and overlap both evaluate the whole tail.
+        # Horizon 1 evaluates the whole tail.
         assert len(X_eval) == VAL_SIZE
 
     def test_validation_fit_equals_fit_then_observe(self):
@@ -1670,14 +1641,12 @@ class TestEvaluationWeights:
         with pytest.warns(UnweightedEvaluationSetWarning, match="EvalXRegressor"):
             forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
 
-    @pytest.mark.parametrize("overlap", [False, True])
-    def test_weight_count_matches_rows_under_both_overlap_settings(self, overlap):
-        forecaster = _weighted(WeightRecordingRegressor(), validation_overlap=overlap)
+    def test_weight_count_matches_rows(self):
+        forecaster = _weighted(WeightRecordingRegressor())
         forecaster.fit(y=_make_y(), forecasting_horizon=HORIZON)
-        expected = VAL_SIZE if overlap else STRICT_ROWS
         for estimator in forecaster.estimator_:
             weights = _delivered_weights(estimator)
-            assert len(weights) == len(_eval_pair(estimator)[0]) == expected
+            assert len(weights) == len(_eval_pair(estimator)[0]) == STRICT_ROWS
 
     def test_no_weighter_passes_no_weights(self):
         forecaster = PointReductionForecaster(
