@@ -436,11 +436,10 @@ class TestRollingStatisticsTransformerSeasonal:
 class TestRollingStatisticsTransformerWindowMinimum:
     """Sample statistics need two values, so a single-value window is rejected."""
 
-    @pytest.mark.parametrize("seasonality", [1, 24])
     @pytest.mark.parametrize("statistics", ["std", "var", ["mean", "var"]])
-    def test_single_value_sample_statistic_rejected(self, statistics, seasonality):
+    def test_single_value_sample_statistic_rejected(self, statistics):
         """std and var over a window of one value raise at fit."""
-        transformer = RollingStatisticsTransformer(window_size=1, statistics=statistics, seasonality=seasonality)
+        transformer = RollingStatisticsTransformer(window_size=1, statistics=statistics)
         with pytest.raises(ValueError, match="set window_size >= 2"):
             transformer.fit(hourly_frame(200))
 

@@ -288,7 +288,11 @@ def _check_validation_holdout_delivery(
     Raises
     ------
     AssertionError
-        On any violation listed by `check_validation_holdout_fit`.
+        If no evaluation set reaches the estimator, the evaluation rows or
+        columns differ from what the holdout implies, a strict-mode evaluation
+        row is also a training row, the quantile estimators receive different
+        evaluation pairs, or the observation state does not end at the data
+        end.
 
     """
     cloned = clone(forecaster)
