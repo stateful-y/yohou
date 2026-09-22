@@ -77,13 +77,6 @@ class TestReductionChecks:
         check_reduction_strategy(estimator)
 
 
-class _WrongOverlapDefault(PointReductionForecaster):
-    """Reduction forecaster whose ``validation_overlap`` defaults to True."""
-
-    def __init__(self, estimator=LinearRegression(), *, validation_size=None, validation_overlap=True):
-        super().__init__(estimator, validation_size=validation_size, validation_overlap=validation_overlap)
-
-
 class _RewritingEvalForecaster(PointReductionForecaster):
     """Reduction forecaster that rewrites the evaluation pair before delivery."""
 
@@ -156,10 +149,6 @@ class TestValidationHoldoutChecks:
         check_validation_holdout_parameters(forecaster)
         check_validation_holdout_fit(forecaster, y)
         check_validation_holdout_default_noop(forecaster, y)
-
-    def test_parameters_wrong_default(self):
-        with pytest.raises(AssertionError, match="validation_overlap must default to False"):
-            check_validation_holdout_parameters(_WrongOverlapDefault())
 
     def test_parameters_missing(self):
         with pytest.raises(AssertionError, match="validation_size must be a constructor parameter"):

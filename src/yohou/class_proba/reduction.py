@@ -101,16 +101,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the trade-off, the ``Pipeline`` handling, and the other rejected
         configurations.
-    validation_overlap : bool, default=False
-        Applies to whichever holdout is active (``validation_size`` or
-        ``y_val``). By default only rows whose entire target window lies
-        inside the held-out tail are evaluated (with ``validation_size``,
-        ``validation_size - forecasting_horizon + 1`` rows). When ``True``,
-        the ``forecasting_horizon - 1`` boundary rows whose target windows
-        straddle the split are also evaluated (with ``validation_size``,
-        ``validation_size`` rows); those rows score some time points the
-        model also trained on, trading evaluation purity for data on short
-        series.
+        Only rows whose entire target window lies inside the tail are
+        evaluated (``validation_size - forecasting_horizon + 1`` rows), so
+        ``validation_size`` must be at least ``forecasting_horizon``.
     nan_handling : {"drop", "pass"}, default="pass"
         How to handle NaN values in tabularized data.
         ``"pass"`` leaves NaN in place (suitable for estimators that
@@ -193,7 +186,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         "estimator": [HasMethods(["fit", "predict", "predict_proba"])],
         "reduction_strategy": [StrOptions({"direct", "multi-output"})],
         "validation_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
-        "validation_overlap": ["boolean"],
     }
 
     _supports_panel = True
@@ -211,7 +203,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         step_feature_alignment: Literal["all", "matched", "cumulative"] = "all",
         training_stride: int = 1,
         validation_size: int | None = None,
-        validation_overlap: bool = False,
         nan_handling: Literal["drop", "pass"] = "pass",
         n_jobs: int | None = None,
         panel_strategy: Literal["global", "multivariate"] = "global",
@@ -238,7 +229,6 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             sample_weight_alignment=sample_weight_alignment,
         )
         self.validation_size = validation_size
-        self.validation_overlap = validation_overlap
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(
@@ -289,8 +279,9 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
             builds that pair from it.
             The window is not training data: after fitting, the observation
             state ends at the last time of ``y``, exactly as without it.
-            Mutually exclusive with ``validation_size``; ``validation_overlap``
-            applies as it does to the ``validation_size`` tail.
+            Mutually exclusive with ``validation_size``. Only rows whose
+            entire target window lies inside it are evaluated, so it needs at
+            least ``forecasting_horizon`` rows.
         X_actual_val : pl.DataFrame or None, default=None
             Actual feature rows covering the ``y_val`` window. Required
             when ``X_actual`` is given, rejected otherwise.

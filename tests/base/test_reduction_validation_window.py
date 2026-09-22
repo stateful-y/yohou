@@ -424,7 +424,7 @@ class TestRejectedConfigurations:
     def test_strict_window_too_small(self):
         head, tail = _split(_make_y(), n=HORIZON - 1)
         forecaster = PointReductionForecaster(estimator=RecordingRegressor())
-        self._fit_raises(forecaster, "validation_overlap", y=head, y_val=tail)
+        self._fit_raises(forecaster, "fewer than forecasting_horizon", y=head, y_val=tail)
 
     def test_raw_eval_set_conflict(self):
         head, tail = _split(_make_y())
