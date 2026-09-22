@@ -139,6 +139,20 @@ class TransformerTags:
         take the maximum across a union and the sum across a pipeline; batch invariance
         is a conjunction in both cases, because one non-causal member is enough to make
         the whole output depend on future rows.
+    produces_step_columns : bool, default=False
+        Whether the transformer emits step columns, named ``{base}_step_1`` through
+        ``{base}_step_H`` for the forecasting horizon ``H``, each describing one
+        forecast step rather than the forecast origin.
+
+        This is independent of ``kind``. ``kind`` describes the frame a transformer
+        consumes and produces: a step-output transformer such as
+        [`HorizonRollingStatisticsTransformer`][yohou.preprocessing.window.HorizonRollingStatisticsTransformer]
+        is actual-kind, reading and writing a single-axis frame, whereas step-kind
+        transformers consume step columns that already exist. A reduction forecaster
+        reads this tag on its ``actual_transformer`` to recognise such columns, so that
+        ``step_feature_alignment`` filters them per step exactly like step columns
+        derived from ``X_future`` or ``X_forecast``. Composites declare it when any
+        child does.
 
     """
 
@@ -148,6 +162,7 @@ class TransformerTags:
     kind: Literal["actual", "forecast", "step"] = "actual"
     accepts_irregular_grid: bool = False
     batch_invariant: bool = False
+    produces_step_columns: bool = False
 
 
 @dataclass
@@ -199,6 +214,13 @@ class ForecasterTags:
         (update extends _y_observed, reset replaces it). Set to False for
         meta-forecasters like DecompositionPipeline that delegate observation tracking
         to child forecasters with custom residual-based logic.
+    holdout_size : int, default=0
+        Number of trailing rows of the fit data that the point predictions are
+        not learned from. A split-conformal forecaster fits its point
+        forecaster on the rows before its calibration stretch, so it declares
+        ``calibration_size`` plus its point forecaster's value; a composite
+        declares the largest value among its children. Train scores use it to
+        score rows the model actually learned from.
 
     """
 
@@ -214,6 +236,7 @@ class ForecasterTags:
     supports_vintage_weight: bool = False
     requires_exogenous: bool = True
     tracks_observations: bool = True
+    holdout_size: int = 0
 
     _VALID_FORECASTER_TYPE_ELEMENTS: ClassVar[frozenset[str]] = frozenset({"point", "interval", "class_proba"})
 

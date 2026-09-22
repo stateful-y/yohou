@@ -216,6 +216,8 @@ class LocalPanelForecaster(BaseForecaster):
             tags.forecaster_tags.uses_target_transformer = child_tags.forecaster_tags.uses_target_transformer
             tags.forecaster_tags.uses_actual_transformer = child_tags.forecaster_tags.uses_actual_transformer
             tags.forecaster_tags.uses_forecast_transformer = child_tags.forecaster_tags.uses_forecast_transformer
+            # Every group's copy has the wrapped forecaster's parameters, so they all hold back the same rows.
+            tags.forecaster_tags.holdout_size = child_tags.forecaster_tags.holdout_size
 
         tags.forecaster_tags.supports_panel_data = True
         tags.forecaster_tags.tracks_observations = False

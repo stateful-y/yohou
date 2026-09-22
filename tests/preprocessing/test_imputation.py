@@ -81,7 +81,7 @@ class TestSeasonalImputer:
 
     def test_systematic_checks(self, time_series_train_test_factory):
         """Run all systematic checks for SeasonalImputer."""
-        transformer = SeasonalImputer(period=7, fill_method="seasonal_mean")
+        transformer = SeasonalImputer(seasonality=7, fill_method="seasonal_mean")
 
         X_train, X_test = time_series_train_test_factory(train_length=100, test_length=50)
 
@@ -95,7 +95,7 @@ class TestSeasonalImputer:
     def test_seasonal_mean_fills_nulls(self, time_series_with_nulls_factory):
         """Test SeasonalImputer seasonal_mean fills nulls."""
         X = time_series_with_nulls_factory(length=70, n_components=1, null_fraction=0.1)
-        imputer = SeasonalImputer(period=7, fill_method="seasonal_mean")
+        imputer = SeasonalImputer(seasonality=7, fill_method="seasonal_mean")
         imputer.fit(X)
         X_imputed = imputer.transform(X)
 
@@ -115,12 +115,12 @@ class TestSeasonalImputer:
             interval="1d",
             eager=True,
         )
-        # period=2: even rows are season 0, odd rows season 1. Season 0 has no
+        # seasonality=2: even rows are season 0, odd rows season 1. Season 0 has no
         # observations at fit, so its positions cannot be imputed.
         values = [None, 1.0, None, 2.0, None, 3.0, None, 4.0, None, 5.0]
         X = pl.DataFrame({"time": time, "value": values})
 
-        imputer = SeasonalImputer(period=2, fill_method="seasonal_mean")
+        imputer = SeasonalImputer(seasonality=2, fill_method="seasonal_mean")
         imputer.fit(X)
         X_imputed = imputer.transform(X)
 
@@ -378,7 +378,7 @@ class TestSeasonalImputerMedian:
     def test_seasonal_median(self, time_series_with_nulls_factory):
         """seasonal_median uses median instead of mean for imputation."""
         X = time_series_with_nulls_factory(length=70, n_components=1, null_fraction=0.1, seed=42)
-        imputer = SeasonalImputer(period=7, fill_method="seasonal_median")
+        imputer = SeasonalImputer(seasonality=7, fill_method="seasonal_median")
         imputer.fit(X)
         X_imputed = imputer.transform(X)
         assert X_imputed.null_count().sum_horizontal().item() == 0
@@ -394,7 +394,7 @@ class TestSeasonalImputerIrregularInterval:
         values[3] = None  # introduce a gap
         X = pl.DataFrame({"time": time, "val": values})
 
-        imputer = SeasonalImputer(period=12, fill_method="seasonal_mean")
+        imputer = SeasonalImputer(seasonality=12, fill_method="seasonal_mean")
         imputer.fit(X)
         assert imputer._step_seconds_ is None
 
@@ -410,14 +410,20 @@ class TestSeasonalImputerIrregularInterval:
         The transform output must keep that position as a polars null and must
         not emit a float NaN.
         """
-        # Only 3 monthly points but period=12, so seasons 3..11 have no rows at all.
+        # Only 3 monthly points but seasonality=12, so seasons 3..11 have no rows at all.
         time = pl.datetime_range(start=datetime(2020, 1, 1), end=datetime(2020, 3, 1), interval="1mo", eager=True)
         X = pl.DataFrame({"time": time, "val": [1.0, None, 3.0]})
 
-        imputer = SeasonalImputer(period=12, fill_method="seasonal_mean")
+        imputer = SeasonalImputer(seasonality=12, fill_method="seasonal_mean")
         imputer.fit(X)
         X_imputed = imputer.transform(X)
 
         # The un-imputable row stays null; the observed rows pass through unchanged.
         assert X_imputed["val"].to_list() == [1.0, None, 3.0]
         assert X_imputed["val"].is_nan().sum() == 0
+
+
+def test_seasonal_imputer_rejects_period():
+    """The season length is ``seasonality``; the old ``period`` keyword no longer exists."""
+    with pytest.raises(TypeError):
+        SeasonalImputer(period=24)

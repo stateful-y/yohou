@@ -402,6 +402,10 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             tags.forecaster_tags.supports_panel_data = all(
                 getattr(child.__sklearn_tags__().forecaster_tags, "supports_panel_data", True) for child in children
             )
+            # The stretch a train score may use must be learned-from by every child.
+            tags.forecaster_tags.holdout_size = max(
+                (getattr(f.__sklearn_tags__().forecaster_tags, "holdout_size", 0) for f in children), default=0
+            )
 
         return tags
 

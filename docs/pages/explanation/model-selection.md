@@ -143,7 +143,13 @@ For richer output, [`cross_validate`](/pages/api/generated/yohou.model_selection
 
 When a dictionary of scorers is passed, the score columns follow the pattern `test_{name}` and (if requested) `train_{name}` for each scorer name, so a `{"mae": ..., "rmse": ...}` mapping yields `test_mae` and `test_rmse` columns alongside the timing columns. This makes it possible to confirm that a model's ranking is robust across metric families rather than an artifact of one summary statistic.
 
-`return_train_score` defaults to `False` to save computation, since training scores require an additional scoring pass over the (often much larger) training set.
+`return_train_score` defaults to `False` to save computation, since each fold then predicts over a second stretch of data.
+
+A train score is not a score over the whole training set. A forecaster predicts forward from an origin, so the train score is measured the way the test score is: the fitted forecaster is rewound to an earlier point in the training window and walked forward over a stretch as long as the test window, with the same horizon, stride and coverage rates, and without refitting. The train-versus-test gap then compares like with like.
+
+The stretch ends where the forecaster stopped learning, not always at the end of the training window. [`SplitConformalForecaster`](/pages/api/generated/yohou.interval.SplitConformalForecaster/) fits its point forecaster on everything except its last `calibration_size` rows and uses those rows only to size its intervals. Scoring them would measure point forecasts the model never trained on, against intervals sized on those same rows. Every forecaster declares how many trailing rows it holds back in its `holdout_size` [tag](../reference/tags.md), and the scored stretch ends before them. For a forecaster that holds nothing back, the scored rows are the last rows of the training window.
+
+When a fold's training window is no longer than the test window plus the held-back rows, no such stretch exists. That fold's train score is `NaN`, with a warning naming the three lengths, rather than a score over other rows. Expect this on the first folds of an expanding-window split with a large test window.
 
 ### Obtaining Predictions by Cross-Validation
 
@@ -170,7 +176,7 @@ search.fit(y, X_actual=X, forecasting_horizon=7)
 
 For each candidate parameter combination, the search clones the forecaster, fits it on the training fold, and evaluates predictions on the test fold using the provided scorer. Results accumulate into `cv_results_`, a dictionary of NumPy arrays containing per-fold scores (`split0_test_score`, `split1_test_score`, ...), mean and standard deviation across folds, rankings, parameter values, and timing information. Scores follow a "higher is better" sign convention: metrics where lower values are better (like MAE) are negated in `cv_results_` so that the best candidate always has the highest mean score.
 
-`best_params_` holds the winning parameter combination, `best_score_` the corresponding mean score, and `best_index_` points into the `cv_results_` arrays. Setting `return_train_score=True` adds training scores to the results, which is useful for diagnosing overfitting but requires the forecaster to support `rewind()`.
+`best_params_` holds the winning parameter combination, `best_score_` the corresponding mean score, and `best_index_` points into the `cv_results_` arrays. Setting `return_train_score=True` adds training scores to the results, computed as described for [`cross_validate`](#the-cross_validate-function). They are useful for diagnosing overfitting but require the forecaster to support `rewind()`.
 
 ### Refitting and Using the Best Model
 

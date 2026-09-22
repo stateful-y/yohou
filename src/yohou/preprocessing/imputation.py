@@ -521,8 +521,8 @@ class SeasonalImputer(BaseActualTransformer):
 
     Parameters
     ----------
-    period : int
-        Seasonal period (e.g., 7 for weekly, 12 for monthly with annual seasonality).
+    seasonality : int
+        Season length in rows (e.g., 7 for weekly, 12 for monthly with annual seasonality).
         Must be >= 2.
     fill_method : {"seasonal_mean", "seasonal_median"}, default="seasonal_mean"
         Method to compute seasonal values:
@@ -532,7 +532,7 @@ class SeasonalImputer(BaseActualTransformer):
     Attributes
     ----------
     seasonal_values_ : dict
-        Dictionary mapping column names to seasonal value arrays of shape (period,).
+        Dictionary mapping column names to seasonal value arrays of shape (seasonality,).
 
     Examples
     --------
@@ -546,9 +546,9 @@ class SeasonalImputer(BaseActualTransformer):
     ...     "time": [datetime(2020, 1, i) for i in range(1, 15)],
     ...     "value": [10.0, 20.0, 30.0, 25.0, 15.0, 5.0, 8.0, np.nan, 21.0, 31.0, np.nan, 16.0, 6.0, 9.0],
     ... })
-    >>> imputer = SeasonalImputer(period=7)
+    >>> imputer = SeasonalImputer(seasonality=7)
     >>> imputer.fit(X)
-    SeasonalImputer(period=7)
+    SeasonalImputer(seasonality=7)
     >>> X_imputed = imputer.transform(X)
     >>> X_imputed["value"].null_count()
     0
@@ -558,12 +558,18 @@ class SeasonalImputer(BaseActualTransformer):
     - [`SimpleTimeImputer`][yohou.preprocessing.imputation.SimpleTimeImputer] : Interpolation-based imputation.
     - [`SimpleImputer`][yohou.preprocessing.imputation.SimpleImputer] : Simple constant-strategy imputation.
 
+    Notes
+    -----
+    The season length parameter was called ``period`` up to yohou 0.1.0a12; it is
+    ``seasonality``, like every other seasonal estimator. Replace
+    ``SeasonalImputer(period=24)`` with ``SeasonalImputer(seasonality=24)``.
+
     """
 
     _valid_fill_methods = {"seasonal_mean", "seasonal_median"}
 
     _parameter_constraints: dict = {
-        "period": [Interval(numbers.Integral, 2, None, closed="left")],
+        "seasonality": [Interval(numbers.Integral, 2, None, closed="left")],
         "fill_method": [StrOptions(_valid_fill_methods)],
     }
 
@@ -571,25 +577,25 @@ class SeasonalImputer(BaseActualTransformer):
 
     def __init__(
         self,
-        period: int,
+        seasonality: int,
         fill_method: str = "seasonal_mean",
     ):
-        self.period = period
+        self.seasonality = seasonality
         self.fill_method = fill_method
 
     def _season_index_expr(self) -> pl.Expr:
         """Build a polars expression for the time-anchored season index.
 
         The index counts whole sampling steps between each timestamp and the
-        first fitted timestamp, modulo ``period``. This keeps the seasonal
+        first fitted timestamp, modulo ``seasonality``. This keeps the seasonal
         bucket of any timestamp stable regardless of where a transform slice
         starts.
         """
         if self._step_seconds_ is None:
             # Irregular interval: fall back to row position within the frame.
-            return pl.arange(0, pl.len()) % self.period
+            return pl.arange(0, pl.len()) % self.seasonality
         offset = (pl.col("time") - self._first_time_).dt.total_seconds() / self._step_seconds_
-        return (offset.round().cast(pl.Int64) % self.period).cast(pl.Int64)
+        return (offset.round().cast(pl.Int64) % self.seasonality).cast(pl.Int64)
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None, **params) -> "SeasonalImputer":
@@ -642,8 +648,8 @@ class SeasonalImputer(BaseActualTransformer):
         stats_by_season = {row["_season_idx"]: row for row in season_stats.to_dicts()}
 
         for col_name in data_cols:
-            seasonal_vals = np.full(self.period, np.nan)
-            for season_idx in range(self.period):
+            seasonal_vals = np.full(self.seasonality, np.nan)
+            for season_idx in range(self.seasonality):
                 row = stats_by_season.get(season_idx)
                 if row is not None and row[col_name] is not None:
                     seasonal_vals[season_idx] = row[col_name]

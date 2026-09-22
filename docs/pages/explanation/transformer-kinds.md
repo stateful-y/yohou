@@ -28,6 +28,14 @@ The step frame is also the only place in the pipeline where "the H values ahead 
 
 [How to Reduce Forecast Step Features](../how-to/reduce-step-features.md) covers what to do with the kind in practice.
 
+## Producing Step Columns Without Being Step-Kind
+
+Kind describes the frame a transformer consumes and produces, not what its columns mean, and one transformer family shows why the two must be kept apart. [`HorizonRollingStatisticsTransformer`](/pages/api/generated/yohou.preprocessing.HorizonRollingStatisticsTransformer/) reads the history of a single-axis frame and writes a single-axis frame, so it is actual-kind and lives in `actual_transformer`. Yet every column it writes is a step column: `price_s24_mean_step_4` is the mean of the last seven days at the hour four steps ahead, a value about step 4 and no other.
+
+It cannot be step-kind, because the step frame has no history. The quantity it computes needs the past values of the series at each step's position in the season, and only an actual-kind transformer, with its observation horizon and its memory between calls, can reach them. So the family is identified by a separate tag, `produces_step_columns`, and by a name prefix: `Horizon*` transformers produce step columns from history, while `Step*` transformers consume step columns that already exist. A reduction forecaster reads the tag to recognise these columns, so that `step_feature_alignment` filters them per step exactly as it filters step columns derived from `X_future` and `X_forecast`.
+
+The distinction between a feature anchored to the forecast origin and one anchored to a target time also changes how late-arriving data must be handled. For an origin-anchored feature, lagging the input by the publication delay is exact: a 24-hour rolling mean of a series lagged 14 hours is truthfully "the level over the last day of published data". For a target-anchored step column the same lag changes what the column means. The column still says "step 4, 14:00", but its values now come from 00:00. Only a lag of a whole number of seasons preserves the position, which is why these transformers must receive their input unlagged and must be the last step of a pipeline, and why the forecaster rejects a fit in which the declared step columns have been renamed away.
+
 ## Kind and Statefulness Are Orthogonal
 
 Statefulness is Yohou's other transformer axis: a stateful transformer keeps a bounded buffer of recent rows and declares how many it needs through its `observation_horizon`, while a stateless transformer's output depends only on its fitted parameters and the current input. The two axes are independent, though not every cell is occupied:

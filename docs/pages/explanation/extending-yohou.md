@@ -221,6 +221,16 @@ automatically sets `stateful=True` when `target_transformer` or
 intrinsically stateful (independent of its transformers) overrides
 `__sklearn_tags__()` to set `forecaster_tags.stateful = True` directly.
 
+`forecaster_tags.holdout_size` works the same way. A forecaster that fits its
+point predictions on only part of the data it receives, leaving a trailing
+stretch aside, declares that stretch's length; `SplitConformalForecaster`
+declares `calibration_size` plus its point forecaster's value. A composite
+declares the largest value among its children, next to where it combines
+`stateful`. Train scores rely on it to score rows the model actually learned
+from, and a composite that forgets to combine it silently declares `0`, so
+the test suite builds every composite around a child that holds rows back
+and checks the value it declares.
+
 For the full list of available tags and how they interact with discovery and
 testing, see [Tags](../reference/tags.md).
 

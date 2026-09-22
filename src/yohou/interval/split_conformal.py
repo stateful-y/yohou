@@ -170,13 +170,21 @@ class SplitConformalForecaster(BaseIntervalForecaster):
         -------
         Tags
             Estimator tags with forecaster_type set to POINT_INTERVAL since this
-            forecaster produces both point predictions and intervals.
+            forecaster produces both point predictions and intervals, and
+            ``holdout_size`` covering the calibration stretch the point
+            forecaster is not fitted on.
 
         """
         tags = super().__sklearn_tags__()
         assert tags.forecaster_tags is not None
         # SplitConformal wraps a point forecaster and adds intervals
         tags.forecaster_tags.forecaster_type = POINT_INTERVAL
+        # The point forecaster is fitted on the rows before the calibration stretch,
+        # so those rows, plus whatever the point forecaster itself holds back, are
+        # never learned from.
+        point = self.point_forecaster_ if hasattr(self, "point_forecaster_") else self.point_forecaster
+        point_tags = point.__sklearn_tags__().forecaster_tags if point is not None else None
+        tags.forecaster_tags.holdout_size = self.calibration_size + (point_tags.holdout_size if point_tags else 0)
         return tags
 
     def get_metadata_routing(self) -> MetadataRouter:

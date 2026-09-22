@@ -516,6 +516,13 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
                     t.__sklearn_tags__().transformer_tags.stateful for t in transformers
                 )
 
+                # Emits step columns if any child does. A disjunction like ``stateful``: a
+                # reduction forecaster reads this to look for ``{base}_step_h`` outputs, and
+                # it validates at fit that the declared columns are actually present.
+                tags.transformer_tags.produces_step_columns = any(
+                    t.__sklearn_tags__().transformer_tags.produces_step_columns for t in transformers
+                )
+
                 # Invertible if all steps are invertible
                 tags.transformer_tags.invertible = all(
                     t.__sklearn_tags__().transformer_tags.invertible for t in transformers
