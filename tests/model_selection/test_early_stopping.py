@@ -487,9 +487,10 @@ class TestValidate:
     def test_lightgbm_repeated_metric_name_is_one_metric(self):
         LightGBMEarlyStoppingAdapter().validate(lightgbm.LGBMRegressor(metric="l1"), fit_params={"eval_metric": ["l1"]})
 
-    def test_xgboost_dart_rejected(self):
-        with pytest.raises(ValueError, match="dart"):
-            XGBoostEarlyStoppingAdapter().validate(xgboost.XGBRegressor(booster="dart"))
+    @pytest.mark.parametrize("booster", ["dart", "gblinear"])
+    def test_xgboost_uncuttable_booster_rejected(self, booster):
+        with pytest.raises(ValueError, match=f"booster='{booster}'"):
+            XGBoostEarlyStoppingAdapter().validate(xgboost.XGBRegressor(booster=booster))
         XGBoostEarlyStoppingAdapter().validate(_regressor("xgboost"))
 
 

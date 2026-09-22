@@ -490,7 +490,9 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
     ``maximize`` setting.
 
     ``booster="dart"`` is rejected: a cut model is not the model trained for
-    that many rounds.
+    that many rounds. ``booster="gblinear"`` is rejected: a linear booster
+    predicts the same however many rounds it is cut to, so the chosen round
+    count would have no effect.
 
     See Also
     --------
@@ -524,7 +526,7 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         return xgboost is not None and isinstance(estimator, xgboost.XGBModel)
 
     def validate(self, estimator: BaseEstimator, fit_params: dict[str, Any] | None = None) -> None:
-        """Reject dart boosting.
+        """Reject the boosters a round count cannot cut.
 
         Parameters
         ----------
@@ -536,13 +538,20 @@ class XGBoostEarlyStoppingAdapter(BaseEarlyStoppingAdapter):
         Raises
         ------
         ValueError
-            If ``booster="dart"``.
+            If ``booster`` is ``"dart"`` or ``"gblinear"``.
 
         """
-        if estimator.get_params().get("booster") == "dart":
+        booster = estimator.get_params().get("booster")
+        if booster == "dart":
             raise ValueError(
                 "validation='cv' cannot use XGBoost with booster='dart': dart rescales earlier trees as "
                 "it adds new ones, so a model cut to fewer rounds is not the model trained for that many. "
+                "Use booster='gbtree', or validation=None."
+            )
+        if booster == "gblinear":
+            raise ValueError(
+                "validation='cv' cannot use XGBoost with booster='gblinear': a linear booster predicts the "
+                "same however many rounds it is cut to, so the chosen round count would have no effect. "
                 "Use booster='gbtree', or validation=None."
             )
 
