@@ -370,6 +370,28 @@ def _truncate_partial_vintage(
     return y_true, y_pred
 
 
+def _as_float64(df: pl.DataFrame) -> pl.DataFrame:
+    """Upcast every numeric column to Float64 before a scorer does arithmetic on it.
+
+    Metrics square, divide and sum their inputs, and in a narrower dtype a bad
+    forecast overflows instead of scoring badly: a Float32 error of 2e19 squares
+    past the Float32 maximum to ``inf``, so RMSE reports an infinite score for a
+    forecast that is merely very wrong. Scoring in Float64 keeps such a forecast
+    finite and ranked last.
+
+    Parameters
+    ----------
+    df : pl.DataFrame
+        Validated scorer input with its time columns already dropped.
+
+    Returns
+    -------
+    pl.DataFrame
+        ``df`` with every numeric column cast to Float64; other columns unchanged.
+    """
+    return df.with_columns(cs.numeric().cast(pl.Float64))
+
+
 @overload
 def validate_scorer_data(
     scorer: BaseScorer,
@@ -535,7 +557,7 @@ def validate_scorer_data(
                 )
 
         # At fit time: drop time from y_train
-        y_true = y_true.drop("time")
+        y_true = _as_float64(y_true.drop("time"))
 
         return y_true, None, None
 
@@ -677,6 +699,9 @@ def validate_scorer_data(
         extra_cols = [c for c in y_pred.columns if c not in y_true.columns]
         if extra_cols:
             y_pred = y_pred.drop(extra_cols)
+
+    y_true = _as_float64(y_true)
+    y_pred = _as_float64(y_pred)
 
     from yohou.utils._context import ScoringContext as _ScoringContext  # noqa: PLC0415
 

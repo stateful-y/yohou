@@ -12,6 +12,8 @@ from yohou.metrics import (
     LogLoss,
     MeanAbsoluteError,
     MeanAbsoluteScaledError,
+    MeanSquaredError,
+    RootMeanSquaredError,
     RootMeanSquaredScaledError,
 )
 from yohou.weighting import TableWeighter
@@ -188,3 +190,29 @@ class TestZeroScaleWarning:
         scorer = RootMeanSquaredScaledError()
         scorer.fit(y_train)
         assert scorer.scales_["value"] > 1e-10
+
+
+class TestNarrowDtypeOverflow:
+    """A very wrong forecast in a narrow dtype scores finite, not ``inf``."""
+
+    @pytest.mark.parametrize("ScorerClass", [MeanSquaredError, RootMeanSquaredError])
+    def test_float32_error_past_its_square_root_max_scores_finite(self, ScorerClass, y_train):
+        # 2e19 squared is 4e38, past the Float32 maximum of 3.4e38.
+        dates = [datetime(2024, 1, 11), datetime(2024, 1, 12)]
+        y_true = pl.DataFrame({"time": dates, "value": [0.0, 0.0]}, schema_overrides={"value": pl.Float32})
+        y_pred = pl.DataFrame({"time": dates, "value": [2e19, 2e19]}, schema_overrides={"value": pl.Float32})
+        scorer = ScorerClass().fit(y_train)
+
+        score = scorer.score(y_true, y_pred)
+
+        expected = 4e38 if ScorerClass is MeanSquaredError else 2e19
+        assert np.isfinite(score)
+        assert score == pytest.approx(expected, rel=1e-6)
+
+    def test_rmsse_float32_training_scale_is_finite(self):
+        dates = [datetime(2024, 1, i) for i in range(1, 11)]
+        y_train = pl.DataFrame({"time": dates, "value": [0.0, 2e19] * 5}, schema_overrides={"value": pl.Float32})
+
+        scorer = RootMeanSquaredScaledError(seasonality=1).fit(y_train)
+
+        assert np.isfinite(scorer.scales_["value"])
