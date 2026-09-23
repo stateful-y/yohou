@@ -39,7 +39,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -83,7 +83,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -123,7 +123,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -178,7 +178,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -208,7 +208,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -237,7 +237,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -314,7 +314,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
@@ -343,7 +343,7 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.17"
+          version: "0.12.18"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
 
