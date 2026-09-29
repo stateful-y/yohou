@@ -221,11 +221,15 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         scope decision rather than a structural limit.
     training_stride : int, default=1
         Keep one tabularized training instance every ``training_stride`` rows,
-        tail-anchored: the most recent instance is always kept and kept
-        origins sit ``training_stride`` rows apart counting back from it. The
-        default 1 keeps every instance. Combined with data whose last row sits
-        on a production origin, a stride of one day in rows trains only on
-        instances whose origin matches the production decision cadence. The
+        anchored on the data tail: kept origins share the phase of the last row
+        of the data passed to fit and sit ``training_stride`` rows apart. A
+        ``validation_size`` tail counts toward that last row even though it is
+        held back from training. The most recent training instance is kept
+        when the forecasting horizon, plus ``validation_size`` when set, is a
+        multiple of ``training_stride``. The default 1 keeps every instance.
+        Combined with data whose last row sits on a production origin, a
+        stride of one day in rows trains only on instances whose origin
+        matches the production decision cadence. The
         mask applies to the feature matrix, the target matrix, and
         ``sample_weight`` in lockstep, before ``nan_handling``, and on panel
         data it is built per group and stacked in group order.
@@ -903,14 +907,20 @@ default="first_step"
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
     ) -> np.ndarray | None:
-        """Build the tail-anchored keep mask over tabularized instances.
+        """Build the keep mask over tabularized instances, anchored on the data tail.
 
-        Instance ``i`` of a series with ``n`` instances is kept when
-        ``i % k == (n - 1) % k``, so the most recent instance is always kept
-        and kept origins sit ``k`` rows apart counting back from it. Tail
-        anchoring is the point: the data tail is what upstream preparation
-        aligns to the production origin, while the head depends on the
-        configured training window and carries no anchor.
+        Instance ``i`` has its origin at row ``i`` of the transformed target, so
+        a series of ``n_rows`` rows yields ``n_rows - forecasting_horizon``
+        instances. Instance ``i`` is kept when
+        ``i % k == (n_rows - 1 + holdout) % k``, where ``holdout`` is
+        ``validation_size`` when set (``y_t`` is then the head, and the tail
+        still ends on the data's last row) and 0 otherwise: kept origins share
+        the phase of the last row passed to fit and sit ``k`` rows apart. The
+        data tail is what upstream preparation aligns to the production origin,
+        while the head depends on the configured training window and carries
+        no anchor. When ``forecasting_horizon + holdout`` is a multiple of
+        ``k`` the most recent instance is kept; otherwise up to ``k - 1`` of the
+        most recent instances are dropped.
 
         Returns ``None`` when ``training_stride == 1`` so callers skip the
         filter entirely. On panel data one mask is built per group and
@@ -921,16 +931,17 @@ default="first_step"
         if self.training_stride == 1:
             return None
         k = self.training_stride
+        holdout = getattr(self, "validation_size", None) or 0
 
-        def one(n_instances: int) -> np.ndarray:
-            """Tail-anchored keep mask for one series of ``n_instances`` rows."""
-            return np.arange(n_instances) % k == (n_instances - 1) % k
+        def one(n_rows: int) -> np.ndarray:
+            """Keep mask for one series of ``n_rows`` target rows."""
+            return np.arange(n_rows - forecasting_horizon) % k == (n_rows - 1 + holdout) % k
 
         if self.groups_ is None:
             assert isinstance(y_t, pl.DataFrame)
-            return one(len(y_t) - forecasting_horizon)
+            return one(len(y_t))
         assert isinstance(y_t, dict)
-        return np.concatenate([one(len(y_t[g]) - forecasting_horizon) for g in self.groups_])
+        return np.concatenate([one(len(y_t[g])) for g in self.groups_])
 
     def _apply_training_stride(
         self,
@@ -957,13 +968,17 @@ default="first_step"
             sample_weight = sample_weight[mask]
 
         if len(X_tab) == 0:
-            # Unreachable when the pre-stride dataset is non-empty: the mask is
-            # tail-anchored, so the last instance is always kept. Guarded anyway
-            # so a future mask change cannot fail downstream in silence.
+            # Reachable when a series holds no more instances than the mask skips
+            # at its tail (at most k - 1). With validation_size the head check
+            # raises first, unless transformer warmup shortened the head.
+            holdout = getattr(self, "validation_size", None) or 0
+            skipped = -(forecasting_horizon + holdout) % self.training_stride
             raise ValueError(
                 f"Training dataset is empty (0 samples) after applying "
-                f"training_stride={self.training_stride}. Check that the input "
-                f"series is long enough for the forecasting horizon and the stride."
+                f"training_stride={self.training_stride}: kept origins share the phase "
+                f"of the data's last row, which skips the {skipped} most recent "
+                f"instance(s), and the transformed target is too short to reach an "
+                f"earlier one. Provide more data or reduce training_stride."
             )
         return X_tab, y_tab, sample_weight
 
@@ -1601,7 +1616,9 @@ default="first_step"
         ------
         ValueError
             If ``validation_size < forecasting_horizon``, or
-            the head left after the split cannot build one training row.
+            the head left after the split cannot build one training row once
+            ``training_stride`` has skipped the instances out of phase with
+            the data's last row.
 
         """
         n = self.validation_size
@@ -1616,12 +1633,21 @@ default="first_step"
                 f"on each fold's test window."
             )
         head = y.height - n
-        min_head = forecasting_horizon + 1
+        # The stride keeps only origins in phase with the data's last row, which
+        # skips this many of the head's most recent instances.
+        skipped = -(forecasting_horizon + n) % self.training_stride
+        min_head = forecasting_horizon + 1 + skipped
         if head < min_head:
+            stride_note = (
+                f" and training_stride={self.training_stride}, which skips the "
+                f"{skipped} most recent instance(s) to stay in phase with the last row"
+                if skipped
+                else ""
+            )
             raise ValueError(
                 f"validation_size={n} leaves {max(head, 0)} head rows out of "
                 f"{y.height}, but at least {min_head} are needed to build one "
-                f"training row at forecasting_horizon={forecasting_horizon}. "
+                f"training row at forecasting_horizon={forecasting_horizon}{stride_note}. "
                 f"Reduce validation_size or provide more data."
             )
 

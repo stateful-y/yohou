@@ -1,9 +1,9 @@
 """Tests for the ``training_stride`` parameter of reduction forecasters.
 
 The stride keeps one tabularized training instance every ``training_stride``
-rows, tail-anchored: the most recent instance is always kept. The mask applies
-to features, targets, and sample weights in lockstep, before NaN handling, and
-per panel group in ``groups_`` order.
+rows, anchored on the data tail: kept origins share the phase of the last row
+passed to fit, a ``validation_size`` tail included. The mask applies to features, targets, and sample weights in
+lockstep, before NaN handling, and per panel group in ``groups_`` order.
 """
 
 from datetime import datetime
@@ -38,6 +38,11 @@ class _RecordingRegressor(RegressorMixin, BaseEstimator):
         return np.zeros((len(X), n_outputs))
 
 
+def _tail_phase_mask(n_rows: int, horizon: int, stride: int) -> np.ndarray:
+    """Expected keep mask: instance ``i`` (origin row ``i``) shares the last row's phase."""
+    return np.arange(n_rows - horizon) % stride == (n_rows - 1) % stride
+
+
 def _series(n: int, value_col: str = "value") -> pl.DataFrame:
     times = pl.datetime_range(
         datetime(2026, 1, 1),
@@ -57,22 +62,48 @@ class TestTrainingStrideSemantics:
         n_received = len(strided.estimator_.received_[0])
         assert n_received == len(y) - 2
 
-    def test_tail_anchored_subsampling(self):
-        """With stride k the kept rows are k apart and include the last instance."""
+    def test_kept_origins_share_the_last_rows_phase(self):
+        """With stride k the kept origins are k rows apart, in phase with the last row."""
         y = _series(30)
         fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=7)
         fc.fit(y=y, forecasting_horizon=2)
         X_received, y_received, _ = fc.estimator_.received_
 
-        n_instances = len(y) - 2  # 28
-        expected_positions = [i for i in range(n_instances) if i % 7 == (n_instances - 1) % 7]
+        expected_positions = np.flatnonzero(_tail_phase_mask(len(y), 2, 7)).tolist()
         assert len(X_received) == len(expected_positions)
 
-        # The target for step 1 at kept instance i is y[i + 1]; the last
-        # instance (origin y[27], targets y[28], y[29]) must be present.
+        # The target for step 1 at kept instance i is y[i + 1], so its value is i + 1.
         step1 = y_received["value_step_1"].to_list()
         assert step1 == [float(i + 1) for i in expected_positions]
-        assert expected_positions[-1] == n_instances - 1
+        assert all((len(y) - 1 - i) % 7 == 0 for i in expected_positions)
+
+    def test_daily_stride_keeps_the_last_rows_hour_at_a_40_step_horizon(self):
+        """Hourly data ending 23:00, stride 24, horizon 40: every kept origin is at 23:00."""
+        n = 24 * 10
+        times = pl.datetime_range(datetime(2026, 1, 1), datetime(2026, 1, 10, 23), interval="1h", eager=True)
+        y = pl.DataFrame({"time": times, "value": [float(i) for i in range(n)]})
+        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=24)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins
+        assert {times[i].hour for i in origins} == {23}
+        # The last instance (origin row n - 41, at 07:00) and the seven after 23:00 are dropped.
+        assert origins[-1] == n - 49
+
+    def test_the_most_recent_instance_is_kept_when_the_horizon_is_a_multiple_of_the_stride(self):
+        """Stride 5 at horizon 40: the kept set equals counting back from the last instance."""
+        y = _series(100)
+        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=5)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        n_instances = len(y) - 40
+        from_last_instance = [i for i in range(n_instances) if i % 5 == (n_instances - 1) % 5]
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins == from_last_instance
+        assert origins[-1] == n_instances - 1
 
     def test_sample_weights_filtered_in_lockstep(self):
         """The weight vector matches the kept rows one to one."""
@@ -104,8 +135,7 @@ class TestTrainingStrideSemantics:
         fc.fit(y=y, forecasting_horizon=2)
         X_received, y_received, _ = fc.estimator_.received_
 
-        n_instances = n - 2
-        kept_per_group = len([i for i in range(n_instances) if i % 6 == (n_instances - 1) % 6])
+        kept_per_group = int(_tail_phase_mask(n, 2, 6).sum())
         assert len(X_received) == 2 * kept_per_group
 
         # Group order is groups_ order: group a's rows stack before group b's,
@@ -125,8 +155,7 @@ class TestTrainingStrideSemantics:
         )
         fc.fit(y=y, forecasting_horizon=2)
         estimators = fc.estimator_ if isinstance(fc.estimator_, list) else [fc.estimator_]
-        n_instances = len(y) - 2
-        kept = len([i for i in range(n_instances) if i % 4 == (n_instances - 1) % 4])
+        kept = int(_tail_phase_mask(len(y), 2, 4).sum())
         for est in estimators:
             assert len(est.received_[0]) == kept
 
@@ -135,8 +164,7 @@ class TestTrainingStrideSemantics:
         y = _series(40)
         fc = IntervalReductionForecaster(training_stride=8)
         fc.fit(y=y, forecasting_horizon=2, coverage_rates=[0.5])
-        n_instances = len(y) - 2
-        kept = len([i for i in range(n_instances) if i % 8 == (n_instances - 1) % 8])
+        kept = int(_tail_phase_mask(len(y), 2, 8).sum())
         assert isinstance(fc.estimator_, dict)
         for est in fc.estimator_.values():
             # MultiOutputRegressor exposes the fitted row count via its
@@ -204,8 +232,58 @@ class TestTrainingStrideValidation:
             fc.fit(y=y, forecasting_horizon=2)
 
 
+class _EvalSetRecorder(_RecordingRegressor):
+    """Recording regressor whose fit accepts an ``eval_set``, as ``validation_size`` requires."""
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.eval_set_ = eval_set
+        return super().fit(X, y, sample_weight=sample_weight)
+
+
+class TestTrainingStrideWithValidationHoldout:
+    """A ``validation_size`` tail is held back from training but still ends on the anchor row."""
+
+    @pytest.mark.parametrize("validation_size", [40, 48, 50])
+    def test_kept_origins_share_the_last_rows_phase(self, validation_size):
+        """Hourly, stride 24, horizon 40: kept origins stay in phase with the last row."""
+        y = _series(24 * 10)
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=validation_size)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins
+        assert all((len(y) - 1 - i) % 24 == 0 for i in origins)
+        # Early stopping still sees every origin in the tail, unstrided.
+        X_eval, _ = fc.estimator_.eval_set_[0]
+        assert len(X_eval) == validation_size - 40 + 1
+
+    def test_head_check_counts_the_instances_the_stride_skips(self):
+        """A head of horizon + 1 rows is too short once the stride skips 6 instances."""
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=50)
+        with pytest.raises(ValueError, match=r"at least 47 are needed .* training_stride=24, which skips the 6"):
+            fc.fit(y=_series(91), forecasting_horizon=40)
+
+    def test_shortest_accepted_head_keeps_one_instance(self):
+        """At exactly the required head length the fit keeps one instance, in phase."""
+        y = _series(97)
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=50)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins == [0]
+        assert (len(y) - 1) % 24 == 0
+
+    def test_empty_after_stride_without_holdout_names_the_skip(self):
+        """Without a holdout, a series the stride leaves empty fails with the skip count."""
+        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=24)
+        with pytest.raises(ValueError, match=r"Training dataset is empty .* skips the 8 most recent"):
+            fc.fit(y=_series(45), forecasting_horizon=40)
+
+
 def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, horizon: int = 3) -> None:
-    """Assert strided sample weights are the tail-anchored subset of the full ones.
+    """Assert strided sample weights are the strided subset of the full ones.
 
     Weights are computed on the full instance set and masked in lockstep with
     the training rows, so the strided fit's weight vector must equal the
@@ -222,8 +300,7 @@ def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, hori
     strided_weights = strided.estimator_.received_[2]
     assert strided_weights is not None
 
-    n_instances = n - horizon
-    mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+    mask = _tail_phase_mask(n, horizon, stride)
     np.testing.assert_allclose(strided_weights, full_weights[mask])
 
 
@@ -308,7 +385,7 @@ class TestTrainingStrideWeighterCompatibility:
         strided_X, _, strided_w = fit(stride)
 
         n_instances = n - horizon
-        group_mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+        group_mask = _tail_phase_mask(n, horizon, stride)
         mask = np.concatenate([group_mask, group_mask])
         assert len(full_X) == 2 * n_instances
         assert len(strided_X) == int(mask.sum())
@@ -326,8 +403,7 @@ class TestTrainingStrideWeighterCompatibility:
             training_stride=stride,
         )
         fc.fit(y=y, forecasting_horizon=horizon, coverage_rates=[0.5])
-        n_instances = n - horizon
-        kept = int((np.arange(n_instances) % stride == (n_instances - 1) % stride).sum())
+        kept = int(_tail_phase_mask(n, horizon, stride).sum())
         weight_vectors = [est.received_[2] for est in fc.estimator_.values()]
         for w in weight_vectors:
             assert w is not None and len(w) == kept

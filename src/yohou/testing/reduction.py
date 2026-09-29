@@ -188,7 +188,9 @@ def check_validation_holdout_fit(
     group, no row in common with the training matrix, and that the post-fit
     observation state covers all provided data. Finally it asserts the training matrix equals the one a plain fit on the head alone
     produces, which fails if the tail leaked into transformer or sample-weight
-    fitting.
+    fitting. That comparison runs with ``training_stride=1``, because a holdout
+    fit reads the stride phase from the end of the full data and a head-only fit
+    from the end of the head.
 
     Parameters
     ----------
@@ -215,6 +217,12 @@ def check_validation_holdout_fit(
 
     """
     holdout = _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast)
+    if forecaster.training_stride != 1:
+        # The two fits anchor the stride on different last rows, so their kept
+        # rows differ by design. The stride runs after transformer and weight
+        # fitting, so any leakage shows up in the unstrided matrices as well.
+        forecaster = clone(forecaster).set_params(training_stride=1)
+        holdout = _check_validation_holdout_delivery(forecaster, y, X_actual, X_future, X_forecast)
 
     # Row disjointness inside the delivery check shows the eval rows are not
     # training rows, but a transformer fitted on head plus tail shifts every
