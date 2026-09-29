@@ -181,6 +181,19 @@ dev-mode-dirs = [".", "src"]
 [tool.hatch.version]
 source = "vcs"
 fallback-version = "0.0.0"
+# Naming the distribution lets SETUPTOOLS_SCM_PRETEND_VERSION_FOR_YOHOU set the version
+# of this package alone, for builds without git metadata such as a Docker build context.
+raw-options = { dist_name = "yohou" }
+
+[tool.uv]
+# uv's default keys plus the override, so a changed override rebuilds instead of
+# reusing a cached wheel with the old version.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "setup.py" },
+    { file = "setup.cfg" },
+    { env = "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_YOHOU" },
+]
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/yohou/_version.py"
