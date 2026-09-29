@@ -300,13 +300,21 @@ predicts from most of those origins, and their feature availability pattern can
 differ from the one origin that matters. The `training_stride` constructor
 parameter (default 1) keeps one instance every `training_stride` rows instead.
 
-The mask is **tail-anchored**: the most recent instance is always kept, and kept
-origins sit `training_stride` rows apart counting back from it. Tail anchoring
-is deliberate. The data's last row is what a caller aligns to the production
-origin (by trimming the series to end on it), while the first row depends on the
+The mask is **anchored on the data tail**: kept origins share the phase of the
+series' last row and sit `training_stride` rows apart. The anchor is deliberate.
+The data's last row is what a caller aligns to the production origin (by
+trimming the series to end on it), while the first row depends on the
 configured training window and carries no anchor. With the tail on the
 production origin and a stride of one day in rows, every kept instance matches
-the production decision cadence.
+the production decision cadence, whatever the forecasting horizon.
+
+The most recent instance has its origin `forecasting_horizon` rows before the
+last row, because its targets fill those rows. It is kept only when the horizon
+is a multiple of `training_stride`. Otherwise the mask drops up to
+`training_stride - 1` of the most recent instances, so that no kept origin falls
+off the production cadence. With hourly data ending on a 23:00 origin, a stride
+of 24 and a horizon of 40, every kept origin is at 23:00, and the last one sits
+48 rows before the end.
 
 Ordering matters and is fixed: the stride is applied once per estimator fit,
 after sample weights are computed and **before** NaN handling, with the feature

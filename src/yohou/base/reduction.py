@@ -221,9 +221,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         scope decision rather than a structural limit.
     training_stride : int, default=1
         Keep one tabularized training instance every ``training_stride`` rows,
-        tail-anchored: the most recent instance is always kept and kept
-        origins sit ``training_stride`` rows apart counting back from it. The
-        default 1 keeps every instance. Combined with data whose last row sits
+        anchored on the data tail: kept origins share the phase of the last row
+        of the transformed target and sit ``training_stride`` rows apart. The
+        most recent instance is kept when the forecasting horizon is a multiple
+        of ``training_stride``. The default 1 keeps every instance. Combined with data whose last row sits
         on a production origin, a stride of one day in rows trains only on
         instances whose origin matches the production decision cadence. The
         mask applies to the feature matrix, the target matrix, and
@@ -903,14 +904,17 @@ default="first_step"
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
     ) -> np.ndarray | None:
-        """Build the tail-anchored keep mask over tabularized instances.
+        """Build the keep mask over tabularized instances, anchored on the data tail.
 
-        Instance ``i`` of a series with ``n`` instances is kept when
-        ``i % k == (n - 1) % k``, so the most recent instance is always kept
-        and kept origins sit ``k`` rows apart counting back from it. Tail
-        anchoring is the point: the data tail is what upstream preparation
-        aligns to the production origin, while the head depends on the
-        configured training window and carries no anchor.
+        Instance ``i`` has its origin at row ``i`` of the transformed target, so
+        a series of ``n_rows`` rows yields ``n_rows - forecasting_horizon``
+        instances. Instance ``i`` is kept when ``i % k == (n_rows - 1) % k``:
+        kept origins share the phase of the last row and sit ``k`` rows apart.
+        The data tail is what upstream preparation aligns to the production
+        origin, while the head depends on the configured training window and
+        carries no anchor. When the horizon is a multiple of ``k`` the most
+        recent instance is kept; otherwise up to ``k - 1`` of the most recent
+        instances are dropped.
 
         Returns ``None`` when ``training_stride == 1`` so callers skip the
         filter entirely. On panel data one mask is built per group and
@@ -922,15 +926,15 @@ default="first_step"
             return None
         k = self.training_stride
 
-        def one(n_instances: int) -> np.ndarray:
-            """Tail-anchored keep mask for one series of ``n_instances`` rows."""
-            return np.arange(n_instances) % k == (n_instances - 1) % k
+        def one(n_rows: int) -> np.ndarray:
+            """Keep mask for one series of ``n_rows`` target rows."""
+            return np.arange(n_rows - forecasting_horizon) % k == (n_rows - 1) % k
 
         if self.groups_ is None:
             assert isinstance(y_t, pl.DataFrame)
-            return one(len(y_t) - forecasting_horizon)
+            return one(len(y_t))
         assert isinstance(y_t, dict)
-        return np.concatenate([one(len(y_t[g]) - forecasting_horizon) for g in self.groups_])
+        return np.concatenate([one(len(y_t[g])) for g in self.groups_])
 
     def _apply_training_stride(
         self,
@@ -957,9 +961,8 @@ default="first_step"
             sample_weight = sample_weight[mask]
 
         if len(X_tab) == 0:
-            # Unreachable when the pre-stride dataset is non-empty: the mask is
-            # tail-anchored, so the last instance is always kept. Guarded anyway
-            # so a future mask change cannot fail downstream in silence.
+            # Reachable when the series holds fewer instances than the offset
+            # between the last instance and the tail phase (at most k - 1).
             raise ValueError(
                 f"Training dataset is empty (0 samples) after applying "
                 f"training_stride={self.training_stride}. Check that the input "
