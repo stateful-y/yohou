@@ -1,8 +1,8 @@
 """Tests for the ``training_stride`` parameter of reduction forecasters.
 
 The stride keeps one tabularized training instance every ``training_stride``
-rows, anchored on the data tail: kept origins share the phase of the last row of
-the target. The mask applies to features, targets, and sample weights in
+rows, anchored on the data tail: kept origins share the phase of the last row
+passed to fit, a ``validation_size`` tail included. The mask applies to features, targets, and sample weights in
 lockstep, before NaN handling, and per panel group in ``groups_`` order.
 """
 
@@ -230,6 +230,56 @@ class TestTrainingStrideValidation:
         )
         with pytest.raises(ValueError, match="training_stride=6"):
             fc.fit(y=y, forecasting_horizon=2)
+
+
+class _EvalSetRecorder(_RecordingRegressor):
+    """Recording regressor whose fit accepts an ``eval_set``, as ``validation_size`` requires."""
+
+    def fit(self, X, y, eval_set=None, sample_weight=None):
+        self.eval_set_ = eval_set
+        return super().fit(X, y, sample_weight=sample_weight)
+
+
+class TestTrainingStrideWithValidationHoldout:
+    """A ``validation_size`` tail is held back from training but still ends on the anchor row."""
+
+    @pytest.mark.parametrize("validation_size", [40, 48, 50])
+    def test_kept_origins_share_the_last_rows_phase(self, validation_size):
+        """Hourly, stride 24, horizon 40: kept origins stay in phase with the last row."""
+        y = _series(24 * 10)
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=validation_size)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins
+        assert all((len(y) - 1 - i) % 24 == 0 for i in origins)
+        # Early stopping still sees every origin in the tail, unstrided.
+        X_eval, _ = fc.estimator_.eval_set_[0]
+        assert len(X_eval) == validation_size - 40 + 1
+
+    def test_head_check_counts_the_instances_the_stride_skips(self):
+        """A head of horizon + 1 rows is too short once the stride skips 6 instances."""
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=50)
+        with pytest.raises(ValueError, match=r"at least 47 are needed .* training_stride=24, which skips the 6"):
+            fc.fit(y=_series(91), forecasting_horizon=40)
+
+    def test_shortest_accepted_head_keeps_one_instance(self):
+        """At exactly the required head length the fit keeps one instance, in phase."""
+        y = _series(97)
+        fc = PointReductionForecaster(estimator=_EvalSetRecorder(), training_stride=24, validation_size=50)
+        fc.fit(y=y, forecasting_horizon=40)
+        _, y_received, _ = fc.estimator_.received_
+
+        origins = [int(v) - 1 for v in y_received["value_step_1"].to_list()]
+        assert origins == [0]
+        assert (len(y) - 1) % 24 == 0
+
+    def test_empty_after_stride_without_holdout_names_the_skip(self):
+        """Without a holdout, a series the stride leaves empty fails with the skip count."""
+        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=24)
+        with pytest.raises(ValueError, match=r"Training dataset is empty .* skips the 8 most recent"):
+            fc.fit(y=_series(45), forecasting_horizon=40)
 
 
 def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, horizon: int = 3) -> None:

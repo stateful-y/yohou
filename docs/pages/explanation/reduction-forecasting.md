@@ -316,6 +316,14 @@ off the production cadence. With hourly data ending on a 23:00 origin, a stride
 of 24 and a horizon of 40, every kept origin is at 23:00, and the last one sits
 48 rows before the end.
 
+A `validation_size` holdout does not move the anchor. The estimator trains on
+the head, but the held-back tail still ends on the production origin, so the
+phase is read from the last row of the data passed to `fit`, not from the end
+of the head. The skipped instances are counted from that row too, so the head
+must be long enough to keep one training instance after them; `fit` checks this
+before holding anything out. The evaluation rows are never strided: early
+stopping judges every origin in the tail.
+
 Ordering matters and is fixed: the stride is applied once per estimator fit,
 after sample weights are computed and **before** NaN handling, with the feature
 matrix, target matrix, and `sample_weight` filtered in lockstep. NaN-drop
