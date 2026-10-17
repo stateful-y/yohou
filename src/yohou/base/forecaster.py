@@ -1922,9 +1922,6 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 transformer = target_transformers[panel_group_name]
                 assert transformer is not None
 
-                # Remove "vintage_time" before extracting group data
-                vintage_time = y_pred_step.select(cs.by_name("vintage_time")).head(1)
-
                 # Extract the group's columns (in transformed space, with prefix)
                 group_cols = [c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")]
                 y_pred_step_group = y_pred_step.select(cs.by_name("time") | cs.by_name(group_cols))
@@ -1959,13 +1956,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     how="horizontal",
                 )
 
-                # Add "vintage_time" back
-                y_pred_step_group_inv = pl.concat([vintage_time, y_pred_step_group_inv], how="horizontal")
-
                 # Store in dict (without time columns)
-                y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(
-                    ~cs.by_name("vintage_time") & ~cs.by_name("time")
-                )
+                y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(~cs.by_name("time"))
 
             times = y_pred_step.select(cs.by_name("vintage_time") | cs.by_name("time"))
             y_pred_inv_cols = pl.concat(list(y_pred_step_inv_dict.values()), how="horizontal")
