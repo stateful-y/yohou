@@ -689,17 +689,17 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
 
             # Slice resolved weight arrays to match
             if isinstance(tw_resolved, np.ndarray):
-                tw_resolved = tw_resolved[keep]  # ty: ignore[invalid-argument-type]
+                tw_resolved = tw_resolved[keep]
             elif isinstance(tw_resolved, dict):
                 tw_resolved = {g: a[keep] for g, a in tw_resolved.items()}
 
             if isinstance(sw_resolved, np.ndarray):
-                sw_resolved = sw_resolved[keep]  # ty: ignore[invalid-argument-type]
+                sw_resolved = sw_resolved[keep]
             elif isinstance(sw_resolved, dict):
                 sw_resolved = {g: a[keep] for g, a in sw_resolved.items()}
 
             if isinstance(vw_resolved, np.ndarray):
-                vw_resolved = vw_resolved[keep]  # ty: ignore[invalid-argument-type]
+                vw_resolved = vw_resolved[keep]
             elif isinstance(vw_resolved, dict):
                 vw_resolved = {g: a[keep] for g, a in vw_resolved.items()}
 
@@ -708,7 +708,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
             # Panel-aware vintage_weight: all groups share the same vintage_time
             # axis, so use the first group's weights for cross-vintage weighting.
             first_group_weights = next(iter(vw_resolved.values()))
-            context = self._set_vintage_weight_on_context(context, first_group_weights)  # ty: ignore[invalid-argument-type]
+            context = self._set_vintage_weight_on_context(context, first_group_weights)
             vw_resolved = None
         elif isinstance(vw_resolved, np.ndarray) and context.vintage_time is not None:
             context = self._set_vintage_weight_on_context(context, vw_resolved)

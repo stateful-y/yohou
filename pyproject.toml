@@ -273,6 +273,12 @@ convention = "numpy"
 [tool.ruff.lint.isort]
 known-first-party = ["yohou"]
 
+[tool.ty.rules]
+# A read-only property overriding a writable attribute is the scikit-learn idiom for
+# fitted attributes computed from a wrapped estimator (`n_features_in_`, `groups_`)
+# and for derived settings (`observation_horizon`), not a mistake to flag.
+invalid-property-type-override = "ignore"
+
 [tool.interrogate]
 ignore-init-method = true
 ignore-init-module = true

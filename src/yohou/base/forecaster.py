@@ -1464,16 +1464,17 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             # Swap step columns in _X_t_observed
             if X_step_new is not None:
                 if isinstance(self._X_t_observed, dict):
-                    for group_name, group_df in self._X_t_observed.items():
-                        cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+                    observed_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+                    for group_name, group_df in observed_dict.items():
+                        cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                         new_group_step = get_group_df(X_step_new, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
                             ~cs.by_name("time")
                         )
                         if cols_to_drop:
-                            updated = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                            self._X_t_observed[group_name] = pl.concat([updated, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment]
+                            updated = group_df.drop(cols_to_drop)
+                            observed_dict[group_name] = pl.concat([updated, new_group_step], how="horizontal")
                         else:
-                            self._X_t_observed[group_name] = pl.concat([group_df, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment]
+                            observed_dict[group_name] = pl.concat([group_df, new_group_step], how="horizontal")
                 else:
                     new_step_only = X_step_new.select(~cs.by_name("time"))
                     cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
@@ -1502,7 +1503,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
                 if cols_to_drop:
                     restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                    self._X_t_observed = pl.concat([restored, saved_step_data], how="horizontal")
+                    self._X_t_observed = pl.concat(
+                        [restored, typing_cast(pl.DataFrame, saved_step_data)], how="horizontal"
+                    )
 
     def _recursive_predict(
         self,
