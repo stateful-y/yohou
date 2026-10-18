@@ -26,5 +26,8 @@ hooks applied by string concatenation.
       <p class="github-source-link"><a href="{{ _source_url }}">View on GitHub</a></p>
     {% endif %}
   {% endif %}
+  {#- Kept out of the search index for the same reason as in class.html.jinja. -#}
+  <div data-search-exclude>
   {{ super() }}
+  </div>
 {% endblock source %}

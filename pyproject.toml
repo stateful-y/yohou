@@ -237,6 +237,7 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults
     "PLC0415", # import not at top-level (lazy imports are intentional, e.g. docs hooks)
     "PLR0913", # too many args in func def
+    "PLR0917", # too many positional args (made stable in ruff 0.17; same reasoning as PLR0913)
     "PLR0915", # too many statements
     "PLR0912", # too many branches
     "PLR2004", # magic value used in comparison
