@@ -1464,16 +1464,17 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
             # Swap step columns in _X_t_observed
             if X_step_new is not None:
                 if isinstance(self._X_t_observed, dict):
-                    for group_name, group_df in self._X_t_observed.items():
-                        cols_to_drop = [c for c in local_step_cols if c in group_df.columns]  # ty: ignore[unresolved-attribute]
+                    observed_dict = typing_cast(dict[str, pl.DataFrame], self._X_t_observed)
+                    for group_name, group_df in observed_dict.items():
+                        cols_to_drop = [c for c in local_step_cols if c in group_df.columns]
                         new_group_step = get_group_df(X_step_new, group_name, self._step_schema_per_group_).select(  # ty: ignore[invalid-argument-type]
                             ~cs.by_name("time")
                         )
                         if cols_to_drop:
-                            updated = group_df.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                            self._X_t_observed[group_name] = pl.concat([updated, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment]
+                            updated = group_df.drop(cols_to_drop)
+                            observed_dict[group_name] = pl.concat([updated, new_group_step], how="horizontal")
                         else:
-                            self._X_t_observed[group_name] = pl.concat([group_df, new_group_step], how="horizontal")  # ty: ignore[invalid-assignment]
+                            observed_dict[group_name] = pl.concat([group_df, new_group_step], how="horizontal")
                 else:
                     new_step_only = X_step_new.select(~cs.by_name("time"))
                     cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
@@ -1502,7 +1503,9 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
                 if cols_to_drop:
                     restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
-                    self._X_t_observed = pl.concat([restored, saved_step_data], how="horizontal")
+                    self._X_t_observed = pl.concat(
+                        [restored, typing_cast(pl.DataFrame, saved_step_data)], how="horizontal"
+                    )
 
     def _recursive_predict(
         self,
@@ -1922,9 +1925,6 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                 transformer = target_transformers[panel_group_name]
                 assert transformer is not None
 
-                # Remove "vintage_time" before extracting group data
-                vintage_time = y_pred_step.select(cs.by_name("vintage_time")).head(1)
-
                 # Extract the group's columns (in transformed space, with prefix)
                 group_cols = [c for c in y_pred_step.columns if c.startswith(f"{panel_group_name}__")]
                 y_pred_step_group = y_pred_step.select(cs.by_name("time") | cs.by_name(group_cols))
@@ -1959,13 +1959,8 @@ class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator,
                     how="horizontal",
                 )
 
-                # Add "vintage_time" back
-                y_pred_step_group_inv = pl.concat([vintage_time, y_pred_step_group_inv], how="horizontal")
-
                 # Store in dict (without time columns)
-                y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(
-                    ~cs.by_name("vintage_time") & ~cs.by_name("time")
-                )
+                y_pred_step_inv_dict[panel_group_name] = y_pred_step_group_inv.select(~cs.by_name("time"))
 
             times = y_pred_step.select(cs.by_name("vintage_time") | cs.by_name("time"))
             y_pred_inv_cols = pl.concat(list(y_pred_step_inv_dict.values()), how="horizontal")

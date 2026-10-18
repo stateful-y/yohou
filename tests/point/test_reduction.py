@@ -1311,7 +1311,10 @@ class TestNJobsParameter:
         Pickling the module-level function directly would prove nothing, because it
         serializes by name under any implementation.
         """
-        from joblib.externals import cloudpickle
+        try:
+            from joblib.externals import cloudpickle  # joblib < 1.6 vendors it
+        except ImportError:
+            import cloudpickle  # joblib >= 1.6 depends on it instead
         from sklearn.utils.parallel import delayed
 
         from yohou.base.reduction import _predict_direct_step
