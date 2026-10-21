@@ -50,7 +50,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python
         run: uv python install 3.11
@@ -129,7 +129,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -184,7 +184,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python
         run: uv python install 3.11
@@ -214,7 +214,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python
         run: uv python install 3.11
@@ -243,7 +243,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python
         run: uv python install 3.11
@@ -349,7 +349,7 @@ jobs:
 
       - name: Install nox
         # renovate: datasource=pypi depName=nox
-        run: uv tool install nox==2026.8.17
+        run: uv tool install nox==2026.10.20
 
       - name: Set up Python
         run: uv python install 3.11
