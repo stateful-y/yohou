@@ -43,7 +43,12 @@ __all__ = [
 ]
 
 
-class BaseForecaster(BaseStandardForecaster, BasePanelForecaster, BaseEstimator, metaclass=abc.ABCMeta):
+# Each mixin types `groups_` and `observed_time_` for its own data shape (a single
+# DataFrame or a panel dict), and which one an instance holds is decided by the data
+# passed to `fit`. The two declarations conflict by design; ty >= 0.0.92 reports that.
+class BaseForecaster(  # ty: ignore[invalid-attribute-override]
+    BaseStandardForecaster, BasePanelForecaster, BaseEstimator, metaclass=abc.ABCMeta
+):
     """Base class for forecasters.
 
     Provides the full forecaster lifecycle: ``fit``, ``predict``,
