@@ -13,29 +13,10 @@ import polars as pl
 import pytest
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 
+from conftest import SampleWeightRecorder
 from yohou.interval import IntervalReductionForecaster
 from yohou.point import PointReductionForecaster
-from yohou.weighting import ExponentialDecayWeighter
-
-
-class _RecordingRegressor(RegressorMixin, BaseEstimator):
-    """Regressor that records the training data it receives."""
-
-    def __init__(self):
-        self.received_ = None
-
-    def fit(self, X, y, sample_weight=None):
-        self.received_ = (X, y, sample_weight)
-        # polars frames carry shape but not ndim; a (n, c) shape means c outputs.
-        shape = getattr(y, "shape", None)
-        self.n_outputs_ = shape[1] if shape is not None and len(shape) == 2 else 1
-        return self
-
-    def predict(self, X):
-        n_outputs = getattr(self, "n_outputs_", 1)
-        if n_outputs == 1:
-            return np.zeros(len(X))
-        return np.zeros((len(X), n_outputs))
+from yohou.weighting import ExponentialDecayWeighter, SeasonalEmphasisWeighter
 
 
 def _series(n: int, value_col: str = "value") -> pl.DataFrame:
@@ -52,7 +33,7 @@ class TestTrainingStrideSemantics:
     def test_default_is_a_no_op(self):
         """training_stride=1 trains on every tabularized instance."""
         y = _series(30)
-        strided = PointReductionForecaster(estimator=_RecordingRegressor())
+        strided = PointReductionForecaster(estimator=SampleWeightRecorder())
         strided.fit(y=y, forecasting_horizon=2)
         n_received = len(strided.estimator_.received_[0])
         assert n_received == len(y) - 2
@@ -60,7 +41,7 @@ class TestTrainingStrideSemantics:
     def test_tail_anchored_subsampling(self):
         """With stride k the kept rows are k apart and include the last instance."""
         y = _series(30)
-        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=7)
+        fc = PointReductionForecaster(estimator=SampleWeightRecorder(), training_stride=7)
         fc.fit(y=y, forecasting_horizon=2)
         X_received, y_received, _ = fc.estimator_.received_
 
@@ -78,7 +59,7 @@ class TestTrainingStrideSemantics:
         """The weight vector matches the kept rows one to one."""
         y = _series(40)
         fc = PointReductionForecaster(
-            estimator=_RecordingRegressor(),
+            estimator=SampleWeightRecorder(),
             training_stride=5,
             time_weighter=ExponentialDecayWeighter(half_life=10),
         )
@@ -97,7 +78,7 @@ class TestTrainingStrideSemantics:
             "b__value": base["value"] + 100.0,
         })
         fc = PointReductionForecaster(
-            estimator=_RecordingRegressor(),
+            estimator=SampleWeightRecorder(),
             training_stride=6,
             panel_strategy="global",
         )
@@ -119,7 +100,7 @@ class TestTrainingStrideSemantics:
         """Every reduction strategy fits on the same strided instance count."""
         y = _series(30)
         fc = PointReductionForecaster(
-            estimator=_RecordingRegressor(),
+            estimator=SampleWeightRecorder(),
             reduction_strategy=strategy,
             training_stride=4,
         )
@@ -196,7 +177,7 @@ class TestTrainingStrideValidation:
         )
         y = pl.DataFrame({"time": times, "value": [float("nan")] * n})
         fc = PointReductionForecaster(
-            estimator=_RecordingRegressor(),
+            estimator=SampleWeightRecorder(),
             training_stride=6,
             nan_handling="drop",
         )
@@ -212,12 +193,12 @@ def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, hori
     unstrided fit's vector filtered by the stride mask, for any weighter.
     """
     y = _series(n)
-    full = PointReductionForecaster(estimator=_RecordingRegressor(), **weighter_kwargs)
+    full = PointReductionForecaster(estimator=SampleWeightRecorder(), **weighter_kwargs)
     full.fit(y=y, forecasting_horizon=horizon)
     full_weights = full.estimator_.received_[2]
     assert full_weights is not None
 
-    strided = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=stride, **weighter_kwargs)
+    strided = PointReductionForecaster(estimator=SampleWeightRecorder(), training_stride=stride, **weighter_kwargs)
     strided.fit(y=y, forecasting_horizon=horizon)
     strided_weights = strided.estimator_.received_[2]
     assert strided_weights is not None
@@ -225,6 +206,34 @@ def _weight_correspondence(weighter_kwargs: dict, stride: int, n: int = 60, hori
     n_instances = n - horizon
     mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
     np.testing.assert_allclose(strided_weights, full_weights[mask])
+
+
+def _per_step_weight_correspondence(weighter, stride: int, n: int = 60, horizon: int = 3) -> None:
+    """Assert strided per-step weights are proportional to the full fit's surviving ones.
+
+    Under ``sample_weight_alignment="matched_step"`` each step's weights are normalized
+    after the stride mask, so a strided step is a rescaled subset of the unstrided one
+    (not an equal subset, as for the collapse values) and sums to its surviving count.
+    """
+    y = _series(n)
+
+    def fit(**kwargs):
+        forecaster = PointReductionForecaster(
+            estimator=SampleWeightRecorder(),
+            reduction_strategy="direct",
+            time_weighter=weighter,
+            sample_weight_alignment="matched_step",
+            **kwargs,
+        )
+        forecaster.fit(y=y, forecasting_horizon=horizon)
+        return [np.asarray(est.received_[2]) for est in forecaster.estimator_]
+
+    n_instances = n - horizon
+    mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+    for full, strided in zip(fit(), fit(training_stride=stride), strict=True):
+        ratio = strided / full[mask]
+        np.testing.assert_allclose(ratio, ratio[0])
+        np.testing.assert_allclose(strided.sum(), mask.sum())
 
 
 class TestTrainingStrideWeighterCompatibility:
@@ -246,6 +255,9 @@ class TestTrainingStrideWeighterCompatibility:
             {"time_weighter": ExponentialDecayWeighter(half_life=12), "sample_weight_alignment": alignment},
             stride=5,
         )
+
+    def test_matched_step_per_step_weights(self):
+        _per_step_weight_correspondence(SeasonalEmphasisWeighter(seasonality=4, emphasis=3.0), stride=5)
 
     def test_linear_decay_weighter(self):
         from yohou.weighting import LinearDecayWeighter
@@ -296,7 +308,7 @@ class TestTrainingStrideWeighterCompatibility:
 
         def fit(training_stride):
             fc = PointReductionForecaster(
-                estimator=_RecordingRegressor(),
+                estimator=SampleWeightRecorder(),
                 panel_strategy="global",
                 time_weighter=ExponentialDecayWeighter(half_life=10),
                 training_stride=training_stride,
@@ -341,7 +353,7 @@ class TestTrainingStrideWeighterCompatibility:
         from yohou.weighting import ExponentialDecayWeighter
 
         point = PointReductionForecaster(
-            estimator=_RecordingRegressor(),
+            estimator=SampleWeightRecorder(),
             time_weighter=ExponentialDecayWeighter(half_life=24),
             training_stride=3,
         )

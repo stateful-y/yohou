@@ -162,8 +162,9 @@ forecaster.fit(y_train, forecasting_horizon=12)
 ```
 
 The forecaster converts time weights to sklearn `sample_weight` internally.
-Because each training sample spans multiple forecast steps, the per-timestamp
-weights must be collapsed into one weight per sample. The
+Because each training sample spans multiple forecast steps, a sample carries one
+weight per target timestamp. With the default `"multi-output"` strategy those
+weights must be collapsed into one weight per sample, and the
 `sample_weight_alignment` constructor parameter controls how:
 
 ```python
@@ -178,6 +179,34 @@ forecaster.fit(y_train, forecasting_horizon=12)
 The default is `"first_step"`. A `vintage_weighter` slot is available for
 per-vintage weighting. See [Weighting](../explanation/weighting.md) for a full
 comparison of alignment strategies.
+
+If your weighter emphasizes specific target times, such as a season, use a
+per-step strategy with `sample_weight_alignment="matched_step"`. Each per-step
+model is then weighted by its own target timestamps:
+
+```python
+from yohou.weighting import SeasonalEmphasisWeighter
+
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    reduction_strategy="direct",
+    time_weighter=SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
+    sample_weight_alignment="matched_step",
+)
+forecaster.fit(y_train, forecasting_horizon=12)
+```
+
+With a collapse value such as `"first_step"`, every per-step model receives the
+weight of the first target timestamp, so the model for step 12 emphasizes the
+rows eleven steps before the marked season instead of the rows that predict it.
+For an `ExponentialDecayWeighter` on equally spaced timestamps you will see no
+difference, because each step's weights are a constant multiple of the first
+step's. `"matched_step"` requires `reduction_strategy="direct"` or `"dir-rec"`;
+with `"multi-output"` it falls back to `"first_step"` with a warning. If a step
+ends up with no weighted row for some panel group, for example because a
+`LookupWeighter` is non-zero only near the start of the series, fitting raises a
+`ValueError` naming the step: that step has nothing to learn from, so widen the
+weighter or use a collapse value.
 
 ## 5. Apply Weights During Scoring
 
@@ -228,6 +257,31 @@ search = GridSearchCV(
     param_grid={
         "time_weighter__half_life": [90, 180, 365, 730],
         "time_weighter__scale": ["elapsed", "position"],
+    },
+    scoring=MeanAbsoluteError(),
+    cv=ExpandingWindowSplitter(n_splits=5, test_size=12),
+)
+search.fit(y_train, forecasting_horizon=12)
+```
+
+`sample_weight_alignment="weighted_mean_step"` mixes a sample's per-step weights
+with coefficients that decay by `sample_weight_horizon_decay` per step, and that
+rate is a searchable parameter too. It changes the weights only for a weighter
+whose profile is not geometric, so tune it with a seasonal or table weighter
+rather than an exponential decay:
+
+```python
+forecaster = PointReductionForecaster(
+    estimator=Ridge(),
+    time_weighter=SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
+    sample_weight_alignment="weighted_mean_step",
+)
+
+search = GridSearchCV(
+    forecaster,
+    param_grid={
+        "time_weighter__seasonality": [6, 12],
+        "sample_weight_horizon_decay": [0.1, 0.5, 1.0],
     },
     scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=12),

@@ -13,11 +13,13 @@ from collections.abc import Generator
 from datetime import datetime, timedelta
 from typing import Any
 
+import numpy as np
 import polars as pl
 import polars.selectors as cs
 import pytest
 from hypothesis import settings
 from hypothesis.database import DirectoryBasedExampleDatabase
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.exceptions import NotFittedError
 
 from yohou.base import BaseActualTransformer
@@ -35,6 +37,31 @@ from yohou.base import BaseActualTransformer
 # version resolved.
 settings.register_profile("default", database=DirectoryBasedExampleDatabase(".artifacts/hypothesis"))
 settings.load_profile("default")
+
+
+class SampleWeightRecorder(RegressorMixin, BaseEstimator):
+    """Regressor that records the training data and ``sample_weight`` it receives.
+
+    Shared by the weighting tests: ``received_`` holds the ``(X, y, sample_weight)``
+    triple of the last ``fit``. It declares no evaluation-set parameter, so it cannot
+    be used in a ``validation_size`` fit; the holdout tests use their own recorder.
+    """
+
+    def __init__(self):
+        self.received_ = None
+
+    def fit(self, X, y, sample_weight=None):
+        self.received_ = (X, y, sample_weight)
+        # polars frames carry shape but not ndim; a (n, c) shape means c outputs.
+        shape = getattr(y, "shape", None)
+        self.n_outputs_ = shape[1] if shape is not None and len(shape) == 2 else 1
+        return self
+
+    def predict(self, X):
+        n_outputs = getattr(self, "n_outputs_", 1)
+        if n_outputs == 1:
+            return np.zeros(len(X))
+        return np.zeros((len(X), n_outputs))
 
 
 def run_checks(

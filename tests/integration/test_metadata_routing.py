@@ -797,6 +797,51 @@ class TestTimeWeightConversion:
             err_msg=f"time_weight → sample_weight conversion failed for alignment={alignment}",
         )
 
+    def test_matched_step_direct_exact_solution_at_later_steps(self):
+        """Each direct step's Ridge(0) coefficient is the WLS solution with weights at its own targets.
+
+        With LagTransformer(lag=1), y_t = y[1:], row i's feature is y[i] and its step-h target
+        is y[i + h + 1], whose timestamp carries table weight w[i + h + 1]. The table is
+        non-geometric, so steps 2 and 3 differ from the first_step weighting of the same target.
+        """
+        np.random.seed(42)
+        n, horizon = 50, 3
+        y_true = np.zeros(n)
+        for t in range(1, n):
+            y_true[t] = 0.5 * y_true[t - 1] + np.random.randn() * 0.3
+        times = pl.Series([datetime(2020, 1, 1) + timedelta(days=i) for i in range(n)]).cast(pl.Datetime("us"))
+        y = pl.DataFrame({"time": times, "value": y_true})
+        w = np.array([
+            1.0 + 0.05 * i + (0.5 if i % 5 == 0 else 0.0) + (3.0 if i in (17, 31) else 0.0) for i in range(n)
+        ])
+
+        forecaster = PointReductionForecaster(
+            estimator=Ridge(alpha=0.0, fit_intercept=False),
+            actual_transformer=LagTransformer(lag=1),
+            reduction_strategy="direct",
+            time_weighter=TableWeighter(frame=pl.DataFrame({"time": times, "weight": w}), on="time"),
+            sample_weight_alignment="matched_step",
+        )
+        forecaster.fit(y, forecasting_horizon=horizon)
+
+        n_samples = (n - 1) - horizon
+        rows = np.arange(n_samples)
+        X_values = y_true[rows].reshape(-1, 1)
+
+        def wls(target, weights):
+            weights = weights * (n_samples / weights.sum())
+            W = np.diag(weights)
+            return np.linalg.solve(X_values.T @ W @ X_values, X_values.T @ W @ target)[0]
+
+        for step in range(1, horizon + 1):
+            target = y_true[rows + step + 1]
+            matched = wls(target, w[rows + step + 1])
+            np.testing.assert_allclose(
+                np.ravel(forecaster.estimator_[step - 1].coef_)[0], matched, rtol=1e-6, atol=1e-8
+            )
+            if step > 1:
+                assert abs(matched - wls(target, w[rows + 2])) > 1e-4
+
     def test_time_weight_uniform_equals_no_weight(self):
         """Verify uniform time_weight produces same result as no weight."""
         np.random.seed(42)
