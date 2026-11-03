@@ -16,4 +16,5 @@ Weighter estimators for time-axis weighting of training and evaluation.
 | [`LinearDecayWeighter`](generated/yohou.weighting.LinearDecayWeighter.md) | Linear decay weights giving more weight to recent keys. |
 | [`LookupWeighter`](generated/yohou.weighting.LookupWeighter.md) | Explicit per-key weights from a mapping. |
 | [`SeasonalEmphasisWeighter`](generated/yohou.weighting.SeasonalEmphasisWeighter.md) | Weights emphasizing keys in phase with the most recent seasonal position. |
+| [`SegmentWeighter`](generated/yohou.weighting.SegmentWeighter.md) | Two-level weights from calendar segment membership. |
 | [`TableWeighter`](generated/yohou.weighting.TableWeighter.md) | DataFrame-driven weights resolved by joining on a key column. |

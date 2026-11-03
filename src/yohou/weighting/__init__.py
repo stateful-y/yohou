@@ -14,6 +14,7 @@ from .weighters import (
     LinearDecayWeighter,
     LookupWeighter,
     SeasonalEmphasisWeighter,
+    SegmentWeighter,
     TableWeighter,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     "LinearDecayWeighter",
     "LookupWeighter",
     "SeasonalEmphasisWeighter",
+    "SegmentWeighter",
     "TableWeighter",
 ]

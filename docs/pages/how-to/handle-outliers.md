@@ -63,7 +63,60 @@ y_clipped = handler.transform(y_train)
 As with `OutlierThresholdHandler`, pass `strategy="nan"` to replace outliers
 with null instead of clipping.
 
-## 4. Place in a Pipeline
+## 4. Handle Outliers by Time of Day
+
+When your series has a daily cycle, a single threshold treats every hour alike.
+On hourly electricity load where nights run near 60 and days near 300, a single
+95th percentile sits near the daytime peak, so a night reading of 150 (more than
+double the normal night level) is never caught. Give the handler a
+[`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.CalendarSegmenter/)
+to work by time of day.
+
+**Handle only part of the day.** With a `segmenter`, only rows the segmenter
+selects are handled, and percentiles are learned from those rows only. Rows
+outside the segment are returned unchanged:
+
+```python
+from yohou.preprocessing import OutlierPercentileHandler
+from yohou.segmenting import CalendarSegmenter
+
+business_hours = CalendarSegmenter("hour", values=range(8, 19))
+handler = OutlierPercentileHandler(high=99, segmenter=business_hours)
+```
+
+**Learn one limit per hour.** With `by_segment=True`, the handler fits a
+separate threshold pair for each hour, so 150 is clipped at 03:00 and kept at
+12:00:
+
+```python
+handler = OutlierPercentileHandler(
+    high=99,
+    segmenter=CalendarSegmenter("hour"),
+    by_segment=True,
+)
+handler.fit(y_train)
+handler.segment_thresholds_["load"][3]  # (None, upper limit for 03:00)
+```
+
+Choose the coarsest segmentation that captures the cycle. Each hour gets
+roughly a twenty-fourth of the training rows, and combining conditions (for
+example weekday and hour with
+[`IntersectionSegmenter`](/pages/api/generated/yohou.segmenting.IntersectionSegmenter/))
+divides them further.
+
+**Labels with too little data.** A label with fewer than `min_samples` finite
+values (default 30) uses the pooled thresholds, which are fitted on all
+in-segment rows together, and `fit` warns once, naming the affected (column,
+label) pairs. A label that `fit` never saw, such as June when the training data
+covered January to March with `CalendarSegmenter("month")`, also uses the pooled
+thresholds, without a warning.
+
+**Match the segment to the data frequency.** An hour segment on daily data
+selects nothing (every daily timestamp sits at 00:00), so `fit` warns that the
+column will be returned unchanged. For local hours on UTC data, pass
+`time_zone`, for example `CalendarSegmenter("hour", values=range(8, 19), time_zone="Europe/Paris")`.
+
+## 5. Place in a Pipeline
 
 Both handlers should appear early in a
 [`FeaturePipeline`](/pages/api/generated/yohou.compose.FeaturePipeline/),
@@ -80,7 +133,7 @@ pipeline = FeaturePipeline([
 ])
 ```
 
-## 5. Prevent Outliers from Inflating Conformal Intervals
+## 6. Prevent Outliers from Inflating Conformal Intervals
 
 When using conformal prediction, a single extreme conformity score in the
 calibration set raises the quantile used to set the interval margin, widening
@@ -118,3 +171,4 @@ predicted levels (multiplicative noise). For purely additive noise, the default
   interval validity
 - [Clean and Resample](clean-and-resample.md) for removing or imputing missing values before modeling
 - [Use Preprocessing Transformers](use-preprocessing-transformers.md) for individual transformer usage patterns
+- [`yohou.segmenting`](/pages/api/segmenting/) for the segmenters that restrict handling to part of the calendar

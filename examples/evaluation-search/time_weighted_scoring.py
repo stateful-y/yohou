@@ -303,6 +303,45 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    ## 7. Score Business Hours Only
+
+    A [`SegmentWeighter`](/pages/api/generated/yohou.weighting.SegmentWeighter/) with a
+    [`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.CalendarSegmenter/)
+    turns a calendar window into a weight mask: hours 08:00 to 18:00 get weight 1
+    and all other hours weight 0, so the scorer evaluates business hours only.
+    Below, a forecast of hourly load is accurate during the day and poor at night.
+    """)
+
+
+@app.cell
+def _(MeanAbsoluteError, mo):
+    import polars as pl
+
+    from yohou.segmenting import CalendarSegmenter
+    from yohou.weighting import SegmentWeighter
+
+    _times = pl.datetime_range(pl.datetime(2024, 1, 1), pl.datetime(2024, 1, 14, 23), "1h", eager=True)
+    _truth = pl.Series([300.0 if 8 <= t.hour <= 18 else 60.0 for t in _times])
+    # Daytime error 5, night-time error 40
+    _error = pl.Series([5.0 if 8 <= t.hour <= 18 else 40.0 for t in _times])
+    _y_train_h = pl.DataFrame({"time": _times[:168], "load": _truth[:168]})
+    _y_true_h = pl.DataFrame({"time": _times[168:], "load": _truth[168:]})
+    _y_pred_h = pl.DataFrame({"time": _times[168:], "load": (_truth + _error)[168:]})
+
+    _all_hours = MeanAbsoluteError()
+    _all_hours.fit(_y_train_h)
+    _business_hours = MeanAbsoluteError(time_weighter=SegmentWeighter(CalendarSegmenter("hour", values=range(8, 19))))
+    _business_hours.fit(_y_train_h)
+
+    mo.md(
+        f"MAE over all hours: **{_all_hours.score(_y_true_h, _y_pred_h):.1f}**. "
+        f"MAE over business hours only: **{_business_hours.score(_y_true_h, _y_pred_h):.1f}**."
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     ## Multi-vintage Scoring
 
     The `observe_predict` method with `stride=1` produces one forecast per

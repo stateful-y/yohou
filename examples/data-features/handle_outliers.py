@@ -14,7 +14,13 @@ __gallery__ = {
     "category": "how-to",
     "section": "data-features",
     "companion": "/pages/how-to/handle-outliers/",
-    "api_references": ["OutlierPercentileHandler", "OutlierThresholdHandler", "SplitConformalForecaster", "GammaResidual"],
+    "api_references": [
+        "OutlierPercentileHandler",
+        "OutlierThresholdHandler",
+        "CalendarSegmenter",
+        "SplitConformalForecaster",
+        "GammaResidual",
+    ],
 }
 app = marimo.App(width="medium")
 
@@ -134,7 +140,49 @@ def _(OutlierPercentileHandler, data_with_outliers, plot_time_series):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 4. Place Handlers in a Pipeline
+    ## 4. Handle Outliers by Time of Day
+
+    When the normal range depends on the hour, one limit for the whole day
+    misses night-time spikes. Below, hourly load runs near 60 at night and
+    near 300 during the day. A reading of 150 is more than double the normal
+    night level, yet a single 99th percentile sits near the daytime peak and
+    leaves it alone. With a [`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.CalendarSegmenter/)
+    and `by_segment=True`, the handler learns one limit per hour and clips the
+    03:00 reading while keeping the same value at 12:00.
+    """)
+
+
+@app.cell
+def _(OutlierPercentileHandler, pl):
+    from yohou.segmenting import CalendarSegmenter
+
+    # Sixty days of hourly load: nights near 60, days near 300, small deterministic jitter
+    _times = pl.datetime_range(pl.datetime(2024, 1, 1), pl.datetime(2024, 2, 29, 23), "1h", eager=True)
+    _base = pl.Series([300.0 if 8 <= t.hour <= 18 else 60.0 for t in _times])
+    _jitter = pl.Series([float((i * 7) % 11) for i in range(len(_times))])
+    hourly_load = pl.DataFrame({"time": _times, "load": _base + _jitter})
+
+    # Two new readings of 150: one at 03:00, one at 12:00
+    _probe = pl.DataFrame({"time": [_times[-21], _times[-12]], "load": [150.0, 150.0]})
+
+    _single_limit = OutlierPercentileHandler(high=99).fit(hourly_load)
+    _limit_per_hour = OutlierPercentileHandler(
+        high=99,
+        segmenter=CalendarSegmenter("hour"),
+        by_segment=True,
+    ).fit(hourly_load)
+
+    hourly_comparison = _probe.with_columns(
+        _single_limit.transform(_probe)["load"].alias("single_limit"),
+        _limit_per_hour.transform(_probe)["load"].alias("limit_per_hour"),
+    )
+    hourly_comparison
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Place Handlers in a Pipeline
 
     Both handlers are stateful transformers. Place them before lag features
     and stationarity transforms.
@@ -176,7 +224,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 5. Verify: Outlier Effect on Conformal Intervals
+    ## 6. Verify: Outlier Effect on Conformal Intervals
 
     Outliers in the calibration set inflate interval width. Compare
     intervals with and without outlier clipping.

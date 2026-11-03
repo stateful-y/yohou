@@ -344,6 +344,7 @@ nav:
       - yohou.model_selection: pages/api/model_selection.md
       - yohou.preprocessing: pages/api/preprocessing.md
       - yohou.weighting: pages/api/weighting.md
+      - yohou.segmenting: pages/api/segmenting.md
       - yohou.stationarity: pages/api/stationarity.md
       - yohou.plotting: pages/api/plotting.md
       - yohou.datasets: pages/api/datasets.md

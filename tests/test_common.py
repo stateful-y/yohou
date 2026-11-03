@@ -17,11 +17,13 @@ from yohou.base import BaseActualTransformer, BaseForecaster
 from yohou.interval.base import BaseConformalAdapter, BaseSimilarity
 from yohou.metrics.base import BaseScorer
 from yohou.model_selection.split import BaseSplitter
+from yohou.segmenting import BaseSegmenter
 from yohou.testing import (
     _yield_composition_contract_checks,
     _yield_yohou_conformal_adapter_checks,
     _yield_yohou_forecaster_checks,
     _yield_yohou_scorer_checks,
+    _yield_yohou_segmenter_checks,
     _yield_yohou_similarity_checks,
     _yield_yohou_splitter_checks,
     _yield_yohou_transformer_checks,
@@ -402,12 +404,14 @@ def _weighter_instances() -> dict[str, object]:
     ``TableWeighter`` and ``CompositeWeighter`` are default-constructible but
     cannot operate with default args, so concrete fixtures are supplied.
     """
+    from yohou.segmenting import CalendarSegmenter
     from yohou.weighting import (
         CompositeWeighter,
         ExponentialDecayWeighter,
         LinearDecayWeighter,
         LookupWeighter,
         SeasonalEmphasisWeighter,
+        SegmentWeighter,
         TableWeighter,
     )
 
@@ -423,6 +427,8 @@ def _weighter_instances() -> dict[str, object]:
             ("decay", ExponentialDecayWeighter(half_life=2)),
             ("lin", LinearDecayWeighter(window_size=3)),
         ]),
+        # The key is midnight-only daily data, so a day-level segment selects some rows.
+        "SegmentWeighter": SegmentWeighter(CalendarSegmenter("day_of_month", values=[1, 2])),
     }
 
 
@@ -444,6 +450,54 @@ class TestWeighterCommon:
             )
         weighter = instances[name]
         run_checks(weighter, _yield_yohou_weighter_checks(weighter, _weighter_key()))
+
+
+def _segmenter_time() -> pl.Series:
+    """Two days of hourly, timezone-aware (UTC) timestamps used as the segmenter fixture."""
+    start = datetime(2024, 1, 5)  # Friday, so the window spans a weekday and a weekend day
+    return pl.Series("time", [start + timedelta(hours=h) for h in range(48)]).dt.replace_time_zone("UTC")
+
+
+def _segmenter_instances() -> dict[str, object]:
+    """Representative *working* segmenter instances keyed by class name.
+
+    The composites are default-constructible but cannot label with default args,
+    so concrete fixtures are supplied.
+    """
+    from yohou.segmenting import CalendarSegmenter, ComplementSegmenter, IntersectionSegmenter, UnionSegmenter
+
+    def hours() -> CalendarSegmenter:
+        return CalendarSegmenter("hour", values=list(range(8, 19)), time_zone="Europe/Paris")
+
+    def weekend() -> CalendarSegmenter:
+        return CalendarSegmenter("day_of_week", values=[6, 7])
+
+    return {
+        "CalendarSegmenter": hours(),
+        "IntersectionSegmenter": IntersectionSegmenter([("hours", hours()), ("weekend", weekend())]),
+        "UnionSegmenter": UnionSegmenter([("hours", hours()), ("weekend", weekend())]),
+        "ComplementSegmenter": ComplementSegmenter(hours()),
+    }
+
+
+class TestSegmenterCommon:
+    """Run systematic checks on all discovered segmenters."""
+
+    @pytest.mark.parametrize(
+        "name,cls",
+        [(n, c) for n, c in all_estimators() if issubclass(c, BaseSegmenter)],
+        ids=[n for n, c in all_estimators() if issubclass(c, BaseSegmenter)],
+    )
+    def test_segmenter_checks(self, name, cls):
+        """Run all applicable check-generator checks for a segmenter."""
+        instances = _segmenter_instances()
+        if name not in instances:
+            pytest.fail(
+                f"{name} is not registered in _segmenter_instances(). Add a representative "
+                "instance there that labels some but not all of _segmenter_time()."
+            )
+        segmenter = instances[name]
+        run_checks(segmenter, _yield_yohou_segmenter_checks(segmenter, _segmenter_time()))
 
 
 def _similarity_calibration() -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -522,11 +576,12 @@ def _composition_descriptors() -> dict[str, dict]:
     """Per-compositor descriptor (composition-attribute + representative components).
 
     Covers every concrete ``_BaseComposition`` subclass across the weighter,
-    similarity, transformer, and forecaster families.
+    similarity, segmenter, transformer, and forecaster families.
     """
     from yohou.interval.similarity import DistanceSimilarity, SeasonalSimilarity
     from yohou.point import SeasonalNaive
     from yohou.preprocessing import LagTransformer
+    from yohou.segmenting import CalendarSegmenter
     from yohou.weighting import ExponentialDecayWeighter, LinearDecayWeighter
 
     def two_forecasters() -> list:
@@ -574,6 +629,20 @@ def _composition_descriptors() -> dict[str, dict]:
             "components": [
                 ("decay", ExponentialDecayWeighter(half_life=2)),
                 ("lin", LinearDecayWeighter(window_size=3)),
+            ],
+        },
+        "IntersectionSegmenter": {
+            "attr": "segmenters",
+            "components": [
+                ("hours", CalendarSegmenter("hour", values=[9])),
+                ("days", CalendarSegmenter("day_of_week")),
+            ],
+        },
+        "UnionSegmenter": {
+            "attr": "segmenters",
+            "components": [
+                ("hours", CalendarSegmenter("hour", values=[9])),
+                ("days", CalendarSegmenter("day_of_week")),
             ],
         },
         "CompositeSimilarity": {

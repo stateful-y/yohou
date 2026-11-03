@@ -41,6 +41,7 @@
 *[sliding window splitter]: A cross-validation splitter that maintains a fixed-size training window sliding forward in time.
 *[concept drift]: A shift in the statistical properties of the data over time, causing older models to become less accurate.
 *[time weighting]: Applying non-uniform weights to observations or errors so that specific time periods carry more or less influence.
+*[segmenter]: An estimator that labels each timestamp with a calendar segment (for example its hour), or marks it as outside every segment, so a weighter or outlier handler can act on part of the calendar.
 *[proper scoring rule]: A metric uniquely minimized when the predicted distribution matches the true distribution.
 *[ACF]: Autocorrelation function, measuring the linear correlation between a time series and a lagged copy of itself.
 *[baseline]: A simple reference model (such as SeasonalNaive) used to judge whether more complex approaches add value.

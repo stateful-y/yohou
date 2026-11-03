@@ -521,3 +521,130 @@ class TestCompositeNamedAccess:
     def test_distinct_names_still_validate(self):
         decay, seasonal = self._parts()
         CompositeWeighter(weighters=[("decay", decay), ("seasonal", seasonal)])._check_weighters()
+
+
+class TestSegmentWeighter:
+    """Tests for SegmentWeighter."""
+
+    @staticmethod
+    def _hourly_day() -> pl.Series:
+        return pl.Series("time", [datetime(2024, 1, 1, h) for h in range(24)])
+
+    def test_business_hours(self):
+        """Test rows from 08:00 to 18:00 get 1.0 and the rest 0.0."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        weights = SegmentWeighter(CalendarSegmenter("hour", values=list(range(8, 19)))).compute_weights(
+            self._hourly_day()
+        )
+        assert weights.dtype == pl.Float64
+        assert weights.to_list() == [1.0 if 8 <= h <= 18 else 0.0 for h in range(24)]
+
+    def test_custom_levels(self):
+        """Test inside and outside set the two weight levels."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        weights = SegmentWeighter(CalendarSegmenter("hour", values=[0]), inside=3.0, outside=0.5).compute_weights(
+            self._hourly_day()
+        )
+        assert weights.to_list() == [3.0] + [0.5] * 23
+
+    def test_struct_labels_ignored(self):
+        """Test every inside row of a composite segmenter gets the inside weight."""
+        from yohou.segmenting import CalendarSegmenter, IntersectionSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        seg = IntersectionSegmenter([
+            ("days", CalendarSegmenter("day_of_week", values=[1])),
+            ("hours", CalendarSegmenter("hour", values=[9, 10])),
+        ])
+        weights = SegmentWeighter(seg, inside=2.0).compute_weights(self._hourly_day())
+        assert weights.to_list() == [2.0 if h in (9, 10) else 0.0 for h in range(24)]
+
+    def test_missing_segmenter(self):
+        """Test a missing segmenter is rejected."""
+        from yohou.weighting import SegmentWeighter
+
+        with pytest.raises(ValueError, match="segmenter"):
+            SegmentWeighter().compute_weights(self._hourly_day())
+
+    @pytest.mark.parametrize("param", ["inside", "outside"])
+    def test_negative_weight_rejected(self, param):
+        """Test a negative weight level fails parameter validation."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        weighter = SegmentWeighter(CalendarSegmenter("hour"), **{param: -1.0})
+        with pytest.raises(ValueError, match=param):
+            weighter.compute_weights(self._hourly_day())
+
+    def test_integer_key_rejected(self):
+        """Test integer forecasting steps are rejected with a message naming them."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        with pytest.raises(ValueError, match="forecasting steps"):
+            SegmentWeighter(CalendarSegmenter("hour")).compute_weights(pl.Series("forecasting_step", [1, 2, 3]))
+
+    def test_all_zero_rejected_by_resolution(self):
+        """Test resolving weights where nothing is inside fails the all-zero validation."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        days = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])  # all at 00:00
+        with pytest.raises(ValueError, match="All weights are zero"):
+            _resolve_weighter_to_array(SegmentWeighter(CalendarSegmenter("hour", values=[12])), days)
+
+    def test_set_params_routes_to_segmenter(self):
+        """Test the segmenter's parameters are addressable through the weighter."""
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        weighter = SegmentWeighter(CalendarSegmenter("hour", values=[12]))
+        weighter.set_params(segmenter__values=[9, 10])
+        assert weighter.get_params(deep=True)["segmenter__values"] == [9, 10]
+
+
+class TestSegmentWeighterInScorers:
+    """Tests for SegmentWeighter in scorer weight slots."""
+
+    @staticmethod
+    def _vintage_forecasts(error_06: float, error_18: float):
+        """Forecasts issued at 06:00 and 18:00, one hour ahead, with fixed absolute errors."""
+        times = [datetime(2024, 1, 10) + timedelta(hours=h) for h in range(24)]
+        y_true = pl.DataFrame({"time": times, "value": [10.0] * 24})
+        y_pred = pl.DataFrame({
+            "vintage_time": [datetime(2024, 1, 10, 6), datetime(2024, 1, 10, 18)],
+            "time": [datetime(2024, 1, 10, 7), datetime(2024, 1, 10, 19)],
+            "value": [10.0 + error_06, 10.0 + error_18],
+        })
+        y_train = pl.DataFrame({
+            "time": [datetime(2024, 1, 9) + timedelta(hours=h) for h in range(24)],
+            "value": [10.0] * 24,
+        })
+        return y_train, y_true, y_pred
+
+    def test_vintage_slot(self):
+        """Test only the 06:00 vintages contribute to the score."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        y_train, y_true, y_pred = self._vintage_forecasts(error_06=1.0, error_18=5.0)
+        mae = MeanAbsoluteError(vintage_weighter=SegmentWeighter(CalendarSegmenter("hour", values=[6])))
+        mae.fit(y_train)
+        np.testing.assert_allclose(mae.score(y_true, y_pred), 1.0)
+
+    def test_step_slot_rejected(self):
+        """Test a step weighter on a forecast with vintage_time raises naming forecasting steps."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        y_train, y_true, y_pred = self._vintage_forecasts(error_06=1.0, error_18=5.0)
+        mae = MeanAbsoluteError(step_weighter=SegmentWeighter(CalendarSegmenter("hour")))
+        mae.fit(y_train)
+        with pytest.raises(ValueError, match="forecasting steps"):
+            mae.score(y_true, y_pred)

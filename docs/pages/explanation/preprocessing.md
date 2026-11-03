@@ -214,7 +214,12 @@ thresholds or data-driven percentile bounds. Values outside the specified range 
 be clipped to the boundary or replaced with null for downstream imputation. Both
 [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.OutlierThresholdHandler/)
 and [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.OutlierPercentileHandler/)
-are stateless.
+are stateless. Both accept a segmenter from [`yohou.segmenting`](/pages/api/segmenting/),
+which restricts handling to part of the calendar (for example business hours).
+The percentile handler can also fit one range per segment, so what counts as
+extreme can depend on the time of day. A segmenter labels each row from its own
+timestamp alone, which keeps the handlers stateless and gives the same result
+whether data arrives in one batch or several.
 
 **Resampling transformers** change time series frequency by aggregating to a lower
 frequency or interpolating to a higher one. Resampling before modeling is often

@@ -112,6 +112,9 @@ from .generators import (
     _yield_yohou_search_checks as _yield_yohou_search_checks,
 )
 from .generators import (
+    _yield_yohou_segmenter_checks as _yield_yohou_segmenter_checks,
+)
+from .generators import (
     _yield_yohou_similarity_checks as _yield_yohou_similarity_checks,
 )
 from .generators import (
@@ -188,6 +191,15 @@ from .search import (
     check_search_refit_false_no_forecaster,
     check_search_return_train_score,
     check_search_rewind_delegates,
+)
+from .segmenter import (
+    check_segmenter_compute_labels_alignment,
+    check_segmenter_default_constructible,
+    check_segmenter_deterministic,
+    check_segmenter_fit_noop_returns_self,
+    check_segmenter_row_wise,
+    check_segmenter_tags_accessible_before_fit,
+    check_segmenter_tags_static_after_fit,
 )
 from .similarity import (
     check_similarity_methods_call_check_is_fitted,
@@ -371,6 +383,13 @@ __all__ = [
     "check_weighter_default_constructible",
     "check_weighter_tags_accessible_before_fit",
     "check_weighter_tags_static_after_fit",
+    "check_segmenter_compute_labels_alignment",
+    "check_segmenter_default_constructible",
+    "check_segmenter_deterministic",
+    "check_segmenter_fit_noop_returns_self",
+    "check_segmenter_row_wise",
+    "check_segmenter_tags_accessible_before_fit",
+    "check_segmenter_tags_static_after_fit",
     "check_similarity_predict_matrix_shape",
     "check_similarity_to_weights_rows_reserve_mass",
     "check_similarity_metric_params_verbatim",

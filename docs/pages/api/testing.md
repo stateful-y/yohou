@@ -68,7 +68,7 @@ Testing utilities for Yohou estimators.
 | [`check_reduction_strategy`](generated/yohou.testing.check_reduction_strategy.md) | Check reduction_strategy is one of 'direct', 'dir-rec', 'multi-output'. |
 | [`check_validation_holdout_default_noop`](generated/yohou.testing.check_validation_holdout_default_noop.md) | Check that ``validation_size=None`` delivers no eval set at all. |
 | [`check_validation_holdout_fit`](generated/yohou.testing.check_validation_holdout_fit.md) | Check that fitting with ``validation_size`` delivers a valid eval set. |
-| [`check_validation_holdout_parameters`](generated/yohou.testing.check_validation_holdout_parameters.md) | Check the validation-holdout constructor parameters and their defaults. |
+| [`check_validation_holdout_parameters`](generated/yohou.testing.check_validation_holdout_parameters.md) | Check the validation-holdout constructor parameter and its default. |
 | [`check_scorer_aggregation_methods`](generated/yohou.testing.check_scorer_aggregation_methods.md) | Check all aggregation_method combinations produce valid output. |
 | [`check_scorer_component_subselection`](generated/yohou.testing.check_scorer_component_subselection.md) | Check components filtering works correctly. |
 | [`check_scorer_coverage_rate_subselection`](generated/yohou.testing.check_scorer_coverage_rate_subselection.md) | Check coverage parameter filters interval predictions correctly. |
@@ -100,6 +100,13 @@ Testing utilities for Yohou estimators.
 | [`check_search_refit_false_no_forecaster`](generated/yohou.testing.check_search_refit_false_no_forecaster.md) | Check refit=False doesn't create best_forecaster_. |
 | [`check_search_return_train_score`](generated/yohou.testing.check_search_return_train_score.md) | Check return_train_score=True adds train score keys to cv_results_. |
 | [`check_search_rewind_delegates`](generated/yohou.testing.check_search_rewind_delegates.md) | Check rewind() delegates to best_forecaster_.rewind() correctly. |
+| [`check_segmenter_compute_labels_alignment`](generated/yohou.testing.check_segmenter_compute_labels_alignment.md) | Check ``compute_labels`` returns one label per timestamp. |
+| [`check_segmenter_default_constructible`](generated/yohou.testing.check_segmenter_default_constructible.md) | Check the segmenter class is constructible with no arguments. |
+| [`check_segmenter_deterministic`](generated/yohou.testing.check_segmenter_deterministic.md) | Check two ``compute_labels`` calls on the same series agree. |
+| [`check_segmenter_fit_noop_returns_self`](generated/yohou.testing.check_segmenter_fit_noop_returns_self.md) | Check ``fit`` is a no-op returning self that leaves params unchanged. |
+| [`check_segmenter_row_wise`](generated/yohou.testing.check_segmenter_row_wise.md) | Check a row's label depends only on its own timestamp. |
+| [`check_segmenter_tags_accessible_before_fit`](generated/yohou.testing.check_segmenter_tags_accessible_before_fit.md) | Check ``__sklearn_tags__()`` is callable on an unfitted segmenter. |
+| [`check_segmenter_tags_static_after_fit`](generated/yohou.testing.check_segmenter_tags_static_after_fit.md) | Check tags are unchanged by the no-op ``fit``. |
 | [`check_similarity_methods_call_check_is_fitted`](generated/yohou.testing.check_similarity_methods_call_check_is_fitted.md) | Check ``predict``, ``observe``, and ``rewind`` raise ``NotFittedError`` before ``fit``. |
 | [`check_similarity_metric_params_verbatim`](generated/yohou.testing.check_similarity_metric_params_verbatim.md) | Check ``metric_params=None`` is stored verbatim (no init-mutation). |
 | [`check_similarity_predict_matrix_shape`](generated/yohou.testing.check_similarity_predict_matrix_shape.md) | Check ``predict`` returns an ``(n_pred, n_calib)`` weight matrix. |
