@@ -144,9 +144,11 @@ class _EvalSet(NamedTuple):
         Evaluation feature matrix, in the space the estimator trains in.
     y : pl.DataFrame or pl.Series
         Evaluation target.
-    sample_weight : np.ndarray or None
+    sample_weight : np.ndarray or _StepWeights or None
         One weight per evaluation row, or None when the forecaster has no
-        weighter, which is the common case.
+        weighter, which is the common case. Under ``"matched_step"`` with a
+        per-step strategy it holds one raw weight per evaluation row and step,
+        and each step's estimator receives its own normalized column.
 
     Notes
     -----
@@ -158,7 +160,54 @@ class _EvalSet(NamedTuple):
 
     X: pl.DataFrame
     y: Any
-    sample_weight: np.ndarray | None = None
+    sample_weight: "np.ndarray | _StepWeights | None" = None
+
+
+class _StepWeights:
+    """Per-step training weights for the per-step strategies under ``"matched_step"``.
+
+    Row ``i`` of ``values`` holds the raw (unnormalized) weight of each of the
+    row's ``H`` target timestamps, already multiplied by the row's vintage
+    weight; ``groups`` holds the row's panel group index (all zeros on global
+    data). Indexing with a boolean row mask filters both arrays in lockstep, so
+    ``training_stride`` and ``nan_handling`` filter it exactly as they filter a
+    1-D weight vector, and ``len`` is the row count. Normalization happens per
+    step and per group only after the last row mask, in ``_step_sample_weight``.
+
+    Parameters
+    ----------
+    values : np.ndarray of shape (n_rows, H)
+        Raw per-step weights.
+    groups : np.ndarray of shape (n_rows,)
+        Integer panel group index of each row, in ``groups_`` order.
+
+    """
+
+    __slots__ = ("groups", "values")
+
+    def __init__(self, values: np.ndarray, groups: np.ndarray) -> None:
+        self.values = values
+        self.groups = groups
+
+    def __len__(self) -> int:
+        """Return the number of rows."""
+        return self.values.shape[0]
+
+    def __getitem__(self, mask: np.ndarray) -> "_StepWeights":
+        """Return the rows selected by a boolean row mask."""
+        keep = np.asarray(mask, dtype=bool)
+        return _StepWeights(self.values[keep], self.groups[keep])
+
+
+def _row_weights(weights: "np.ndarray | _StepWeights | None") -> np.ndarray | None:
+    """Narrow weights about to reach an estimator to a 1-D vector or None.
+
+    A `_StepWeights` holds one column per step and must be reduced to its step's
+    column with `BaseReductionForecaster._step_sample_weight` first; delivering
+    it whole would hand an estimator a matrix where it expects one weight per row.
+    """
+    assert not isinstance(weights, _StepWeights), "per-step weights reached an estimator before step selection"
+    return weights
 
 
 class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
@@ -264,14 +313,37 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Combined multiplicatively with ``time_weighter``. No alignment
         strategy is applied.
     sample_weight_alignment : {"first_step", "mean_step", \
-"weighted_mean_step", "max_weight_step", "min_weight_step"}, \
-default="first_step"
-        How to collapse the per-step ``time_weighter`` weights of a
-        sample's forecast window into a single ``sample_weight``.
-        ``"first_step"`` uses the one-step-ahead weight; ``"mean_step"``,
-        ``"max_weight_step"``, and ``"min_weight_step"`` aggregate across
-        the horizon; ``"weighted_mean_step"`` uses an exponentially
-        decaying weighting of the horizon steps.
+"weighted_mean_step", "max_weight_step", "min_weight_step", \
+"matched_step"}, default="first_step"
+        How the per-timestep ``time_weighter`` weights become each fitted
+        estimator's ``sample_weight``. A training row spans ``H`` target
+        timestamps, and a ``"multi-output"`` estimator carries one weight per
+        row, so the first five values collapse the row's ``H`` weights into one
+        scalar given to every estimator: ``"first_step"`` uses the
+        one-step-ahead weight; ``"mean_step"``, ``"max_weight_step"``, and
+        ``"min_weight_step"`` aggregate across the horizon;
+        ``"weighted_mean_step"`` mixes the steps with coefficients
+        proportional to ``exp(-k * sample_weight_horizon_decay)``.
+
+        ``"matched_step"`` does not collapse. Under ``"direct"`` and
+        ``"dir-rec"`` the estimator for step ``h`` weights each row by the
+        weight at that row's step-``h`` target timestamp, normalized per step
+        and per panel group over the rows that survive ``training_stride`` and
+        ``nan_handling``. It is the exact choice for weighters that emphasize
+        specific target times (``SeasonalEmphasisWeighter``,
+        ``LookupWeighter``, ``TableWeighter``). For an exponential decay on
+        equally spaced timestamps with no dropped rows it equals
+        ``"first_step"``; on calendar-month or gapped timestamps it does not.
+        If some panel group has no weighted row for a step, in the training or
+        the evaluation set, fitting raises ``ValueError``, because that step has
+        nothing to learn from. Under ``"multi-output"`` it has no effect:
+        fitting with a ``time_weighter`` warns and computes weights as
+        ``"first_step"``. Without a ``time_weighter`` the alignment is unused.
+    sample_weight_horizon_decay : float, default=0.5
+        Decay rate of the horizon mixing coefficients of
+        ``sample_weight_alignment="weighted_mean_step"``; ``0.0`` gives the
+        plain mean. Ignored by every other alignment. Its effect shows only
+        with a non-geometric weighter at a horizon above 1. Tunable via search.
 
     Notes
     -----
@@ -390,8 +462,10 @@ default="first_step"
                 "weighted_mean_step",
                 "max_weight_step",
                 "min_weight_step",
+                "matched_step",
             })
         ],
+        "sample_weight_horizon_decay": [Interval(numbers.Real, 0, None, closed="left")],
     }
 
     def __init__(
@@ -412,6 +486,7 @@ default="first_step"
         time_weighter: BaseWeighter | None = None,
         vintage_weighter: BaseWeighter | None = None,
         sample_weight_alignment: str = "first_step",
+        sample_weight_horizon_decay: float = 0.5,
     ):
         BaseForecaster.__init__(
             self,
@@ -435,6 +510,7 @@ default="first_step"
         self.time_weighter = time_weighter
         self.vintage_weighter = vintage_weighter
         self.sample_weight_alignment = sample_weight_alignment
+        self.sample_weight_horizon_decay = sample_weight_horizon_decay
 
     def __sklearn_tags__(self) -> Tags:
         """Get estimator tags.
@@ -503,6 +579,38 @@ default="first_step"
             stacklevel=4,
         )
 
+    def _warn_inapplicable_sample_weight_alignment(self) -> None:
+        """Warn when ``sample_weight_alignment="matched_step"`` cannot apply.
+
+        Under ``"multi-output"`` one estimator predicts every step and takes
+        one weight per row, so there is no per-step weight to give it; the fit
+        computes weights as ``"first_step"``. Silent only without a
+        ``time_weighter``, because then no alignment is evaluated at all.
+
+        Warns rather than raises, following ``step_feature_alignment``: a search
+        crossing ``reduction_strategy`` with ``sample_weight_alignment`` then runs
+        every multi-output cell as ``"first_step"`` instead of failing on it.
+
+        Call once per ``fit``, after parameter validation.
+        """
+        if (
+            self.sample_weight_alignment != "matched_step"
+            or self.reduction_strategy != "multi-output"
+            or self.time_weighter is None
+        ):
+            return
+        warnings.warn(
+            'sample_weight_alignment="matched_step" has no effect with '
+            'reduction_strategy="multi-output", because a single estimator predicts every '
+            "horizon step and takes one weight per row. Only the per-step strategies "
+            '("direct", "dir-rec") weight each step by its own target time; this fit '
+            'computes weights as "first_step".',
+            UserWarning,
+            # warn <- _warn_inapplicable_sample_weight_alignment <- fit <- sklearn's
+            # _fit_context wrapper <- user.
+            stacklevel=4,
+        )
+
     def _warn_unfiltered_step_output_columns(self) -> None:
         """Warn when step columns from the actual transformer reach every model unfiltered.
 
@@ -532,15 +640,33 @@ default="first_step"
             stacklevel=4,
         )
 
+    def _uses_step_weights(self) -> bool:
+        """Whether this fit keeps one weight per row and step instead of collapsing.
+
+        True for ``sample_weight_alignment="matched_step"`` with a per-step
+        strategy and a ``time_weighter``. Without a ``time_weighter`` the
+        alignment is inert, and under ``"multi-output"`` it falls back to
+        ``"first_step"``.
+        """
+        return (
+            self.sample_weight_alignment == "matched_step"
+            and self.reduction_strategy in ("direct", "dir-rec")
+            and self.time_weighter is not None
+        )
+
     def _process_fit_weights(
         self,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
-    ) -> np.ndarray | None:
+    ) -> "np.ndarray | _StepWeights | None":
         """Convert ``time_weighter``/``vintage_weighter`` to sklearn sample_weight.
 
         Reads the constructor-resident ``self.time_weighter``,
         ``self.vintage_weighter``, and ``self.sample_weight_alignment``.
+        Under ``"matched_step"`` with a per-step strategy and a
+        ``time_weighter`` it returns the raw per-step weights of every row as a
+        ``_StepWeights``, stacked per group in ``groups_`` order, instead of a
+        normalized vector.
 
         Parameters
         ----------
@@ -551,37 +677,31 @@ default="first_step"
 
         Returns
         -------
-        np.ndarray or None
-            Sample weights array matching tabularized data rows, or None if
-            both ``time_weighter`` and ``vintage_weighter`` are None.
+        np.ndarray or _StepWeights or None
+            Sample weights matching tabularized data rows, or None if both
+            ``time_weighter`` and ``vintage_weighter`` are None.
 
         """
         if self.time_weighter is None and self.vintage_weighter is None:
             return None
 
         if self.groups_ is None:
-            # Global data: y_t is DataFrame
             assert isinstance(y_t, pl.DataFrame)
-            sample_weights = self._compute_sample_weights_one(
-                y_t=y_t,
-                forecasting_horizon=forecasting_horizon,
-                group_name=None,
-            )
+            frames: list[tuple[pl.DataFrame, str | None]] = [(y_t, None)]
         else:
-            # Panel data: y_t is dict, stack weights
+            # Panel data: weights are computed per group and stacked in groups_ order.
             assert isinstance(y_t, dict)
-            sample_weights_list = []
-            for panel_group_name in self.groups_:
-                y_t_local = y_t[panel_group_name]
-                weights_local = self._compute_sample_weights_one(
-                    y_t=y_t_local,
-                    forecasting_horizon=forecasting_horizon,
-                    group_name=panel_group_name,
-                )
-                sample_weights_list.append(weights_local)
-            sample_weights = np.concatenate(sample_weights_list)
-
-        return sample_weights
+            frames = [(y_t[g], g) for g in self.groups_]
+        per_group = [
+            self._compute_sample_weights_one(y_t=frame, forecasting_horizon=forecasting_horizon, group_name=name)
+            for frame, name in frames
+        ]
+        if self._uses_step_weights():
+            return _StepWeights(
+                values=np.concatenate(per_group, axis=0),
+                groups=np.concatenate([np.full(len(v), i) for i, v in enumerate(per_group)]),
+            )
+        return np.concatenate(per_group)
 
     def _compute_sample_weights_one(
         self,
@@ -593,7 +713,10 @@ default="first_step"
 
         Resolves ``self.time_weighter`` (with alignment strategy) and
         ``self.vintage_weighter`` (direct lookup), combines them
-        multiplicatively, and normalizes so ``sum = n_samples``.
+        multiplicatively, and normalizes so ``sum = n_samples``. Under
+        ``"matched_step"`` with a per-step strategy and a ``time_weighter`` it
+        instead returns the raw ``(n_samples, H)`` per-step product,
+        unnormalized.
 
         Parameters
         ----------
@@ -607,15 +730,24 @@ default="first_step"
         Returns
         -------
         np.ndarray
-            Per-sample weights aligned to the tabularized training rows.
+            Per-sample weights aligned to the tabularized training rows, of
+            shape ``(n_samples,)``, or ``(n_samples, H)`` raw per-step weights
+            under ``"matched_step"`` with a per-step strategy and a
+            ``time_weighter``.
 
         """
         n_samples = len(y_t) - forecasting_horizon
         time_series = y_t["time"]
+        # "matched_step" has no per-row meaning under "multi-output", whose single
+        # estimator takes one weight per row; it falls back to "first_step" there
+        # (fit warns once). The bare value is never read below.
         sample_weight_alignment = self.sample_weight_alignment
+        if sample_weight_alignment == "matched_step" and not self._uses_step_weights():
+            sample_weight_alignment = "first_step"
 
         # Resolve time_weighter with alignment strategy
         tw_aligned = None
+        tw_windows = None
         if self.time_weighter is not None:
             weights_array = _resolve_weighter_to_array(
                 self.time_weighter,
@@ -624,26 +756,29 @@ default="first_step"
                 name="time weight",
             )
 
-            if sample_weight_alignment == "first_step":
-                aligned_indices = np.arange(1, n_samples + 1)
-                tw_aligned = weights_array[aligned_indices]
+            # windows[i, k] is the weight at row i's step-(k + 1) target timestamp.
+            # Row i's origin is time_series[i], so its targets sit at i + 1 .. i + H.
+            windows = np.lib.stride_tricks.sliding_window_view(
+                weights_array[1 : n_samples + forecasting_horizon],
+                window_shape=forecasting_horizon,
+            )[:n_samples]
+            if sample_weight_alignment == "matched_step":
+                tw_windows = windows
+            elif sample_weight_alignment == "first_step":
+                tw_aligned = windows[:, 0]
+            elif sample_weight_alignment == "mean_step":
+                tw_aligned = windows.mean(axis=1)
+            elif sample_weight_alignment == "weighted_mean_step":
+                horizon_decay = np.exp(-np.arange(forecasting_horizon) * self.sample_weight_horizon_decay)
+                horizon_decay = horizon_decay / horizon_decay.sum()
+                tw_aligned = windows @ horizon_decay
+            elif sample_weight_alignment == "max_weight_step":
+                tw_aligned = windows.max(axis=1)
+            elif sample_weight_alignment == "min_weight_step":
+                tw_aligned = windows.min(axis=1)
             else:
-                # Sliding windows over steps 1..H for each of the n_samples rows.
-                windows = np.lib.stride_tricks.sliding_window_view(
-                    weights_array[1 : n_samples + forecasting_horizon],
-                    window_shape=forecasting_horizon,
-                )[:n_samples]
-                if sample_weight_alignment == "mean_step":
-                    tw_aligned = windows.mean(axis=1)
-                elif sample_weight_alignment == "weighted_mean_step":
-                    horizon_decay = np.exp(-np.arange(forecasting_horizon) * 0.5)
-                    horizon_decay = horizon_decay / horizon_decay.sum()
-                    tw_aligned = windows @ horizon_decay
-                elif sample_weight_alignment == "max_weight_step":
-                    tw_aligned = windows.max(axis=1)
-                else:
-                    # min_weight_step (only remaining StrOptions value)
-                    tw_aligned = windows.min(axis=1)
+                # Parameter validation rejects anything else before fit gets here.
+                raise ValueError(f"Unknown sample_weight_alignment {self.sample_weight_alignment!r}.")
 
         # Resolve vintage_weighter via direct lookup (no alignment)
         vw_aligned = None
@@ -656,6 +791,11 @@ default="first_step"
             )
             # Direct lookup: sample i's vintage is time_series[i]
             vw_aligned = vw_array[:n_samples]
+
+        if tw_windows is not None:
+            # Raw per-step weights; normalized per step and group after the row
+            # masks, in _step_sample_weight.
+            return tw_windows * vw_aligned[:, None] if vw_aligned is not None else tw_windows.copy()
 
         # Combine and normalize. At least one weighter is set (the public
         # caller short-circuits when both are None), so this is never None.
@@ -865,7 +1005,7 @@ default="first_step"
         X_tab: pl.DataFrame,
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
-    ) -> np.ndarray | None:
+    ) -> "np.ndarray | _StepWeights | None":
         """Validate training data and compute sample weights.
 
         Reads constructor-resident weighters via :meth:`_process_fit_weights`.
@@ -881,7 +1021,7 @@ default="first_step"
 
         Returns
         -------
-        np.ndarray or None
+        np.ndarray or _StepWeights or None
             Sample weights, or None.
 
         Raises
@@ -947,10 +1087,10 @@ default="first_step"
         self,
         X_tab: pl.DataFrame,
         y_tab: pl.DataFrame,
-        sample_weight: np.ndarray | None,
+        sample_weight: "np.ndarray | _StepWeights | None",
         y_t: pl.DataFrame | dict[str, pl.DataFrame],
         forecasting_horizon: int,
-    ) -> tuple[pl.DataFrame, pl.DataFrame, np.ndarray | None]:
+    ) -> "tuple[pl.DataFrame, pl.DataFrame, np.ndarray | _StepWeights | None]":
         """Filter tabularized data to strided instances, weights in lockstep.
 
         Runs once per estimator-fit call, before any ``nan_handling``, so the
@@ -982,15 +1122,56 @@ default="first_step"
             )
         return X_tab, y_tab, sample_weight
 
+    def _compute_keep_mask(self, X_tab: pl.DataFrame, y_tab: pl.DataFrame | pl.Series) -> pl.Series | None:
+        """Return the rows ``nan_handling`` keeps, or None when it keeps every row.
+
+        Under ``nan_handling="drop"`` a row is kept when neither its features
+        nor its targets hold a null or a NaN. Under ``"pass"`` nothing is
+        dropped, so there is no mask to compute.
+
+        Parameters
+        ----------
+        X_tab : pl.DataFrame
+            Feature matrix.
+        y_tab : pl.DataFrame or pl.Series
+            Target matrix or series.
+
+        Returns
+        -------
+        pl.Series or None
+            Boolean keep mask, one entry per row, or None under ``"pass"``.
+
+        """
+        if self.nan_handling == "pass":
+            return None
+
+        x_ok = self._compute_x_ok_mask(X_tab)
+
+        if isinstance(y_tab, pl.Series):
+            y_ok = y_tab.is_not_null()
+            if y_tab.dtype.is_float():
+                y_ok = y_ok & y_tab.is_not_nan()
+        else:
+            y_null_free = y_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
+            y_float_cols = y_tab.select(cs.float())
+            if y_float_cols.width > 0:
+                y_nan_free = y_float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
+                y_ok = y_null_free & y_nan_free
+            else:
+                y_ok = y_null_free
+
+        return x_ok & y_ok
+
     def _apply_nan_handling(
         self,
         X_tab: pl.DataFrame,
         y_tab: pl.DataFrame | pl.Series,
-        sample_weight: np.ndarray | None,
+        sample_weight: "np.ndarray | _StepWeights | None",
         *,
         context: str = "",
         is_validation: bool = False,
-    ) -> tuple[pl.DataFrame, pl.DataFrame | pl.Series, np.ndarray | None]:
+        mask: pl.Series | None = None,
+    ) -> "tuple[pl.DataFrame, pl.DataFrame | pl.Series, np.ndarray | _StepWeights | None]":
         """Remove rows containing NaN/null from a tabularized dataset.
 
         Applies to training rows and, via ``is_validation``, to the
@@ -1008,7 +1189,7 @@ default="first_step"
             Feature matrix.
         y_tab : pl.DataFrame or pl.Series
             Target matrix or series.
-        sample_weight : np.ndarray or None
+        sample_weight : np.ndarray or _StepWeights or None
             Sample weights (filtered in lockstep if rows are dropped).
         context : str, default=""
             Additional context for the warning message (e.g., " (step 3)").
@@ -1017,6 +1198,10 @@ default="first_step"
             rather than training rows. Evaluation rows are never thinned by
             ``training_stride``, so messages about them name them as
             validation rows and omit the stride hint.
+        mask : pl.Series or None, default=None
+            The keep mask from `_compute_keep_mask` for these rows, when the caller
+            already computed it (the per-step zero-weight check needs it before
+            the fits run). Computed here when None.
 
         Returns
         -------
@@ -1024,7 +1209,7 @@ default="first_step"
             Filtered feature matrix.
         y_tab : pl.DataFrame or pl.Series
             Filtered target.
-        sample_weight : np.ndarray or None
+        sample_weight : np.ndarray or _StepWeights or None
             Filtered sample weights.
 
         Raises
@@ -1037,22 +1222,9 @@ default="first_step"
         if self.nan_handling == "pass":
             return X_tab, y_tab, sample_weight
 
-        x_ok = self._compute_x_ok_mask(X_tab)
-
-        if isinstance(y_tab, pl.Series):
-            y_ok = y_tab.is_not_null()
-            if y_tab.dtype.is_float():
-                y_ok = y_ok & y_tab.is_not_nan()
-        else:
-            y_null_free = y_tab.select(pl.all_horizontal(pl.all().is_not_null())).to_series()
-            y_float_cols = y_tab.select(cs.float())
-            if y_float_cols.width > 0:
-                y_nan_free = y_float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
-                y_ok = y_null_free & y_nan_free
-            else:
-                y_ok = y_null_free
-
-        mask = x_ok & y_ok
+        if mask is None:
+            mask = self._compute_keep_mask(X_tab, y_tab)
+        assert mask is not None
         n_total = len(mask)
         n_dropped = n_total - mask.sum()
 
@@ -1099,6 +1271,89 @@ default="first_step"
             nan_free = float_cols.select(pl.all_horizontal(pl.all().is_not_nan())).to_series()
             return null_free & nan_free
         return null_free
+
+    def _check_step_weights(
+        self,
+        weights: "np.ndarray | _StepWeights | None",
+        masks: list[pl.Series | None],
+        set_name: str,
+    ) -> None:
+        """Raise when some panel group has no weighted row for a step.
+
+        Walks steps ``1..H`` in order. For step ``h`` it reads column ``h - 1``
+        of ``weights`` under ``masks[h - 1]`` (None keeps every row) and raises
+        as soon as a group present under that mask has weights summing to zero.
+        A group with no surviving row is not present and is not checked; a step
+        with no surviving row at all is left to the "all instances contain
+        NaN" error of `_apply_nan_handling`. Callers check the training set
+        before the evaluation set, and run both checks before any estimator is
+        fitted, so the step named does not depend on ``n_jobs``.
+
+        A 1-D vector or None is not per-step and is returned without effect.
+
+        Parameters
+        ----------
+        weights : np.ndarray or _StepWeights or None
+            Weights after ``training_stride``, before ``nan_handling``.
+        masks : list of pl.Series or None
+            One `_compute_keep_mask` result per step, in step order.
+        set_name : {"training", "evaluation"}
+            Named in the error message.
+
+        Raises
+        ------
+        ValueError
+            If a group present under a step's mask has weights summing to zero.
+
+        """
+        if not isinstance(weights, _StepWeights):
+            return
+        for step, mask in enumerate(masks, start=1):
+            keep = np.ones(len(weights), dtype=bool) if mask is None else mask.to_numpy()
+            column = weights.values[keep, step - 1]
+            groups = weights.groups[keep]
+            for group in np.unique(groups):
+                if column[groups == group].sum() > 0:
+                    continue
+                where = "" if self.groups_ is None else f" for panel group {self.groups_[group]!r}"
+                raise ValueError(
+                    f"The {set_name} weights for step {step}{where} sum to zero under "
+                    f'sample_weight_alignment="matched_step": no {set_name} row whose step-{step} '
+                    f"target the time weighter weights survives, so that step has nothing to learn "
+                    f"from. Widen the weighter's support to the step-{step} targets, or use a "
+                    f'collapse alignment such as "first_step".'
+                )
+
+    @staticmethod
+    def _step_sample_weight(weights: "np.ndarray | _StepWeights | None", step: int) -> np.ndarray | None:
+        """Return the ``sample_weight`` of the step-``step`` estimator.
+
+        For a `_StepWeights`, selects column ``step - 1`` and normalizes each
+        panel group's slice so it sums to that group's row count; call it after
+        the last row mask and after `_check_step_weights`, which rules out a
+        zero slice. A 1-D vector (a collapse alignment) and None (no weighter)
+        are returned unchanged, so per-step strategies call it unconditionally.
+
+        Parameters
+        ----------
+        weights : np.ndarray or _StepWeights or None
+            The weights for this step's surviving rows.
+        step : int
+            One-based step number.
+
+        Returns
+        -------
+        np.ndarray or None
+            The step's sample weights, or None.
+
+        """
+        if not isinstance(weights, _StepWeights):
+            return weights
+        column = weights.values[:, step - 1].astype(np.float64, copy=True)
+        for group in np.unique(weights.groups):
+            in_group = weights.groups == group
+            column[in_group] *= in_group.sum() / column[in_group].sum()
+        return column
 
     def _features_have_nan(self, X_tab: pl.DataFrame) -> bool:
         """Check if a feature DataFrame contains any NaN or null values.
@@ -1585,7 +1840,9 @@ default="first_step"
         else:
             X_train_t, X_eval_t = X_tab, X_eval
 
-        final_fit_params.update(self._eval_set_fit_params(final_estimator, X_eval_t, y_eval, eval_data.sample_weight))
+        final_fit_params.update(
+            self._eval_set_fit_params(final_estimator, X_eval_t, y_eval, _row_weights(eval_data.sample_weight))
+        )
         if sample_weight is not None:
             try:
                 final_fit_params.update(self._resolve_sample_weight_params(final_estimator, sample_weight))
@@ -2373,7 +2630,8 @@ default="first_step"
         if sample_weight is not None:
             self._warn_if_weights_cannot_be_delivered()
             # A silent misalignment would weight the wrong rows, so it is a
-            # hard failure rather than a broadcast.
+            # hard failure rather than a broadcast. len() is the row count for a
+            # 1-D vector and for the per-step _StepWeights alike.
             assert len(sample_weight) == X_tab_eval.height, (
                 f"evaluation weights ({len(sample_weight)}) do not match evaluation rows ({X_tab_eval.height})."
             )
@@ -2538,7 +2796,7 @@ default="first_step"
         if eval_data is not None:
             fit_params = {
                 **fit_params,
-                **self._eval_set_fit_params(estimator, eval_data.X, eval_data.y, eval_data.sample_weight),
+                **self._eval_set_fit_params(estimator, eval_data.X, eval_data.y, _row_weights(eval_data.sample_weight)),
             }
 
         estimator.fit(X_tab, y_tab, **fit_params)
@@ -2603,7 +2861,7 @@ default="first_step"
         return self._fit_single_estimator(
             X_tab,
             y_tab,
-            sample_weight,
+            _row_weights(sample_weight),
             estimator_params,
             estimator_fit_params,
             eval_data=eval_pair,
@@ -2759,29 +3017,63 @@ default="first_step"
             assert isinstance(y_t, dict)
             y_columns = [c for c in next(iter(y_t.values())).columns if c != "time"]
 
+        def step_col_names(step: int) -> list[str]:
+            """Target column names of the one-based ``step``."""
+            return [f"{col}_step_{step}" for col in y_columns]
+
+        # Under "matched_step" every step's weight column is checked before any
+        # fit, training then evaluation, so a step with no weighted row is named
+        # deterministically whatever n_jobs is. Only boolean masks are computed
+        # here; filtering stays inside each parallel _fit_step, as without it.
+        train_masks: list[pl.Series | None] | None = None
+        eval_masks: list[pl.Series | None] | None = None
+        if isinstance(sample_weight, _StepWeights):
+            train_masks = [
+                self._compute_keep_mask(
+                    self._filter_step_features(X_tab, step), self._select_step_target(y_tab, step_col_names(step))
+                )
+                for step in range(1, forecasting_horizon + 1)
+            ]
+            self._check_step_weights(sample_weight, train_masks, "training")
+            if eval_data is not None:
+                eval_masks = [
+                    self._compute_keep_mask(
+                        self._filter_step_features(eval_data.X, step),
+                        self._select_step_target(eval_data.y, step_col_names(step)),
+                    )
+                    for step in range(1, forecasting_horizon + 1)
+                ]
+                self._check_step_weights(eval_data.sample_weight, eval_masks, "evaluation")
+
         def _fit_step(step: int) -> BaseEstimator:
             """Fit a single estimator for horizon step."""
-            step_col_names = [f"{col}_step_{step + 1}" for col in y_columns]
-            y_step = self._select_step_target(y_tab, step_col_names)
+            names = step_col_names(step + 1)
+            y_step = self._select_step_target(y_tab, names)
             X_tab_step = self._filter_step_features(X_tab, step + 1)
             X_tab_step, y_step, sw_step = self._apply_nan_handling(
-                X_tab_step, y_step, sample_weight, context=f" (step {step + 1})"
+                X_tab_step,
+                y_step,
+                sample_weight,
+                context=f" (step {step + 1})",
+                mask=None if train_masks is None else train_masks[step],
             )
+            sw_step = self._step_sample_weight(sw_step, step + 1)
             eval_pair = None
             if eval_data is not None:
-                y_eval_step = self._select_step_target(eval_data.y, step_col_names)
+                y_eval_step = self._select_step_target(eval_data.y, names)
                 X_eval_step = self._filter_step_features(eval_data.X, step + 1)
-                # Each step filters its own rows, so the one row-indexed weight
-                # vector is filtered alongside that step's survivors; different
-                # steps can therefore end up with different lengths.
+                # Each step filters its own rows, so the row-indexed weights are
+                # filtered alongside that step's survivors; different steps can
+                # therefore end up with different lengths.
                 X_eval_step, y_eval_step, w_eval_step = self._apply_nan_handling(
                     X_eval_step,
                     y_eval_step,
                     eval_data.sample_weight,
                     context=f" (step {step + 1})",
                     is_validation=True,
+                    mask=None if eval_masks is None else eval_masks[step],
                 )
-                eval_pair = _EvalSet(X_eval_step, y_eval_step, w_eval_step)
+                eval_pair = _EvalSet(X_eval_step, y_eval_step, self._step_sample_weight(w_eval_step, step + 1))
             return self._fit_single_estimator(
                 X_tab_step,
                 y_step,
@@ -2850,7 +3142,18 @@ default="first_step"
             forecasting_horizon,
         )
         X_tab, y_tab, sample_weight = self._apply_training_stride(X_tab, y_tab, sample_weight, y_t, forecasting_horizon)
-        X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight)
+        # dir-rec drops NaN rows once for every step, so one mask serves all H
+        # weight columns; under "matched_step" they are checked before any fit,
+        # training then evaluation.
+        train_mask: pl.Series | None = None
+        eval_mask: pl.Series | None = None
+        if isinstance(sample_weight, _StepWeights):
+            train_mask = self._compute_keep_mask(X_tab, y_tab)
+            self._check_step_weights(sample_weight, [train_mask] * forecasting_horizon, "training")
+            if eval_data is not None:
+                eval_mask = self._compute_keep_mask(eval_data.X, eval_data.y)
+                self._check_step_weights(eval_data.sample_weight, [eval_mask] * forecasting_horizon, "evaluation")
+        X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight, mask=train_mask)
         assert isinstance(y_tab, pl.DataFrame)
 
         self._dir_rec_n_original_features_ = X_tab.shape[1]
@@ -2863,10 +3166,10 @@ default="first_step"
 
         X_eval_aug: pl.DataFrame | None = None
         y_eval_tab: pl.DataFrame | None = None
-        w_eval_dir_rec: np.ndarray | None = None
+        w_eval_dir_rec: np.ndarray | _StepWeights | None = None
         if eval_data is not None:
             X_eval, y_eval, w_eval_dir_rec = self._apply_nan_handling(
-                eval_data.X, eval_data.y, eval_data.sample_weight, is_validation=True
+                eval_data.X, eval_data.y, eval_data.sample_weight, is_validation=True, mask=eval_mask
             )
             assert isinstance(y_eval, pl.DataFrame)
             X_eval_aug = X_eval.clone()
@@ -2880,11 +3183,15 @@ default="first_step"
             eval_pair = None
             if X_eval_aug is not None:
                 assert y_eval_tab is not None
-                eval_pair = _EvalSet(X_eval_aug, self._select_step_target(y_eval_tab, step_col_names), w_eval_dir_rec)
+                eval_pair = _EvalSet(
+                    X_eval_aug,
+                    self._select_step_target(y_eval_tab, step_col_names),
+                    self._step_sample_weight(w_eval_dir_rec, step + 1),
+                )
             est = self._fit_single_estimator(
                 X_aug,
                 y_step,
-                sample_weight,
+                self._step_sample_weight(sample_weight, step + 1),
                 estimator_params,
                 estimator_fit_params,
                 eval_data=eval_pair,

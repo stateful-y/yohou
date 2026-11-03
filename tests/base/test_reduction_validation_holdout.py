@@ -27,7 +27,7 @@ from yohou.preprocessing import (
     RollingStatisticsTransformer,
 )
 from yohou.stationarity import SeasonalDifferencing
-from yohou.weighting import ExponentialDecayWeighter
+from yohou.weighting import ExponentialDecayWeighter, SeasonalEmphasisWeighter
 
 LENGTH = 50
 HORIZON = 3
@@ -1568,7 +1568,7 @@ class EvalXWeightRegressor(RegressorMixin, BaseEstimator):
 
 
 class WeightRecordingRegressor(RegressorMixin, BaseEstimator):
-    """Records the evaluation weights delivered in each dialect."""
+    """Records the training and evaluation weights delivered in each dialect."""
 
     def fit(
         self,
@@ -1580,6 +1580,7 @@ class WeightRecordingRegressor(RegressorMixin, BaseEstimator):
     ):
         self.received_eval_set_ = eval_set
         self.received_sample_weight_eval_set_ = sample_weight_eval_set
+        self.received_sample_weight_ = sample_weight
         self.train_X_ = X
         arr = np.asarray(y, dtype=float)
         self._ncols = 1 if arr.ndim == 1 else arr.shape[1]
@@ -1709,6 +1710,80 @@ class TestEvaluationWeights:
         forecaster.fit(y=head, forecasting_horizon=HORIZON, y_val=tail)
         for estimator in forecaster.estimator_:
             assert _delivered_weights(estimator) is not None
+
+
+class TestMatchedStepEvaluationWeights:
+    """Under sample_weight_alignment="matched_step" each step is judged on its own target times."""
+
+    WEIGHTER = SeasonalEmphasisWeighter(seasonality=4, emphasis=3.0)
+
+    def _matched(self, strategy="direct", **kwargs):
+        return PointReductionForecaster(
+            estimator=WeightRecordingRegressor(),
+            reduction_strategy=strategy,
+            time_weighter=self.WEIGHTER,
+            sample_weight_alignment="matched_step",
+            **kwargs,
+        )
+
+    def _reference(self, y: pl.DataFrame, step: int) -> np.ndarray:
+        """The weighter over the evaluation frame's own time column, read at i + step, normalized.
+
+        The frame is the last head row followed by the tail. A seasonal weighter anchors
+        its phase to the series it is given, so the training frame would be the wrong basis.
+        """
+        frame_times = y["time"][LENGTH - VAL_SIZE - 1 :]
+        weights = self.WEIGHTER.compute_weights(frame_times).to_numpy()
+        column = weights[step : step + STRICT_ROWS]
+        return column * (len(column) / column.sum())
+
+    def test_evaluation_container_has_one_row_per_evaluation_row(self, monkeypatch):
+        from yohou.base.reduction import BaseReductionForecaster, _StepWeights
+
+        built = []
+        original = BaseReductionForecaster._with_eval_weights
+
+        def spy(self, X_tab_eval, *args, **kwargs):
+            out = original(self, X_tab_eval, *args, **kwargs)
+            built.append((out, X_tab_eval.height))
+            return out
+
+        monkeypatch.setattr(BaseReductionForecaster, "_with_eval_weights", spy)
+        self._matched(validation_size=VAL_SIZE).fit(y=_make_y(), forecasting_horizon=HORIZON)
+        eval_set, height = built[0]
+        assert isinstance(eval_set.sample_weight, _StepWeights)
+        assert len(eval_set.sample_weight) == height == STRICT_ROWS
+
+    @pytest.mark.parametrize("source", ["validation_size", "y_val"])
+    def test_direct_evaluation_weights_are_per_step(self, source):
+        y = _make_y()
+        if source == "validation_size":
+            forecaster = self._matched(validation_size=VAL_SIZE).fit(y=y, forecasting_horizon=HORIZON)
+        else:
+            forecaster = self._matched().fit(y=y[:-VAL_SIZE], forecasting_horizon=HORIZON, y_val=y[-VAL_SIZE:])
+        delivered = [_delivered_weights(est) for est in forecaster.estimator_]
+        for step, weights in enumerate(delivered, start=1):
+            np.testing.assert_allclose(weights, self._reference(y, step))
+        assert not np.allclose(delivered[0], delivered[-1])
+
+    def test_dir_rec_evaluation_weights_vary_by_step(self):
+        y = _make_y()
+        forecaster = self._matched("dir-rec", validation_size=VAL_SIZE).fit(y=y, forecasting_horizon=HORIZON)
+        delivered = [_delivered_weights(est) for est in forecaster.estimator_]
+        for step, weights in enumerate(delivered, start=1):
+            np.testing.assert_allclose(weights, self._reference(y, step))
+        assert not np.allclose(delivered[0], delivered[-1])
+
+    @pytest.mark.parametrize("validation_size", [8, 12])
+    def test_weight_count_survives_validation_size(self, validation_size):
+        forecaster = PointReductionForecaster(
+            estimator=WeightRecordingRegressor(),
+            reduction_strategy="direct",
+            validation_size=validation_size,
+            time_weighter=ExponentialDecayWeighter(half_life=5),
+        ).fit(y=_make_y(), forecasting_horizon=HORIZON)
+        for estimator in forecaster.estimator_:
+            assert len(_delivered_weights(estimator)) == validation_size - HORIZON + 1
 
 
 class TestEvaluationWeightsCannotBeDelivered:

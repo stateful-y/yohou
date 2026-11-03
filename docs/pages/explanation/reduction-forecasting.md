@@ -272,25 +272,34 @@ produces step columns, which cover only the fit horizon.
 ## Sample Weighting
 
 [`PointReductionForecaster`](/pages/api/generated/yohou.point.PointReductionForecaster/)
-accepts `time_weight` and `vintage_weight` parameters at `fit()` time, which control
+accepts `time_weighter` and `vintage_weighter` constructor parameters, which control
 how much influence each training sample has on the learned model.
 
-**`time_weight`** assigns weights based on the sample's position in the series. The
+**`time_weighter`** assigns weights based on the sample's position in the series. The
 most common use is exponential decay, which emphasizes recent observations over older
-ones. Because each tabularized sample spans a window of $H$ future steps, the
-`sample_weight_alignment` parameter controls how per-timestep weights are collapsed
-to a single per-sample weight: `"first_step"` uses the weight of the first predicted
-step, `"mean_step"` averages across all steps in the window, and other options
-(`"max_weight_step"`, `"min_weight_step"`, `"weighted_mean_step"`) provide alternative
-aggregations.
+ones. Each tabularized sample spans a window of $H$ future steps, so it carries $H$
+target timestamps, and the `sample_weight_alignment` parameter decides how their
+weights reach the estimator. A `"multi-output"` estimator takes one weight per sample,
+so the collapse values reduce the window to a single weight: `"first_step"` uses the
+weight of the first predicted step, `"mean_step"` averages across all steps in the
+window, and other options (`"max_weight_step"`, `"min_weight_step"`, and
+`"weighted_mean_step"`, whose per-step decay rate is `sample_weight_horizon_decay`)
+provide alternative aggregations. The `"direct"` and
+`"dir-rec"` strategies fit one model per step, and `"matched_step"` gives each of them
+the weight at its own target timestamp instead of a collapsed one. That matters for
+weighters that emphasize specific target times, such as seasons or holidays; under
+`"multi-output"` it falls back to `"first_step"` with a warning.
 
-**`vintage_weight`** assigns weights based on the sample's observation time. This is
+**`vintage_weighter`** assigns weights based on the sample's observation time. This is
 useful when certain vintages are more representative or trustworthy than others.
 
-When both are provided, the weights are multiplied element-wise and normalized so their
-sum equals the number of samples. The combined weight vector is passed to the
-estimator as `sample_weight` during fitting, so the estimator must support that
-parameter (most sklearn regressors do).
+When both are provided, the weights are multiplied element-wise. Under a collapse value
+they are normalized so their sum equals the number of samples, and the combined weight
+vector is passed to the estimator as `sample_weight` during fitting. Under
+`"matched_step"` the normalization is per step and per panel group, over the rows that
+survive `training_stride` and `nan_handling`. Either way the estimator must support
+`sample_weight` (most sklearn regressors do). See
+[Weighting](weighting.md#the-alignment-problem) for the full comparison.
 
 ## Training Stride
 

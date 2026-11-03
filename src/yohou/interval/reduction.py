@@ -129,9 +129,23 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         Per-vintage training-sample weighter, combined multiplicatively with
         ``time_weighter``. If None, no vintage weighting is applied.
     sample_weight_alignment : {"first_step", "mean_step", "weighted_mean_step", \
-"max_weight_step", "min_weight_step"}, default="first_step"
+"max_weight_step", "min_weight_step", "matched_step"}, default="first_step"
         Strategy for converting ``time_weighter`` weights to sklearn
-        ``sample_weight`` across forecast horizons.
+        ``sample_weight`` across forecast horizons. The first five values
+        collapse a row's per-step weights into one scalar, because a
+        ``"multi-output"`` estimator carries one weight per row.
+        ``"matched_step"`` gives the step-``h`` estimator of ``"direct"`` and ``"dir-rec"`` the
+        weight at each row's step-``h`` target timestamp, normalized per step
+        and per panel group over surviving rows; use it with weighters that
+        emphasize specific target times. A step with no weighted row for some
+        group raises ``ValueError``. Under ``"multi-output"`` it warns and
+        falls back to ``"first_step"``. See
+        [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
+        for full per-option semantics.
+    sample_weight_horizon_decay : float, default=0.5
+        Decay rate of the horizon mixing coefficients of
+        ``sample_weight_alignment="weighted_mean_step"``; ``0.0`` gives the
+        plain mean. Ignored by every other alignment.
 
     Examples
     --------
@@ -237,6 +251,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
         time_weighter: BaseWeighter | None = None,
         vintage_weighter: BaseWeighter | None = None,
         sample_weight_alignment: str = "first_step",
+        sample_weight_horizon_decay: float = 0.5,
     ):
         # Delegate to the reduction machinery, which threads target_transformer,
         # actual_transformer, target_as_feature, and panel_strategy down to
@@ -260,6 +275,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             time_weighter=time_weighter,
             vintage_weighter=vintage_weighter,
             sample_weight_alignment=sample_weight_alignment,
+            sample_weight_horizon_decay=sample_weight_horizon_decay,
         )
         self.validation_size = validation_size
 
@@ -412,6 +428,7 @@ class IntervalReductionForecaster(BaseReductionForecaster, BaseIntervalForecaste
             forecasting_horizon, coverage_rates
         )
         self._warn_inapplicable_step_alignment()
+        self._warn_inapplicable_sample_weight_alignment()
 
         y_fit, X_actual_fit, y_tail, X_actual_tail, X_forecast_eval, validation_source = (
             self._resolve_validation_window(

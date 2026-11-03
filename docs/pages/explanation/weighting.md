@@ -25,10 +25,12 @@ different evaluation scores.
 
 The important subtlety for reduction forecasters is that training samples are
 not individual time steps but rows of the tabularized feature matrix, each
-spanning a window of the time series. The weighter's per-timestamp weights must
-be collapsed into a per-sample weight. The `sample_weight_alignment` constructor
-parameter controls this collapse (see [The Alignment Problem](#the-alignment-problem)
-below).
+spanning a window of the time series. A row has one weight per target timestamp
+in its window, while an estimator takes one weight per row. The
+`sample_weight_alignment` constructor parameter decides how the window's weights
+become the row's weight: the collapse values reduce them to one scalar, and
+`"matched_step"` gives each per-step model the weight of its own target (see
+[The Alignment Problem](#the-alignment-problem) below).
 
 **Score-time weighting** shapes how performance is summarized. When you configure
 a scorer with a `time_weighter`, it changes the weighted average of per-timestep
@@ -119,24 +121,32 @@ Reduction forecasters convert a time series into a supervised learning table
 where each row (sample) spans a prediction window of `forecasting_horizon` time
 steps. A per-timestamp weighter produces one weight per time step, but sklearn's
 `sample_weight` needs one weight per row. The `sample_weight_alignment`
-constructor parameter defines how that many-to-one collapse works.
+constructor parameter defines how a row's `H` target weights become that one
+weight. A `"multi-output"` estimator predicts every step from one row, so it can
+only receive one weight per row, and the first five strategies collapse the
+window into a scalar for it. The `"direct"` and `"dir-rec"` strategies fit one
+model per step, and each model has exactly one target per row, so they need no
+collapse at all.
 
-Five strategies are available:
+Six strategies are available:
 
-| Strategy | Collapse rule | Good when |
+| Strategy | Rule | Good when |
 |---|---|---|
 | `"first_step"` (default) | Weight of the first target timestamp in the window | You care most about the immediate next step |
 | `"mean_step"` | Simple average across all target timestamps | All horizon steps are equally important |
 | `"weighted_mean_step"` | Exponentially-decayed average (nearer steps weighted more) | Recent steps matter more, with smooth decay |
 | `"max_weight_step"` | Maximum weight in the window | The model should focus on the most important step in each window |
 | `"min_weight_step"` | Minimum weight in the window | Conservative: a window counts only if even its least-important step is weighted |
+| `"matched_step"` | No collapse: the model for step `h` weights each row by the weight at that row's step-`h` target timestamp | Per-step strategies with a weighter that emphasizes specific target times (a season, holidays, a table of events) |
 
 For `"weighted_mean_step"`, the decay within the window follows:
 
-$$w_i = \exp(-0.5 \cdot i), \quad i = 0, 1, \ldots, h-1$$
+$$w_i = \exp(-\lambda \cdot i), \quad i = 0, 1, \ldots, h-1$$
 
-where $i$ is the step index within the window. These internal weights are
-normalized to sum to 1 before being applied to the per-timestamp weights.
+where $i$ is the step index within the window and $\lambda$ is the
+`sample_weight_horizon_decay` constructor parameter (default `0.5`; `0.0` gives
+the plain mean). These internal weights are normalized to sum to 1 before being
+applied to the per-timestamp weights.
 
 The choice of strategy matters most when the weight function varies sharply
 within a prediction window. With slowly varying weights (long half-life, wide
@@ -150,6 +160,29 @@ nearest target date, so the model focuses on getting day 1 right. With
 `"mean_step"`, the importance is the average over all 14 target days, diluting
 the emphasis on any single step.
 
+**Why `"matched_step"` exists.** Under a collapse strategy, every per-step model
+of a `"direct"` forecaster receives the same row weights. With the default
+`"first_step"`, the model for step 3 is weighted by the timestamp of step 1, two
+steps away from its own target. For a weighter that marks specific target times,
+such as a `SeasonalEmphasisWeighter` or a `LookupWeighter` of holidays, the later
+steps then emphasize the rows before the marked dates instead of the rows that
+predict them. `"matched_step"` removes that shift: each step's weights come from
+its own target timestamps. It cannot apply to `"multi-output"`, because that
+estimator receives a single weight per row, so a multi-output fit with it warns
+and computes weights as `"first_step"`.
+
+For an exponential decay on equally spaced timestamps, the shift does not
+matter: each step's weights are a constant multiple of the first step's, so
+after normalization `"matched_step"` and `"first_step"` deliver the same
+weights. On calendar months or gapped timestamps the elapsed time between rows
+varies, and the two differ.
+
+Under `"matched_step"`, a step for which some panel group has no weighted row
+(for example, a lookup weighter that is non-zero only near the start of the
+series) raises a `ValueError` at fit, because that step has nothing to learn
+from. A collapse strategy only hid that by spreading weight from neighbouring
+steps across the window.
+
 Note that the `vintage_weighter` does not require alignment. Each training
 sample has a single forecast origin, so the vintage weight maps directly to a
 per-sample weight without collapsing.
@@ -161,10 +194,15 @@ combined multiplicatively:
 
 $$w_{\text{combined}}(t) = w_{\text{time}}(t) \times w_{\text{vintage}}(t)$$
 
-After multiplication, the combined weights are renormalized so that their sum
-equals the number of samples:
+Under a collapse strategy, the combined weights are then renormalized so that
+their sum equals the number of samples:
 
 $$\hat{w} = w \cdot \frac{n}{\sum_i w_i}$$
+
+Under `"matched_step"`, the same rule applies per step and per panel group: each
+step's weights are renormalized over the rows that survive `training_stride` and
+`nan_handling`, so every group's weights for that step sum to its own surviving
+row count.
 
 This normalization preserves the effective learning rate of the underlying
 sklearn estimator. Without it, a set of weights that averages to 0.5 would
@@ -194,7 +232,7 @@ write a small `BaseWeighter` subclass whose `compute_weights` branches on
 `group_name`.
 
 `TableWeighter` supports panel awareness through group-specific columns. A
-column named `"{group_name}_weight"` (e.g., `"store_a_weight"`) takes
+column named `"{group}__weight"` (e.g., `"store_a__weight"`) takes
 precedence over a global `"weight"` column, letting you assign different weight
 profiles per group within a single frame.
 

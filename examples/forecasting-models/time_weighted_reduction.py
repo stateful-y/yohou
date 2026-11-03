@@ -252,20 +252,24 @@ def _(mo):
     ## 5. Sample Weight Alignment
 
     After tabularization each training sample covers a window of `H` future
-    steps. The original per-timestep weights must be collapsed into a single
-    `sample_weight` per row. The `sample_weight_alignment` parameter controls
-    how:
+    steps, so it carries one weight per target timestamp. The default
+    `"multi-output"` strategy fits one estimator that takes one weight per row,
+    so the first five strategies collapse the window into a single
+    `sample_weight`. The `sample_weight_alignment` parameter controls how:
 
     | Strategy | Rule |
     |---|---|
     | `"first_step"` (default) | Weight at the first forecast step `t+1` |
     | `"mean_step"` | Arithmetic mean across all `H` steps |
-    | `"weighted_mean_step"` | Exponentially weighted mean favouring near steps |
+    | `"weighted_mean_step"` | Exponentially weighted mean favouring near steps (rate `sample_weight_horizon_decay`) |
     | `"max_weight_step"` | Maximum weight across `H` steps |
     | `"min_weight_step"` | Minimum weight (conservative: all steps must be important) |
+    | `"matched_step"` | No collapse: under `"direct"` or `"dir-rec"`, the model for step `h` uses the weight at its own target |
 
     The choice matters most when the weight function changes steeply across the
-    horizon window. Let's compare all five on our dataset.
+    horizon window. The comparison below runs the five collapse strategies under
+    the default `"multi-output"` strategy, where `"matched_step"` would fall back
+    to `"first_step"` with a warning, so it is compared separately afterwards.
     """)
 
 
@@ -309,6 +313,53 @@ def _(
         alignment_rows.append({"Strategy": _align, "MAE": round(_score, 2)})
 
     mo.ui.table(alignment_rows, label="Sample Weight Alignment Comparison")
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Per-step models with `"matched_step"`
+
+    With `reduction_strategy="direct"`, one model is fitted per forecast step.
+    Under a collapse strategy they all receive the same row weights, so with
+    `"first_step"` the model for step 12 is weighted by the timestamp of step 1.
+    A seasonal weighter marks specific target months, and `"matched_step"`
+    weights each per-step model by its own target timestamps instead. For an
+    exponential decay on equally spaced timestamps the two give the same
+    weights; with a seasonal emphasis they differ.
+    """)
+
+
+@app.cell
+def _(
+    LagTransformer,
+    MeanAbsoluteError,
+    PointReductionForecaster,
+    Ridge,
+    SeasonalEmphasisWeighter,
+    forecasting_horizon,
+    mo,
+    y_test,
+    y_train,
+):
+    _seasonal = SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0)
+    _mae = MeanAbsoluteError()
+    _mae.fit(y_train)
+
+    matched_rows = []
+    for _align in ["first_step", "matched_step"]:
+        _fc = PointReductionForecaster(
+            estimator=Ridge(),
+            actual_transformer=LagTransformer(lag=list(range(1, 13))),
+            reduction_strategy="direct",
+            time_weighter=_seasonal,
+            sample_weight_alignment=_align,
+        )
+        _fc.fit(y_train, forecasting_horizon=forecasting_horizon)
+        _pred = _fc.predict(forecasting_horizon=forecasting_horizon)
+        matched_rows.append({"Strategy": _align, "MAE": round(_mae.score(y_test, _pred), 2)})
+
+    mo.ui.table(matched_rows, label="Direct Strategy: first_step vs matched_step")
 
 
 @app.cell(hide_code=True)
