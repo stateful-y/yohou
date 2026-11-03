@@ -63,7 +63,7 @@ class TestTrainingStrideSemantics:
         n = 24 * 10
         times = pl.datetime_range(datetime(2026, 1, 1), datetime(2026, 1, 10, 23), interval="1h", eager=True)
         y = pl.DataFrame({"time": times, "value": [float(i) for i in range(n)]})
-        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=24)
+        fc = PointReductionForecaster(estimator=SampleWeightRecorder(), training_stride=24)
         fc.fit(y=y, forecasting_horizon=40)
         _, y_received, _ = fc.estimator_.received_
 
@@ -76,7 +76,7 @@ class TestTrainingStrideSemantics:
     def test_the_most_recent_instance_is_kept_when_the_horizon_is_a_multiple_of_the_stride(self):
         """Stride 5 at horizon 40: the kept set equals counting back from the last instance."""
         y = _series(100)
-        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=5)
+        fc = PointReductionForecaster(estimator=SampleWeightRecorder(), training_stride=5)
         fc.fit(y=y, forecasting_horizon=40)
         _, y_received, _ = fc.estimator_.received_
 
@@ -213,7 +213,7 @@ class TestTrainingStrideValidation:
             fc.fit(y=y, forecasting_horizon=2)
 
 
-class _EvalSetRecorder(_RecordingRegressor):
+class _EvalSetRecorder(SampleWeightRecorder):
     """Recording regressor whose fit accepts an ``eval_set``, as ``validation_size`` requires."""
 
     def fit(self, X, y, eval_set=None, sample_weight=None):
@@ -258,7 +258,7 @@ class TestTrainingStrideWithValidationHoldout:
 
     def test_empty_after_stride_without_holdout_names_the_skip(self):
         """Without a holdout, a series the stride leaves empty fails with the skip count."""
-        fc = PointReductionForecaster(estimator=_RecordingRegressor(), training_stride=24)
+        fc = PointReductionForecaster(estimator=SampleWeightRecorder(), training_stride=24)
         with pytest.raises(ValueError, match=r"Training dataset is empty .* skips the 8 most recent"):
             fc.fit(y=_series(45), forecasting_horizon=40)
 
@@ -305,8 +305,7 @@ def _per_step_weight_correspondence(weighter, stride: int, n: int = 60, horizon:
         forecaster.fit(y=y, forecasting_horizon=horizon)
         return [np.asarray(est.received_[2]) for est in forecaster.estimator_]
 
-    n_instances = n - horizon
-    mask = np.arange(n_instances) % stride == (n_instances - 1) % stride
+    mask = _tail_phase_mask(n, horizon, stride)
     for full, strided in zip(fit(), fit(training_stride=stride), strict=True):
         ratio = strided / full[mask]
         np.testing.assert_allclose(ratio, ratio[0])
