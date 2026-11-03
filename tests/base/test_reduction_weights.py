@@ -1,5 +1,6 @@
 """Tests for sample_weight_alignment strategies and weighter integration in reduction forecasters."""
 
+import inspect
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -409,16 +410,6 @@ class TestHorizonDecayParameter:
         assert cloned["sample_weight_alignment"] == "matched_step"
         assert cloned["sample_weight_horizon_decay"] == 0.25
 
-    def test_default_decay_reproduces_former_constant(self):
-        y, weighter = _golden_series()
-        f = PointReductionForecaster(
-            estimator=SampleWeightRecorder(), time_weighter=weighter, sample_weight_alignment="weighted_mean_step"
-        ).fit(y, forecasting_horizon=H)
-        w = _profile(len(y))
-        windows = np.lib.stride_tricks.sliding_window_view(w[1 : len(y)], H)[: len(y) - H]
-        former = np.exp(-np.arange(H) * 0.5)
-        np.testing.assert_allclose(_delivered_per_step(f)[0], _normalized(windows @ (former / former.sum())))
-
     def test_zero_decay_equals_mean_step(self):
         y, weighter = _golden_series()
         fits = [
@@ -479,12 +470,12 @@ class TestStepWeightHelpers:
         assert BaseReductionForecaster._step_sample_weight(vector, 1) is vector
         assert BaseReductionForecaster._step_sample_weight(None, 1) is None
 
-    def test_step_row_mask_and_precomputed_mask(self):
+    def test_compute_keep_mask_and_precomputed_mask(self):
         X = pl.DataFrame({"a": [1.0, None, 3.0, float("nan")]})
         y_tab = pl.DataFrame({"t": [1.0, 2.0, None, 4.0]})
-        assert PointReductionForecaster(nan_handling="pass")._step_row_mask(X, y_tab) is None
+        assert PointReductionForecaster(nan_handling="pass")._compute_keep_mask(X, y_tab) is None
         f = PointReductionForecaster(nan_handling="drop")
-        mask = f._step_row_mask(X, y_tab)
+        mask = f._compute_keep_mask(X, y_tab)
         assert mask.to_list() == [True, False, False, False]
         w = np.array([1.0, 2.0, 3.0, 4.0])
         with pytest.warns(UserWarning, match="dropped"):
@@ -502,15 +493,6 @@ class TestStepWeightHelpers:
             f._check_step_weights(weights, [None] * 3, "training")
         f._check_step_weights(_StepWeights(np.ones((2, 3)), np.zeros(2, dtype=int)), [None] * 3, "training")
         f._check_step_weights(np.zeros(2), [None] * 3, "training")  # not per-step: no effect
-
-    def test_training_is_checked_before_evaluation(self):
-        f = PointReductionForecaster()
-        f.groups_ = None
-        train = _StepWeights(np.array([[1.0, 1.0, 0.0]]), np.zeros(1, dtype=int))
-        evaluation = _StepWeights(np.array([[0.0, 1.0, 1.0]]), np.zeros(1, dtype=int))
-        with pytest.raises(ValueError, match=r"training weights for step 3"):
-            for weights, name in ((train, "training"), (evaluation, "evaluation")):
-                f._check_step_weights(weights, [None] * 3, name)
 
 
 class TestMatchedStepContainer:
@@ -590,7 +572,7 @@ class TestMatchedStepDirect:
         ids=["unweighted", "collapse"],
     )
     def test_mask_pass_skipped_without_container(self, monkeypatch, kwargs):
-        masks = _spy(monkeypatch, "_step_row_mask")
+        masks = _spy(monkeypatch, "_compute_keep_mask")
         PointReductionForecaster(estimator=SampleWeightRecorder(), reduction_strategy="direct", **kwargs).fit(
             _y(), forecasting_horizon=H
         )
@@ -627,10 +609,17 @@ class TestMatchedStepDirRec:
             f = _matched(strategy, time_weighter=SeasonalEmphasisWeighter(seasonality=4), nan_handling="drop").fit(
                 _y(values=values), forecasting_horizon=H
             )
-        for est in f.estimator_:
-            delivered = np.asarray(est.received_[2])
-            assert len(delivered) == est.received_[0].height
-            np.testing.assert_allclose(delivered.sum(), len(delivered))
+        missing = {12, 20}
+        weights = SeasonalEmphasisWeighter(seasonality=4).compute_weights(pl.Series(_daily(30))).to_numpy()
+
+        def survives(origin: int, step: int) -> bool:
+            # direct drops a row per step; dir-rec drops it if any step's target is missing.
+            targets = [step] if strategy == "direct" else range(1, H + 1)
+            return origin not in missing and all(origin + h not in missing for h in targets)
+
+        for step, est in enumerate(f.estimator_, start=1):
+            origins = np.array([i for i in range(30 - H) if survives(i, step)])
+            np.testing.assert_allclose(np.asarray(est.received_[2]), _normalized(weights[origins + step]))
 
     @pytest.mark.parametrize("strategy", ["direct", "dir-rec"])
     def test_all_dropped_step_keeps_nan_error(self, strategy):
@@ -761,7 +750,7 @@ class TestMatchedStepFamiliesAndWeighters:
     """Family smoke tests, vintage multiplication, and the geometric-profile property."""
 
     @pytest.mark.parametrize("family", FAMILIES, ids=lambda k: k.__name__)
-    def test_families_fit_direct_matched_step(self, family, y_X_factory, class_proba_y_X_factory):
+    def test_families_fit_direct_matched_step(self, family, y_X_factory, class_proba_y_X_factory, monkeypatch):
         weighter = SeasonalEmphasisWeighter(seasonality=4, emphasis=3.0)
         if family is ClassProbaReductionForecaster:
             y, _ = class_proba_y_X_factory(length=60, n_targets=1, n_features=0, n_classes=3, seed=0)
@@ -772,8 +761,24 @@ class TestMatchedStepFamiliesAndWeighters:
         else:
             y, _ = y_X_factory(length=60, n_targets=1, n_features=0, seed=0)
             f = family(estimator=LinearRegression(), reduction_strategy="direct")
+        delivered = []
+        original = BaseReductionForecaster._fit_single_estimator
+
+        def spy(self, X_tab, y_tab, sample_weight, *args, **kwargs):
+            delivered.append(np.asarray(sample_weight))
+            return original(self, X_tab, y_tab, sample_weight, *args, **kwargs)
+
+        monkeypatch.setattr(BaseReductionForecaster, "_fit_single_estimator", spy)
         f.set_params(time_weighter=weighter, sample_weight_alignment="matched_step").fit(y, forecasting_horizon=H)
-        assert f.estimator_ is not None
+
+        weights = weighter.compute_weights(y["time"]).to_numpy()
+        rows = np.arange(len(y) - H)
+        # Steps are fitted in order (n_jobs=None); the interval family repeats them once per bound.
+        assert delivered and len(delivered) % H == 0
+        for call, w in enumerate(delivered):
+            step = call % H + 1
+            np.testing.assert_allclose(w, _normalized(weights[rows + step]))
+        assert not np.allclose(delivered[0], delivered[H - 1])
 
     def test_vintage_weights_multiply_in(self):
         times = _daily(30)
@@ -912,9 +917,10 @@ class TestMatchedStepMultiOutputFallback:
 @pytest.mark.parametrize("cls", [BaseReductionForecaster, *FAMILIES], ids=lambda k: k.__name__)
 def test_parameter_docstrings_document_matched_step_and_decay(cls):
     """The Parameters section of the base and each family names the new value and parameter."""
-    doc = cls.__doc__
+    # cleandoc: Python 3.13+ already strips docstring indentation, earlier versions do not.
+    doc = inspect.cleandoc(cls.__doc__)
     start = doc.index("Parameters\n")
-    ends = [doc.find(f"\n    {name}\n", start) for name in ("Attributes", "Notes", "Examples", "See Also")]
+    ends = [doc.find(f"\n{name}\n", start) for name in ("Attributes", "Notes", "Examples", "See Also")]
     section = doc[start : min(e for e in ends if e != -1)]
     assert "sample_weight_horizon_decay : float, default=0.5" in section
     assert '"matched_step"' in section

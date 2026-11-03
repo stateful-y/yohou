@@ -681,45 +681,23 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         if self.time_weighter is None and self.vintage_weighter is None:
             return None
 
+        if self.groups_ is None:
+            assert isinstance(y_t, pl.DataFrame)
+            frames: list[tuple[pl.DataFrame, str | None]] = [(y_t, None)]
+        else:
+            # Panel data: weights are computed per group and stacked in groups_ order.
+            assert isinstance(y_t, dict)
+            frames = [(y_t[g], g) for g in self.groups_]
+        per_group = [
+            self._compute_sample_weights_one(y_t=frame, forecasting_horizon=forecasting_horizon, group_name=name)
+            for frame, name in frames
+        ]
         if self._uses_step_weights():
-            if self.groups_ is None:
-                assert isinstance(y_t, pl.DataFrame)
-                frames: list[tuple[pl.DataFrame, str | None]] = [(y_t, None)]
-            else:
-                assert isinstance(y_t, dict)
-                frames = [(y_t[g], g) for g in self.groups_]
-            per_group = [
-                self._compute_sample_weights_one(y_t=frame, forecasting_horizon=forecasting_horizon, group_name=name)
-                for frame, name in frames
-            ]
             return _StepWeights(
                 values=np.concatenate(per_group, axis=0),
                 groups=np.concatenate([np.full(len(v), i) for i, v in enumerate(per_group)]),
             )
-
-        if self.groups_ is None:
-            # Global data: y_t is DataFrame
-            assert isinstance(y_t, pl.DataFrame)
-            sample_weights = self._compute_sample_weights_one(
-                y_t=y_t,
-                forecasting_horizon=forecasting_horizon,
-                group_name=None,
-            )
-        else:
-            # Panel data: y_t is dict, stack weights
-            assert isinstance(y_t, dict)
-            sample_weights_list = []
-            for panel_group_name in self.groups_:
-                y_t_local = y_t[panel_group_name]
-                weights_local = self._compute_sample_weights_one(
-                    y_t=y_t_local,
-                    forecasting_horizon=forecasting_horizon,
-                    group_name=panel_group_name,
-                )
-                sample_weights_list.append(weights_local)
-            sample_weights = np.concatenate(sample_weights_list)
-
-        return sample_weights
+        return np.concatenate(per_group)
 
     def _compute_sample_weights_one(
         self,
@@ -732,8 +710,9 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         Resolves ``self.time_weighter`` (with alignment strategy) and
         ``self.vintage_weighter`` (direct lookup), combines them
         multiplicatively, and normalizes so ``sum = n_samples``. Under
-        ``"matched_step"`` with a per-step strategy it instead returns the raw
-        ``(n_samples, H)`` per-step product, unnormalized.
+        ``"matched_step"`` with a per-step strategy and a ``time_weighter`` it
+        instead returns the raw ``(n_samples, H)`` per-step product,
+        unnormalized.
 
         Parameters
         ----------
@@ -749,7 +728,8 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         np.ndarray
             Per-sample weights aligned to the tabularized training rows, of
             shape ``(n_samples,)``, or ``(n_samples, H)`` raw per-step weights
-            under ``"matched_step"`` with a per-step strategy.
+            under ``"matched_step"`` with a per-step strategy and a
+            ``time_weighter``.
 
         """
         n_samples = len(y_t) - forecasting_horizon
@@ -1127,7 +1107,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             )
         return X_tab, y_tab, sample_weight
 
-    def _step_row_mask(self, X_tab: pl.DataFrame, y_tab: pl.DataFrame | pl.Series) -> pl.Series | None:
+    def _compute_keep_mask(self, X_tab: pl.DataFrame, y_tab: pl.DataFrame | pl.Series) -> pl.Series | None:
         """Return the rows ``nan_handling`` keeps, or None when it keeps every row.
 
         Under ``nan_handling="drop"`` a row is kept when neither its features
@@ -1204,7 +1184,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             ``training_stride``, so messages about them name them as
             validation rows and omit the stride hint.
         mask : pl.Series or None, default=None
-            The keep mask from `_step_row_mask` for these rows, when the caller
+            The keep mask from `_compute_keep_mask` for these rows, when the caller
             already computed it (the per-step zero-weight check needs it before
             the fits run). Computed here when None.
 
@@ -1228,7 +1208,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             return X_tab, y_tab, sample_weight
 
         if mask is None:
-            mask = self._step_row_mask(X_tab, y_tab)
+            mask = self._compute_keep_mask(X_tab, y_tab)
         assert mask is not None
         n_total = len(mask)
         n_dropped = n_total - mask.sum()
@@ -1301,7 +1281,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         weights : np.ndarray or _StepWeights or None
             Weights after ``training_stride``, before ``nan_handling``.
         masks : list of pl.Series or None
-            One `_step_row_mask` result per step, in step order.
+            One `_compute_keep_mask` result per step, in step order.
         set_name : {"training", "evaluation"}
             Named in the error message.
 
@@ -3023,7 +3003,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         eval_masks: list[pl.Series | None] | None = None
         if isinstance(sample_weight, _StepWeights):
             train_masks = [
-                self._step_row_mask(
+                self._compute_keep_mask(
                     self._filter_step_features(X_tab, step), self._select_step_target(y_tab, step_col_names(step))
                 )
                 for step in range(1, forecasting_horizon + 1)
@@ -3031,7 +3011,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             self._check_step_weights(sample_weight, train_masks, "training")
             if eval_data is not None:
                 eval_masks = [
-                    self._step_row_mask(
+                    self._compute_keep_mask(
                         self._filter_step_features(eval_data.X, step),
                         self._select_step_target(eval_data.y, step_col_names(step)),
                     )
@@ -3142,10 +3122,10 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
         train_mask: pl.Series | None = None
         eval_mask: pl.Series | None = None
         if isinstance(sample_weight, _StepWeights):
-            train_mask = self._step_row_mask(X_tab, y_tab)
+            train_mask = self._compute_keep_mask(X_tab, y_tab)
             self._check_step_weights(sample_weight, [train_mask] * forecasting_horizon, "training")
             if eval_data is not None:
-                eval_mask = self._step_row_mask(eval_data.X, eval_data.y)
+                eval_mask = self._compute_keep_mask(eval_data.X, eval_data.y)
                 self._check_step_weights(eval_data.sample_weight, [eval_mask] * forecasting_horizon, "evaluation")
         X_tab, y_tab, sample_weight = self._apply_nan_handling(X_tab, y_tab, sample_weight, mask=train_mask)
         assert isinstance(y_tab, pl.DataFrame)
