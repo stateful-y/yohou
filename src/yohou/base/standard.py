@@ -1,6 +1,6 @@
 """Standard (non-panel) forecaster mixin for type-safe operations."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -51,7 +51,7 @@ class BaseStandardForecaster:
     shared_X_actual_schema_: dict[str, pl.DataType] | None
     observation_horizon: int
     observed_time_: datetime
-    interval_: timedelta | str
+    interval_: str
 
     def _set_input_attributes_standard(self, y: pl.DataFrame, X_actual: pl.DataFrame | None) -> None:
         """Set input attributes for standard (non-panel) data.

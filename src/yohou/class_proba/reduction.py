@@ -81,8 +81,8 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
     training_stride : int, default=1
         Keep one tabularized training instance every ``training_stride`` rows,
-        tail-anchored so the most recent instance is always kept. The default 1
-        keeps every instance. See
+        anchored on the phase of the data's last row. The default 1 keeps every
+        instance. See
         [`BaseReductionForecaster`][yohou.base.reduction.BaseReductionForecaster]
         for the full semantics.
     validation_size : int or None, default=None

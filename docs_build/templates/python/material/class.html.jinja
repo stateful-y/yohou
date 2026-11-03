@@ -39,7 +39,13 @@ rather than accidental.
       <p class="github-source-link"><a href="{{ _source_url }}">View on GitHub</a></p>
     {% endif %}
   {% endif %}
+  {#- The listing stays visible but out of the search index: a large class's
+      source is one search field, and zensical caps a field at 128 KiB, so
+      `BaseReductionForecaster` alone failed the strict build. Code listings
+      are poor search hits anyway; the Source Code heading itself stays indexed. -#}
+  <div data-search-exclude>
   {{ super() }}
+  </div>
 {% endblock source %}
 
 {% block children scoped %}

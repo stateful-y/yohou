@@ -1,6 +1,6 @@
 """Panel (multi-series) forecaster mixin for type-safe operations."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -54,7 +54,7 @@ class BasePanelForecaster:
     shared_X_forecast_schema_: dict[str, pl.DataType] | None
     observation_horizon: int
     observed_time_: dict[str, datetime]
-    interval_: timedelta | str
+    interval_: str
 
     def _set_input_attributes_panel(
         self,

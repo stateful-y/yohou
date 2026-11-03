@@ -572,7 +572,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
             if trans == "drop" or (isinstance(columns, list) and len(columns) == 0):
                 continue
             col_list = list(columns) if isinstance(columns, list) else [columns]
-            names: list[str] = col_list  # ty: ignore[invalid-assignment]
+            names: list[str] = col_list
             if hasattr(trans, "get_feature_names_out"):
                 result = trans.get_feature_names_out()
                 if result is not None:
@@ -915,7 +915,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
                     delayed(func)(
                         transformer=clone(transformer_to_use) if not fitted else transformer_to_use,
                         X=pl.concat(
-                            [time_column, safe_indexing(X, column, axis=1)],
+                            [time_column, cast(pl.DataFrame, safe_indexing(X, column, axis=1))],
                             how="horizontal",
                         ),
                         y=y,

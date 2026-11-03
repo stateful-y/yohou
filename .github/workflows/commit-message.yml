@@ -45,11 +45,13 @@ jobs:
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           # renovate: datasource=github-releases depName=astral-sh/uv
-          version: "0.12.20"
+          version: "0.13.7"
 
       - name: Set up Python
         if: ${{ github.event.pull_request.commits == 1 }}
-        run: uv python install
+        # Pin the newest supported Python: a bare `uv python install` takes the newest
+        # CPython release, which dependencies may not ship wheels for yet.
+        run: uv python install 3.14
 
       - name: Validate the commit message that becomes the squash title
         if: ${{ github.event.pull_request.commits == 1 }}

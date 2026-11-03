@@ -70,7 +70,7 @@ def _normalize_scorers(
 
     """
     if isinstance(scorer, dict):
-        return scorer  # type: ignore
+        return scorer
     return {scorer.__class__.__name__: scorer}
 
 

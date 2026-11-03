@@ -21,7 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "scikit-learn>=1.7.0",
+    "scikit-learn>=1.9.0",
     "sklearn-wrap",
     "scipy>=1.13",
     "polars>=1.39.2",
@@ -72,7 +72,14 @@ lint = [
     "pytest>=8.3",
     "ruff>=0.8.0",
     "rumdl>=0.1.33",
-    "ty>=0.0.29",
+    # Pinned exactly, unlike the rest of this group. ty is pre-1.0 and its patch
+    # releases add checks: 0.0.92 introduced `invalid-attribute-override` and turned
+    # the automerged weekly lockfile refresh red in two repos, because a `>=` floor
+    # let that refresh move ty along with everything else. Pinned, it moves only in
+    # the `lint-tools` Renovate PR, where any code the new checks need can land with
+    # it. The annotation lets Renovate bump this template seed too.
+    # renovate: datasource=pypi depName=ty
+    "ty==0.0.96",
 ]
 docs = [
     # Griffe is imported directly by docs_build/_api_pages.py to discover the package's
@@ -181,6 +188,19 @@ dev-mode-dirs = [".", "src"]
 [tool.hatch.version]
 source = "vcs"
 fallback-version = "0.0.0"
+# Naming the distribution lets SETUPTOOLS_SCM_PRETEND_VERSION_FOR_YOHOU set the version
+# of this package alone, for builds without git metadata such as a Docker build context.
+raw-options = { dist_name = "yohou" }
+
+[tool.uv]
+# uv's default keys plus the override, so a changed override rebuilds instead of
+# reusing a cached wheel with the old version.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "setup.py" },
+    { file = "setup.cfg" },
+    { env = "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_YOHOU" },
+]
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/yohou/_version.py"
@@ -224,6 +244,7 @@ ignore = [
     "B008",   # do not perform function calls in argument defaults
     "PLC0415", # import not at top-level (lazy imports are intentional, e.g. docs hooks)
     "PLR0913", # too many args in func def
+    "PLR0917", # too many positional args (made stable in ruff 0.17; same reasoning as PLR0913)
     "PLR0915", # too many statements
     "PLR0912", # too many branches
     "PLR2004", # magic value used in comparison
@@ -259,6 +280,12 @@ convention = "numpy"
 
 [tool.ruff.lint.isort]
 known-first-party = ["yohou"]
+
+[tool.ty.rules]
+# A read-only property overriding a writable attribute is the scikit-learn idiom for
+# fitted attributes computed from a wrapped estimator (`n_features_in_`, `groups_`)
+# and for derived settings (`observation_horizon`), not a mistake to flag.
+invalid-property-type-override = "ignore"
 
 [tool.interrogate]
 ignore-init-method = true

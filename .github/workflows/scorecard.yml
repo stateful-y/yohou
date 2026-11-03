@@ -16,7 +16,12 @@ jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    # A job-level block replaces the workflow-level one. The two reads are what
+    # OpenSSF's own example workflow asks for on a private repository; without them
+    # checkout fails with "repository not found" until the repo is public.
     permissions:
+      contents: read
+      actions: read
       # Upload the results to the Security tab and publish to the OpenSSF API.
       security-events: write
       id-token: write
@@ -27,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Run analysis
-        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -36,6 +41,6 @@ jobs:
           publish_results: true
 
       - name: Upload SARIF to code scanning
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4
         with:
           sarif_file: results.sarif

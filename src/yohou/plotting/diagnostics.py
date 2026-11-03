@@ -327,6 +327,7 @@ def _compute_pacf(
             method=method,  # ty: ignore[invalid-argument-type]
             alpha=alpha,
         )
+        assert confint is not None  # only None when alpha is not passed
         # statsmodels returns CIs centered on the PACF values (pacf +/- z/sqrt(n)).
         # For significance testing we need horizontal bands at +/-z/sqrt(n) (centered
         # on zero), so subtract the PACF values from both bounds.

@@ -14,7 +14,7 @@ from __future__ import annotations
 import abc
 import numbers
 from datetime import timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import polars as pl
@@ -191,7 +191,8 @@ class ExponentialDecayWeighter(BaseWeighter):
         scale = self._resolve_scale(key)
 
         if scale == "elapsed":
-            distances = (key.max() - key).dt.total_seconds().to_numpy().astype(np.float64)
+            elapsed = cast(pl.Series, key.max() - key)
+            distances = elapsed.dt.total_seconds().to_numpy().astype(np.float64)
             if isinstance(self.half_life, timedelta):
                 half_life_seconds = self.half_life.total_seconds()
             else:
