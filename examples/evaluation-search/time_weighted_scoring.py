@@ -150,7 +150,7 @@ def _(mo):
     ## 3. Linear Decay Weight
 
     [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.weighters.LinearDecayWeighter/) assigns weights that decrease linearly from the most
-    recent observation to the oldest. The optional `max_steps` parameter limits
+    recent observation to the oldest. The optional `window_size` parameter limits
     how far back the decay extends; when set to `None`, the full test range
     is used.
     """)
@@ -158,7 +158,7 @@ def _(mo):
 
 @app.cell
 def _(LinearDecayWeighter, plot_time_weight, y_test):
-    w_lin = LinearDecayWeighter(max_steps=None)
+    w_lin = LinearDecayWeighter(window_size=None)
     _weights_df = y_test.select("time").with_columns(w_lin.compute_weights(y_test["time"]).alias("time_weight"))
     plot_time_weight(_weights_df, title="Linear Decay (full range)")
     return (w_lin,)
@@ -276,7 +276,7 @@ def _(
 
     _weights = [
         ("Exponential Decay (half_life=10)", ExponentialDecayWeighter(half_life=10)),
-        ("Linear Decay", LinearDecayWeighter(max_steps=None)),
+        ("Linear Decay", LinearDecayWeighter(window_size=None)),
         ("Seasonal Emphasis (period=7, 3×)", SeasonalEmphasisWeighter(seasonality=7, emphasis=3.0)),
         (
             "Composed: Exponential + Seasonal",

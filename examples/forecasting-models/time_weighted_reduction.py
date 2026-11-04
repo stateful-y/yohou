@@ -126,7 +126,7 @@ def _(mo):
     | Function | Behaviour |
     |---|---|
     | `ExponentialDecayWeighter(half_life)` | Halves weight every `half_life` steps from the most recent time |
-    | `LinearDecayWeighter(max_steps)` | Linear ramp from 0 (oldest) to 1 (newest) |
+    | `LinearDecayWeighter(window_size)` | Linear ramp from 0 (oldest) to 1 (newest) |
     | `SeasonalEmphasisWeighter(seasonality, emphasis)` | Multiplies weight by `emphasis` for times matching the seasonal phase |
 
     Let's visualise each one on our training data.
@@ -150,7 +150,7 @@ def _(LinearDecayWeighter, pl, plot_time_weight, y_train):
     _times = y_train.get_column("time")
     weight_df_linear = pl.DataFrame({
         "time": _times,
-        "time_weight": LinearDecayWeighter(max_steps=None).compute_weights(_times).to_list(),
+        "time_weight": LinearDecayWeighter(window_size=None).compute_weights(_times).to_list(),
     })
     plot_time_weight(weight_df_linear, title="Linear Decay (full range)")
 
@@ -389,7 +389,7 @@ def _(
     _weight_configs = {
         "Uniform": None,
         "Exp. Decay (365d)": ExponentialDecayWeighter(half_life=365),
-        "Linear Decay": LinearDecayWeighter(max_steps=None),
+        "Linear Decay": LinearDecayWeighter(window_size=None),
         "Seasonal (12)": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
     }
 

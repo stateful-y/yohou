@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import datetime, timedelta
 
 import numpy as np
 import polars as pl
 import pytest
+from sklearn.base import clone
 
 from yohou.weighting import (
     BaseWeighter,
@@ -49,33 +51,110 @@ def test_linear_decay_matches_legacy_values() -> None:
     assert weights == pytest.approx([0.0, 1 / 3, 2 / 3, 1.0])
 
 
-def test_linear_decay_max_steps_zeros_older() -> None:
-    """max_steps zeros out observations beyond the window."""
+def test_linear_decay_window_size_zeros_older() -> None:
+    """window_size zeros out observations beyond the window."""
     t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 6)])
-    weights = LinearDecayWeighter(max_steps=3).compute_weights(t).to_numpy()
+    weights = LinearDecayWeighter(window_size=3).compute_weights(t).to_numpy()
     assert weights[0] == 0.0
     assert weights[1] == 0.0
     assert weights[-1] == 1.0
 
 
-def test_linear_decay_max_steps_one_keeps_only_most_recent() -> None:
-    """max_steps=1 zeros every key except the most recent, which gets 1.0."""
+def test_linear_decay_window_size_one_keeps_only_most_recent() -> None:
+    """window_size=1 zeros every key except the most recent, which gets 1.0."""
     t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
-    weights = LinearDecayWeighter(max_steps=1).compute_weights(t).to_list()
+    weights = LinearDecayWeighter(window_size=1).compute_weights(t).to_list()
     assert weights == pytest.approx([0.0, 0.0, 1.0])
 
 
-def test_linear_decay_max_steps_exceeds_length() -> None:
-    """max_steps > len(key) computes without an OverflowError.
+def test_linear_decay_window_size_exceeds_length() -> None:
+    """window_size > len(key) computes without an OverflowError.
 
     Ranks are cast to a signed type so that ``ranks - cutoff`` stays correct
-    (rather than underflowing) when max_steps exceeds the series length.
+    (rather than underflowing) when window_size exceeds the series length.
     """
     t = pl.Series("time", [datetime(2024, 1, d) for d in range(1, 4)])
-    weights = LinearDecayWeighter(max_steps=10).compute_weights(t).to_numpy()
+    weights = LinearDecayWeighter(window_size=10).compute_weights(t).to_numpy()
     assert len(weights) == 3
     assert weights[-1] == 1.0
     assert all(w >= 0.0 for w in weights)
+
+
+class TestLinearDecayWindowSizeRename:
+    """Tests for the window_size name and the deprecated max_steps alias."""
+
+    @staticmethod
+    def _key() -> pl.Series:
+        return pl.Series("time", [datetime(2024, 1, d) for d in range(1, 6)])
+
+    def test_same_weights_as_before(self) -> None:
+        """window_size=3 gives the weights max_steps=3 gave before the rename."""
+        weights = LinearDecayWeighter(window_size=3).compute_weights(self._key()).to_list()
+        assert weights == pytest.approx([0.0, 0.0, 0.0, 0.5, 1.0])
+
+    def test_positional_argument_sets_window_size(self) -> None:
+        """A positional integer sets window_size and does not warn."""
+        weighter = LinearDecayWeighter(3)
+        assert weighter.window_size == 3
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            weighter.compute_weights(self._key())
+
+    def test_invalid_window_size(self) -> None:
+        """window_size=0 is rejected."""
+        with pytest.raises(ValueError, match="window_size"):
+            LinearDecayWeighter(window_size=0).compute_weights(self._key())
+
+    def test_max_steps_warns_and_matches(self) -> None:
+        """The deprecated name still works, with a FutureWarning naming window_size."""
+        with pytest.warns(FutureWarning, match="window_size"):
+            weights = LinearDecayWeighter(max_steps=3).compute_weights(self._key()).to_list()
+        assert weights == LinearDecayWeighter(window_size=3).compute_weights(self._key()).to_list()
+
+    @pytest.mark.parametrize("max_steps", [5, None])
+    def test_both_names_raise(self, max_steps) -> None:
+        """Passing max_steps (even None) together with window_size raises."""
+        with pytest.raises(ValueError, match="window_size.*max_steps"):
+            LinearDecayWeighter(window_size=3, max_steps=max_steps).compute_weights(self._key())
+
+    def test_explicit_max_steps_none_warns_and_decays_over_range(self) -> None:
+        """max_steps=None is a passed value: it warns and decays over the whole range."""
+        with pytest.warns(FutureWarning, match="window_size"):
+            weights = LinearDecayWeighter(max_steps=None).compute_weights(self._key()).to_list()
+        assert weights == pytest.approx([0.0, 0.25, 0.5, 0.75, 1.0])
+
+    def test_clone_keeps_deprecated_value(self) -> None:
+        """clone keeps max_steps, and the clone warns as the original does."""
+        cloned = clone(LinearDecayWeighter(max_steps=3))
+        assert cloned.max_steps == 3
+        with pytest.warns(FutureWarning, match="window_size"):
+            cloned.compute_weights(self._key())
+
+    def test_default_does_not_warn(self) -> None:
+        """The default instance emits no FutureWarning."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            LinearDecayWeighter().compute_weights(self._key())
+
+    def test_tunable_by_search(self) -> None:
+        """window_size is searchable through a forecaster's time_weighter."""
+        from yohou.metrics import MeanAbsoluteError
+        from yohou.model_selection import GridSearchCV
+        from yohou.point import PointReductionForecaster
+
+        times = [datetime(2020, 1, 1) + timedelta(days=i) for i in range(60)]
+        y = pl.DataFrame({"time": times, "value": [float(i % 7) + i / 10 for i in range(60)]})
+        search = GridSearchCV(
+            PointReductionForecaster(time_weighter=LinearDecayWeighter()),
+            param_grid={"time_weighter__window_size": [24, 48]},
+            scoring=MeanAbsoluteError(),
+            cv=2,
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", FutureWarning)
+            search.fit(y, forecasting_horizon=1)
+        assert [p["time_weighter__window_size"] for p in search.cv_results_["params"]] == [24, 48]
+        assert search.best_forecaster_.time_weighter.window_size == search.best_params_["time_weighter__window_size"]
 
 
 def test_seasonal_emphasis_list_emphasizes_union_of_periods() -> None:

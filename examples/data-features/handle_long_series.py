@@ -122,8 +122,8 @@ def _():
     # Exponential decay: weight halves every 120 steps
     exp_weight = ExponentialDecayWeighter(half_life=120)
 
-    # Linear decay: weight drops to 0 at max_steps ago
-    lin_weight = LinearDecayWeighter(max_steps=240)
+    # Linear decay: weight drops to 0 window_size rows ago
+    lin_weight = LinearDecayWeighter(window_size=240)
 
     print(f"Exponential weight function: {exp_weight}")
     print(f"Linear weight function:      {lin_weight}")

@@ -103,7 +103,7 @@ The built-in weighters cover the common strategies:
 | Weighter | Strategy |
 |---|---|
 | [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/) | Geometric recency decay; `scale` selects an elapsed-time or rank-position basis |
-| [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.LinearDecayWeighter/) | Linear ramp from oldest to newest, optionally zeroed beyond `max_steps` |
+| [`LinearDecayWeighter`](/pages/api/generated/yohou.weighting.LinearDecayWeighter/) | Linear ramp from oldest to newest, optionally zeroed beyond `window_size` |
 | [`SeasonalEmphasisWeighter`](/pages/api/generated/yohou.weighting.SeasonalEmphasisWeighter/) | Up-weights keys in phase with the latest seasonal position |
 | [`LookupWeighter`](/pages/api/generated/yohou.weighting.LookupWeighter/) | Explicit per-key weights from a `dict`; absent keys get the tunable `default` |
 | [`TableWeighter`](/pages/api/generated/yohou.weighting.TableWeighter/) | Weights resolved by joining the key series to a `pl.DataFrame` |

@@ -53,10 +53,10 @@ from yohou.weighting import LinearDecayWeighter
 weighter = LinearDecayWeighter()
 ```
 
-To zero out observations older than a fixed window, pass `max_steps`:
+To zero out observations older than a fixed window, pass `window_size`:
 
 ```python
-weighter = LinearDecayWeighter(max_steps=100)
+weighter = LinearDecayWeighter(window_size=100)
 ```
 
 If seasonality matters more than recency, use
@@ -298,7 +298,7 @@ search = GridSearchCV(
     forecaster,
     param_grid={"time_weighter": [
         ExponentialDecayWeighter(half_life=180),
-        LinearDecayWeighter(max_steps=100),
+        LinearDecayWeighter(window_size=100),
     ]},
     scoring=MeanAbsoluteError(),
     cv=ExpandingWindowSplitter(n_splits=5, test_size=12),

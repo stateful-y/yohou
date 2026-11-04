@@ -41,7 +41,9 @@ class AdaptiveConformalInference(BaseConformalAdapter):
     ----------
     step_size : float, default=0.05
         Learning rate $\gamma$ of the online update. Larger values react
-        faster to coverage drift but track more noisily.
+        faster to coverage drift but track more noisily. Unlike yohou's other
+        ``_size`` parameters, this is a rate, not a count of rows; the name
+        follows Gibbs and Candes (2021).
     alpha_pooling : {"per_step", "shared"}, default="per_step"
         How the enclosing forecaster pools miscoverage across horizon steps
         before updating: independently per step, or into one trajectory per

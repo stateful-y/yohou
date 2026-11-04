@@ -281,6 +281,48 @@ tuning step) came from repeated *calls* across trials and folds, not from a loop
 which is why the fix there was aggregation in the consumer rather than anything
 here.
 
+### Deprecating a parameter
+
+To rename a constructor parameter, keep the old name working for two releases
+with a warning, using the pattern scikit-learn uses. `LinearDecayWeighter`'s
+`max_steps`, renamed to `window_size`, is the reference implementation.
+
+1. Add the new parameter where it belongs in the signature, and keep the old one
+   last, defaulting to the string `"deprecated"`. Store both unchanged in
+   `__init__`, so `get_params`, `set_params` and `clone` keep working.
+2. Add `Hidden(StrOptions({"deprecated"}))` to the old parameter's constraint,
+   so the default passes validation without appearing in the documented choices.
+3. Where the value is first used, resolve it: if the old parameter is still the
+   sentinel, use the new one. Otherwise raise `ValueError` if the new one was
+   also set, and else emit a `FutureWarning` that names the replacement and the
+   release that removes the old name.
+4. Document the old parameter in the docstring as a deprecated alias, with the
+   release that deprecates it and the release that removes it.
+5. Remove the old parameter in the second release after the one that deprecates
+   it. The removal is a breaking change, so commit it with `!`.
+
+```python
+def _resolve_window_size(self):
+    if self.max_steps == "deprecated":
+        return self.window_size
+    if self.window_size is not None:
+        raise ValueError("got both window_size and the deprecated max_steps; pass only window_size")
+    warnings.warn(
+        "max_steps was renamed to window_size in 0.1.0-alpha.14 and will be removed in 0.1.0-alpha.16",
+        FutureWarning,
+        stacklevel=3,
+    )
+    return self.max_steps
+```
+
+Use `FutureWarning`, not `DeprecationWarning`: Python hides `DeprecationWarning`
+outside `__main__` by default, so end users would never see it.
+
+`stacklevel=3` reports the line that called `compute_weights`. That is the
+user's line only when they call the method directly; when a scorer or forecaster
+calls it, the warning reports a line inside yohou. The message still names the
+replacement, so this is acceptable for an alias that is removed two releases later.
+
 ### Docstring Standards
 
 All public functions, methods, and classes require **NumPy-style** docstrings. Coverage is enforced at 100% by `interrogate`.
