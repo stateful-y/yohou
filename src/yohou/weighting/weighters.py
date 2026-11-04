@@ -15,14 +15,17 @@ import abc
 import numbers
 import warnings
 from datetime import timedelta
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils import Bunch
 
-from yohou.utils._compat import Hidden, Interval, StrOptions, _BaseComposition
+from yohou.utils._compat import HasMethods, Hidden, Interval, StrOptions, _BaseComposition
+
+if TYPE_CHECKING:
+    from yohou.segmenting import BaseSegmenter
 
 __all__ = [
     "BaseWeighter",
@@ -31,6 +34,7 @@ __all__ = [
     "LookupWeighter",
     "CompositeWeighter",
     "SeasonalEmphasisWeighter",
+    "SegmentWeighter",
     "TableWeighter",
 ]
 
@@ -58,6 +62,7 @@ class BaseWeighter(BaseEstimator, metaclass=abc.ABCMeta):
     - [`SeasonalEmphasisWeighter`][yohou.weighting.weighters.SeasonalEmphasisWeighter] : Seasonal emphasis weighting.
     - [`LookupWeighter`][yohou.weighting.weighters.LookupWeighter] : Explicit per-key weights.
     - [`TableWeighter`][yohou.weighting.weighters.TableWeighter] : DataFrame-driven weights.
+    - [`SegmentWeighter`][yohou.weighting.weighters.SegmentWeighter] : Weights by calendar segment membership.
     - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
 
     """
@@ -531,6 +536,84 @@ class TableWeighter(BaseWeighter):
             raise ValueError(f"Weight DataFrame has explicit null '{weight_col}' values for {self.on}s: {null_valued}")
 
         return pl.Series(weights_np, dtype=pl.Float64).alias("weight")
+
+
+class SegmentWeighter(BaseWeighter):
+    """Two-level weights from calendar segment membership.
+
+    Keys that the segmenter labels non-null (inside a segment) receive ``inside``;
+    every other key receives ``outside``. Only membership is read, never the label
+    value, so any segmenter works, including composite ones. With the default
+    ``outside=0.0`` the weighter acts as a calendar mask, for example training or
+    scoring on business hours only.
+
+    Parameters
+    ----------
+    segmenter : BaseSegmenter or None, default=None
+        Segmenter deciding which keys are inside, e.g.
+        ``CalendarSegmenter("hour", values=range(8, 19))``. Required when weights
+        are computed. Its parameters are tunable as ``segmenter__<param>``.
+    inside : float, default=1.0
+        Weight of keys inside a segment. Must be non-negative.
+    outside : float, default=0.0
+        Weight of keys outside every segment. Must be non-negative.
+
+    Notes
+    -----
+    Keys must be temporal (times or vintage times), so the weighter suits the
+    ``time_weighter`` and ``vintage_weighter`` slots. A ``step_weighter`` receives
+    integer forecasting steps, which carry no calendar information, and raises
+    ``ValueError``. If no key is inside and ``outside=0.0``, the host's weight
+    validation rejects the all-zero result.
+
+    For graded weights, multiply two segment weighters in a
+    [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter].
+
+    See Also
+    --------
+    - [`CalendarSegmenter`][yohou.segmenting.segmenters.CalendarSegmenter] : Segments by calendar feature.
+    - [`CompositeWeighter`][yohou.weighting.weighters.CompositeWeighter] : Combine weighters by product or mean.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime
+    >>> from yohou.segmenting import CalendarSegmenter
+    >>> times = pl.Series("time", [datetime(2024, 1, 1, h) for h in (6, 9, 12, 20)])
+    >>> SegmentWeighter(CalendarSegmenter("hour", values=range(8, 19))).compute_weights(times).to_list()
+    [0.0, 1.0, 1.0, 0.0]
+
+    """
+
+    _parameter_constraints: dict = {
+        "segmenter": [HasMethods(["compute_labels"]), None],
+        "inside": [Interval(numbers.Real, 0, None, closed="left")],
+        "outside": [Interval(numbers.Real, 0, None, closed="left")],
+    }
+
+    def __init__(
+        self,
+        segmenter: BaseSegmenter | None = None,
+        inside: float = 1.0,
+        outside: float = 0.0,
+    ) -> None:
+        self.segmenter = segmenter
+        self.inside = inside
+        self.outside = outside
+
+    def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
+        """Compute segment-membership weights for ``key``."""
+        self._validate_params()
+        if self.segmenter is None:
+            raise ValueError("SegmentWeighter requires a non-None `segmenter` to compute weights")
+        if not key.dtype.is_temporal():
+            raise ValueError(
+                f"SegmentWeighter requires temporal keys (times or vintage times), got dtype {key.dtype}. "
+                "A step_weighter receives integer forecasting steps, which carry no calendar information."
+            )
+        inside = self.segmenter.compute_labels(key).is_not_null().to_numpy()
+        weights = np.where(inside, float(self.inside), float(self.outside))
+        return pl.Series(weights, dtype=pl.Float64).alias("weight")
 
 
 class CompositeWeighter(BaseWeighter, _BaseComposition):

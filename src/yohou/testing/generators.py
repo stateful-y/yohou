@@ -118,6 +118,15 @@ from .search import (
     check_search_return_train_score,
     check_search_rewind_delegates,
 )
+from .segmenter import (
+    check_segmenter_compute_labels_alignment,
+    check_segmenter_default_constructible,
+    check_segmenter_deterministic,
+    check_segmenter_fit_noop_returns_self,
+    check_segmenter_row_wise,
+    check_segmenter_tags_accessible_before_fit,
+    check_segmenter_tags_static_after_fit,
+)
 from .similarity import (
     check_similarity_methods_call_check_is_fitted,
     check_similarity_metric_params_verbatim,
@@ -1534,6 +1543,39 @@ def _yield_yohou_weighter_checks(
     if isinstance(weighter, CompositeWeighter):
         descriptor = {"attr": "weighters", "components": list(weighter.weighters)}
         yield from _yield_composite_reducer_checks(weighter, descriptor, operate=lambda c: c.compute_weights(key))
+
+
+def _yield_yohou_segmenter_checks(
+    segmenter,
+    time: pl.Series,
+) -> Generator[tuple[str, Callable, dict], None, None]:
+    """Generate applicable checks for a segmenter.
+
+    Yields the segmenter-family behavioral checks and the shared sklearn
+    estimator-contract checks.
+
+    Parameters
+    ----------
+    segmenter : BaseSegmenter
+        Segmenter instance.
+    time : pl.Series
+        Timestamps (at least two) to label.
+
+    Yields
+    ------
+    tuple of (str, callable, dict)
+        ``(check_name, check_func, check_kwargs)`` consumable by ``run_checks``.
+
+    """
+    yield "check_segmenter_compute_labels_alignment", check_segmenter_compute_labels_alignment, {"time": time}
+    yield "check_segmenter_fit_noop_returns_self", check_segmenter_fit_noop_returns_self, {"time": time}
+    yield "check_segmenter_deterministic", check_segmenter_deterministic, {"time": time}
+    yield "check_segmenter_row_wise", check_segmenter_row_wise, {"time": time}
+    yield "check_segmenter_default_constructible", check_segmenter_default_constructible, {}
+    yield "check_segmenter_tags_accessible_before_fit", check_segmenter_tags_accessible_before_fit, {}
+    yield "check_segmenter_tags_static_after_fit", check_segmenter_tags_static_after_fit, {"time": time}
+
+    yield from _yield_estimator_contract_checks(segmenter)
 
 
 def _yield_yohou_similarity_checks(

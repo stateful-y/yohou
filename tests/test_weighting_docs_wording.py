@@ -116,9 +116,9 @@ class TestExplanationPages:
 
 
 class TestHowTo:
-    """Section 4 of the time-weighting how-to carries the matched_step recipe."""
+    """Section 5 of the time-weighting how-to carries the matched_step recipe."""
 
-    SECTION = ("## 4. Apply Weights During Training", "## 5. Apply Weights During Scoring")
+    SECTION = ("## 5. Apply Weights During Training", "## 6. Apply Weights During Scoring")
 
     def test_recipe_uses_direct_seasonal_and_matched_step(self):
         section = _section(HOWTO, *self.SECTION)

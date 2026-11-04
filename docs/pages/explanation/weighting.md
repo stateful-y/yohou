@@ -245,6 +245,17 @@ zero, the scorer raises a `ValueError` rather than returning a degenerate result
 This behavior makes zero-weight useful as a hard mask: setting a weight to 0.0
 removes that observation from scoring completely.
 
+[`SegmentWeighter`](/pages/api/generated/yohou.weighting.SegmentWeighter/) builds
+such a mask from the calendar. It takes a segmenter from
+[`yohou.segmenting`](/pages/api/segmenting/), which labels each timestamp as
+inside or outside a segment (for example 08:00 to 18:00 each day), and gives
+inside rows one weight and outside rows another. With the default outside
+weight of 0.0, a scorer evaluates business hours only, and a reduction
+forecaster trains on them only. Segmenters are separate estimators rather than
+weighter parameters because the outlier handlers use the same segment
+definitions, so the hours a forecaster is trained on and the hours whose
+outliers are handled can be one object.
+
 ## Connections
 
-For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`); no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. For how `time_weighter` and `vintage_weighter` flow through composite forecasters (`DecompositionPipeline`, `ForecastedFeatureForecaster`, `LocalPanelForecaster`) during observe/rewind cycles, see [Forecaster Composition](forecaster-composition.md). The full API is documented in the [yohou.weighting reference](/pages/api/weighting/).
+For practical recipes on creating and applying weighters, see [How to Use Time Weighting](../how-to/time-weighting.md). Because weighters are constructor parameters, [Model Selection](model-selection.md) explains how their settings become ordinary tunable hyperparameters that [`GridSearchCV`](/pages/api/generated/yohou.model_selection.GridSearchCV/) and [`RandomizedSearchCV`](/pages/api/generated/yohou.model_selection.RandomizedSearchCV/) clone and vary directly (e.g. `time_weighter__half_life`); no metadata routing is involved. The forecaster still converts the resolved weights into the sklearn `sample_weight` it forwards to the wrapped estimator; [Metadata Routing](metadata-routing.md) covers that routed-metadata machinery. [Forecast Accuracy](forecast-accuracy.md) discusses how stepwise and vintagewise aggregation relate to weighted scoring. For how `time_weighter` and `vintage_weighter` flow through composite forecasters (`DecompositionPipeline`, `ForecastedFeatureForecaster`, `LocalPanelForecaster`) during observe/rewind cycles, see [Forecaster Composition](forecaster-composition.md). The full API is documented in the [yohou.weighting reference](/pages/api/weighting/), and the calendar segmenters that `SegmentWeighter` takes in the [yohou.segmenting reference](/pages/api/segmenting/).

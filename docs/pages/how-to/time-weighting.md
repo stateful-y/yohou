@@ -17,7 +17,7 @@ Time weighting is expressed with **weighter estimators**: small scikit-learn
 estimators that map a key series (observation times, vintage times, or integer
 forecasting steps) to a series of weights. Because they are estimators, their
 parameters are introspectable, clonable, and tunable by search (covered in
-[§6](#6-tune-your-weighting)).
+[§7](#7-tune-your-weighting)).
 
 If you want to down-weight old observations smoothly, use
 [`ExponentialDecayWeighter`](/pages/api/generated/yohou.weighting.ExponentialDecayWeighter/).
@@ -145,7 +145,63 @@ weighter = CompositeWeighter(
 )
 ```
 
-## 4. Apply Weights During Training
+## 4. Weight Part of the Calendar
+
+To train or score on specific hours of each day, or specific days of each week,
+use [`SegmentWeighter`](/pages/api/generated/yohou.weighting.SegmentWeighter/)
+with a [`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.CalendarSegmenter/).
+Rows inside the segment get `inside` (default 1.0) and all other rows get
+`outside` (default 0.0), so the defaults act as a calendar mask:
+
+```python
+from yohou.segmenting import CalendarSegmenter
+from yohou.weighting import SegmentWeighter
+
+business_hours = SegmentWeighter(CalendarSegmenter("hour", values=range(8, 19)))
+```
+
+A window across midnight is a plain list, such as `values=[22, 23, 0, 1]`. For
+local hours on UTC timestamps, pass `time_zone="Europe/Paris"` to the
+segmenter. To combine conditions, such as weekdays during business hours, wrap
+two segmenters in an
+[`IntersectionSegmenter`](/pages/api/generated/yohou.segmenting.IntersectionSegmenter/):
+
+```python
+from yohou.segmenting import IntersectionSegmenter
+
+weekday_business_hours = SegmentWeighter(IntersectionSegmenter([
+    ("days", CalendarSegmenter("day_of_week", values=[1, 2, 3, 4, 5])),
+    ("hours", CalendarSegmenter("hour", values=range(8, 19))),
+]))
+```
+
+For graded weights instead of a mask, multiply two segment weighters. Here peak
+hours count three times as much as other business hours, and nights count a
+little:
+
+```python
+weighter = CompositeWeighter([
+    ("business", SegmentWeighter(CalendarSegmenter("hour", values=range(8, 19)), outside=0.2)),
+    ("peak", SegmentWeighter(CalendarSegmenter("hour", values=[17, 18]), outside=1.0, inside=3.0)),
+])
+```
+
+`SegmentWeighter` reads calendar time, so it works in the `time_weighter` and
+`vintage_weighter` slots. A `step_weighter` receives integer forecasting steps
+and raises a `ValueError`.
+
+**In a reduction forecaster, use `sample_weight_alignment="matched_step"`.** A
+segment weighter emphasizes specific target times, which is the case `"matched_step"`
+is built for: each per-step model is weighted by its own target timestamps (see
+[§5](#5-apply-weights-during-training)). It requires `reduction_strategy="direct"`
+or `"dir-rec"`; under `"multi-output"` it warns and falls back to `"first_step"`.
+If the segment is so narrow that some step has no weighted training row, fitting
+raises a `ValueError` naming the step. With a collapse value such as `"first_step"`,
+a training row whose first target falls outside the segment gets weight 0 and is
+effectively dropped; under `"mean_step"` such a row is down-weighted by the share
+of its targets outside the segment.
+
+## 5. Apply Weights During Training
 
 Weighting is a **constructor parameter** of the forecaster, not an argument to
 `fit`. Pass a weighter to the `time_weighter` slot of a reduction forecaster:
@@ -208,7 +264,7 @@ ends up with no weighted row for some panel group, for example because a
 `ValueError` naming the step: that step has nothing to learn from, so widen the
 weighter or use a collapse value.
 
-## 5. Apply Weights During Scoring
+## 6. Apply Weights During Scoring
 
 Scorers carry their weighting on `__init__` too. Pass a weighter to
 `time_weighter` to weight per-timestep errors:
@@ -237,7 +293,7 @@ from yohou.model_selection import cross_validate
 cross_validate(forecaster, y_train, forecasting_horizon=12, scoring=scorer)
 ```
 
-## 6. Tune Your Weighting
+## 7. Tune Your Weighting
 
 Because weighters are constructor parameters, their settings are searchable
 hyperparameters addressed with the `__` syntax. Tune the decay half-life, and
@@ -309,7 +365,7 @@ search.fit(y_train, forecasting_horizon=12)
 Weighters recompute on each fold's own key series, so recency is always relative
 to that fold's most-recent key.
 
-## 7. Customize Weights for Panel Data
+## 8. Customize Weights for Panel Data
 
 Built-in weighters are panel-aware automatically: for panel data the forecaster
 calls `compute_weights(key, group_name)` once per group, on that group's own key
@@ -334,7 +390,7 @@ forecaster.fit(y_train, forecasting_horizon=12)
 
 For global (non-panel) data, `group_name` is `None`.
 
-## 8. Visualize the Weight Profile
+## 9. Visualize the Weight Profile
 
 [`plot_time_weight`](/pages/api/generated/yohou.plotting.plot_time_weight/)
 shows weights over time. Call the weighter's `compute_weights` on the key series
@@ -361,3 +417,4 @@ disable the filled area under the curve, pass `fill=False`.
 - [Handle Long Series](handle-long-series.md) for limiting history length as an alternative to down-weighting old data
 - [Multi-vintage Scoring](multi-vintage-scoring.md) for `step_weighter` and `vintage_weighter` in context
 - [API Reference: yohou.weighting](/pages/api/weighting/) for the full parameter listing
+- [API Reference: yohou.segmenting](/pages/api/segmenting/) for the calendar segmenters `SegmentWeighter` takes

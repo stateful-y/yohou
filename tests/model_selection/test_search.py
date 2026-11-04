@@ -1191,6 +1191,38 @@ class TestWeighterTuning:
         assert search.best_params_["time_weighter__half_life"] in (3, 7, 30)
         assert search.best_params_["time_weighter__scale"] in ("elapsed", "position")
 
+    def test_grid_search_over_segment_weighter_params(self):
+        """Segment weighter levels and nested segmenter values are searchable."""
+        import polars as pl
+
+        from yohou.point import PointReductionForecaster
+        from yohou.segmenting import CalendarSegmenter
+        from yohou.weighting import SegmentWeighter
+
+        n = 24 * 6
+        times = [datetime(2020, 1, 1) + timedelta(hours=i) for i in range(n)]
+        y = pl.DataFrame({"time": times, "value": [float(i % 24) + (i % 5) for i in range(n)]})
+        fc = PointReductionForecaster(time_weighter=SegmentWeighter(CalendarSegmenter("hour", values=[12])))
+        grid = {"time_weighter__outside": [0.0, 0.5], "time_weighter__segmenter__values": [[12], [11, 12, 13]]}
+        search = GridSearchCV(fc, param_grid=grid, scoring=MeanAbsoluteError(), cv=2)
+        search.fit(y, forecasting_horizon=1)
+
+        candidates = search.cv_results_["params"]
+        assert len(candidates) == 4
+        assert {(c["time_weighter__outside"], tuple(c["time_weighter__segmenter__values"])) for c in candidates} == {
+            (0.0, (12,)),
+            (0.0, (11, 12, 13)),
+            (0.5, (12,)),
+            (0.5, (11, 12, 13)),
+        }
+        # Each candidate fits with its own weights, so the candidates do not all score alike.
+        assert len({round(float(score), 9) for score in search.cv_results_["mean_test_score"]}) > 1
+        best_weighter = search.best_forecaster_.time_weighter
+        assert best_weighter.outside == search.best_params_["time_weighter__outside"]
+        assert best_weighter.segmenter.values == search.best_params_["time_weighter__segmenter__values"]
+        # The search clones per candidate, so the original forecaster keeps its own settings.
+        assert fc.time_weighter.segmenter.values == [12]
+
     def test_grid_search_over_weighter_instances(self):
         """Whole weighter instances (including None) can be searched."""
         from yohou.point import PointReductionForecaster
