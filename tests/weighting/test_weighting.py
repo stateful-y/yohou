@@ -105,7 +105,7 @@ class TestLinearDecayWindowSizeRename:
             LinearDecayWeighter(window_size=0).compute_weights(self._key())
 
     def test_max_steps_removed(self) -> None:
-        """The max_steps alias, deprecated in 0.1.0-alpha.14, no longer exists."""
+        """max_steps, the former name of window_size, is not accepted."""
         with pytest.raises(TypeError, match="max_steps"):
             LinearDecayWeighter(max_steps=3)
 
