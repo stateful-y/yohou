@@ -285,7 +285,8 @@ here.
 
 To rename a constructor parameter, keep the old name working for two releases
 with a warning, using the pattern scikit-learn uses. `LinearDecayWeighter`'s
-`max_steps`, renamed to `window_size`, is the reference implementation.
+`max_steps` (renamed to `window_size` in 0.1.0-alpha.14, removed in
+0.1.0-alpha.16) went through these steps.
 
 1. Add the new parameter where it belongs in the signature, and keep the old one
    last, defaulting to the string `"deprecated"`. Store both unchanged in

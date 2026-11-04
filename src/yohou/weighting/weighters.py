@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import abc
 import numbers
-import warnings
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -22,7 +21,7 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils import Bunch
 
-from yohou.utils._compat import HasMethods, Hidden, Interval, StrOptions, _BaseComposition
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _BaseComposition
 
 if TYPE_CHECKING:
     from yohou.segmenting import BaseSegmenter
@@ -239,10 +238,6 @@ class LinearDecayWeighter(BaseWeighter):
         range. If set, keys at rank ``< n - window_size`` receive weight 0, and so
         does the boundary key at rank ``n - window_size``; only the
         ``window_size - 1`` most-recent keys receive strictly positive weights.
-    max_steps : int or None, default="deprecated"
-        Deprecated alias of ``window_size``. Passing it emits a ``FutureWarning``,
-        and passing it together with a non-None ``window_size`` raises
-        ``ValueError``. Deprecated in 0.1.0-alpha.14, removed in 0.1.0-alpha.16.
 
     See Also
     --------
@@ -269,33 +264,15 @@ class LinearDecayWeighter(BaseWeighter):
 
     _parameter_constraints: dict = {
         "window_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
-        "max_steps": [Interval(numbers.Integral, 1, None, closed="left"), None, Hidden(StrOptions({"deprecated"}))],
     }
 
-    def __init__(self, window_size: int | None = None, max_steps: int | None | str = "deprecated") -> None:
+    def __init__(self, window_size: int | None = None) -> None:
         self.window_size = window_size
-        self.max_steps = max_steps
-
-    def _resolve_window_size(self) -> int | None:
-        """Return the effective window, honouring the deprecated ``max_steps`` alias."""
-        if self.max_steps == "deprecated":
-            return self.window_size
-        if self.window_size is not None:
-            raise ValueError(
-                "LinearDecayWeighter got both window_size and the deprecated max_steps; pass only window_size"
-            )
-        warnings.warn(
-            "LinearDecayWeighter's max_steps was renamed to window_size in 0.1.0-alpha.14 and will be "
-            "removed in 0.1.0-alpha.16; pass window_size instead",
-            FutureWarning,
-            stacklevel=3,
-        )
-        return cast(int | None, self.max_steps)
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Compute linear decay weights for ``key``."""
         self._validate_params()
-        window_size = self._resolve_window_size()
+        window_size = self.window_size
         n = len(key)
         if n == 1:
             return pl.Series([1.0], dtype=pl.Float64).alias("weight")
