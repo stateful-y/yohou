@@ -318,6 +318,11 @@ def _resolve_window_size(self):
 Use `FutureWarning`, not `DeprecationWarning`: Python hides `DeprecationWarning`
 outside `__main__` by default, so end users would never see it.
 
+`stacklevel=3` reports the line that called `compute_weights`. That is the
+user's line only when they call the method directly; when a scorer or forecaster
+calls it, the warning reports a line inside yohou. The message still names the
+replacement, so this is acceptable for an alias that is removed two releases later.
+
 ### Docstring Standards
 
 All public functions, methods, and classes require **NumPy-style** docstrings. Coverage is enforced at 100% by `interrogate`.

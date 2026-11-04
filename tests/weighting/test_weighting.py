@@ -138,8 +138,6 @@ class TestLinearDecayWindowSizeRename:
 
     def test_tunable_by_search(self) -> None:
         """window_size is searchable through a forecaster's time_weighter."""
-        from datetime import timedelta
-
         from yohou.metrics import MeanAbsoluteError
         from yohou.model_selection import GridSearchCV
         from yohou.point import PointReductionForecaster
