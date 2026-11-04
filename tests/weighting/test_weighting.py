@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 import numpy as np
 import polars as pl
 import pytest
-from sklearn.base import clone
 
 from yohou.weighting import (
     BaseWeighter,
@@ -81,7 +80,7 @@ def test_linear_decay_window_size_exceeds_length() -> None:
 
 
 class TestLinearDecayWindowSizeRename:
-    """Tests for the window_size name and the deprecated max_steps alias."""
+    """Tests for the window_size parameter."""
 
     @staticmethod
     def _key() -> pl.Series:
@@ -105,36 +104,10 @@ class TestLinearDecayWindowSizeRename:
         with pytest.raises(ValueError, match="window_size"):
             LinearDecayWeighter(window_size=0).compute_weights(self._key())
 
-    def test_max_steps_warns_and_matches(self) -> None:
-        """The deprecated name still works, with a FutureWarning naming window_size."""
-        with pytest.warns(FutureWarning, match="window_size"):
-            weights = LinearDecayWeighter(max_steps=3).compute_weights(self._key()).to_list()
-        assert weights == LinearDecayWeighter(window_size=3).compute_weights(self._key()).to_list()
-
-    @pytest.mark.parametrize("max_steps", [5, None])
-    def test_both_names_raise(self, max_steps) -> None:
-        """Passing max_steps (even None) together with window_size raises."""
-        with pytest.raises(ValueError, match="window_size.*max_steps"):
-            LinearDecayWeighter(window_size=3, max_steps=max_steps).compute_weights(self._key())
-
-    def test_explicit_max_steps_none_warns_and_decays_over_range(self) -> None:
-        """max_steps=None is a passed value: it warns and decays over the whole range."""
-        with pytest.warns(FutureWarning, match="window_size"):
-            weights = LinearDecayWeighter(max_steps=None).compute_weights(self._key()).to_list()
-        assert weights == pytest.approx([0.0, 0.25, 0.5, 0.75, 1.0])
-
-    def test_clone_keeps_deprecated_value(self) -> None:
-        """clone keeps max_steps, and the clone warns as the original does."""
-        cloned = clone(LinearDecayWeighter(max_steps=3))
-        assert cloned.max_steps == 3
-        with pytest.warns(FutureWarning, match="window_size"):
-            cloned.compute_weights(self._key())
-
-    def test_default_does_not_warn(self) -> None:
-        """The default instance emits no FutureWarning."""
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", FutureWarning)
-            LinearDecayWeighter().compute_weights(self._key())
+    def test_max_steps_removed(self) -> None:
+        """The max_steps alias, deprecated in 0.1.0-alpha.14, no longer exists."""
+        with pytest.raises(TypeError, match="max_steps"):
+            LinearDecayWeighter(max_steps=3)
 
     def test_tunable_by_search(self) -> None:
         """window_size is searchable through a forecaster's time_weighter."""
