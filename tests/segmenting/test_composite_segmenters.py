@@ -116,3 +116,17 @@ class TestComplement:
         """Test the complement of business hours keeps every other row."""
         labels = ComplementSegmenter(_business_hours()).compute_labels(hourly_week)
         assert labels.is_not_null().sum() == 7 * 24 - 5 * 11
+
+
+class TestNesting:
+    """Tests for composites whose components are composites."""
+
+    def test_union_of_intersection_label(self):
+        """Test Monday 09:00 carries a struct inside a struct."""
+        seg = UnionSegmenter([
+            ("business", _business_hours()),
+            ("weekend", CalendarSegmenter("day_of_week", values=[6, 7])),
+        ])
+        assert _label_at(seg, datetime(2024, 1, 1, 9)) == {"business": {"days": 1, "hours": 9}, "weekend": None}
+        assert _label_at(seg, datetime(2024, 1, 6, 3)) == {"business": None, "weekend": 6}
+        assert _label_at(seg, datetime(2024, 1, 1, 3)) is None

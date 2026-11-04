@@ -1,17 +1,7 @@
 """Estimator-based segmentation of the time axis.
 
-This module provides :class:`BaseSegmenter` and concrete segmenter estimators that
-assign each timestamp a segment label, or mark it as outside every segment with a
-null label. Weighters and outlier handlers take a segmenter to restrict their
-behaviour to part of the calendar, such as specific hours of each day. Segmenters
-are scikit-learn estimators: their parameters are introspectable via
-``get_params``/``set_params`` and therefore tunable with
-:class:`~yohou.model_selection.GridSearchCV`.
-
-Here "segmentation" means a fixed calendar rule applied row by row. It is not the
-change-point detection that sktime and aeon call segmentation: a segmenter never
-looks at the values of the series, and a row's label depends only on its own
-timestamp.
+Provides :class:`BaseSegmenter` and the calendar and composite segmenters, which
+label each timestamp with a calendar segment or mark it as outside every segment.
 """
 
 from __future__ import annotations
@@ -60,6 +50,10 @@ class BaseSegmenter(BaseEstimator, metaclass=abc.ABCMeta):
     Segmenters are stateless by default: :meth:`fit` is a no-op that exists so a
     future data-dependent segmenter can hook into the host estimator's ``fit``
     without an API change.
+
+    Here "segmentation" means a fixed calendar rule applied row by row, not the
+    change-point detection that sktime and aeon call segmentation: a segmenter never
+    reads the values of the series.
 
     See Also
     --------
@@ -119,9 +113,9 @@ class BaseSegmenter(BaseEstimator, metaclass=abc.ABCMeta):
 
 
 def _check_label_length(labels: pl.Series, time: pl.Series, owner: str) -> pl.Series:
-    """Raise if a component segmenter returned a mis-sized label series."""
+    """Raise if a segmenter returned a label series whose length differs from ``time``."""
     if len(labels) != len(time):
-        msg = f"{owner} component returned {len(labels)} labels, expected {len(time)}"
+        msg = f"{owner} returned {len(labels)} labels, expected {len(time)} (one per timestamp)"
         raise ValueError(msg)
     return labels
 
@@ -152,6 +146,9 @@ class CalendarSegmenter(BaseSegmenter):
 
     Notes
     -----
+    The timestamps must be a ``Date`` or ``Datetime`` series, and ``"hour"`` and
+    ``"minute"`` need ``Datetime``; other dtypes raise ``ValueError``.
+
     A window across midnight is a plain list, e.g. ``values=[22, 23, 0, 1]``. With
     ``time_zone`` set, a daylight-saving transition day has 23 or 25 local hours, so
     an hour segment holds one row more or less on those days.
@@ -297,7 +294,7 @@ class _NamedSegmenterComposition(BaseSegmenter, _BaseComposition):
         """Label inside rows with a struct of the component labels, null otherwise."""
         self._validate_params()
         segmenters = self._check_segmenters()
-        owner = type(self).__name__
+        owner = f"{type(self).__name__} component"
         components = pl.DataFrame({
             name: _check_label_length(segmenter.compute_labels(time), time, owner) for name, segmenter in segmenters
         })
@@ -423,7 +420,7 @@ class ComplementSegmenter(BaseSegmenter):
         self._validate_params()
         if self.segmenter is None:
             raise ValueError("ComplementSegmenter requires a non-None `segmenter` to compute labels")
-        inner = _check_label_length(self.segmenter.compute_labels(time), time, "ComplementSegmenter")
+        inner = _check_label_length(self.segmenter.compute_labels(time), time, "ComplementSegmenter component")
         return (
             pl
             .DataFrame({"inner": inner})

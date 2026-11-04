@@ -11,12 +11,16 @@ from sklearn.base import clone
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
+from yohou.segmenting.segmenters import _check_label_length
 from yohou.utils._compat import HasMethods, Interval, StrOptions, _check_feature_names_in
 
 __all__ = ["OutlierPercentileHandler", "OutlierThresholdHandler"]
 
 #: Internal column holding the segment label of each row while bounds are resolved.
 _LABEL_COL = "__yohou_segment_label__"
+
+#: True for rows inside a segment (non-null label).
+_INSIDE = pl.col(_LABEL_COL).is_not_null()
 
 #: Bound expressions for one column: ``(low, high)``. A None entry means no bound on
 #: that side; a null value within an expression means no bound for that row.
@@ -93,16 +97,14 @@ def _finite_values(series: pl.Series) -> pl.Series:
 
 
 def _label_key(label: Any) -> Any:
-    """Python dict key for a segment label: struct labels become tuples of field values."""
-    return tuple(label.values()) if isinstance(label, dict) else label
+    """Python dict key for a segment label: struct labels become tuples of field values, recursively."""
+    return tuple(_label_key(value) for value in label.values()) if isinstance(label, dict) else label
 
 
-def _check_segmenter_label_length(labels: pl.Series, X: pl.DataFrame) -> pl.Series:
-    """Raise if the segmenter returned a label count that differs from the row count."""
-    if len(labels) != len(X):
-        msg = f"segmenter returned {len(labels)} labels, expected {len(X)} (one per row)"
-        raise ValueError(msg)
-    return labels
+def _with_segment_labels(segmenter, X: pl.DataFrame) -> pl.DataFrame:
+    """Add the segmenter's label of each row as the internal label column."""
+    labels = _check_label_length(segmenter.compute_labels(X["time"]), X["time"], "segmenter")
+    return X.with_columns(labels.alias(_LABEL_COL))
 
 
 class OutlierThresholdHandler(BaseActualTransformer):
@@ -199,9 +201,8 @@ class OutlierThresholdHandler(BaseActualTransformer):
         "segmenter": [HasMethods(["compute_labels"]), None],
     }
 
-    # Batch invariant: elementwise against fixed thresholds and per-row segment
-    # labels (a row's label depends only on its own timestamp), so chunking cannot
-    # change a value.
+    # Batch invariant: elementwise against fixed thresholds and per-row segment labels
+    # (see BaseSegmenter Notes), so chunking cannot change a value.
     _tags = {"stateful": False, "invertible": False, "batch_invariant": True}
 
     def __init__(
@@ -246,9 +247,8 @@ class OutlierThresholdHandler(BaseActualTransformer):
         if self.segmenter_ is None:
             bounds = _literal_bounds(self.low_, self.high_)
         else:
-            labels = _check_segmenter_label_length(self.segmenter_.compute_labels(X["time"]), X)
-            X = X.with_columns(labels.alias(_LABEL_COL))
-            bounds = _literal_bounds(self.low_, self.high_, inside=pl.col(_LABEL_COL).is_not_null())
+            X = _with_segment_labels(self.segmenter_, X)
+            bounds = _literal_bounds(self.low_, self.high_, inside=_INSIDE)
         return _apply_outlier_handling(X, data_cols, self.strategy, lambda _col_name: bounds)
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
@@ -328,7 +328,8 @@ class OutlierPercentileHandler(BaseActualTransformer):
     -----
     UserWarning
         At fit time if, with ``by_segment=True``, some (column, label) pairs have
-        fewer than ``min_samples`` finite values; the warning counts and names them.
+        fewer than ``min_samples`` finite values; the warning gives their count and
+        names the first 10.
         Also at fit time for each column with no finite in-segment value; that
         column is returned unchanged.
 
@@ -338,8 +339,8 @@ class OutlierPercentileHandler(BaseActualTransformer):
     with fewer than ``min_samples`` finite values in a column uses that column's
     pooled thresholds (``thresholds_``) instead of its own, and so does a label
     that ``transform`` meets but ``fit`` never saw (for example June, with
-    ``CalendarSegmenter("month")``, when the training data covered January to March). The first case warns at fit; the second is
-    silent. ``segment_thresholds_`` records the thresholds actually used for each
+    ``CalendarSegmenter("month")``, when the training data covered January to
+    March). The first case warns at fit; the second is silent. ``segment_thresholds_`` records the thresholds actually used for each
     label seen at fit, including the fallbacks.
 
     Finite values exclude nulls and NaN, as in the percentile computation.
@@ -406,9 +407,8 @@ class OutlierPercentileHandler(BaseActualTransformer):
         "min_samples": [Interval(numbers.Integral, 1, None, closed="left")],
     }
 
-    # Batch invariant: elementwise against fit-time percentiles and per-row segment
-    # labels (a row's label depends only on its own timestamp), so chunking cannot
-    # change a value.
+    # Batch invariant: elementwise against fit-time percentiles and per-row segment labels
+    # (see BaseSegmenter Notes), so chunking cannot change a value.
     _tags = {"stateful": False, "invertible": False, "batch_invariant": True}
 
     def __init__(
@@ -444,16 +444,15 @@ class OutlierPercentileHandler(BaseActualTransformer):
             raise ValueError(msg)
         if self.by_segment and self.segmenter is None:
             raise ValueError("OutlierPercentileHandler with by_segment=True requires a segmenter")
+        # A refit without by_segment must not leave per-segment state from an earlier fit.
+        vars(self).pop("segment_thresholds_", None)
+        vars(self).pop("_segment_bounds", None)
 
         data_cols = [c for c in X.columns if c != "time"]
         has_bounds = self.low is not None or self.high is not None
 
         self.segmenter_ = None if self.segmenter is None else clone(self.segmenter).fit(X["time"])
-        if self.segmenter_ is None:
-            X_in = X
-        else:
-            labels = _check_segmenter_label_length(self.segmenter_.compute_labels(X["time"]), X)
-            X_in = X.with_columns(labels.alias(_LABEL_COL)).filter(pl.col(_LABEL_COL).is_not_null())
+        X_in = X if self.segmenter_ is None else _with_segment_labels(self.segmenter_, X).filter(_INSIDE)
 
         # Pooled thresholds over the in-segment rows (all rows without a segmenter)
         self.thresholds_: dict[str, tuple[float | None, float | None]] = {}
@@ -498,14 +497,13 @@ class OutlierPercentileHandler(BaseActualTransformer):
 
         # Join table for transform: one row per label seen at fit, one bound column
         # per (column, side). Unseen labels miss the join and fall back to pooled.
-        label_dtype = X_in.schema[_LABEL_COL]
         labels = X_in[_LABEL_COL].unique(maintain_order=True)
         columns: dict[str, pl.Series] = {_LABEL_COL: labels}
         for col_name in data_cols:
             pairs = [self.segment_thresholds_[col_name][_label_key(label)] for label in labels.to_list()]
             columns[f"__low__{col_name}"] = pl.Series([p[0] for p in pairs], dtype=pl.Float64)
             columns[f"__high__{col_name}"] = pl.Series([p[1] for p in pairs], dtype=pl.Float64)
-        self._segment_bounds = pl.DataFrame(columns).with_columns(pl.col(_LABEL_COL).cast(label_dtype))
+        self._segment_bounds = pl.DataFrame(columns)
 
     def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
         """Handle outliers based on fitted percentile thresholds.
@@ -522,38 +520,29 @@ class OutlierPercentileHandler(BaseActualTransformer):
 
         """
         data_cols = [c for c in X.columns if c != "time"]
-        if self.segmenter_ is None:
-            return _apply_outlier_handling(
-                X,
-                data_cols,
-                self.strategy,
-                lambda col_name: _literal_bounds(*self.thresholds_.get(col_name, (None, None))),
-            )
-
-        labels = _check_segmenter_label_length(self.segmenter_.compute_labels(X["time"]), X)
-        X = X.with_columns(labels.alias(_LABEL_COL))
-        inside = pl.col(_LABEL_COL).is_not_null()
+        inside = None
+        if self.segmenter_ is not None:
+            X = _with_segment_labels(self.segmenter_, X)
+            inside = _INSIDE
 
         if not self.by_segment:
             return _apply_outlier_handling(
                 X,
                 data_cols,
                 self.strategy,
-                lambda col_name: _literal_bounds(*self.thresholds_.get(col_name, (None, None)), inside=inside),
+                lambda col_name: _literal_bounds(*self.thresholds_[col_name], inside=inside),
             )
 
         X = X.join(self._segment_bounds, on=_LABEL_COL, how="left", maintain_order="left")
 
         def get_bounds(col_name: str) -> _Bounds:
             """Return per-row bounds: the label's thresholds, pooled for unseen labels, none outside."""
-            pooled_low, pooled_high = self.thresholds_.get(col_name, (None, None))
-            if f"__low__{col_name}" not in X.columns:
-                return _literal_bounds(pooled_low, pooled_high, inside=inside)
+            pooled_low, pooled_high = self.thresholds_[col_name]
 
             def side(fitted: str, pooled: float | None) -> pl.Expr:
                 """Return the bound from the joined label column, falling back to the pooled value."""
                 # Labels unseen at fit miss the join (null) and take the pooled value.
-                return pl.when(inside).then(pl.col(fitted).fill_null(pl.lit(pooled, dtype=pl.Float64)))
+                return pl.when(_INSIDE).then(pl.col(fitted).fill_null(pl.lit(pooled, dtype=pl.Float64)))
 
             return (
                 None if self.low is None else side(f"__low__{col_name}", pooled_low),

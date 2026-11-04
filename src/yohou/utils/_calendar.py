@@ -1,9 +1,7 @@
 """Calendar feature extraction shared by the calendar transformers and segmenters.
 
-Lives under ``yohou.utils`` rather than ``yohou.preprocessing`` because
-``yohou.segmenting`` needs it and is imported by ``yohou.weighting``, which
-``yohou.base`` imports at module level. Importing ``yohou.preprocessing`` from
-there would be circular, since ``yohou.preprocessing`` imports ``yohou.base``.
+Lives under ``yohou.utils`` so that ``yohou.segmenting`` imports only from the lowest
+layer, not from ``yohou.preprocessing``, which itself imports ``yohou.base``.
 """
 
 import numbers

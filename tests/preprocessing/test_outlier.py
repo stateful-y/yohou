@@ -15,7 +15,7 @@ from yohou.preprocessing import (
     OutlierPercentileHandler,
     OutlierThresholdHandler,
 )
-from yohou.segmenting import CalendarSegmenter, IntersectionSegmenter
+from yohou.segmenting import CalendarSegmenter, IntersectionSegmenter, UnionSegmenter
 from yohou.testing import _yield_yohou_transformer_checks
 
 
@@ -325,6 +325,41 @@ class TestBySegment:
         whole = handler.transform(X)
         chunks = pl.concat([handler.transform(X[:500]), handler.transform(X[500:])])
         assert whole.equals(chunks)
+
+    @pytest.mark.parametrize("by_segment", [False, True])
+    def test_percentile_rows_outside_pass_through(self, by_segment):
+        """Test the percentile handler leaves rows outside the segment unchanged and clips inside rows."""
+        handler = OutlierPercentileHandler(high=95, segmenter=_business_hours(), by_segment=by_segment, min_samples=5)
+        handler.fit(self._daily_cycle(30))
+        X_new = pl.DataFrame({"time": [datetime(2025, 6, 2, 3), datetime(2025, 6, 2, 12)], "value": [5000.0, 5000.0]})
+        out = handler.transform(X_new)["value"].to_list()
+        assert out[0] == 5000.0
+        assert out[1] < 5000.0
+
+    def test_refit_without_by_segment_clears_segment_state(self):
+        """Test a refit with by_segment=False drops per-segment state from the earlier fit."""
+        X = self._daily_cycle(10)
+        handler = OutlierPercentileHandler(high=95, segmenter=CalendarSegmenter("hour"), by_segment=True, min_samples=5)
+        handler.fit(X)
+        assert hasattr(handler, "segment_thresholds_")
+        handler.set_params(by_segment=False).fit(X)
+        assert not hasattr(handler, "segment_thresholds_")
+        assert not hasattr(handler, "_segment_bounds")
+
+    def test_nested_composite_labels(self):
+        """Test by_segment over a union containing an intersection keys thresholds by nested tuples."""
+        business = IntersectionSegmenter([
+            ("days", CalendarSegmenter("day_of_week", values=[1, 2, 3, 4, 5])),
+            ("hours", CalendarSegmenter("hour", values=list(range(8, 19)))),
+        ])
+        seg = UnionSegmenter([("business", business), ("weekend", CalendarSegmenter("day_of_week", values=[6, 7]))])
+        X = _hourly(7 * 10, lambda t: float(t.hour))
+        handler = OutlierPercentileHandler(high=95, segmenter=seg, by_segment=True, min_samples=5).fit(X)
+        keys = set(handler.segment_thresholds_["value"])
+        assert ((1, 9), None) in keys
+        assert (None, 6) in keys
+        X_new = pl.DataFrame({"time": [datetime(2024, 3, 11, 9)], "value": [1000.0]})  # Monday 09:00
+        assert handler.transform(X_new)["value"].to_list() == [pytest.approx(9.0)]
 
     def test_docstring_states_fallback(self):
         """Test the API docstring states which thresholds unseen and small labels use."""

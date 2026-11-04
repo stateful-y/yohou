@@ -1215,6 +1215,8 @@ class TestWeighterTuning:
             (0.5, (12,)),
             (0.5, (11, 12, 13)),
         }
+        # Each candidate fits with its own weights, so the candidates do not all score alike.
+        assert len({round(float(score), 9) for score in search.cv_results_["mean_test_score"]}) > 1
         best_weighter = search.best_forecaster_.time_weighter
         assert best_weighter.outside == search.best_params_["time_weighter__outside"]
         assert best_weighter.segmenter.values == search.best_params_["time_weighter__segmenter__values"]

@@ -144,6 +144,14 @@ def test_harness_yields_runnable_checks(time):
     seg = CalendarSegmenter("hour", values=range(3, 9))
     checks = list(_yield_yohou_segmenter_checks(seg, time))
     names = {name for name, _, _ in checks}
-    assert "check_segmenter_row_wise" in names
+    assert {
+        "check_segmenter_compute_labels_alignment",
+        "check_segmenter_fit_noop_returns_self",
+        "check_segmenter_deterministic",
+        "check_segmenter_row_wise",
+        "check_segmenter_default_constructible",
+        "check_segmenter_tags_accessible_before_fit",
+        "check_segmenter_tags_static_after_fit",
+    } <= names
     for _, func, kwargs in checks:
         func(seg, **kwargs)
