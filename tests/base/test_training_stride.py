@@ -338,7 +338,7 @@ class TestTrainingStrideWeighterCompatibility:
     def test_linear_decay_weighter(self):
         from yohou.weighting import LinearDecayWeighter
 
-        _weight_correspondence({"time_weighter": LinearDecayWeighter(max_steps=48)}, stride=6)
+        _weight_correspondence({"time_weighter": LinearDecayWeighter(window_size=48)}, stride=6)
 
     def test_seasonal_emphasis_weighter(self):
         from yohou.weighting import SeasonalEmphasisWeighter
@@ -355,7 +355,7 @@ class TestTrainingStrideWeighterCompatibility:
 
         _weight_correspondence(
             {
-                "time_weighter": LinearDecayWeighter(max_steps=72),
+                "time_weighter": LinearDecayWeighter(window_size=72),
                 "vintage_weighter": ExponentialDecayWeighter(half_life=18),
             },
             stride=7,

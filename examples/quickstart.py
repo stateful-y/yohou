@@ -900,7 +900,7 @@ def _(mo):
     | Function | Effect |
     |----------|--------|
     | `ExponentialDecayWeighter(half_life=…)` | Recent data gets exponentially more weight |
-    | `LinearDecayWeighter(max_steps=…)` | Linear ramp from 0 → 1 |
+    | `LinearDecayWeighter(window_size=…)` | Linear ramp from 0 → 1 |
     | `SeasonalEmphasisWeighter(seasonality=…, emphasis=…)` | Boost specific seasonal positions |
     | `CompositeWeighter([(name, fn1), (name, fn2), …])` | Multiply multiple weight functions element-wise |
     """)
@@ -917,7 +917,7 @@ def _(
 ):
     _fns = {
         "exponential": ExponentialDecayWeighter(half_life=15),
-        "linear": LinearDecayWeighter(max_steps=None),
+        "linear": LinearDecayWeighter(window_size=None),
         "seasonal": SeasonalEmphasisWeighter(seasonality=12, emphasis=3.0),
     }
     _weights_df = y_train.select("time").with_columns([

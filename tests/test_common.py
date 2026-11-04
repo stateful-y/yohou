@@ -421,7 +421,7 @@ def _weighter_instances() -> dict[str, object]:
         "TableWeighter": TableWeighter(frame=frame, on="time"),
         "CompositeWeighter": CompositeWeighter([
             ("decay", ExponentialDecayWeighter(half_life=2)),
-            ("lin", LinearDecayWeighter(max_steps=3)),
+            ("lin", LinearDecayWeighter(window_size=3)),
         ]),
     }
 
@@ -571,7 +571,10 @@ def _composition_descriptors() -> dict[str, dict]:
         },
         "CompositeWeighter": {
             "attr": "weighters",
-            "components": [("decay", ExponentialDecayWeighter(half_life=2)), ("lin", LinearDecayWeighter(max_steps=3))],
+            "components": [
+                ("decay", ExponentialDecayWeighter(half_life=2)),
+                ("lin", LinearDecayWeighter(window_size=3)),
+            ],
         },
         "CompositeSimilarity": {
             "attr": "similarities",

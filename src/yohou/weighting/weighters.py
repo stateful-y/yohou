@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import abc
 import numbers
+import warnings
 from datetime import timedelta
 from typing import Any, Literal, cast
 
@@ -21,7 +22,7 @@ import polars as pl
 from sklearn.base import BaseEstimator
 from sklearn.utils import Bunch
 
-from yohou.utils._compat import Interval, StrOptions, _BaseComposition
+from yohou.utils._compat import Hidden, Interval, StrOptions, _BaseComposition
 
 __all__ = [
     "BaseWeighter",
@@ -211,28 +212,32 @@ class ExponentialDecayWeighter(BaseWeighter):
 class LinearDecayWeighter(BaseWeighter):
     r"""Linear decay weights giving more weight to recent keys.
 
-    Computes rank-based linear decay. When ``max_steps`` is None:
+    Computes rank-based linear decay. When ``window_size`` is None:
 
     $$w(k) = \frac{\text{rank}(k)}{n - 1}$$
 
     where $\text{rank}(k) = 0$ for the oldest key and $n - 1$ for the most
-    recent. When ``max_steps`` is set, the denominator becomes
-    ``max_steps - 1`` and the window is shifted:
+    recent. When ``window_size`` is set, the denominator becomes
+    ``window_size - 1`` and the window is shifted:
 
-    $$w(k) = \max\!\left(0,\ \frac{\text{rank}(k) - (n - \text{max\_steps})}{\text{max\_steps} - 1}\right)$$
+    $$w(k) = \max\!\left(0,\ \frac{\text{rank}(k) - (n - \text{window\_size})}{\text{window\_size} - 1}\right)$$
 
-    so only the ``max_steps - 1`` most-recent keys receive a strictly positive
-    weight; the boundary key at rank ``n - max_steps`` maps to exactly 0.0, as
+    so only the ``window_size - 1`` most-recent keys receive a strictly positive
+    weight; the boundary key at rank ``n - window_size`` maps to exactly 0.0, as
     do all older keys. Rank-based, so usable for datetime or integer keys
     without a scale parameter.
 
     Parameters
     ----------
-    max_steps : int or None, default=None
+    window_size : int or None, default=None
         Window over which to decay. If None, decays linearly across the whole
-        range. If set, keys at rank ``< n - max_steps`` receive weight 0, and so
-        does the boundary key at rank ``n - max_steps``; only the
-        ``max_steps - 1`` most-recent keys receive strictly positive weights.
+        range. If set, keys at rank ``< n - window_size`` receive weight 0, and so
+        does the boundary key at rank ``n - window_size``; only the
+        ``window_size - 1`` most-recent keys receive strictly positive weights.
+    max_steps : int or None, default="deprecated"
+        Deprecated alias of ``window_size``. Passing it emits a ``FutureWarning``,
+        and passing it together with a non-None ``window_size`` raises
+        ``ValueError``. Deprecated in 0.1.0-alpha.14, removed in 0.1.0-alpha.16.
 
     See Also
     --------
@@ -258,34 +263,53 @@ class LinearDecayWeighter(BaseWeighter):
     """
 
     _parameter_constraints: dict = {
-        "max_steps": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "window_size": [Interval(numbers.Integral, 1, None, closed="left"), None],
+        "max_steps": [Interval(numbers.Integral, 1, None, closed="left"), None, Hidden(StrOptions({"deprecated"}))],
     }
 
-    def __init__(self, max_steps: int | None = None) -> None:
+    def __init__(self, window_size: int | None = None, max_steps: int | None | str = "deprecated") -> None:
+        self.window_size = window_size
         self.max_steps = max_steps
+
+    def _resolve_window_size(self) -> int | None:
+        """Return the effective window, honouring the deprecated ``max_steps`` alias."""
+        if self.max_steps == "deprecated":
+            return self.window_size
+        if self.window_size is not None:
+            raise ValueError(
+                "LinearDecayWeighter got both window_size and the deprecated max_steps; pass only window_size"
+            )
+        warnings.warn(
+            "LinearDecayWeighter's max_steps was renamed to window_size in 0.1.0-alpha.14 and will be "
+            "removed in 0.1.0-alpha.16; pass window_size instead",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return cast(int | None, self.max_steps)
 
     def compute_weights(self, key: pl.Series, group_name: str | None = None) -> pl.Series:
         """Compute linear decay weights for ``key``."""
         self._validate_params()
+        window_size = self._resolve_window_size()
         n = len(key)
         if n == 1:
             return pl.Series([1.0], dtype=pl.Float64).alias("weight")
 
         # Cast to float: polars rank() yields UInt32, and an unsigned array
         # underflows (OverflowError) on ``ranks - cutoff`` when cutoff is
-        # negative (max_steps > len(key)).
+        # negative (window_size > len(key)).
         ranks = (key.rank(method="ordinal") - 1).to_numpy().astype(np.float64)
 
-        if self.max_steps is None:
+        if window_size is None:
             weights = ranks / (n - 1)
         else:
-            cutoff = n - self.max_steps
+            cutoff = n - window_size
             # The most-recent key (rank n - 1) maps to exactly 1.0, so no
             # additional upper clamp is required.
             weights = np.where(
                 ranks < cutoff,
                 0.0,
-                (ranks - cutoff) / (self.max_steps - 1) if self.max_steps > 1 else 1.0,
+                (ranks - cutoff) / (window_size - 1) if window_size > 1 else 1.0,
             )
 
         return pl.Series(weights, dtype=pl.Float64).alias("weight")
