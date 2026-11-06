@@ -271,9 +271,10 @@ class MeanSeasonalNaive(BasePointForecaster):
     and the arithmetic mean is computed per position.  The resulting pattern
     is repeated cyclically to fill the forecasting horizon.
 
-    When ``n_seasons=1`` the output is identical to ``SeasonalNaive`` and
-    the original column dtype is preserved.  When ``n_seasons > 1`` the
-    averaging produces ``Float64`` columns.
+    When ``n_seasons=1`` the output is identical to ``SeasonalNaive``.
+    Forecasts are cast to each column's training dtype, as for every yohou
+    forecaster, so with ``n_seasons > 1`` an integer target gives averages
+    rounded to the nearest integer (half to even).
 
     See Also
     --------
