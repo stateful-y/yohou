@@ -3082,7 +3082,7 @@ def plot_scatter_matrix(
                             pass
                         else:
                             data_range = float(vals.max()) - float(vals.min())
-                            if data_range > 0 and kde.factor > 1e-10:  # ty: ignore[unsupported-operator]
+                            if data_range > 0 and kde.factor > 1e-10:
                                 x_grid = np.linspace(float(vals.min()), float(vals.max()), 200)
                                 fig.add_trace(
                                     go.Scatter(
