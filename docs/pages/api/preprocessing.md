@@ -17,6 +17,7 @@ Preprocessing transformers for stationarization and feature engineering.
 | [`HolidayFeatureTransformer`](generated/yohou.preprocessing.HolidayFeatureTransformer.md) | Extract holiday indicator features from a user-provided holiday calendar. |
 | [`FunctionTransformer`](generated/yohou.preprocessing.FunctionTransformer.md) | Constructs a transformer from an arbitrary callable. |
 | [`SeasonalImputer`](generated/yohou.preprocessing.SeasonalImputer.md) | Seasonal decomposition-based imputation for missing values. |
+| [`SegmentImputer`](generated/yohou.preprocessing.SegmentImputer.md) | Fill missing values from the same calendar segment. |
 | [`SimpleImputer`](generated/yohou.preprocessing.SimpleImputer.md) | Simple imputation using sklearn's SimpleImputer. |
 | [`SimpleTimeImputer`](generated/yohou.preprocessing.SimpleTimeImputer.md) | Time series imputation using interpolation or filling methods. |
 | [`TransformedSpaceKNNImputer`](generated/yohou.preprocessing.TransformedSpaceKNNImputer.md) | K-nearest neighbors imputation in a transformed feature space. |

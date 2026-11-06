@@ -25,6 +25,7 @@ __all__ = [
     "BaseSegmenter",
     "CalendarSegmenter",
     "ComplementSegmenter",
+    "HolidaySegmenter",
     "IntersectionSegmenter",
     "UnionSegmenter",
 ]
@@ -61,6 +62,7 @@ class BaseSegmenter(BaseEstimator, metaclass=abc.ABCMeta):
     - [`IntersectionSegmenter`][yohou.segmenting.segmenters.IntersectionSegmenter] : Rows inside every component.
     - [`UnionSegmenter`][yohou.segmenting.segmenters.UnionSegmenter] : Rows inside any component.
     - [`ComplementSegmenter`][yohou.segmenting.segmenters.ComplementSegmenter] : Rows outside a segmenter.
+    - [`HolidaySegmenter`][yohou.segmenting.segmenters.HolidaySegmenter] : Segments holidays.
 
     """
 
@@ -427,3 +429,101 @@ class ComplementSegmenter(BaseSegmenter):
             .select(pl.when(pl.col("inner").is_null()).then(pl.lit(True)).alias("label"))
             .to_series()
         )
+
+
+class HolidaySegmenter(BaseSegmenter):
+    """Segments timestamps that fall on a holiday.
+
+    A timestamp is inside when its date is in the ``"date"`` column of ``holidays``,
+    and every inside timestamp carries the label ``True``. Other columns of the
+    holiday table, such as a holiday name, are ignored. The holiday table has the
+    same format as for
+    [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer].
+
+    Parameters
+    ----------
+    holidays : pl.DataFrame or None, default=None
+        Holiday table with a ``"date"`` column of dtype ``Date`` or ``Datetime``.
+        Required when labels are computed.
+    time_zone : str or None, default=None
+        IANA zone in which the date is read, so a timestamp is matched by its local
+        date. The timestamps must then be timezone-aware ``Datetime`` values.
+
+    Notes
+    -----
+    With ``time_zone`` None, ``Date`` and ``Datetime`` timestamps are both accepted,
+    and a ``Datetime`` is matched by the date it shows. With ``time_zone`` set, a
+    ``Date`` series raises ``ValueError``, because a date has no source zone to
+    convert from.
+
+    See Also
+    --------
+    - [`ComplementSegmenter`][yohou.segmenting.segmenters.ComplementSegmenter] : Exclude holidays from a segment.
+    - [`UnionSegmenter`][yohou.segmenting.segmenters.UnionSegmenter] : Combine holidays with other calendar segments.
+    - [`HolidayFeatureTransformer`][yohou.preprocessing.calendar.HolidayFeatureTransformer] : Holiday indicator features.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import date, datetime
+    >>> holidays = pl.DataFrame({"date": [date(2024, 12, 25)]})
+    >>> times = pl.Series("time", [datetime(2024, 12, 24, 12), datetime(2024, 12, 25, 12)])
+    >>> HolidaySegmenter(holidays).compute_labels(times).to_list()
+    [None, True]
+
+    """
+
+    _parameter_constraints: dict = {
+        "holidays": "no_validation",
+        "time_zone": [str, None],
+    }
+
+    def __init__(self, holidays: pl.DataFrame | None = None, time_zone: str | None = None) -> None:
+        self.holidays = holidays
+        self.time_zone = time_zone
+
+    def _holiday_dates(self) -> pl.Series:
+        """Validate the holiday table and return its dates."""
+        # Same checks and messages as HolidayFeatureTransformer._fit.
+        if self.holidays is None:
+            raise ValueError("holidays must be provided as a polars DataFrame, got None")
+        if not isinstance(self.holidays, pl.DataFrame):
+            raise ValueError(f"holidays must be a polars DataFrame, got {type(self.holidays).__name__}")
+        if "date" not in self.holidays.columns:
+            raise ValueError("holidays DataFrame must have a 'date' column")
+        date_dtype = self.holidays["date"].dtype
+        if not isinstance(date_dtype, pl.Date | pl.Datetime):
+            raise ValueError(f"holidays 'date' column must be Date or Datetime type, got {date_dtype}")
+        return self.holidays["date"].cast(pl.Date)
+
+    def _check_key(self, time: pl.Series) -> None:
+        """Reject keys that carry no date, or no source zone when one is needed."""
+        dtype = time.dtype
+        if not isinstance(dtype, pl.Datetime | pl.Date):
+            msg = (
+                f"HolidaySegmenter requires a Date or Datetime series, got dtype {dtype}. "
+                "Integer forecasting steps carry no calendar information."
+            )
+            raise ValueError(msg)
+        if self.time_zone is not None:
+            source_zone = dtype.time_zone if isinstance(dtype, pl.Datetime) else None
+            if source_zone is None:
+                msg = (
+                    "HolidaySegmenter with time_zone set requires a timezone-aware series "
+                    "(a zone conversion is undefined without an instant and a source zone); "
+                    f"got dtype {dtype}. Localize the source first, e.g. dt.replace_time_zone('UTC')."
+                )
+                raise ValueError(msg)
+
+    def compute_labels(self, time: pl.Series) -> pl.Series:
+        """Label timestamps whose (local) date is a holiday with ``True``, null otherwise."""
+        self._validate_params()
+        holiday_dates = self._holiday_dates()
+        self._check_key(time)
+        col = pl.col("time")
+        if self.time_zone is not None:
+            col = col.dt.convert_time_zone(self.time_zone)
+        if isinstance(time.dtype, pl.Datetime):
+            col = col.dt.date()
+        label = pl.when(col.is_in(holiday_dates.implode())).then(pl.lit(True))
+        return pl.DataFrame({"time": time}).select(label.alias("label")).to_series()

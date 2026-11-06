@@ -10,11 +10,18 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "How to Handle Missing Data",
-    "description": "Compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.",
+    "description": "Compare SimpleTimeImputer, SeasonalImputer, SegmentImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic gaps in monthly tourism data and in hourly data with a local-time pattern.",
     "category": "how-to",
     "section": "data-features",
     "companion": "/pages/how-to/handle-missing-data/",
-    "api_references": ["SeasonalImputer", "SimpleImputer", "SimpleTimeImputer", "TransformedSpaceKNNImputer"],
+    "api_references": [
+        "CalendarSegmenter",
+        "SeasonalImputer",
+        "SegmentImputer",
+        "SimpleImputer",
+        "SimpleTimeImputer",
+        "TransformedSpaceKNNImputer",
+    ],
 }
 app = marimo.App(width="medium")
 
@@ -34,7 +41,7 @@ def _(mo):
     Missing values are common in real-world time series. Yohou provides
     temporal-aware imputation methods alongside sklearn wrappers.
 
-    This notebook shows how to compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data.
+    This notebook shows how to compare SimpleTimeImputer, SeasonalImputer, SimpleImputer, and TransformedSpaceKNNImputer on synthetic block and scattered gaps in monthly tourism data, and how SegmentImputer fills hourly gaps by local time.
     """)
 
 
@@ -45,10 +52,19 @@ def _():
 
     from yohou.datasets import fetch_tourism_monthly
     from yohou.plotting import plot_time_series
-    from yohou.preprocessing import SeasonalImputer, SimpleImputer, SimpleTimeImputer, TransformedSpaceKNNImputer
+    from yohou.preprocessing import (
+        SeasonalImputer,
+        SegmentImputer,
+        SimpleImputer,
+        SimpleTimeImputer,
+        TransformedSpaceKNNImputer,
+    )
+    from yohou.segmenting import CalendarSegmenter
 
     return (
+        CalendarSegmenter,
         SeasonalImputer,
+        SegmentImputer,
         SimpleImputer,
         SimpleTimeImputer,
         TransformedSpaceKNNImputer,
@@ -215,7 +231,53 @@ def _(SeasonalImputer, plot_time_series, tourism_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 6. Sklearn-Wrapped Imputers
+    ## 6. SegmentImputer: Fill by Local Hour
+
+    `SeasonalImputer` counts rows, so on UTC data it cannot follow a pattern
+    tied to local time. The synthetic hourly series below is stored in UTC and
+    peaks at 18:00 Paris time every day. Paris moves to summer time on
+    2024-03-31, so the peak sits at 17:00 UTC before that date and at 16:00 UTC
+    after it. A full day of data is missing on 2024-04-08.
+
+    [`SegmentImputer`](/pages/api/generated/yohou.preprocessing.imputation.SegmentImputer/) fills each gap with the mean of the values that
+    share its label. With a [`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.segmenters.CalendarSegmenter/) reading the hour in
+    `"Europe/Paris"`, the label is the local hour, so the gap at 16:00 UTC is
+    filled from the other 18:00 Paris values. `SeasonalImputer(seasonality=24)`
+    fills it from the other 16:00 UTC values, which mix winter (17:00 Paris)
+    and summer (18:00 Paris) days.
+    """)
+
+
+@app.cell
+def _(CalendarSegmenter, SeasonalImputer, SegmentImputer, pl):
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+
+    _times = pl.datetime_range(
+        _datetime(2024, 3, 18), _datetime(2024, 4, 14, 23), interval="1h", eager=True
+    ).dt.replace_time_zone("UTC")
+    _peak = _times.dt.convert_time_zone("Europe/Paris").dt.hour() == 18
+    _gap_day = pl.col("time").dt.date() == _date(2024, 4, 8)
+    utc_hourly = pl.DataFrame({"time": _times, "load": pl.Series([10.0 if p else 1.0 for p in _peak])}).with_columns(
+        pl.when(_gap_day).then(None).otherwise(pl.col("load")).alias("load")
+    )
+
+    _by_rows = SeasonalImputer(seasonality=24).fit(utc_hourly).transform(utc_hourly)
+    _by_local_hour = (
+        SegmentImputer(CalendarSegmenter("hour", time_zone="Europe/Paris")).fit(utc_hourly).transform(utc_hourly)
+    )
+    pl.DataFrame({
+        "time": _by_rows["time"],
+        "SeasonalImputer(24)": _by_rows["load"],
+        "SegmentImputer(local hour)": _by_local_hour["load"],
+    }).filter(_gap_day & pl.col("time").dt.hour().is_between(15, 18))
+    return (utc_hourly,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Sklearn-Wrapped Imputers
 
     Yohou wraps several Scikit-Learn imputers so they work seamlessly with
     time-indexed Polars DataFrames.
@@ -266,7 +328,7 @@ def _(TransformedSpaceKNNImputer, plot_time_series, tourism_missing):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 7. Compare Methods
+    ## 8. Compare Methods
 
     Because we created the gaps ourselves, we can measure each method's
     quality both visually and numerically.

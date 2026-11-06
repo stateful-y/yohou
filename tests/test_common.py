@@ -6,7 +6,7 @@ behaviour across the entire package.
 """
 
 import contextlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import polars as pl
 import pytest
@@ -461,10 +461,16 @@ def _segmenter_time() -> pl.Series:
 def _segmenter_instances() -> dict[str, object]:
     """Representative *working* segmenter instances keyed by class name.
 
-    The composites are default-constructible but cannot label with default args,
-    so concrete fixtures are supplied.
+    The composites and ``HolidaySegmenter`` are default-constructible but cannot
+    label with default args, so concrete fixtures are supplied.
     """
-    from yohou.segmenting import CalendarSegmenter, ComplementSegmenter, IntersectionSegmenter, UnionSegmenter
+    from yohou.segmenting import (
+        CalendarSegmenter,
+        ComplementSegmenter,
+        HolidaySegmenter,
+        IntersectionSegmenter,
+        UnionSegmenter,
+    )
 
     def hours() -> CalendarSegmenter:
         return CalendarSegmenter("hour", values=list(range(8, 19)), time_zone="Europe/Paris")
@@ -477,6 +483,9 @@ def _segmenter_instances() -> dict[str, object]:
         "IntersectionSegmenter": IntersectionSegmenter([("hours", hours()), ("weekend", weekend())]),
         "UnionSegmenter": UnionSegmenter([("hours", hours()), ("weekend", weekend())]),
         "ComplementSegmenter": ComplementSegmenter(hours()),
+        # 2024-01-06 lies inside _segmenter_time(); the Paris date makes the check
+        # exercise the local-date conversion.
+        "HolidaySegmenter": HolidaySegmenter(pl.DataFrame({"date": [date(2024, 1, 6)]}), time_zone="Europe/Paris"),
     }
 
 

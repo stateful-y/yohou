@@ -11,11 +11,11 @@ import marimo
 __generated_with = "0.20.2"
 __gallery__ = {
     "title": "How to Tune Fourier Seasonality Terms",
-    "description": "Explore how Fourier harmonic count affects seasonal fit quality, compare Fourier vs Pattern seasonality, and tune harmonics jointly with GridSearchCV.",
+    "description": "Explore how Fourier harmonic count affects seasonal fit quality, compare Fourier vs Pattern seasonality, tune harmonics jointly with GridSearchCV, and keep a local-time peak in place across daylight saving with calendar profiles.",
     "category": "how-to",
     "section": "data-features",
     "companion": "/pages/how-to/handle-complex-seasonality/",
-    "api_references": ["FourierSeasonalityForecaster", "PatternSeasonalityForecaster", "DecompositionPipeline", "PointReductionForecaster", "LagTransformer", "GridSearchCV", "ExpandingWindowSplitter", "MeanAbsoluteError", "plot_forecast", "train_test_split", "fetch_electricity_demand", "plot_score_per_vintage"],
+    "api_references": ["FourierSeasonalityForecaster", "PatternSeasonalityForecaster", "DecompositionPipeline", "PointReductionForecaster", "LagTransformer", "GridSearchCV", "ExpandingWindowSplitter", "MeanAbsoluteError", "plot_forecast", "train_test_split", "fetch_electricity_demand", "plot_score_per_vintage", "SegmentProfileForecaster", "CalendarSegmenter", "HolidaySegmenter"],
 }
 app = marimo.App(width="medium")
 
@@ -386,6 +386,55 @@ def _(
             title="Grid Search Best Pipeline",
         ),
     ])
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Calendar Profiles for Local-Time Peaks
+
+    Fourier terms and `PatternSeasonalityForecaster` both count rows. When the
+    data is stored in UTC and the pattern follows local time, the row count of
+    the peak changes twice a year. The electricity data above is daily after
+    aggregation and has no stated zone, so this section builds a short
+    synthetic hourly series in UTC with a peak at 18:00 Paris time. Paris moves
+    to summer time at 01:00 UTC on 2024-03-31, so the peak sits at 17:00 UTC
+    in the training data and at 16:00 UTC afterwards.
+
+    `PatternSeasonalityForecaster(seasonality=24)` repeats the training peak at
+    17:00 UTC. [`SegmentProfileForecaster`](/pages/api/generated/yohou.point.naive.SegmentProfileForecaster/) with a [`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.segmenters.CalendarSegmenter/) reading the hour in
+    `"Europe/Paris"` labels each forecast timestamp by its local hour, so the
+    peak stays at 18:00 local. For holiday-aware profiles, combine segments with
+    a [`HolidaySegmenter`](/pages/api/generated/yohou.segmenting.segmenters.HolidaySegmenter/), as the companion how-to shows.
+    """)
+
+
+@app.cell
+def _(PatternSeasonalityForecaster, pl):
+    from datetime import datetime as _datetime
+
+    from yohou.point import SegmentProfileForecaster
+    from yohou.segmenting import CalendarSegmenter
+
+    _times = pl.datetime_range(
+        _datetime(2024, 3, 4), _datetime(2024, 3, 30, 23), interval="1h", eager=True
+    ).dt.replace_time_zone("UTC")
+    _peak = _times.dt.convert_time_zone("Europe/Paris").dt.hour() == 18
+    y_local_peak = pl.DataFrame({"time": _times, "load": pl.Series([10.0 if p else 1.0 for p in _peak])})
+
+    _forecasters = {
+        "PatternSeasonalityForecaster(24)": PatternSeasonalityForecaster(seasonality=24),
+        "SegmentProfileForecaster(local hour)": SegmentProfileForecaster(
+            CalendarSegmenter("hour", time_zone="Europe/Paris")
+        ),
+    }
+    _rows = []
+    for _name, _forecaster in _forecasters.items():
+        _pred = _forecaster.fit(y_local_peak, forecasting_horizon=48).predict()
+        _peaks = _pred.filter(pl.col("load") == pl.col("load").max())["time"]
+        _rows.append({"forecaster": _name, "forecast peaks (UTC)": ", ".join(str(t) for t in _peaks.to_list())})
+    pl.DataFrame(_rows)
+    return (y_local_peak,)
 
 
 @app.cell(hide_code=True)
