@@ -2,22 +2,26 @@
 
 import numbers
 from copy import deepcopy
+from typing import Any
 
 import numpy as np
 import polars as pl
 import polars.selectors as cs
+from sklearn.base import clone
 from sklearn.impute import KNNImputer as sklearn_KNNImputer
 from sklearn.impute import SimpleImputer as sklearn_SimpleImputer
 from sklearn.utils.validation import check_is_fitted
 
 from yohou.base import BaseActualTransformer
+from yohou.preprocessing.outlier import _INSIDE, _LABEL_COL, _label_key, _with_segment_labels
 from yohou.preprocessing.sklearn_base import SklearnTransformer
 from yohou.utils import Tags, validate_transformer_data
-from yohou.utils._compat import Interval, StrOptions, _check_feature_names_in, _fit_context
+from yohou.utils._compat import HasMethods, Interval, StrOptions, _check_feature_names_in, _fit_context
 from yohou.utils.validation import interval_to_timedelta
 
 __all__ = [
     "SeasonalImputer",
+    "SegmentImputer",
     "SimpleImputer",
     "SimpleTimeImputer",
     "TransformedSpaceKNNImputer",
@@ -557,6 +561,7 @@ class SeasonalImputer(BaseActualTransformer):
     --------
     - [`SimpleTimeImputer`][yohou.preprocessing.imputation.SimpleTimeImputer] : Interpolation-based imputation.
     - [`SimpleImputer`][yohou.preprocessing.imputation.SimpleImputer] : Simple constant-strategy imputation.
+    - [`SegmentImputer`][yohou.preprocessing.imputation.SegmentImputer] : Fill from the same calendar segment, for local-time patterns.
 
     Notes
     -----
@@ -697,6 +702,160 @@ class SeasonalImputer(BaseActualTransformer):
             result_cols[col_name] = pl.Series(values).fill_nan(None)
 
         return pl.DataFrame(result_cols)
+
+    def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
+        """Get output feature names for transformation.
+
+        Parameters
+        ----------
+        input_features : list of str or None, default=None
+            Column names of the input features.  If ``None``, uses the
+            feature names seen during ``fit``.
+
+        Returns
+        -------
+        list of str
+            Output feature names after transformation.
+
+        """
+        check_is_fitted(self, ["feature_names_in_"])
+        input_features = _check_feature_names_in(self, input_features)
+        return list(input_features)
+
+
+class SegmentImputer(BaseActualTransformer):
+    """Fill missing values from the same calendar segment.
+
+    At fit, computes per column and per segment label the mean or median of the
+    finite values carrying that label. ``transform`` replaces each null or NaN value
+    with the statistic of its row's label and leaves every other value unchanged.
+    Labels come from a segmenter, so "the same segment" can be a local hour that
+    stays correct across daylight saving, a month, or a holiday.
+
+    Parameters
+    ----------
+    segmenter : BaseSegmenter or None, default=None
+        Segmenter that labels each row. ``None`` puts every row in one segment, so
+        every missing value is filled with the column's pooled statistic.
+    fill_method : {"mean", "median"}, default="mean"
+        Statistic of the finite values of each label.
+
+    Attributes
+    ----------
+    segmenter_ : BaseSegmenter or None
+        Fitted clone of ``segmenter``.
+    fill_values_ : dict
+        Column name mapped to the pooled statistic over all finite fit values, or
+        None when the column had no finite value.
+    segment_fill_values_ : dict
+        Column name mapped to a dict from label to the value used to fill that
+        label, after the pooled fallback. Struct labels are keyed by tuples of their
+        field values. Empty when ``segmenter`` is None.
+
+    Notes
+    -----
+    A missing value whose label is null (outside every segment), was never seen at
+    fit, or had no finite values at fit is filled with the pooled statistic. A
+    column with no finite value at fit keeps its missing values, returned as null.
+    Filled columns are returned as Float64.
+
+    Each fill depends only on the row's own timestamp and fit-time statistics, so
+    transforming a frame in chunks gives the same result as transforming it whole.
+
+    See Also
+    --------
+    - [`SeasonalImputer`][yohou.preprocessing.imputation.SeasonalImputer] : Fill from the same position in a cycle of fixed row count.
+    - [`CalendarSegmenter`][yohou.segmenting.segmenters.CalendarSegmenter] : Segments by calendar feature, optionally in local time.
+
+    Examples
+    --------
+    >>> import polars as pl
+    >>> from datetime import datetime, timedelta
+    >>> from yohou.segmenting import CalendarSegmenter
+    >>> times = [datetime(2024, 1, 1) + timedelta(hours=h) for h in range(48)]
+    >>> X = pl.DataFrame({"time": times, "load": [float(t.hour) for t in times]})
+    >>> X = X.with_columns(
+    ...     pl.when(pl.col("time") == datetime(2024, 1, 2, 3)).then(None).otherwise("load").alias("load")
+    ... )
+    >>> imputer = SegmentImputer(CalendarSegmenter("hour")).fit(X)
+    >>> imputer.transform(X).filter(pl.col("time") == datetime(2024, 1, 2, 3))["load"].to_list()
+    [3.0]
+
+    """
+
+    _parameter_constraints: dict = {
+        "segmenter": [HasMethods(["compute_labels"]), None],
+        "fill_method": [StrOptions({"mean", "median"})],
+    }
+
+    # Batch invariant: elementwise against fit-time statistics and per-row segment
+    # labels (see BaseSegmenter Notes), so chunking cannot change a value.
+    _tags = {"stateful": False, "invertible": False, "batch_invariant": True}
+
+    def __init__(self, segmenter=None, fill_method: str = "mean"):
+        self.segmenter = segmenter
+        self.fill_method = fill_method
+
+    def _stat(self, col_name: str) -> pl.Expr:
+        """Mean or median of the finite values of ``col_name``."""
+        expr = pl.col(col_name).cast(pl.Float64).fill_nan(None)
+        return (expr.mean() if self.fill_method == "mean" else expr.median()).alias(col_name)
+
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:
+        """Compute the pooled and per-label statistics."""
+        data_cols = [c for c in X.columns if c != "time"]
+        pooled = X.select([self._stat(c) for c in data_cols]).row(0, named=True)
+        self.fill_values_: dict[str, float | None] = dict(pooled)
+        self.segment_fill_values_: dict[str, dict[Any, float | None]] = {c: {} for c in data_cols}
+        self._segment_fills: pl.DataFrame | None = None
+
+        self.segmenter_ = None if self.segmenter is None else clone(self.segmenter).fit(X["time"])
+        if self.segmenter_ is None:
+            return
+
+        # One row per label seen at fit, holding the value that fills it. A label with
+        # no finite value takes the pooled statistic; unseen labels miss the join at
+        # transform and take it there.
+        self._segment_fills = (
+            _with_segment_labels(self.segmenter_, X)
+            .filter(_INSIDE)
+            .group_by(_LABEL_COL, maintain_order=True)
+            .agg([self._stat(c) for c in data_cols])
+            .with_columns([pl.col(c).fill_null(pl.lit(pooled[c], dtype=pl.Float64)) for c in data_cols])
+        )
+        for row in self._segment_fills.iter_rows(named=True):
+            key = _label_key(row[_LABEL_COL])
+            for col_name in data_cols:
+                self.segment_fill_values_[col_name][key] = row[col_name]
+
+    def _transform(self, X: pl.DataFrame) -> pl.DataFrame:
+        """Fill null and NaN values from the statistic of each row's label.
+
+        Parameters
+        ----------
+        X : pl.DataFrame
+            Validated input time series.
+
+        Returns
+        -------
+        pl.DataFrame
+            Time series with missing values filled.
+
+        """
+        data_cols = [c for c in X.columns if c != "time"]
+        fill_cols = {c: pl.lit(self.fill_values_.get(c), dtype=pl.Float64) for c in data_cols}
+        if self._segment_fills is not None:
+            fills = self._segment_fills.rename({c: f"__fill__{c}" for c in data_cols})
+            X = _with_segment_labels(self.segmenter_, X).join(fills, on=_LABEL_COL, how="left", maintain_order="left")
+            fill_cols = {c: pl.col(f"__fill__{c}").fill_null(fill_cols[c]) for c in data_cols}
+
+        def filled(col_name: str) -> pl.Expr:
+            """Column as Float64 with null and NaN values replaced; unfillable values become null."""
+            value = pl.col(col_name).cast(pl.Float64)
+            missing = value.is_null() | value.is_nan()
+            return pl.when(missing).then(fill_cols[col_name]).otherwise(value).alias(col_name)
+
+        return X.select(["time", *[filled(c) for c in data_cols]])
 
     def get_feature_names_out(self, input_features: list[str] | None = None) -> list[str]:
         """Get output feature names for transformation.

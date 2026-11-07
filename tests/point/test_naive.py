@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -8,7 +8,10 @@ from sklearn.base import clone
 from sklearn.model_selection import train_test_split
 
 from conftest import run_checks
-from yohou.point import MeanSeasonalNaive, SeasonalNaive
+from yohou.compose import DecompositionPipeline
+from yohou.point import MeanSeasonalNaive, SeasonalNaive, SegmentProfileForecaster
+from yohou.segmenting import CalendarSegmenter, HolidaySegmenter, UnionSegmenter
+from yohou.stationarity import PolynomialTrendForecaster
 from yohou.testing import _yield_yohou_forecaster_checks
 
 
@@ -443,3 +446,237 @@ class TestMeanSeasonalNaivePanel:
 
         assert isinstance(y_pred, pl.DataFrame)
         assert "grp__a" in y_pred.columns
+
+
+def _frame(start: datetime, step: timedelta, values: dict, tz: str | None = None) -> pl.DataFrame:
+    """Frame with a ``time`` column of ``len(values[...])`` steps and the given value columns."""
+    n = len(next(iter(values.values())))
+    times = pl.Series("time", [start + step * i for i in range(n)])
+    if tz is not None:
+        times = times.dt.replace_time_zone(tz)
+    return pl.DataFrame({"time": times, **{k: pl.Series(v, dtype=pl.Float64) for k, v in values.items()}})
+
+
+_HOUR = timedelta(hours=1)
+_DAY = timedelta(days=1)
+
+
+class TestSegmentProfileForecaster:
+    """Tests for SegmentProfileForecaster, one per scenario of its spec."""
+
+    def test_systematic_checks(self):
+        """Run all forecaster checks on a local-hour profile with tz-aware hourly data."""
+        rng = np.random.default_rng(0)
+        y = _frame(datetime(2024, 3, 20), _HOUR, {"load": list(rng.normal(size=24 * 12))}, tz="UTC")
+        y_train, y_test = y[: 24 * 9], y[24 * 9 :]
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour", time_zone="Europe/Paris"))
+        forecaster.fit(y_train, forecasting_horizon=3)
+        run_checks(forecaster, _yield_yohou_forecaster_checks(forecaster, y_train, None, y_test, None))
+
+    def test_hourly_profile(self):
+        """Four weeks where the value at hour h is h forecast each step's hour."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [float(h % 24) for h in range(24 * 28)]})
+        y_pred = SegmentProfileForecaster(CalendarSegmenter("hour")).fit(y, forecasting_horizon=24).predict()
+        assert y_pred["value"].to_list() == [float(t.hour) for t in y_pred["time"].to_list()]
+
+    def test_median(self):
+        """With method='median' the 03:00 values 1, 2 and 100 forecast 2."""
+        values = [0.0] * 72
+        values[3], values[27], values[51] = 1.0, 2.0, 100.0
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": values})
+        y_pred = SegmentProfileForecaster(CalendarSegmenter("hour"), method="median").fit(y, forecasting_horizon=4)
+        assert y_pred.predict()["value"][3] == 2.0
+
+    def test_missing_values_ignored(self):
+        """Null and NaN 03:00 values are skipped, so 4 and 6 forecast 5."""
+        values = [0.0] * 96
+        values[3], values[27], values[51], values[75] = None, float("nan"), 4.0, 6.0
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": values})
+        y_pred = SegmentProfileForecaster(CalendarSegmenter("hour")).fit(y, forecasting_horizon=4).predict()
+        assert y_pred["value"][3] == 5.0
+
+    def test_output_schema(self):
+        """The output has vintage_time and time, then each value column in its training dtype."""
+        y = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 3), interval="1h", eager=True),
+        }).with_columns(pl.col("time").dt.hour().cast(pl.Int64).alias("count"))
+        y_pred = SegmentProfileForecaster(CalendarSegmenter("hour")).fit(y, forecasting_horizon=2).predict()
+        assert y_pred.columns == ["vintage_time", "time", "count"]
+        assert y_pred["count"].dtype == pl.Int64
+        assert y_pred["count"].to_list() == [1, 2]
+
+    @pytest.mark.parametrize(("values", "expected"), [([1, 2], 2), ([2, 3], 2)])
+    def test_integer_target_rounds_half_to_even(self, values, expected):
+        """Integer forecasts are rounded half to even, not truncated: means 1.5 and 2.5 both give 2."""
+        y = pl.DataFrame({
+            "time": [datetime(2024, 1, 1), datetime(2024, 1, 1, 1)],
+            "count": pl.Series(values, dtype=pl.Int64),
+        })
+        y_pred = SegmentProfileForecaster().fit(y, forecasting_horizon=1).predict()
+        assert y_pred["count"].to_list() == [expected]
+
+    def test_peak_stays_at_local_time_across_daylight_saving(self):
+        """18:00 Paris is 17:00 UTC before 2024-03-31 01:00 UTC and 16:00 UTC after."""
+        times = [datetime(2024, 3, 2) + _HOUR * i for i in range(24 * 29)]
+        values = [1.0 if t.hour == 17 else 0.0 for t in times]
+        y = _frame(datetime(2024, 3, 2), _HOUR, {"value": values}, tz="UTC")
+        assert y["time"][-1] == datetime(2024, 3, 30, 23).replace(tzinfo=y["time"][-1].tzinfo)
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour", time_zone="Europe/Paris"))
+        y_pred = forecaster.fit(y, forecasting_horizon=48).predict()
+        ones = y_pred.filter(pl.col("value") == 1.0)["time"].dt.replace_time_zone(None).to_list()
+        assert ones == [datetime(2024, 3, 31, 16), datetime(2024, 4, 1, 16)]
+        assert y_pred.filter(pl.col("value") != 1.0)["value"].to_list() == [0.0] * 46
+
+    def test_calendar_aware_seasonal_naive(self):
+        """n_recent=1 by weekday on daily data repeats the last week."""
+        y = _frame(datetime(2024, 1, 1), _DAY, {"value": [float(i) for i in range(21)]})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("day_of_week"), n_recent=1)
+        y_pred = forecaster.fit(y, forecasting_horizon=7).predict()
+        assert y_pred["value"].to_list() == y["value"][-7:].to_list()
+
+    def test_latest_value_missing(self):
+        """n_recent=1 skips a null latest Monday and uses the Monday before it."""
+        values = [0.0] * 21
+        values[7], values[14] = 7.0, None  # Mondays 2024-01-08 and 2024-01-15
+        y = _frame(datetime(2024, 1, 1), _DAY, {"value": values})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("day_of_week"), n_recent=1)
+        y_pred = forecaster.fit(y, forecasting_horizon=1).predict()
+        assert y_pred["time"][0] == datetime(2024, 1, 22)
+        assert y_pred["value"][0] == 7.0
+
+    def test_observe_updates_profile(self):
+        """With window_size=48, two days of 0 then one observed day of 10 forecast 5."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 48 + [10.0] * 24})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour"), window_size=48)
+        forecaster.fit(y[:48], forecasting_horizon=24)
+        forecaster.observe(y[48:])
+        assert forecaster.predict()["value"].to_list() == [5.0] * 24
+
+    def test_default_cap_is_training_length(self):
+        """Fitted on 100 rows, the memory stays at 100 rows after observing 24 more."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 100 + [10.0] * 24})
+        forecaster = SegmentProfileForecaster().fit(y[:100], forecasting_horizon=1)
+        forecaster.observe(y[100:])
+        assert forecaster.observation_horizon == 100
+        assert forecaster.predict()["value"][0] == pytest.approx(24 * 10.0 / 100)
+
+    def test_window_larger_than_training_data(self):
+        """An integer window_size above the training length raises at fit."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 100})
+        with pytest.raises(ValueError, match="window_size=200"):
+            SegmentProfileForecaster(window_size=200).fit(y, forecasting_horizon=1)
+
+    def test_short_rewind_keeps_what_it_is_given_then_refills(self):
+        """A 10-row rewind forecasts from those rows; observing 24 more keeps all 34."""
+        values = [0.0] * 100 + [3.0] * 10 + [9.0] * 24
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": values})
+        forecaster = SegmentProfileForecaster().fit(y[:100], forecasting_horizon=3)
+        forecaster.rewind(y[100:110])
+        assert forecaster.predict()["value"].to_list() == [3.0] * 3
+        forecaster.observe(y[110:])
+        assert len(forecaster._y_observed) == 34
+        assert forecaster.predict()["value"][0] == pytest.approx((10 * 3.0 + 24 * 9.0) / 34)
+
+    def test_outside_the_segment(self):
+        """A 03:00 step outside business hours takes the mean of all remembered values."""
+        values = [float(h % 24) for h in range(48)]
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": values})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour", values=list(range(8, 19))))
+        y_pred = forecaster.fit(y, forecasting_horizon=4).predict()
+        assert y_pred["value"][3] == pytest.approx(np.mean(values))
+
+    def test_label_never_seen(self):
+        """April, unseen when fitting on January to March, takes the pooled statistic."""
+        days = pl.date_range(date(2024, 1, 1), date(2024, 3, 31), eager=True)
+        y = pl.DataFrame({"time": days.cast(pl.Datetime("us"))}).with_columns(
+            pl.col("time").dt.month().cast(pl.Float64).alias("value")
+        )
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("month"))
+        y_pred = forecaster.fit(y, forecasting_horizon=3).predict()
+        assert y_pred["value"].to_list() == pytest.approx([y["value"].mean()] * 3)
+
+    def test_no_segmenter(self):
+        """Without a segmenter every forecast is the mean of the finite remembered values."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [1.0, None, 3.0, float("nan"), 5.0]})
+        y_pred = SegmentProfileForecaster().fit(y, forecasting_horizon=2).predict()
+        assert y_pred["value"].to_list() == [3.0, 3.0]
+
+    def test_column_with_no_usable_value(self):
+        """A column whose memory is all null forecasts null; the other follows its profile."""
+        hours = [float(h % 24) for h in range(72)]
+        a = hours[:48] + [None] * 24
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"a": a, "b": hours})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour"), window_size=24)
+        forecaster.fit(y[:48], forecasting_horizon=24)
+        forecaster.observe(y[48:])
+        y_pred = forecaster.predict()
+        assert y_pred["a"].null_count() == 24
+        assert y_pred["b"].to_list() == [float(h) for h in range(24)]
+
+    @pytest.mark.parametrize("params", [{"method": "mode"}, {"n_recent": 0}, {"window_size": 0}])
+    def test_invalid_parameters(self, params):
+        """Invalid method, n_recent or window_size raise at fit."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 24})
+        with pytest.raises(ValueError):
+            SegmentProfileForecaster(**params).fit(y, forecasting_horizon=1)
+
+    @pytest.fixture()
+    def hourly_panel(self) -> pl.DataFrame:
+        """Two groups with different hourly profiles."""
+        hours = [float(h % 24) for h in range(24 * 7)]
+        return _frame(datetime(2024, 1, 1), _HOUR, {"a__value": hours, "b__value": [10.0 * h for h in hours]})
+
+    def test_panel_global(self, hourly_panel):
+        """Under the global strategy each group follows its own hourly profile."""
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("hour"), panel_strategy="global")
+        y_pred = forecaster.fit(hourly_panel, forecasting_horizon=24).predict()
+        assert y_pred["a__value"].to_list() == [float(h) for h in range(24)]
+        assert y_pred["b__value"].to_list() == [10.0 * h for h in range(24)]
+
+    def test_panel_multivariate_equals_global(self, hourly_panel):
+        """The multivariate strategy gives the same forecasts as the global one."""
+        preds = [
+            SegmentProfileForecaster(CalendarSegmenter("hour"), panel_strategy=strategy)
+            .fit(hourly_panel, forecasting_horizon=24)
+            .predict()
+            for strategy in ("global", "multivariate")
+        ]
+        polars.testing.assert_frame_equal(preds[0], preds[1])
+
+    def test_holiday_forecast_differs_from_ordinary_weekday(self):
+        """A weekday holiday follows the holiday profile, an ordinary weekday the weekday profile."""
+        holidays = pl.DataFrame({"date": [date(2024, 1, 10), date(2024, 2, 7)]})  # Wednesdays
+        days = [datetime(2024, 1, 1) + _DAY * i for i in range(35)]  # Monday 2024-01-01 to Sunday 2024-02-04
+        values = [10.0 if d.weekday() >= 5 or d.date() == date(2024, 1, 10) else 100.0 for d in days]
+        y = _frame(datetime(2024, 1, 1), _DAY, {"value": values})
+        segmenter = UnionSegmenter([
+            ("hour", CalendarSegmenter("hour")),
+            ("weekend", CalendarSegmenter("day_of_week", values=[6, 7])),
+            ("holiday", HolidaySegmenter(holidays=holidays)),
+        ])
+        y_pred = SegmentProfileForecaster(segmenter).fit(y, forecasting_horizon=7).predict()
+        by_day = dict(zip(y_pred["time"].dt.date().to_list(), y_pred["value"].to_list(), strict=True))
+        assert by_day[date(2024, 2, 7)] == 10.0  # Wednesday holiday
+        assert by_day[date(2024, 2, 6)] == 100.0  # ordinary Tuesday
+        assert by_day[date(2024, 2, 10)] == 10.0  # Saturday
+
+    def test_time_zone_on_naive_training_data(self):
+        """A local-hour segmenter on naive timestamps makes fit raise."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 24})
+        with pytest.raises(ValueError, match="timezone-aware"):
+            SegmentProfileForecaster(CalendarSegmenter("hour", time_zone="Europe/Paris")).fit(y, forecasting_horizon=1)
+
+    def test_decomposition_pipeline_component(self):
+        """As the seasonal component after a linear trend, it recovers trend plus hourly profile."""
+        t = np.arange(24 * 14, dtype=float)
+        truth = 0.05 * t + np.where((t % 24) == 18, 5.0, 0.0)
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": list(truth)})
+        pipeline = DecompositionPipeline([
+            ("trend", PolynomialTrendForecaster(degree=1)),
+            ("seasonality", SegmentProfileForecaster(CalendarSegmenter("hour"))),
+        ])
+        pipeline.fit(y[: 24 * 13], forecasting_horizon=24)
+        y_pred = pipeline.predict()
+        np.testing.assert_allclose(y_pred["value"].to_numpy(), truth[24 * 13 :], atol=0.5)
+        y_next = pipeline.observe_predict(y[24 * 13 : 24 * 13 + 1])
+        assert y_next["value"].null_count() == 0

@@ -19,7 +19,7 @@ from yohou.interval import IntervalReductionForecaster, SplitConformalForecaster
 from yohou.metrics import MeanAbsoluteError
 from yohou.metrics.interval import IntervalScore
 from yohou.model_selection import GridSearchCV, RandomizedSearchCV
-from yohou.point import MeanSeasonalNaive, PointReductionForecaster, SeasonalNaive
+from yohou.point import MeanSeasonalNaive, PointReductionForecaster, SeasonalNaive, SegmentProfileForecaster
 from yohou.stationarity import FourierSeasonalityForecaster, PatternSeasonalityForecaster, PolynomialTrendForecaster
 from yohou.utils.discovery import all_estimators
 
@@ -230,6 +230,7 @@ _PLAIN_FORECASTERS = {
     "FourierSeasonalityForecaster": _plain(lambda: FourierSeasonalityForecaster(seasonality=12, harmonics=[1, 2])),
     "IntervalReductionForecaster": _plain(IntervalReductionForecaster),
     "MeanSeasonalNaive": _plain(MeanSeasonalNaive),
+    "SegmentProfileForecaster": _plain(SegmentProfileForecaster),
     "PatternSeasonalityForecaster": _plain(lambda: PatternSeasonalityForecaster(seasonality=12)),
     "PointReductionForecaster": _plain(lambda: PointReductionForecaster(Ridge())),
     "PolynomialTrendForecaster": _plain(PolynomialTrendForecaster),

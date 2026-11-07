@@ -5,6 +5,7 @@ from .calendar import CalendarFeatureTransformer, DaylightSavingFeatureTransform
 from .function import FunctionTransformer
 from .imputation import (
     SeasonalImputer,
+    SegmentImputer,
     SimpleImputer,
     SimpleTimeImputer,
     TransformedSpaceKNNImputer,
@@ -91,6 +92,7 @@ __all__ = [
     "TransformedSpaceKNNImputer",
     "SimpleTimeImputer",
     "SeasonalImputer",
+    "SegmentImputer",
     # Outlier handling
     "OutlierThresholdHandler",
     "OutlierPercentileHandler",

@@ -13,4 +13,5 @@ Point forecasters for generating single-valued predictions.
 | [`BasePointForecaster`](generated/yohou.point.BasePointForecaster.md) | Base class for point forecasters. |
 | [`MeanSeasonalNaive`](generated/yohou.point.MeanSeasonalNaive.md) | Seasonal naive forecaster that averages values across past seasons. |
 | [`SeasonalNaive`](generated/yohou.point.SeasonalNaive.md) | Seasonal naive forecaster that repeats values from previous season. |
+| [`SegmentProfileForecaster`](generated/yohou.point.SegmentProfileForecaster.md) | Forecast each future timestamp from the profile of its calendar segment. |
 | [`PointReductionForecaster`](generated/yohou.point.PointReductionForecaster.md) | Point forecaster using sklearn estimators on tabularized time series. |
