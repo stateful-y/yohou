@@ -757,7 +757,12 @@ class SegmentImputer(BaseActualTransformer):
     A missing value whose label is null (outside every segment), was never seen at
     fit, or had no finite values at fit is filled with the pooled statistic. A
     column with no finite value at fit keeps its missing values, returned as null.
-    Filled columns are returned as Float64.
+    Infinite values are neither used for the statistics nor filled.
+
+    Every value column is returned as Float64, whether or not it had gaps, so the
+    output schema does not depend on the data. Integer and boolean columns are
+    therefore averaged as numbers: a boolean gap is filled with the fraction of
+    True values in its segment.
 
     Each fill depends only on the row's own timestamp and fit-time statistics, so
     transforming a frame in chunks gives the same result as transforming it whole.
@@ -798,7 +803,8 @@ class SegmentImputer(BaseActualTransformer):
 
     def _stat(self, col_name: str) -> pl.Expr:
         """Mean or median of the finite values of ``col_name``."""
-        expr = pl.col(col_name).cast(pl.Float64).fill_nan(None)
+        expr = pl.col(col_name).cast(pl.Float64)
+        expr = expr.filter(expr.is_finite())
         return (expr.mean() if self.fill_method == "mean" else expr.median()).alias(col_name)
 
     def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None = None) -> None:

@@ -8,6 +8,7 @@ import polars.selectors as cs
 from pydantic import StrictInt
 from sklearn.base import clone
 
+from yohou.segmenting.segmenters import _check_label_length
 from yohou.utils._compat import HasMethods, Interval, StrOptions
 from yohou.utils.validation import add_interval
 
@@ -452,7 +453,7 @@ class SegmentProfileForecaster(BasePointForecaster):
 
     Notes
     -----
-    Only finite values (neither null nor NaN) enter a profile. A forecast
+    Only finite values (not null, NaN or infinite) enter a profile. A forecast
     timestamp whose label is null (outside every segment), or whose label has no
     finite remembered value, gets the statistic of all finite remembered values of
     that column. A column with no finite remembered value at all is forecast as
@@ -639,15 +640,14 @@ class SegmentProfileForecaster(BasePointForecaster):
             )
         time = y_t["time"] if isinstance(y_t, pl.DataFrame) else next(iter(y_t.values()))["time"]
         self.segmenter_ = None if self.segmenter is None else clone(self.segmenter).fit(time)
-        if self.segmenter_ is not None:
-            # Raise now, not at the first predict, if the segmenter cannot label this data.
-            self.segmenter_.compute_labels(time)
+        # Raise now, not at the first predict, if the segmenter cannot label this data.
+        self._labels(time)
 
     def _labels(self, time: pl.Series) -> pl.Series:
         """Segment label of each timestamp; one shared label without a segmenter."""
         if self.segmenter_ is None:
             return pl.Series(_LABEL, [True] * len(time))
-        return self.segmenter_.compute_labels(time).alias(_LABEL)
+        return _check_label_length(self.segmenter_.compute_labels(time), time, "segmenter").alias(_LABEL)
 
     def _profile_forecast(self, memory: pl.DataFrame, future_time: pl.Series) -> pl.DataFrame:
         """Forecast every value column of ``memory`` at ``future_time`` from its label profiles."""
@@ -660,7 +660,7 @@ class SegmentProfileForecaster(BasePointForecaster):
             .with_columns([pl.col(c).cast(pl.Float64) for c in value_cols])
             .with_columns(self._labels(memory["time"]))
             .unpivot(index=["time", _LABEL], on=value_cols, variable_name=_COLUMN, value_name=_VALUE)
-            .filter(value.is_not_null() & value.is_not_nan())
+            .filter(value.is_finite())
         )
         pooled = dict(finite.group_by(_COLUMN).agg(stat).iter_rows())
 

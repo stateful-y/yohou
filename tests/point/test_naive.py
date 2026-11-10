@@ -574,7 +574,6 @@ class TestSegmentProfileForecaster:
         forecaster.rewind(y[100:110])
         assert forecaster.predict()["value"].to_list() == [3.0] * 3
         forecaster.observe(y[110:])
-        assert len(forecaster._y_observed) == 34
         assert forecaster.predict()["value"][0] == pytest.approx((10 * 3.0 + 24 * 9.0) / 34)
 
     def test_outside_the_segment(self):
@@ -613,12 +612,65 @@ class TestSegmentProfileForecaster:
         assert y_pred["a"].null_count() == 24
         assert y_pred["b"].to_list() == [float(h) for h in range(24)]
 
-    @pytest.mark.parametrize("params", [{"method": "mode"}, {"n_recent": 0}, {"window_size": 0}])
+    @pytest.mark.parametrize(
+        "params",
+        [{"method": "mode"}, {"n_recent": 0}, {"n_recent": 1.5}, {"window_size": 0}],
+    )
     def test_invalid_parameters(self, params):
-        """Invalid method, n_recent or window_size raise at fit."""
+        """Invalid method, n_recent or window_size raise at fit, naming the parameter."""
         y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 24})
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=next(iter(params))):
             SegmentProfileForecaster(**params).fit(y, forecasting_horizon=1)
+
+    def test_infinite_values_ignored(self):
+        """Infinite values are skipped like missing ones, so the profile stays finite."""
+        values = [0.0] * 72
+        values[3], values[27], values[51] = float("inf"), 4.0, 6.0
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": values})
+        y_pred = SegmentProfileForecaster(CalendarSegmenter("hour")).fit(y, forecasting_horizon=4).predict()
+        assert y_pred["value"][3] == 5.0
+        y_pooled = SegmentProfileForecaster().fit(y, forecasting_horizon=1).predict()
+        assert y_pooled["value"][0] == pytest.approx(10.0 / 71)
+
+    def test_n_recent_counts_finite_values(self):
+        """n_recent=2 averages the two latest finite values, skipping a missing one between them."""
+        values = [0.0] * 28
+        values[0], values[7], values[14], values[21] = 1.0, 3.0, None, 5.0  # Mondays
+        y = _frame(datetime(2024, 1, 1), _DAY, {"value": values})
+        forecaster = SegmentProfileForecaster(CalendarSegmenter("day_of_week"), n_recent=2)
+        y_pred = forecaster.fit(y, forecasting_horizon=1).predict()
+        assert y_pred["time"][0] == datetime(2024, 1, 29)
+        assert y_pred["value"][0] == 4.0
+
+    def test_long_rewind_keeps_at_most_the_cap(self):
+        """A rewind longer than window_size keeps only the latest window_size rows."""
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [1.0] * 48 + [0.0] * 48 + [10.0] * 24})
+        forecaster = SegmentProfileForecaster(window_size=24).fit(y[:48], forecasting_horizon=1)
+        forecaster.rewind(y[48:])
+        assert forecaster.predict()["value"][0] == 10.0
+
+    def test_short_panel_rewind(self):
+        """A panel rewind shorter than the cap keeps each group's rows, then refills."""
+        values = [0.0] * 100 + [3.0] * 10 + [9.0] * 24
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"a__value": values, "b__value": [2 * v for v in values]})
+        forecaster = SegmentProfileForecaster().fit(y[:100], forecasting_horizon=1)
+        forecaster.rewind(y[100:110])
+        y_pred = forecaster.predict()
+        assert (y_pred["a__value"][0], y_pred["b__value"][0]) == (3.0, 6.0)
+        forecaster.observe(y[110:])
+        expected = (10 * 3.0 + 24 * 9.0) / 34
+        assert forecaster.predict()["a__value"][0] == pytest.approx(expected)
+
+    def test_segmenter_with_wrong_label_count(self):
+        """A segmenter returning the wrong number of labels raises a clear ValueError at fit."""
+
+        class _DropsOne(CalendarSegmenter):
+            def compute_labels(self, time):
+                return super().compute_labels(time)[1:]
+
+        y = _frame(datetime(2024, 1, 1), _HOUR, {"value": [0.0] * 24})
+        with pytest.raises(ValueError, match="23 labels, expected 24"):
+            SegmentProfileForecaster(_DropsOne("hour")).fit(y, forecasting_horizon=1)
 
     @pytest.fixture()
     def hourly_panel(self) -> pl.DataFrame:

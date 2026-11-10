@@ -524,6 +524,39 @@ class TestSegmentImputer:
         assert out["value"].null_count() == 3
         assert out["value"].is_nan().sum() == 0
 
+    def test_infinite_values_neither_used_nor_filled(self):
+        """An infinite value is excluded from the statistic and left in place."""
+        X = _hourly(datetime(2024, 1, 1), [float("inf"), 1.0, None, 3.0])
+        out = SegmentImputer().fit_transform(X)
+        assert out["value"].to_list() == [float("inf"), 1.0, 2.0, 3.0]
+
+    def test_columns_get_their_own_statistics(self):
+        """Each column is filled from its own per-label statistic, recorded in segment_fill_values_."""
+        hours = [float(h % 24) for h in range(48)]
+        a, b = list(hours), [10.0 * h for h in hours]
+        a[27], b[28] = None, None
+        X = pl.DataFrame({
+            "time": [datetime(2024, 1, 1) + timedelta(hours=h) for h in range(48)],
+            "a__value": a,
+            "b__value": b,
+        })
+        imputer = SegmentImputer(CalendarSegmenter("hour")).fit(X)
+        out = imputer.transform(X)
+        assert (out["a__value"][27], out["b__value"][28]) == (3.0, 40.0)
+        assert imputer.segment_fill_values_["a__value"][3] == 3.0
+        assert imputer.segment_fill_values_["b__value"][4] == 40.0
+
+    def test_every_column_returned_as_float64(self):
+        """Value columns become Float64 whether or not they had gaps."""
+        X = pl.DataFrame({
+            "time": [datetime(2024, 1, 1) + timedelta(hours=h) for h in range(3)],
+            "full": pl.Series([1, 2, 3], dtype=pl.Int64),
+            "gappy": pl.Series([1, None, 3], dtype=pl.Int64),
+        })
+        out = SegmentImputer().fit_transform(X)
+        assert out.schema["full"] == pl.Float64
+        assert out.schema["gappy"] == pl.Float64
+
     def test_chunked_transform(self):
         """Transforming in two consecutive chunks equals transforming whole."""
         values = [float(h % 24) if h % 5 else None for h in range(24 * 4)]
