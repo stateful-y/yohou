@@ -973,7 +973,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         components → groups → strip meta → _transform_scores → reattach meta
         → _collapse_vintage_dimension → finalize → rename.
         """
-        dims = self._normalize_agg_methods(self.aggregation_method)  # ty: ignore[unresolved-attribute]
+        dims = self._normalize_agg_methods(self.aggregation_method)  # ty: ignore[missing-attribute]
 
         # Input validation: multi-vintage context but no vintage_time column.
         # Only fires when both stepwise and vintagewise are requested, because
@@ -1109,7 +1109,7 @@ class BaseScorer(BaseEstimator, metaclass=abc.ABCMeta):
         """
         has_coverage_rate = "coverage_rate" in raw_scores.columns
         dims = self._normalize_agg_methods(
-            self.aggregation_method,  # ty: ignore[unresolved-attribute]
+            self.aggregation_method,  # ty: ignore[missing-attribute]
             include_coveragewise=has_coverage_rate,
         )
 

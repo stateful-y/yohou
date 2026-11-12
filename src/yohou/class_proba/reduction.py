@@ -589,7 +589,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
         """
         step_frames = self._direct_step_frames(len(estimators), groups)
         step_probas = Parallel(n_jobs=self.n_jobs)(
-            delayed(estimator.predict_proba)(frame)  # ty: ignore[unresolved-attribute]
+            delayed(estimator.predict_proba)(frame)  # ty: ignore[missing-attribute]
             for estimator, frame in zip(estimators, step_frames, strict=True)
         )
         if self.groups_ is None:
@@ -653,7 +653,7 @@ class ClassProbaReductionForecaster(BaseReductionForecaster, BaseClassProbaForec
 
         # For multi-output with H*n_targets outputs, sklearn wraps in
         # MultiOutputClassifier or similar. We handle both cases.
-        proba = estimator.predict_proba(X_tab)  # ty: ignore[unresolved-attribute]
+        proba = estimator.predict_proba(X_tab)  # ty: ignore[missing-attribute]
 
         # Build result row by row (one row per forecast step)
         result_data: dict[str, list[Any]] = {}

@@ -294,7 +294,7 @@ class FeaturePipeline(BaseActualTransformer, _BaseComposition):
             # String case - get by name
             return self.named_steps[ind]
 
-    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any, **kwargs: Any) -> pl.DataFrame:  # ty: ignore[invalid-method-override]
+    def _fit(self, X: pl.DataFrame, y: pl.DataFrame | None, routed_params: Any, **kwargs: Any) -> pl.DataFrame:  # ty: ignore[incompatible-method-override]
         """Fit the pipeline.
 
         Parameters

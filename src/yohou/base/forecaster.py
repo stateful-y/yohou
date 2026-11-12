@@ -46,7 +46,7 @@ __all__ = [
 # Each mixin types `groups_` and `observed_time_` for its own data shape (a single
 # DataFrame or a panel dict), and which one an instance holds is decided by the data
 # passed to `fit`. The two declarations conflict by design; ty >= 0.0.92 reports that.
-class BaseForecaster(  # ty: ignore[invalid-attribute-override]
+class BaseForecaster(  # ty: ignore[incompatible-attribute-override]
     BaseStandardForecaster, BasePanelForecaster, BaseEstimator, metaclass=abc.ABCMeta
 ):
     """Base class for forecasters.
@@ -1456,8 +1456,8 @@ class BaseForecaster(  # ty: ignore[invalid-attribute-override]
                     saved_step_data[group_name] = group_df.select(cols_present)
         else:
             # Standard: save step columns from last row
-            cols_present = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
-            saved_step_data = self._X_t_observed.select(cols_present) if cols_present else None  # ty: ignore[unresolved-attribute]
+            cols_present = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[missing-union-attribute]
+            saved_step_data = self._X_t_observed.select(cols_present) if cols_present else None  # ty: ignore[missing-union-attribute]
 
         try:
             # Swap raws (for deepcopy in _recursive_predict)
@@ -1482,9 +1482,9 @@ class BaseForecaster(  # ty: ignore[invalid-attribute-override]
                             observed_dict[group_name] = pl.concat([group_df, new_group_step], how="horizontal")
                 else:
                     new_step_only = X_step_new.select(~cs.by_name("time"))
-                    cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
+                    cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[missing-union-attribute]
                     if cols_to_drop:
-                        updated = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                        updated = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[missing-union-attribute]
                         self._X_t_observed = pl.concat([updated, new_step_only], how="horizontal")
 
             return predict_fn()
@@ -1505,9 +1505,9 @@ class BaseForecaster(  # ty: ignore[invalid-attribute-override]
                         restored = group_df.drop(cols_to_drop)
                         restore_dict[group_name] = pl.concat([restored, saved_df], how="horizontal")
             elif saved_step_data is not None:
-                cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[unresolved-attribute]
+                cols_to_drop = [c for c in local_step_cols if c in self._X_t_observed.columns]  # ty: ignore[missing-union-attribute]
                 if cols_to_drop:
-                    restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[unresolved-attribute]
+                    restored = self._X_t_observed.drop(cols_to_drop)  # ty: ignore[missing-union-attribute]
                     self._X_t_observed = pl.concat(
                         [restored, typing_cast(pl.DataFrame, saved_step_data)], how="horizontal"
                     )

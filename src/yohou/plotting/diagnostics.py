@@ -336,7 +336,7 @@ def _compute_pacf(
         return pacf_result.tolist(), ci_lo, ci_hi
 
     pacf_result = sm_pacf(values, nlags=nlags, method=method)  # ty: ignore[invalid-argument-type]
-    return pacf_result.tolist(), None, None  # ty: ignore[unresolved-attribute]
+    return pacf_result.tolist(), None, None  # ty: ignore[missing-union-attribute]
 
 
 def plot_partial_autocorrelation(
@@ -1965,7 +1965,7 @@ def plot_lag_scatter(
                                 name=slabel,
                                 legendgroup=slabel,
                                 legendgrouptitle=(
-                                    {"text": seasonality.title()}  # ty: ignore[unresolved-attribute]
+                                    {"text": seasonality.title()}  # ty: ignore[missing-union-attribute]
                                     if is_first_cell and si == 0
                                     else None
                                 ),
@@ -2066,7 +2066,7 @@ def plot_lag_scatter(
                             name=slabel,
                             legendgroup=slabel,
                             legendgrouptitle=(
-                                {"text": seasonality.title()} if si == 0 else None  # ty: ignore[unresolved-attribute]
+                                {"text": seasonality.title()} if si == 0 else None  # ty: ignore[missing-union-attribute]
                             ),
                             showlegend=True,
                             hovertemplate=(

@@ -772,7 +772,7 @@ class BaseIntervalForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                     y_data[col] = y_pred_step_inv[col]
                 elif recursion_strategy == "median":
                     y_data[col] = y_pred_step_inv.select(
-                        pl.median_horizontal(all_bound_cols)  # ty: ignore[unresolved-attribute]
+                        pl.median_horizontal(all_bound_cols)  # ty: ignore[missing-attribute]
                     ).to_series()
                 else:
                     y_data[col] = y_pred_step_inv.select(pl.mean_horizontal(all_bound_cols)).to_series()

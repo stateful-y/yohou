@@ -378,7 +378,7 @@ class BasePanelForecaster:
             _transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
             _transformer_fit_params(self.target_transformer, forecasting_horizon, fit_params),
         )
-        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[missing-attribute]
 
         # Inject step columns from X_future / X_forecast
         # Use first group's observation times (all groups share the same time index)
@@ -404,7 +404,7 @@ class BasePanelForecaster:
         # wide frame went straight into derivation and only the step columns were
         # split afterwards. Returns X_forecast unchanged when the slot is unset.
         self._set_X_forecast_schemas_panel(X_forecast)
-        X_forecast_t = self._fit_forecast_transformer(  # ty: ignore[unresolved-attribute]
+        X_forecast_t = self._fit_forecast_transformer(  # ty: ignore[missing-attribute]
             X_forecast, forecasting_horizon, groups=self.groups_
         )
 
@@ -412,7 +412,7 @@ class BasePanelForecaster:
         # misconfigured step_transformer is rejected on a fit carrying no
         # X_future/X_forecast rather than surfacing only once one appears.
         # Derivation refits it per group on the frame it builds.
-        self._fit_step_transformer(None, forecasting_horizon, groups=self.groups_)  # ty: ignore[unresolved-attribute]
+        self._fit_step_transformer(None, forecasting_horizon, groups=self.groups_)  # ty: ignore[missing-attribute]
 
         X_step = _derive_step_columns(
             X_future=X_future,
@@ -423,7 +423,7 @@ class BasePanelForecaster:
             warn_coverage=False,
             warn_coverage_at_fit=True,
             existing_columns=existing_columns,
-            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[unresolved-attribute]
+            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[missing-attribute]
                 frame, forecasting_horizon, groups=self.groups_
             ),
         )
@@ -712,7 +712,7 @@ class BasePanelForecaster:
         # transformed, so transforming after the ternary would double-transform it.
         # The helper resolves the per-group dict internally.
         X_forecast_eff = (
-            self._transform_X_forecast(X_forecast)  # ty: ignore[unresolved-attribute]
+            self._transform_X_forecast(X_forecast)  # ty: ignore[missing-attribute]
             if X_forecast is not None
             else self._X_forecast_t_
         )
@@ -721,9 +721,9 @@ class BasePanelForecaster:
             X_future_eff,
             X_forecast_eff,
             pl.Series([obs_time]),
-            self.fit_forecasting_horizon_,  # ty: ignore[unresolved-attribute]
+            self.fit_forecasting_horizon_,  # ty: ignore[missing-attribute]
             self.interval_,
-            step_transform=self._transform_X_step,  # ty: ignore[unresolved-attribute]
+            step_transform=self._transform_X_step,  # ty: ignore[missing-attribute]
         )
         if X_step is not None and self._X_t_observed is not None:
             for group_name, df in self._X_t_observed.items():

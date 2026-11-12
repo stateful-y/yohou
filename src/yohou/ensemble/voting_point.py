@@ -232,7 +232,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
 
         return self
 
-    def predict(  # ty: ignore[invalid-method-override]
+    def predict(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
@@ -274,7 +274,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         predictions = []
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
-            y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.predict(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 predict_transformed=predict_transformed,
@@ -344,7 +344,7 @@ class VotingPointForecaster(_BaseEnsembleForecaster, BasePointForecaster, _BaseC
         predictions = []
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
-            y_pred = forecaster.observe_predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.observe_predict(  # ty: ignore[missing-attribute]
                 y=y,
                 X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,

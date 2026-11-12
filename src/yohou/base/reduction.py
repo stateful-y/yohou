@@ -130,7 +130,7 @@ def _predict_direct_step(
         kept = X_tab.filter(pl.Series(row_ok))
     else:
         return out
-    pred = np.asarray(estimator.predict(kept))  # ty: ignore[unresolved-attribute]
+    pred = np.asarray(estimator.predict(kept))  # ty: ignore[missing-attribute]
     out[row_ok] = pred.reshape(kept.height, -1)[:, :n_targets]
     return out
 
@@ -1399,7 +1399,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             If the estimator cannot accept ``sample_weight``.
 
         """
-        fit_sig = inspect.signature(estimator.fit)  # ty: ignore[unresolved-attribute]
+        fit_sig = inspect.signature(estimator.fit)  # ty: ignore[missing-attribute]
 
         # 1. Explicit sample_weight parameter
         if "sample_weight" in fit_sig.parameters:
@@ -1562,7 +1562,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 f"{_holdout_remedy(source)}."
             )
 
-        fit_sig = inspect.signature(target.fit)  # ty: ignore[unresolved-attribute]
+        fit_sig = inspect.signature(target.fit)  # ty: ignore[missing-attribute]
         # eval_X/eval_y wins when both are present: LightGBM keeps the
         # deprecated eval_set alongside them and warns on every call.
         if "eval_X" in fit_sig.parameters and "eval_y" in fit_sig.parameters:
@@ -1607,7 +1607,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         expected = {"eval_X": "eval_sample_weight", "X_val": "sample_weight_val"}.get(dialect, "sample_weight_eval_set")
-        parameters = inspect.signature(target.fit).parameters  # ty: ignore[unresolved-attribute]
+        parameters = inspect.signature(target.fit).parameters  # ty: ignore[missing-attribute]
         return expected if expected in parameters else None
 
     @staticmethod
@@ -2743,7 +2743,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             The matrix with the prediction columns appended.
 
         """
-        preds = estimator.predict(X)  # ty: ignore[unresolved-attribute]
+        preds = estimator.predict(X)  # ty: ignore[missing-attribute]
         if preds.ndim == 1:
             preds = preds.reshape(-1, 1)
         return X.with_columns([pl.Series(f"__aug_{step}_{j}", preds[:, j]) for j in range(preds.shape[1])])
@@ -3347,7 +3347,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
             if self.nan_handling == "drop" and self._features_have_nan(X_tab):
                 y_tab_pred = self._nan_predict_result()
             else:
-                y_tab_pred = estimator.predict(X_tab)  # ty: ignore[unresolved-attribute]
+                y_tab_pred = estimator.predict(X_tab)  # ty: ignore[missing-attribute]
             return self._reshape_predictions(y_tab_pred)
 
         y_pred_dict = {}
@@ -3977,7 +3977,7 @@ class BaseReductionForecaster(BaseForecaster, metaclass=abc.ABCMeta):
                 if self.nan_handling == "drop" and self._features_have_nan(X_aug):
                     pred = np.full(n_targets, np.nan)
                 else:
-                    pred = est.predict(X_aug)  # ty: ignore[unresolved-attribute]
+                    pred = est.predict(X_aug)  # ty: ignore[missing-attribute]
                     pred = np.atleast_1d(pred.ravel())
                 rows.append(pred[:n_targets])
                 # Augment features for next model

@@ -776,7 +776,7 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
             residual_exprs = [(pl.col(col) - pl.col(f"{col}__combined")).alias(col) for col in agg_cols]
         return joined.select([pl.col("time"), *residual_exprs])
 
-    def predict(  # ty: ignore[invalid-method-override]
+    def predict(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,

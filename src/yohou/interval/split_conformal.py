@@ -1636,7 +1636,7 @@ class SplitConformalForecaster(BaseIntervalForecaster):
                 f"recursion_strategy='point' (the default) or omit it."
             )
 
-    def predict_interval(  # ty: ignore[invalid-method-override]
+    def predict_interval(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
