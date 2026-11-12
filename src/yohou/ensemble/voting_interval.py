@@ -312,7 +312,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
             "VotingIntervalForecaster aggregates children's predictions directly via predict_interval()"
         )
 
-    def predict_interval(  # ty: ignore[invalid-method-override]
+    def predict_interval(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         coverage_rates: list[float] | None = None,
@@ -367,7 +367,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 "predict_interval",
                 {},
             )
-            y_pred = forecaster.predict_interval(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.predict_interval(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 coverage_rates=coverage_rates,
                 recursion_strategy=recursion_strategy,
@@ -429,7 +429,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         predictions = []
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
-            y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.predict(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 predict_transformed=predict_transformed,
@@ -508,7 +508,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
         predictions = []
         for name, forecaster in self.forecasters_:
             forecaster_params = getattr(routed_params.get(name, Bunch(predict={})), "predict", {})
-            y_pred = forecaster.observe_predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.observe_predict(  # ty: ignore[missing-attribute]
                 y=y,
                 X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,
@@ -588,7 +588,7 @@ class VotingIntervalForecaster(_BaseEnsembleForecaster, BaseIntervalForecaster, 
                 "predict_interval",
                 {},
             )
-            y_pred = forecaster.observe_predict_interval(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.observe_predict_interval(  # ty: ignore[missing-attribute]
                 y=y,
                 X_actual=X_actual,
                 forecasting_horizon=forecasting_horizon,

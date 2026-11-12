@@ -571,10 +571,10 @@ class PinballLoss(BaseIntervalScorer):
                     loss_lower = _pinball_loss(tau_lower, y_truth[col], y_pred[lower_col])
                     loss_upper = _pinball_loss(tau_upper, y_truth[col], y_pred[upper_col])
                     loss_lower_series = y_pred.select(
-                        loss_lower.alias("loss_lower")  # ty: ignore[unresolved-attribute]
+                        loss_lower.alias("loss_lower")  # ty: ignore[missing-union-attribute]
                     )["loss_lower"]
                     loss_upper_series = y_pred.select(
-                        loss_upper.alias("loss_upper")  # ty: ignore[unresolved-attribute]
+                        loss_upper.alias("loss_upper")  # ty: ignore[missing-union-attribute]
                     )["loss_upper"]
                     rate_data[col] = loss_lower_series + loss_upper_series
             frames.append(pl.DataFrame(rate_data).with_columns(pl.lit(rate).alias("coverage_rate")))
@@ -905,10 +905,10 @@ class ContinuousRankedProbabilityScore(BaseIntervalScorer):
                     loss_lower = _pinball_loss(tau_lower, y_truth[col], y_pred[lower_col])
                     loss_upper = _pinball_loss(tau_upper, y_truth[col], y_pred[upper_col])
                     loss_lower_series = y_pred.select(
-                        loss_lower.alias("loss_lower")  # ty: ignore[unresolved-attribute]
+                        loss_lower.alias("loss_lower")  # ty: ignore[missing-union-attribute]
                     )["loss_lower"]
                     loss_upper_series = y_pred.select(
-                        loss_upper.alias("loss_upper")  # ty: ignore[unresolved-attribute]
+                        loss_upper.alias("loss_upper")  # ty: ignore[missing-union-attribute]
                     )["loss_upper"]
                     rate_data[col] = (loss_lower_series + loss_upper_series) / 2
             frames.append(pl.DataFrame(rate_data).with_columns(pl.lit(rate).alias("coverage_rate")))

@@ -568,7 +568,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
         """
         check_is_fitted(self, "transformers_")
         feature_names_out: list[str] = []
-        for name, trans, columns in self.transformers_:  # ty: ignore[unresolved-attribute]
+        for name, trans, columns in self.transformers_:  # ty: ignore[missing-attribute]
             if trans == "drop" or (isinstance(columns, list) and len(columns) == 0):
                 continue
             col_list = list(columns) if isinstance(columns, list) else [columns]
@@ -1097,7 +1097,7 @@ class ColumnTransformer(BaseActualTransformer, _BaseComposition):
             # they were dropped
             non_dropped_indices = [
                 ind
-                for name, ind in self._transformer_to_input_indices.items()  # ty: ignore[unresolved-attribute]
+                for name, ind in self._transformer_to_input_indices.items()  # ty: ignore[missing-attribute]
                 if name in named_transformers and named_transformers[name] != "drop"
             ]
 

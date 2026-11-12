@@ -1068,7 +1068,7 @@ def _evaluate_candidate_shared_rounds(
             curve_lengths.append(None)
             continue
         lengths: dict[str, int] = {}
-        for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[unresolved-attribute]
+        for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[missing-attribute]
             curve, higher_is_better = adapter.stopping_curve(estimator)
             curves.setdefault(position, []).append((curve, higher_is_better))
             lengths[position] = len(curve)
@@ -1080,7 +1080,7 @@ def _evaluate_candidate_shared_rounds(
         rounds, boundary = _select_shared_rounds(curves)
         for fold in folds:
             if fold.fit_error is None:
-                for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[unresolved-attribute]
+                for position, estimator in fold.forecaster._fitted_estimator_positions():  # ty: ignore[missing-attribute]
                     adapter.truncate(estimator, rounds[position])
 
     # No warning here: this runs inside a joblib worker, where warnings do not
@@ -1133,8 +1133,8 @@ _OBSERVE_METHOD_MAP: dict[str, str] = {
 def _get_response_methods(scorer: BaseScorer | _MultimetricScorer) -> set[str]:
     """Get the set of response methods needed by scorer(s)."""
     if isinstance(scorer, _MultimetricScorer):
-        return {s._response_method for s in scorer._scorers.values()}  # ty: ignore[unresolved-attribute]
-    return {scorer._response_method}  # ty: ignore[unresolved-attribute]
+        return {s._response_method for s in scorer._scorers.values()}  # ty: ignore[missing-attribute]
+    return {scorer._response_method}  # ty: ignore[missing-attribute]
 
 
 def _resolve_response_method(scorer: BaseScorer | _MultimetricScorer) -> str:

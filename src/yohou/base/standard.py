@@ -251,12 +251,12 @@ class BaseStandardForecaster:
             _transformer_fit_params(self.actual_transformer, forecasting_horizon, fit_params),
             _transformer_fit_params(self.target_transformer, forecasting_horizon, fit_params),
         )
-        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+        self._record_actual_step_columns(X_t, forecasting_horizon)  # ty: ignore[missing-attribute]
 
         # Fit the forecast_transformer and apply it before deriving step columns,
         # so the step columns are built from transformed values. Returns X_forecast
         # unchanged when the slot is unset.
-        X_forecast_t = self._fit_forecast_transformer(X_forecast, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+        X_forecast_t = self._fit_forecast_transformer(X_forecast, forecasting_horizon)  # ty: ignore[missing-attribute]
 
         # Inject step columns from X_future / X_forecast. Coverage is reported at
         # fit per column (below), so the per-call warning is suppressed here.
@@ -264,7 +264,7 @@ class BaseStandardForecaster:
         # misconfigured step_transformer is rejected on a fit carrying no
         # X_future/X_forecast rather than surfacing only once one appears.
         # Derivation refits it on the frame it builds.
-        self._fit_step_transformer(None, forecasting_horizon)  # ty: ignore[unresolved-attribute]
+        self._fit_step_transformer(None, forecasting_horizon)  # ty: ignore[missing-attribute]
 
         X_step = _derive_step_columns(
             X_future=X_future,
@@ -275,7 +275,7 @@ class BaseStandardForecaster:
             warn_coverage=False,
             warn_coverage_at_fit=True,
             existing_columns=set(X_t.columns) - {"time"} if X_t is not None else None,
-            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[unresolved-attribute]
+            step_transform=lambda frame: self._fit_step_transformer(  # ty: ignore[missing-attribute]
                 frame, forecasting_horizon
             ),
         )
@@ -480,7 +480,7 @@ class BaseStandardForecaster:
         # transformed at fit. Transforming after the ternary would double-transform
         # the fallback.
         X_forecast_eff = (
-            self._transform_X_forecast(X_forecast)  # ty: ignore[unresolved-attribute]
+            self._transform_X_forecast(X_forecast)  # ty: ignore[missing-attribute]
             if X_forecast is not None
             else self._X_forecast_t_
         )
@@ -489,9 +489,9 @@ class BaseStandardForecaster:
             X_future_eff,
             X_forecast_eff,
             pl.Series([self.observed_time_]),
-            self.fit_forecasting_horizon_,  # ty: ignore[unresolved-attribute]
+            self.fit_forecasting_horizon_,  # ty: ignore[missing-attribute]
             self.interval_,
-            step_transform=self._transform_X_step,  # ty: ignore[unresolved-attribute]
+            step_transform=self._transform_X_step,  # ty: ignore[missing-attribute]
         )
         if X_step is not None and self._X_t_observed is not None:
             self._X_t_observed = pl.concat(

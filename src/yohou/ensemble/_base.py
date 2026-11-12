@@ -517,7 +517,7 @@ class _BaseEnsembleForecaster:
             Parameter names mapped to their values.
 
         """
-        return self._get_params("_forecasters", deep=deep)  # ty: ignore[unresolved-attribute]
+        return self._get_params("_forecasters", deep=deep)  # ty: ignore[missing-attribute]
 
     def set_params(self, **params: Any):
         """Set the parameters of this estimator.
@@ -532,7 +532,7 @@ class _BaseEnsembleForecaster:
         self
 
         """
-        self._set_params("_forecasters", **params)  # ty: ignore[unresolved-attribute]
+        self._set_params("_forecasters", **params)  # ty: ignore[missing-attribute]
         return self
 
     def _sk_visual_block_(self):

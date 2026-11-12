@@ -233,12 +233,12 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         """
         reference_name, reference_forecaster = self.forecasters_[0]
-        reference_classes = reference_forecaster.classes_  # ty: ignore[unresolved-attribute]
+        reference_classes = reference_forecaster.classes_  # ty: ignore[missing-attribute]
 
         for name, forecaster in self.forecasters_[1:]:
-            if forecaster.classes_ != reference_classes:  # ty: ignore[unresolved-attribute]
+            if forecaster.classes_ != reference_classes:  # ty: ignore[missing-attribute]
                 raise ValueError(
-                    f"Forecaster '{name}' discovered classes {forecaster.classes_} "  # ty: ignore[unresolved-attribute]
+                    f"Forecaster '{name}' discovered classes {forecaster.classes_} "  # ty: ignore[missing-attribute]
                     f"but '{reference_name}' discovered {reference_classes}. "
                     f"All base forecasters must discover the same classes."
                 )
@@ -316,9 +316,9 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         _first_name, first_forecaster = self.forecasters_[0]
         self._derive_fitted_attributes(first_forecaster, forecasting_horizon, y, X_actual)
 
-        self.classes_ = dict(first_forecaster.classes_)  # ty: ignore[unresolved-attribute]
-        self.n_classes_ = dict(first_forecaster.n_classes_)  # ty: ignore[unresolved-attribute]
-        self.label_to_code_ = dict(first_forecaster.label_to_code_)  # ty: ignore[unresolved-attribute]
+        self.classes_ = dict(first_forecaster.classes_)  # ty: ignore[missing-attribute]
+        self.n_classes_ = dict(first_forecaster.n_classes_)  # ty: ignore[missing-attribute]
+        self.label_to_code_ = dict(first_forecaster.label_to_code_)  # ty: ignore[missing-attribute]
 
         # Compute effective weights for surviving forecasters
         self._compute_effective_weights()
@@ -360,7 +360,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
             return self._soft_vote_predict_class_proba(groups=groups, routed_params=routed_params)
         return self._hard_vote_predict_class_proba(groups=groups, routed_params=routed_params)
 
-    def predict_class_proba(  # ty: ignore[invalid-method-override]
+    def predict_class_proba(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
@@ -445,7 +445,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         """
         predictions = []
         for name, forecaster in self.forecasters_:
-            y_proba = forecaster.predict_class_proba(  # ty: ignore[unresolved-attribute]
+            y_proba = forecaster.predict_class_proba(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,
@@ -502,7 +502,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         """
         predictions = []
         for name, forecaster in self.forecasters_:
-            y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.predict(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,
@@ -527,7 +527,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
 
         return result
 
-    def predict(  # ty: ignore[invalid-method-override]
+    def predict(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
@@ -653,7 +653,7 @@ class VotingClassProbaForecaster(_BaseEnsembleForecaster, BaseClassProbaForecast
         """
         predictions = []
         for name, forecaster in self.forecasters_:
-            y_pred = forecaster.predict(  # ty: ignore[unresolved-attribute]
+            y_pred = forecaster.predict(  # ty: ignore[missing-attribute]
                 forecasting_horizon=forecasting_horizon,
                 groups=groups,
                 X_future=X_future,

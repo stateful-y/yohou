@@ -508,7 +508,7 @@ class DecompositionPipeline(BasePointForecaster, _BaseComposition):
 
         return self
 
-    def predict(  # ty: ignore[invalid-method-override]
+    def predict(  # ty: ignore[incompatible-method-override]
         self,
         forecasting_horizon: StrictInt | None = None,
         groups: list[str] | None = None,
