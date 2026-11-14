@@ -260,7 +260,7 @@ class ColumnForecaster(BaseForecaster, _BaseComposition):
         try:
             return [(name, forecaster) for name, forecaster, _ in self.forecasters]  # ty: ignore[invalid-assignment]
         except (TypeError, ValueError):
-            return self.forecasters  # ty: ignore[invalid-return-type]
+            return self.forecasters  # ty: ignore[invalid-explicit-return]
 
     @_forecasters.setter
     def _forecasters(self, value: list[tuple[str, BaseForecaster]]) -> None:
