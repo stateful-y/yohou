@@ -519,7 +519,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().observe(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-return-type]
+        return super().observe(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-explicit-return]
 
     def rewind(
         self,
@@ -558,7 +558,7 @@ class BaseClassProbaForecaster(BaseForecaster, metaclass=abc.ABCMeta):
 
         """
         y = self._encode_y_input(y)
-        return super().rewind(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-return-type]
+        return super().rewind(y, X_actual, groups=groups, X_future=X_future, X_forecast=X_forecast)  # ty: ignore[invalid-explicit-return]
 
     def observe_predict_class_proba(
         self,

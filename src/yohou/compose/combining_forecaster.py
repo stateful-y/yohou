@@ -296,7 +296,7 @@ class CombiningForecaster(BasePointForecaster, _BaseComposition):
         try:
             return [(name, forecaster) for name, _, forecaster in self.terms]  # ty: ignore[invalid-assignment]
         except (TypeError, ValueError):
-            return self.terms  # ty: ignore[invalid-return-type]
+            return self.terms  # ty: ignore[invalid-explicit-return]
 
     @_terms.setter
     def _terms(self, value: list[tuple[str, BasePointForecaster]]) -> None:
