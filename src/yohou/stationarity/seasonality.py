@@ -72,6 +72,7 @@ class PatternSeasonalityForecaster(_BaseSeasonalityForecaster):
     - [`FourierSeasonalityForecaster`][yohou.stationarity.seasonality.FourierSeasonalityForecaster] : Fourier-based seasonality for smooth curves.
     - [`PolynomialTrendForecaster`][yohou.stationarity.trend.PolynomialTrendForecaster] : Polynomial trend estimation.
     - [`DecompositionPipeline`][yohou.compose.decomposition_pipeline.DecompositionPipeline] : Combines trend + seasonality + residual forecasters.
+    - [`SegmentProfileForecaster`][yohou.point.naive.SegmentProfileForecaster] : Profile keyed by calendar segment, for local-time and holiday patterns.
 
     Notes
     -----
