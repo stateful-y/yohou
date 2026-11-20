@@ -84,6 +84,31 @@ business_hours = CalendarSegmenter("hour", values=range(8, 19))
 handler = OutlierPercentileHandler(high=99, segmenter=business_hours)
 ```
 
+**Leave out public holidays.** A holiday at 10:00 is not a normal business
+hour. Supply your holiday dates to a
+[`HolidaySegmenter`](/pages/api/generated/yohou.segmenting.HolidaySegmenter/),
+invert it with
+[`ComplementSegmenter`](/pages/api/generated/yohou.segmenting.ComplementSegmenter/),
+and intersect the result with business hours:
+
+```python
+from datetime import date
+
+import polars as pl
+
+from yohou.segmenting import ComplementSegmenter, HolidaySegmenter, IntersectionSegmenter
+
+holidays = pl.DataFrame({"date": [date(2024, 12, 25), date(2025, 1, 1)]})
+business_days = IntersectionSegmenter([
+    ("hours", CalendarSegmenter("hour", values=range(8, 19))),
+    ("not_holiday", ComplementSegmenter(HolidaySegmenter(holidays=holidays))),
+])
+handler = OutlierPercentileHandler(high=99, segmenter=business_days)
+```
+
+Holiday rows are then outside the segment, so they are neither handled nor used
+to learn the percentile.
+
 **Learn one limit per hour.** With `by_segment=True`, the handler fits a
 separate threshold pair for each hour, so 150 is clipped at 03:00 and kept at
 12:00:

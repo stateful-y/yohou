@@ -1,10 +1,10 @@
 """Tests for imputation transformers.
 
 Tests SimpleImputer, TransformedSpaceKNNImputer, SimpleTimeImputer,
-and SeasonalImputer basic functionality.
+SeasonalImputer and SegmentImputer basic functionality.
 """
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import polars as pl
@@ -14,10 +14,12 @@ from conftest import run_checks
 from yohou.preprocessing import (
     LagTransformer,
     SeasonalImputer,
+    SegmentImputer,
     SimpleImputer,
     SimpleTimeImputer,
     TransformedSpaceKNNImputer,
 )
+from yohou.segmenting import CalendarSegmenter
 from yohou.testing import _yield_yohou_transformer_checks
 
 # Inverse transform checks to skip for sklearn imputers.
@@ -421,3 +423,146 @@ class TestSeasonalImputerIrregularInterval:
         # The un-imputable row stays null; the observed rows pass through unchanged.
         assert X_imputed["val"].to_list() == [1.0, None, 3.0]
         assert X_imputed["val"].is_nan().sum() == 0
+
+
+def _hourly(start: datetime, values: list, tz: str | None = None) -> pl.DataFrame:
+    """Hourly frame with one ``value`` column, optionally localised to ``tz``."""
+    times = pl.Series("time", [start + timedelta(hours=h) for h in range(len(values))])
+    if tz is not None:
+        times = times.dt.replace_time_zone(tz)
+    return pl.DataFrame({"time": times, "value": pl.Series(values, dtype=pl.Float64)})
+
+
+class TestSegmentImputer:
+    """Test SegmentImputer functionality."""
+
+    def test_systematic_checks(self):
+        """Run all systematic checks on a local-hour imputer with tz-aware data."""
+        rng = np.random.default_rng(0)
+        X = _hourly(datetime(2024, 3, 25), list(rng.normal(size=24 * 10)), tz="UTC")
+        X_train, X_test = X[: 24 * 7], X[24 * 7 :]
+        transformer = SegmentImputer(CalendarSegmenter("hour", time_zone="Europe/Paris")).fit(X_train)
+        run_checks(transformer, _yield_yohou_transformer_checks(transformer, X_train, None, X_test))
+
+    def test_missing_hour_filled_from_same_hour(self):
+        """The null 03:00 value is filled with the mean of the other 03:00 values."""
+        values = [float(h) for _ in range(3) for h in range(24)]
+        values[3], values[27], values[51] = 10.0, 12.0, None
+        X = _hourly(datetime(2024, 1, 1), values)
+        out = SegmentImputer(CalendarSegmenter("hour")).fit_transform(X)
+        expected = list(values)
+        expected[51] = 11.0
+        assert out["value"].to_list() == expected
+
+    def test_local_time_across_daylight_saving(self):
+        """18:00 Paris is 17:00 UTC in March and 16:00 UTC in April; the fill follows local time."""
+        fit_values = [1.0 if h % 24 == 17 else 0.0 for h in range(24 * 30)]
+        X_fit = _hourly(datetime(2024, 3, 1), fit_values, tz="UTC")
+        imputer = SegmentImputer(CalendarSegmenter("hour", time_zone="Europe/Paris")).fit(X_fit)
+        april = [None if h in (16, 17) else 0.0 for h in range(24)]
+        out = imputer.transform(_hourly(datetime(2024, 4, 1), april, tz="UTC"))
+        assert out["value"][16] == 1.0
+        assert out["value"][17] == 0.0
+
+    def test_median_fill(self):
+        """With fill_method='median' the 03:00 values 1, 2 and 100 fill with 2."""
+        values = [0.0] * 96
+        values[3], values[27], values[51], values[75] = 1.0, 2.0, 100.0, None
+        out = SegmentImputer(CalendarSegmenter("hour"), fill_method="median").fit_transform(
+            _hourly(datetime(2024, 1, 1), values)
+        )
+        assert out["value"][75] == 2.0
+
+    def test_integer_column(self):
+        """An integer column is returned as Float64 with the mean filled in."""
+        X = pl.DataFrame({
+            "time": pl.datetime_range(datetime(2024, 1, 1), datetime(2024, 1, 3), interval="1d", eager=True),
+            "count": pl.Series([10, 11, None], dtype=pl.Int64),
+        })
+        out = SegmentImputer().fit_transform(X)
+        assert out["count"].dtype == pl.Float64
+        assert out["count"].to_list() == [10.0, 11.0, 10.5]
+
+    def test_invalid_fill_method(self):
+        """fill_method='mode' is rejected at fit."""
+        with pytest.raises(ValueError, match="fill_method"):
+            SegmentImputer(fill_method="mode").fit(_hourly(datetime(2024, 1, 1), [1.0, 2.0]))
+
+    def test_row_outside_every_segment(self):
+        """A null at 03:00, outside business hours, takes the pooled statistic."""
+        values = [float(h) for _ in range(2) for h in range(24)]
+        values[27] = None
+        imputer = SegmentImputer(CalendarSegmenter("hour", values=list(range(8, 19))))
+        out = imputer.fit_transform(_hourly(datetime(2024, 1, 1), values))
+        pooled = np.mean([v for v in values if v is not None])
+        assert out["value"][27] == pytest.approx(pooled)
+        assert imputer.fill_values_["value"] == pytest.approx(pooled)
+
+    def test_label_unseen_at_fit(self):
+        """A null in June, unseen when fitting on January to March, takes the pooled statistic."""
+        winter = pl.DataFrame({
+            "time": pl.date_range(date(2024, 1, 1), date(2024, 3, 31), eager=True),
+        }).with_columns(pl.col("time").dt.month().cast(pl.Float64).alias("value"))
+        imputer = SegmentImputer(CalendarSegmenter("month")).fit(winter)
+        june = pl.DataFrame({
+            "time": pl.date_range(date(2024, 6, 1), date(2024, 6, 3), eager=True),
+            "value": [None, 5.0, 5.0],
+        })
+        out = imputer.transform(june)
+        assert out["value"][0] == pytest.approx(winter["value"].mean())
+
+    def test_no_segmenter(self):
+        """Without a segmenter every missing value takes the column mean of the fit data."""
+        values = [1.0, None, 3.0, float("nan"), 5.0]
+        out = SegmentImputer().fit_transform(_hourly(datetime(2024, 1, 1), values))
+        assert out["value"].to_list() == [1.0, 3.0, 3.0, 3.0, 5.0]
+
+    def test_unfillable_value_is_null_not_nan(self):
+        """A column with no finite value at fit keeps its gaps as null, never NaN."""
+        X = _hourly(datetime(2024, 1, 1), [None, float("nan"), None])
+        out = SegmentImputer(CalendarSegmenter("hour")).fit_transform(X)
+        assert out["value"].null_count() == 3
+        assert out["value"].is_nan().sum() == 0
+
+    def test_infinite_values_neither_used_nor_filled(self):
+        """An infinite value is excluded from the statistic and left in place."""
+        X = _hourly(datetime(2024, 1, 1), [float("inf"), 1.0, None, 3.0])
+        out = SegmentImputer().fit_transform(X)
+        assert out["value"].to_list() == [float("inf"), 1.0, 2.0, 3.0]
+
+    def test_columns_get_their_own_statistics(self):
+        """Each column is filled from its own per-label statistic, recorded in segment_fill_values_."""
+        hours = [float(h % 24) for h in range(48)]
+        a, b = list(hours), [10.0 * h for h in hours]
+        a[27], b[28] = None, None
+        X = pl.DataFrame({
+            "time": [datetime(2024, 1, 1) + timedelta(hours=h) for h in range(48)],
+            "a__value": a,
+            "b__value": b,
+        })
+        imputer = SegmentImputer(CalendarSegmenter("hour")).fit(X)
+        out = imputer.transform(X)
+        assert (out["a__value"][27], out["b__value"][28]) == (3.0, 40.0)
+        assert imputer.segment_fill_values_["a__value"][3] == 3.0
+        assert imputer.segment_fill_values_["b__value"][4] == 40.0
+
+    def test_every_column_returned_as_float64(self):
+        """Value columns become Float64 whether or not they had gaps."""
+        X = pl.DataFrame({
+            "time": [datetime(2024, 1, 1) + timedelta(hours=h) for h in range(3)],
+            "full": pl.Series([1, 2, 3], dtype=pl.Int64),
+            "gappy": pl.Series([1, None, 3], dtype=pl.Int64),
+        })
+        out = SegmentImputer().fit_transform(X)
+        assert out.schema["full"] == pl.Float64
+        assert out.schema["gappy"] == pl.Float64
+
+    def test_chunked_transform(self):
+        """Transforming in two consecutive chunks equals transforming whole."""
+        values = [float(h % 24) if h % 5 else None for h in range(24 * 4)]
+        X = _hourly(datetime(2024, 1, 1), values, tz="UTC")
+        imputer = SegmentImputer(CalendarSegmenter("hour", time_zone="Europe/Paris")).fit(X)
+        whole = imputer.transform(X)
+        chunks = pl.concat([imputer.transform(X[:37]), imputer.transform(X[37:])])
+        assert chunks.equals(whole)
+        assert imputer.__sklearn_tags__().transformer_tags.batch_invariant

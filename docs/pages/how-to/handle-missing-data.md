@@ -107,6 +107,34 @@ from yohou.preprocessing.imputation import SeasonalImputer
 imputer = SeasonalImputer(seasonality=7, fill_method="seasonal_median")
 ```
 
+If the pattern follows local time or calendar dates rather than a fixed number
+of rows, use `SegmentImputer` instead (next section).
+
+## Fill from the Same Calendar Segment with SegmentImputer
+
+[`SegmentImputer`](/pages/api/generated/yohou.preprocessing.SegmentImputer/)
+fills each gap with the mean (or median) of the values that share its calendar
+label, such as the same local hour. Prefer it over `SeasonalImputer` when the
+pattern is tied to local time or to calendar dates. On UTC data, an evening peak
+at 18:00 in Paris falls at 17:00 UTC in winter and 16:00 UTC in summer, so a
+24-row cycle fills summer gaps from the wrong hour. A
+[`CalendarSegmenter`](/pages/api/generated/yohou.segmenting.CalendarSegmenter/)
+with `time_zone` reads the hour in local time:
+
+```python
+from yohou.preprocessing import SegmentImputer
+from yohou.segmenting import CalendarSegmenter
+
+imputer = SegmentImputer(CalendarSegmenter("hour", time_zone="Europe/Paris"))
+imputer.fit(y_train)  # y_train["time"] is timezone-aware, e.g. UTC
+y_filled = imputer.transform(y_new)
+```
+
+Statistics are learned at fit. A gap whose label has no data, because it is
+outside every segment, was never seen at fit, or had only missing values, is
+filled with the column's pooled statistic over all fit values. If a column had no
+value at all at fit, its gaps stay null.
+
 ## Use KNN Imputation for Complex Patterns
 
 [`TransformedSpaceKNNImputer`](/pages/api/generated/yohou.preprocessing.TransformedSpaceKNNImputer/)
