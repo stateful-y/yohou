@@ -478,7 +478,9 @@ OptunaSearchCV quickstart
 #### Marimo Cell Conventions
 
 - Use `hide_code=True` on all markdown cells, import cells, and utility/helper cells
+
 - Use `r"""..."""` (raw triple-quoted strings) for markdown cell content
+
 - All notebooks declare dependencies using [PEP 723](https://peps.python.org/pep-0723/) inline script metadata at the top of the file:
 
     ```python
@@ -492,9 +494,13 @@ OptunaSearchCV quickstart
     ```
 
 - Dependencies are sorted alphabetically and only list third-party packages actually imported by the notebook.
+
 - `marimo` itself is NOT listed as a dependency (it is the runner, not a dependency of the script).
+
 - To add a dependency: `uv add --script notebook.py <package>` or edit the header manually.
+
 - To run in an isolated sandbox: `uv run marimo edit --sandbox notebook.py`.
+
 - Group all imports into a single hidden cell after the metadata header
 
 #### Content Guidelines
