@@ -13,5 +13,6 @@ Segmenter estimators that label timestamps by calendar segment.
 | [`BaseSegmenter`](generated/yohou.segmenting.BaseSegmenter.md) | Base class for time-axis segmenter estimators. |
 | [`CalendarSegmenter`](generated/yohou.segmenting.CalendarSegmenter.md) | Segments timestamps by the value of a calendar feature. |
 | [`ComplementSegmenter`](generated/yohou.segmenting.ComplementSegmenter.md) | Rows outside a segmenter. |
+| [`HolidaySegmenter`](generated/yohou.segmenting.HolidaySegmenter.md) | Segments timestamps that fall on a holiday. |
 | [`IntersectionSegmenter`](generated/yohou.segmenting.IntersectionSegmenter.md) | Rows inside every component segmenter. |
 | [`UnionSegmenter`](generated/yohou.segmenting.UnionSegmenter.md) | Rows inside any component segmenter. |

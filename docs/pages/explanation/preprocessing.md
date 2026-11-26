@@ -208,6 +208,10 @@ Different imputation strategies make different assumptions: simple forward-fill
 preserves discontinuities, linear interpolation works for smooth series,
 seasonal imputation accounts for periodic structure, and nearest-neighbor imputation
 in a transformed feature space can capture complex multi-variate patterns.
+Segment imputation with
+[`SegmentImputer`](/pages/api/generated/yohou.preprocessing.SegmentImputer/) fills a
+gap from the values that share its calendar label, such as the same local hour, so
+the fill follows local time and calendar dates rather than a fixed number of rows.
 
 **Outlier handling transformers** detect and treat extreme values using either fixed
 thresholds or data-driven percentile bounds. Values outside the specified range can
@@ -215,11 +219,14 @@ be clipped to the boundary or replaced with null for downstream imputation. Both
 [`OutlierThresholdHandler`](/pages/api/generated/yohou.preprocessing.OutlierThresholdHandler/)
 and [`OutlierPercentileHandler`](/pages/api/generated/yohou.preprocessing.OutlierPercentileHandler/)
 are stateless. Both accept a segmenter from [`yohou.segmenting`](/pages/api/segmenting/),
-which restricts handling to part of the calendar (for example business hours).
+which restricts handling to part of the calendar (for example business hours, or
+business hours excluding public holidays with a
+[`HolidaySegmenter`](/pages/api/generated/yohou.segmenting.HolidaySegmenter/)).
 The percentile handler can also fit one range per segment, so what counts as
 extreme can depend on the time of day. A segmenter labels each row from its own
 timestamp alone, which keeps the handlers stateless and gives the same result
-whether data arrives in one batch or several.
+whether data arrives in one batch or several. The same property lets segment-based
+fills in `SegmentImputer` stay batch invariant.
 
 **Resampling transformers** change time series frequency by aggregating to a lower
 frequency or interpolating to a higher one. Resampling before modeling is often

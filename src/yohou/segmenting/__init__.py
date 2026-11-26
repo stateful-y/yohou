@@ -11,6 +11,7 @@ from .segmenters import (
     BaseSegmenter,
     CalendarSegmenter,
     ComplementSegmenter,
+    HolidaySegmenter,
     IntersectionSegmenter,
     UnionSegmenter,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "BaseSegmenter",
     "CalendarSegmenter",
     "ComplementSegmenter",
+    "HolidaySegmenter",
     "IntersectionSegmenter",
     "UnionSegmenter",
 ]
